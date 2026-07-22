@@ -26,7 +26,7 @@
 
 ## T9 — Lesson domain + migration 002 `[go-implementer]` ~45 นาที
 - **Goal**: Lesson/RecallCheck entities + กติกา gating ใน `LessonProgress`
-- **Scope**: `internal/curriculum/domain` (Lesson, RecallCheck, References), `internal/learning/domain` (LessonProgress + ChunkState), `migrations/002_lessons_learning.sql` — ตาราง lessons มีคอลัมน์ `references JSON` (แหล่งอ่านต่อของจริง)
+- **Scope**: `internal/curriculum/domain` (Lesson, RecallCheck, References), `internal/learning/domain` (LessonProgress + ChunkState), `migrations/002_lessons_learning.sql` — ตาราง lessons มีคอลัมน์ `refs JSON` (แหล่งอ่านต่อของจริง, ชื่อคอลัมน์เลี่ยงคำสงวน REFERENCES)
 - **Acceptance**: table-driven tests ของ gating: lesson แรกของบท = ปลดล็อกเสมอ, ถัดไปปลดเมื่อก่อนหน้า passed, ข้ามบทไม่ได้
 - **Review focus**: กติกา gating อยู่ใน domain method ไม่ใช่ SQL/handler, state transition ผิด order ต้อง error
 - Status: `todo`

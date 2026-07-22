@@ -69,7 +69,7 @@ topics          (id PK, track ENUM('ddd','distsys','aws','go','dsa'), slug UNIQ,
 chapters        (id PK, topic_id FK, slug, title, position, UNIQUE(topic_id, slug))
 concepts        (id PK, chapter_id FK, slug, title, outline TEXT, position, UNIQUE(chapter_id, slug))
 lessons         (id PK, concept_id FK UNIQ, version INT, title_en, est_minutes, body_md MEDIUMTEXT,
-                 references JSON, imported_at)   -- body_md มี ```mermaid``` fences ได้
+                 refs JSON, imported_at)   -- body_md มี ```mermaid``` fences ได้; refs = "references" JSON (คำสงวนใน MySQL)
 recall_checks   (id PK, lesson_id FK, position, type ENUM('short_answer','mcq'),
                  question TEXT, expected_answer TEXT, options JSON NULL)
 
