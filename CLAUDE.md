@@ -9,6 +9,12 @@ building it.
 
 - Converse in THAI; keep technical terms in English (no transliterated
   jargon). Project docs are Thai, app UI copy is English, lessons are Thai.
+- Active learning (IMPORTANT): the user learns by thinking, not by reading
+  walls of text. Any long design, plan, or technical explanation (~40+
+  lines) must END with a short QUIZ — 2-4 Thai questions on the key
+  decisions/concepts, answerable from what was just presented. When the
+  user answers, give brief corrective feedback before moving on. Prefer a
+  tight summary + quiz over exhaustive prose.
 
 ## Orchestration rules (IMPORTANT)
 
@@ -16,25 +22,39 @@ building it.
   - content generation → `lesson-writer`, then ALWAYS `lesson-verifier`
   - code implementation → `go-implementer`
   - reviewing diffs → `code-reviewer`
-- You may implement something yourself ONLY when a subagent has failed twice
-  on the same task, AND you must first ask the user for explicit permission,
-  stating what failed and why.
-- Model policy: Fable 5 runs the main session as ORCHESTRATOR ONLY — it
+- The orchestrator NEVER implements anything itself. When a worker subagent
+  has failed twice on the same ticket, escalate instead: ask the user for
+  permission (stating what failed and why), then spawn a ONE-OFF subagent
+  with `model: fable` carrying complete context — the ticket text, both
+  failure summaries, and code-reviewer findings.
+- Model policy: the main session runs on OPUS as ORCHESTRATOR ONLY — it
   plans, delegates, and reviews subagent results, never writes lessons or
-  code itself. All worker subagents run on opus, sonnet, or haiku via the
+  code itself. Worker subagents run on opus, sonnet, or haiku via the
   `model` field in their `.claude/agents/*.md` frontmatter
   (lesson-writer: opus, lesson-verifier: sonnet, go-implementer: sonnet,
-  code-reviewer: opus; use haiku for cheap mechanical tasks). Never launch
-  a subagent on Fable 5.
+  code-reviewer: opus; use haiku for cheap mechanical tasks). Fable 5 is
+  reserved for the escalation path above and for user-initiated deep design
+  sessions — never a routine main model, never a routine worker. Always
+  match the model tier to the task: never use a bigger model where a
+  smaller one passes the same acceptance criteria.
 - Never set CLAUDE_CODE_SUBAGENT_MODEL (it would override per-agent models).
 - Work in small tickets. One ticket at a time. Show a short summary after each.
 - Git workflow: every ticket on branch `ticket/<id>-<slug>` → PR to
   `develop` using `.github/pull_request_template.md`. The PR body must be
   self-sufficient for PHONE review: Thai walkthrough (what/why per file),
-  the ticket's Review focus checklist, vet/test output, code-reviewer
-  verdict. The user reviews and merges (often via GitHub mobile). Merging
-  to develop auto-deploys to the VPS. Never start the next ticket before
-  the current PR is merged.
+  the ticket's Review focus, vet/test output, code-reviewer verdict. The
+  user reviews and merges (often via GitHub mobile). Merging to develop
+  auto-deploys to the VPS. Never start the next ticket before the current
+  PR is merged.
+- Review tiers (reduce manual review): every PR body starts with a Review
+  level + one-line reason — 🟢 skim (scaffolding/config/docs/UI copy; CI
+  green means safe to merge from the summary alone), 🟡 normal, 🔴 careful
+  (domain logic, auth, migrations, SQL, LLM spend, security — read the
+  diff). Anything touching a 🔴 area must never be labeled 🟢.
+- Review-as-quiz: in the PR body, write Review focus as 2-4 QUESTIONS about
+  the diff (e.g. "ทำไมคำตอบ user ต้องถูก save ก่อนเรียก LLM?") instead of
+  statements — the user answers them mentally while reading; answers go in
+  a collapsed <details> block at the bottom of the PR body.
 - The plan lives in `docs/roadmap.md` (big picture + ticket index) and
   `docs/tickets/week-*.md` (small per-ticket detail with Review focus).
   Full design: `docs/design.md`. Keep ticket Status lines and roadmap

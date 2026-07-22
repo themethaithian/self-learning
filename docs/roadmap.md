@@ -35,7 +35,7 @@ Phase 2 ค่อย publish โชว์เป็นผลงาน (ดู des
 
 ## Ticket index (ติ๊กเมื่อ merge แล้ว)
 
-- สัปดาห์ 1: [x] T1 [x] T2 [x] T3 [ ] T4 [ ] T5 [ ] T6 [ ] T7 [ ] T8
+- สัปดาห์ 1: [x] T1 [x] T2 [x] T3 [ ] T4 [ ] T35 [ ] T5 [ ] T6 [ ] T7 [ ] T8
 - สัปดาห์ 2: [ ] T28 [ ] T29 [ ] T30 [ ] T9 [ ] T10 [ ] T11
 - สัปดาห์ 3: [ ] T12 [ ] T13 [ ] T14 [ ] T15 [ ] T33 [ ] C1
 - สัปดาห์ 4: [ ] T16 [ ] T17 [ ] T18 [ ] T19 [ ] T20 [ ] T21 [ ] C2
@@ -51,6 +51,13 @@ Phase 2 ค่อย publish โชว์เป็นผลงาน (ดู des
    **คุณรีวิว + merge** (จาก GitHub mobile ได้ — diff เล็กพออ่านบนจอมือถือ) →
    merge = **auto-deploy ขึ้น VPS** → ติ๊กใน index ข้างบน
 3. ห้ามเริ่ม ticket ถัดไปก่อน PR ปัจจุบันถูก merge
+4. **Review tiers**: ทุก PR ระบุ Review level — 🟢 skim (scaffolding/config/docs;
+   CI เขียว = merge จากสรุปได้เลย) / 🟡 normal / 🔴 careful (domain logic, auth,
+   migration, SQL, LLM spend — อ่าน diff จริง) พร้อมเหตุผล 1 บรรทัด
+5. **Review-as-quiz**: Review focus ใน PR เป็นคำถาม 2-4 ข้อให้ตอบระหว่างอ่าน
+   (เฉลยพับไว้ท้าย PR) — และ design/คำอธิบายยาว ๆ ในแชทจะจบด้วย quiz เสมอ
+6. **Model policy**: main session = Opus (orchestrator), workers = opus/sonnet/haiku,
+   **Fable = escalation เท่านั้น** (worker พลาด 2 ครั้ง → ขออนุญาต → Fable subagent)
 4. Content batch (C1–C6): lesson-writer → lesson-verifier → FAIL เกิน 2 รอบ = พัก concept แล้วรายงาน
 5. Frontend ticket ทุกตัวใช้ skill `frontend-design`, ทุก agent ใช้ skill `token-efficiency`
 

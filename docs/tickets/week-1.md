@@ -33,6 +33,13 @@
 - **Review focus**: ใช้ `crypto/subtle.ConstantTimeCompare` เทียบ token, CORS ไม่เปิด `*` ตอน production
 - Status: `todo`
 
+## T35 — CI: vet + test + build ทุก PR `[go-implementer]` ~25 นาที
+- **Goal**: PR ที่ CI เขียว = ผล test เชื่อถือได้โดยไม่ต้องเชื่อ output ที่ paste มา — เป็นเงื่อนไขให้ Review level 🟢 merge จากสรุปได้
+- **Scope**: `.github/workflows/ci.yml` — trigger `pull_request` + push `develop`: `go vet ./...`, `go test ./...`, `go build ./...` พร้อม Go module cache (เพิ่ม `npm run build` เมื่อ `web/` เกิดใน T8)
+- **Acceptance**: PR ถัดไปโชว์ CI เขียว, ลองทำ test พังใน branch ทดสอบแล้ว CI แดงจริง
+- **Review focus**: ไม่มี secret ใน workflow, permissions ของ GITHUB_TOKEN แคบสุด (contents: read)
+- Status: `todo`
+
 ## T5 — Curriculum domain + tests `[go-implementer]` ~45 นาที
 - **Goal**: domain layer แรก — เป็นแม่แบบ DDD ให้ context อื่นทั้งหมด
 - **Scope**: `internal/curriculum/domain` — Topic/Chapter/Concept entities, VOs (Slug, Track, Position) validate ใน constructor, ห้าม import อะไรนอก stdlib

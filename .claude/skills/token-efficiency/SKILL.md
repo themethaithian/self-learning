@@ -16,6 +16,15 @@ subagents), (2) Anthropic API spend at app runtime (Haiku). Rules for both.
 - Don't re-read files you already have in context; don't re-verify what a
   tool result already confirmed.
 - One ticket at a time. Don't preload future tickets into context.
+- Match model tier to task: haiku for mechanical transforms, sonnet for
+  implementation, opus for review/lesson content, fable ONLY via the
+  escalation path in CLAUDE.md. Never use a bigger model where a smaller
+  one passes the same acceptance criteria.
+- Once PR CI exists, treat it as the source of truth for vet/test/build —
+  don't re-run locally what CI already proves, and don't paste long
+  passing-test output into reports (link/summarize).
+- Prefer summary + quiz over exhaustive prose for the user (see CLAUDE.md
+  Active learning) — it's fewer tokens AND better retention.
 - Content batches: one chapter/pattern per session, ~4–8 items max.
 - If a subagent fails twice on the same task, STOP (per CLAUDE.md) — do not
   burn a third attempt without the user's decision.
