@@ -17,13 +17,25 @@ func TestFromEnv(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		mutate  func(map[string]string)
-		wantErr string
+		name        string
+		mutate      func(map[string]string)
+		wantErr     string
+		wantAPIPort int
 	}{
 		{
-			name:   "valid config",
-			mutate: func(map[string]string) {},
+			name:        "valid config",
+			mutate:      func(map[string]string) {},
+			wantAPIPort: 8080,
+		},
+		{
+			name:        "custom API_PORT",
+			mutate:      func(env map[string]string) { env["API_PORT"] = "9090" },
+			wantAPIPort: 9090,
+		},
+		{
+			name:    "non-numeric API_PORT",
+			mutate:  func(env map[string]string) { env["API_PORT"] = "not-a-number" },
+			wantErr: `API_PORT must be a number, got "not-a-number"`,
 		},
 		{
 			name:    "missing DB_HOST",
@@ -77,7 +89,8 @@ func TestFromEnv(t *testing.T) {
 				}
 				if cfg.DB.Host != env["DB_HOST"] || cfg.DB.Port != 3306 || cfg.DB.Name != env["DB_NAME"] ||
 					cfg.DB.User != env["DB_USER"] || cfg.DB.Password != env["DB_PASSWORD"] ||
-					cfg.AnthropicAPIKey != env["ANTHROPIC_API_KEY"] || cfg.APIBearerToken != env["API_BEARER_TOKEN"] {
+					cfg.AnthropicAPIKey != env["ANTHROPIC_API_KEY"] || cfg.APIBearerToken != env["API_BEARER_TOKEN"] ||
+					cfg.APIPort != tt.wantAPIPort {
 					t.Fatalf("FromEnv() = %+v, fields do not match env", cfg)
 				}
 				return

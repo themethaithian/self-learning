@@ -33,6 +33,13 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 
+// Unwrap lets http.ResponseController see through the wrapper to reach
+// optional interfaces (Flusher, Hijacker, ...) the underlying ResponseWriter
+// implements.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 // Logging logs method, path, status, and duration for every request. It must
 // wrap Recovery (not the reverse) so the status it reports reflects any 500
 // Recovery wrote after a panic.

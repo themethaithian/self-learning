@@ -76,3 +76,28 @@ func TestRecovery(t *testing.T) {
 		})
 	}
 }
+
+// net/http itself special-cases http.ErrAbortHandler to abort the connection
+// silently; Recovery must let it propagate rather than logging it and
+// writing a 500 onto a connection the caller intentionally tore down.
+func TestRecoveryRepanicsOnErrAbortHandler(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	handler := Recovery(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic(http.ErrAbortHandler)
+	}))
+
+	defer func() {
+		rec := recover()
+		if rec != http.ErrAbortHandler {
+			t.Fatalf("recovered value = %v, want http.ErrAbortHandler", rec)
+		}
+		if buf.Len() != 0 {
+			t.Errorf("expected no log output, got %q", buf.String())
+		}
+	}()
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/panic", nil))
+	t.Fatal("expected panic to propagate, but ServeHTTP returned normally")
+}

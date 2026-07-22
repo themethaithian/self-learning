@@ -15,7 +15,10 @@ type Config struct {
 	DB              DB
 	AnthropicAPIKey string
 	APIBearerToken  string
+	APIPort         int
 }
+
+const defaultAPIPort = 8080
 
 // DB holds the connection parameters for the MySQL pool.
 type DB struct {
@@ -44,6 +47,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		},
 		AnthropicAPIKey: getenv("ANTHROPIC_API_KEY"),
 		APIBearerToken:  getenv("API_BEARER_TOKEN"),
+		APIPort:         defaultAPIPort,
 	}
 
 	portRaw := getenv("DB_PORT")
@@ -54,6 +58,15 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		errs = append(errs, fmt.Sprintf("DB_PORT must be a number, got %q", portRaw))
 	default:
 		cfg.DB.Port = port
+	}
+
+	if apiPortRaw := getenv("API_PORT"); apiPortRaw != "" {
+		port, err := strconv.Atoi(apiPortRaw)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("API_PORT must be a number, got %q", apiPortRaw))
+		} else {
+			cfg.APIPort = port
+		}
 	}
 
 	for _, req := range []struct {

@@ -19,7 +19,10 @@ import (
 	"github.com/themethaithian/self-learning/internal/platform/mysql"
 )
 
-const shutdownTimeout = 10 * time.Second
+// Shutdown returns as soon as in-flight requests finish; this deadline is
+// only a cap, and must exceed the server's 60s WriteTimeout so a redeploy
+// never kills a long-running LLM-grading request mid-flight.
+const shutdownTimeout = 65 * time.Second
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -51,7 +54,7 @@ func run(logger *slog.Logger) error {
 
 	mux := httpserver.NewMux(db)
 	handler := middleware.Logging(logger)(middleware.Recovery(logger)(mux))
-	srv := httpserver.New(":"+apiPort(), handler)
+	srv := httpserver.New(fmt.Sprintf(":%d", cfg.APIPort), handler)
 
 	return serve(ctx, logger, srv)
 }
@@ -81,11 +84,4 @@ func serve(ctx context.Context, logger *slog.Logger, srv *http.Server) error {
 	}
 	logger.Info("server stopped")
 	return nil
-}
-
-func apiPort() string {
-	if p := os.Getenv("API_PORT"); p != "" {
-		return p
-	}
-	return "8080"
 }
