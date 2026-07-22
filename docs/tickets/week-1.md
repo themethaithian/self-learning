@@ -38,7 +38,7 @@
 - **Scope**: `.github/workflows/ci.yml` — trigger `pull_request` + push `develop`: `go vet ./...`, `go test ./...`, `go build ./...` พร้อม Go module cache (เพิ่ม `npm run build` เมื่อ `web/` เกิดใน T8)
 - **Acceptance**: PR ถัดไปโชว์ CI เขียว, ลองทำ test พังใน branch ทดสอบแล้ว CI แดงจริง
 - **Review focus**: ไม่มี secret ใน workflow, permissions ของ GITHUB_TOKEN แคบสุด (contents: read)
-- Status: `todo`
+- Status: `done`
 
 ## T5 — Curriculum domain + tests `[go-implementer]` ~45 นาที
 - **Goal**: domain layer แรก — เป็นแม่แบบ DDD ให้ context อื่นทั้งหมด
