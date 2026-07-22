@@ -1,0 +1,23 @@
+# Go
+/bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# Node
+node_modules/
+.next/
+out/
+web/out/
+
+# Env
+.env*
+!.env.example
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
