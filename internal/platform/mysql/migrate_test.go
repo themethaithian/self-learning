@@ -165,6 +165,14 @@ func TestSplitStatements(t *testing.T) {
 			sql:  "",
 			want: []string{},
 		},
+		{
+			// Known limitation, checked in on purpose: a plain split cannot
+			// tell a statement-ending ';' apart from one inside a string
+			// literal or comment. Migration files must avoid both.
+			name: "known limitation: semicolon inside a string literal splits mid-statement",
+			sql:  "INSERT INTO foo (name) VALUES ('a;b');",
+			want: []string{"INSERT INTO foo (name) VALUES ('a", "b')"},
+		},
 	}
 
 	for _, tt := range tests {

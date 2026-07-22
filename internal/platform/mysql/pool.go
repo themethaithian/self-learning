@@ -23,7 +23,6 @@ const (
 	pingTimeout     = 5 * time.Second
 )
 
-// Open creates the pooled *sql.DB and verifies connectivity with a ping.
 func Open(ctx context.Context, cfg config.DB) (*sql.DB, error) {
 	db, err := sql.Open("mysql", dsn(cfg))
 	if err != nil {

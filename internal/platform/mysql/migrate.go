@@ -23,13 +23,22 @@ type migrationFile struct {
 var migrationFilenamePattern = regexp.MustCompile(`^(\d+)_([a-zA-Z0-9-]+)\.sql$`)
 
 // Migrate applies every embedded migration not yet recorded in
-// schema_migrations, each inside its own transaction, in ascending version
-// order. Safe to call on every process start: already-applied versions are
-// skipped, so re-running is a no-op.
+// schema_migrations, in ascending version order. Safe to call on every
+// process start: already-applied versions are skipped, so re-running is a
+// no-op.
+//
+// MySQL DDL is non-transactional — each statement implicitly commits — so a
+// migration that fails partway through, or crashes before its version row is
+// recorded, leaves some of its DDL already applied. Every migration file
+// must therefore be written to converge on re-run (CREATE TABLE IF NOT
+// EXISTS, etc.), not merely assumed idempotent.
 func Migrate(ctx context.Context, db *sql.DB) error {
 	return applyPending(ctx, db, migrations.FS)
 }
 
+// applyPending assumes a single process runs migrations at a time (no
+// GET_LOCK) — true for this single-instance deploy; concurrent migrators
+// would race on schema_migrations.
 func applyPending(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	if err := ensureSchemaMigrationsTable(ctx, db); err != nil {
 		return err
@@ -102,8 +111,7 @@ func parseMigrationFilename(filename string) (migrationFile, error) {
 	return migrationFile{version: version, name: match[2], filename: filename}, nil
 }
 
-// pendingMigrations returns the migrations in all whose version is absent
-// from applied, preserving the ascending order loadMigrations produced.
+// pendingMigrations preserves the ascending order loadMigrations produced.
 func pendingMigrations(all []migrationFile, applied map[int]bool) []migrationFile {
 	pending := make([]migrationFile, 0, len(all))
 	for _, m := range all {
@@ -114,9 +122,9 @@ func pendingMigrations(all []migrationFile, applied map[int]bool) []migrationFil
 	return pending
 }
 
-// splitStatements splits a migration file into individual statements on ';'.
-// Migration files are hand-written schema DDL, never string literals
-// containing ';', so a plain split is safe here.
+// splitStatements assumes migration files are hand-written schema DDL that
+// never puts ';' inside a comment or string literal — that invariant is what
+// makes a plain split safe.
 func splitStatements(sqlText string) []string {
 	raw := strings.Split(sqlText, ";")
 	stmts := make([]string, 0, len(raw))
@@ -155,25 +163,21 @@ func appliedVersions(ctx context.Context, db *sql.DB) (map[int]bool, error) {
 		}
 		applied[version] = true
 	}
-	return applied, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("mysql: read schema_migrations: %w", err)
+	}
+	return applied, nil
 }
 
 func applyOne(ctx context.Context, db *sql.DB, m migrationFile) error {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
 	for _, stmt := range m.stmts {
-		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("exec statement: %w", err)
 		}
 	}
 
-	if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (version) VALUES (?)", m.version); err != nil {
+	if _, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (version) VALUES (?)", m.version); err != nil {
 		return fmt.Errorf("record version: %w", err)
 	}
-
-	return tx.Commit()
+	return nil
 }
