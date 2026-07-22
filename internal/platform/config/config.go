@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -12,13 +13,17 @@ import (
 
 // Config holds everything the API process needs at startup.
 type Config struct {
-	DB              DB
-	AnthropicAPIKey string
-	APIBearerToken  string
-	APIPort         int
+	DB                DB
+	AnthropicAPIKey   string
+	APIBearerToken    string
+	APIPort           int
+	CORSAllowedOrigin string
 }
 
-const defaultAPIPort = 8080
+const (
+	defaultAPIPort           = 8080
+	defaultCORSAllowedOrigin = "http://localhost:3000"
+)
 
 // DB holds the connection parameters for the MySQL pool.
 type DB struct {
@@ -45,9 +50,23 @@ func FromEnv(getenv func(string) string) (Config, error) {
 			User:     getenv("DB_USER"),
 			Password: getenv("DB_PASSWORD"),
 		},
-		AnthropicAPIKey: getenv("ANTHROPIC_API_KEY"),
-		APIBearerToken:  getenv("API_BEARER_TOKEN"),
-		APIPort:         defaultAPIPort,
+		AnthropicAPIKey:   getenv("ANTHROPIC_API_KEY"),
+		APIBearerToken:    getenv("API_BEARER_TOKEN"),
+		APIPort:           defaultAPIPort,
+		CORSAllowedOrigin: defaultCORSAllowedOrigin,
+	}
+
+	if origin := getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
+		cfg.CORSAllowedOrigin = origin
+	}
+	switch u, err := url.Parse(cfg.CORSAllowedOrigin); {
+	case cfg.CORSAllowedOrigin == "*":
+		errs = append(errs, `CORS_ALLOWED_ORIGIN must not be "*"; every request carries a bearer token`)
+	case err != nil || u.Scheme == "" || u.Host == "" || u.Path != "":
+		// A trailing path (even just "/") never equals a browser Origin
+		// header, which is always scheme+host with no path — that request
+		// would fail closed with no signal at startup.
+		errs = append(errs, fmt.Sprintf("CORS_ALLOWED_ORIGIN must be a scheme and host with no path, got %q", cfg.CORSAllowedOrigin))
 	}
 
 	portRaw := getenv("DB_PORT")

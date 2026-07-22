@@ -32,6 +32,12 @@
 
 ## T34 — Buffer: ปิดงานค้าง `[go-implementer]` ~45 นาที
 - **Scope**: เก็บ `suggested` items ที่ค้างจาก code-reviewer ตลอด 5 สัปดาห์ + บั๊กที่เจอระหว่างใช้จริง — orchestrator รวบรวม list ให้ก่อนเริ่ม
+- **ค้างจาก T4** (code-reviewer, non-blocking):
+  - `config.go` CORS origin validation ยังหลุด query/fragment/userinfo/scheme-case — ใช้ round-trip `(&url.URL{Scheme,Host}).String() != raw` จับได้ทีเดียวหมด (เคส userinfo ทำให้ password หลุดใน error message)
+  - `cors.go` ไม่มี `Access-Control-Expose-Headers` — จะกัดตอน ticket แรกที่เพิ่ม pagination/request-id header (frontend อ่านค่าไม่ได้ เงียบ ๆ)
+  - `TestCORS` ใช้ `Header().Get("Vary")` (ได้ค่าแรกค่าเดียว) → เปลี่ยนเป็น `Values()` + `slices.Contains`
+  - `TestBearerAuthPanicsOnEmptyToken` ไม่ได้ assert ข้อความ panic
+  - `TrimSpace` ให้ `API_BEARER_TOKEN` ตอนโหลด config (token ที่มีเว้นวรรคนำ = 401 ทุก request แบบงง ๆ)
 - **Acceptance**: list ที่ตกลงกันไว้เคลียร์หมดหรือมีเหตุผลที่ข้าม
 - Status: `todo`
 

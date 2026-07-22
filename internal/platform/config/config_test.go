@@ -21,16 +21,42 @@ func TestFromEnv(t *testing.T) {
 		mutate      func(map[string]string)
 		wantErr     string
 		wantAPIPort int
+		wantOrigin  string
 	}{
 		{
 			name:        "valid config",
 			mutate:      func(map[string]string) {},
 			wantAPIPort: 8080,
+			wantOrigin:  "http://localhost:3000",
 		},
 		{
 			name:        "custom API_PORT",
 			mutate:      func(env map[string]string) { env["API_PORT"] = "9090" },
 			wantAPIPort: 9090,
+			wantOrigin:  "http://localhost:3000",
+		},
+		{
+			name: "custom CORS_ALLOWED_ORIGIN",
+			mutate: func(env map[string]string) {
+				env["CORS_ALLOWED_ORIGIN"] = "https://app.example.com"
+			},
+			wantAPIPort: 8080,
+			wantOrigin:  "https://app.example.com",
+		},
+		{
+			name:    "wildcard CORS_ALLOWED_ORIGIN rejected",
+			mutate:  func(env map[string]string) { env["CORS_ALLOWED_ORIGIN"] = "*" },
+			wantErr: `CORS_ALLOWED_ORIGIN must not be "*"`,
+		},
+		{
+			name:    "CORS_ALLOWED_ORIGIN with trailing slash rejected",
+			mutate:  func(env map[string]string) { env["CORS_ALLOWED_ORIGIN"] = "https://app.example.com/" },
+			wantErr: `CORS_ALLOWED_ORIGIN must be a scheme and host with no path, got "https://app.example.com/"`,
+		},
+		{
+			name:    "CORS_ALLOWED_ORIGIN missing scheme rejected",
+			mutate:  func(env map[string]string) { env["CORS_ALLOWED_ORIGIN"] = "app.example.com" },
+			wantErr: `CORS_ALLOWED_ORIGIN must be a scheme and host with no path, got "app.example.com"`,
 		},
 		{
 			name:    "non-numeric API_PORT",
@@ -90,7 +116,7 @@ func TestFromEnv(t *testing.T) {
 				if cfg.DB.Host != env["DB_HOST"] || cfg.DB.Port != 3306 || cfg.DB.Name != env["DB_NAME"] ||
 					cfg.DB.User != env["DB_USER"] || cfg.DB.Password != env["DB_PASSWORD"] ||
 					cfg.AnthropicAPIKey != env["ANTHROPIC_API_KEY"] || cfg.APIBearerToken != env["API_BEARER_TOKEN"] ||
-					cfg.APIPort != tt.wantAPIPort {
+					cfg.APIPort != tt.wantAPIPort || cfg.CORSAllowedOrigin != tt.wantOrigin {
 					t.Fatalf("FromEnv() = %+v, fields do not match env", cfg)
 				}
 				return

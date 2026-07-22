@@ -28,7 +28,7 @@ func TestHealthzHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mux := NewMux(fakePinger{err: tt.pingErr})
+			mux := NewMux(fakePinger{err: tt.pingErr}, "test-token")
 			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 			rec := httptest.NewRecorder()
 
