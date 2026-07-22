@@ -24,7 +24,7 @@
 - **Scope**: `cmd/api`, `internal/platform/httpserver` (mux, graceful shutdown), `internal/platform/middleware` (logging: method/path/status/duration, recovery: panic → 500 + stack log), `GET /healthz` (เช็ค DB ping)
 - **Acceptance**: `curl /healthz` → 200 + JSON, panic ใน handler ไม่ทำ server ตาย, log ออกครบ, มี test ของ middleware ทั้งสอง
 - **Review focus**: middleware chaining pattern (func(http.Handler) http.Handler), `http.Server` timeouts (Read/Write/Idle) ต้องตั้ง, graceful shutdown ด้วย context
-- Status: `todo`
+- Status: `done`
 
 ## T4 — Bearer auth middleware + CORS `[go-implementer]` ~30 นาที
 - **Goal**: ทุก endpoint ยกเว้น `/healthz` ต้องมี `Authorization: Bearer <token>`
