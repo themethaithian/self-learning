@@ -31,7 +31,7 @@
 - **Scope**: `internal/platform/middleware/auth.go`, `cors.go`; token จาก config
 - **Acceptance**: ไม่มี token → 401, token ผิด → 401, ถูก → ผ่าน; CORS ตอบ preflight ให้ origin ของ frontend; tests ครบ 3 กรณี
 - **Review focus**: ใช้ `crypto/subtle.ConstantTimeCompare` เทียบ token, CORS ไม่เปิด `*` ตอน production
-- Status: `todo`
+- Status: `done`
 
 ## T35 — CI: vet + test + build ทุก PR `[go-implementer]` ~25 นาที
 - **Goal**: PR ที่ CI เขียว = ผล test เชื่อถือได้โดยไม่ต้องเชื่อ output ที่ paste มา — เป็นเงื่อนไขให้ Review level 🟢 merge จากสรุปได้

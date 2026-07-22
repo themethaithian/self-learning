@@ -52,8 +52,8 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("migrate: %w", err)
 	}
 
-	mux := httpserver.NewMux(db)
-	handler := middleware.Logging(logger)(middleware.Recovery(logger)(mux))
+	mux := httpserver.NewMux(db, cfg.APIBearerToken)
+	handler := middleware.Logging(logger)(middleware.Recovery(logger)(middleware.CORS(cfg.CORSAllowedOrigin)(mux)))
 	srv := httpserver.New(fmt.Sprintf(":%d", cfg.APIPort), handler)
 
 	return serve(ctx, logger, srv)

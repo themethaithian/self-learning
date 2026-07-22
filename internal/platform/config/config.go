@@ -12,13 +12,17 @@ import (
 
 // Config holds everything the API process needs at startup.
 type Config struct {
-	DB              DB
-	AnthropicAPIKey string
-	APIBearerToken  string
-	APIPort         int
+	DB                DB
+	AnthropicAPIKey   string
+	APIBearerToken    string
+	APIPort           int
+	CORSAllowedOrigin string
 }
 
-const defaultAPIPort = 8080
+const (
+	defaultAPIPort           = 8080
+	defaultCORSAllowedOrigin = "http://localhost:3000"
+)
 
 // DB holds the connection parameters for the MySQL pool.
 type DB struct {
@@ -45,9 +49,17 @@ func FromEnv(getenv func(string) string) (Config, error) {
 			User:     getenv("DB_USER"),
 			Password: getenv("DB_PASSWORD"),
 		},
-		AnthropicAPIKey: getenv("ANTHROPIC_API_KEY"),
-		APIBearerToken:  getenv("API_BEARER_TOKEN"),
-		APIPort:         defaultAPIPort,
+		AnthropicAPIKey:   getenv("ANTHROPIC_API_KEY"),
+		APIBearerToken:    getenv("API_BEARER_TOKEN"),
+		APIPort:           defaultAPIPort,
+		CORSAllowedOrigin: defaultCORSAllowedOrigin,
+	}
+
+	if origin := getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
+		cfg.CORSAllowedOrigin = origin
+	}
+	if cfg.CORSAllowedOrigin == "*" {
+		errs = append(errs, `CORS_ALLOWED_ORIGIN must not be "*"; every request carries a bearer token`)
 	}
 
 	portRaw := getenv("DB_PORT")
