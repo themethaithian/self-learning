@@ -10,7 +10,7 @@
 - **Scope**: โฟลเดอร์เปล่าตามโครง, `Makefile` (targets: `up`, `test`, `vet`, `run`), `docker-compose.yml` (mysql:8 + volume + healthcheck), `.gitignore`, `.env.example`, `.github/pull_request_template.md` (หัวข้อ: สรุปไทย / walkthrough รายไฟล์ / Review focus checklist / ผล vet+test / verdict ของ code-reviewer)
 - **Acceptance**: `make up` แล้ว MySQL พร้อมใช้, `mysql -h127.0.0.1` ต่อได้, PR แรกของ repo ใช้ template นี้
 - **Review focus**: healthcheck ถูกต้องไหม, `.env` ไม่หลุดเข้า git
-- Status: `todo`
+- Status: `done`
 
 ## T2 — Config loader + migration runner + migration 001 `[go-implementer]` ~45 นาที
 - **Goal**: อ่าน config จาก env + migration runner เขียนเองด้วย stdlib (learning goal — ไม่ใช้ golang-migrate)
