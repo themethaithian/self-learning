@@ -1,6 +1,10 @@
 package domain
 
-import "fmt"
+import (
+	"cmp"
+	"fmt"
+	"slices"
+)
 
 // Chapter groups an ordered set of Concepts within a Topic, identified by
 // its Slug.
@@ -11,8 +15,9 @@ type Chapter struct {
 	concepts []Concept
 }
 
-// NewChapter defensively copies concepts; the returned Chapter is unaffected
-// by later mutations to the slice.
+// NewChapter constructs a validated Chapter from slug, title, position, and
+// concepts; it defensively copies concepts, so mutating the slice afterwards
+// does not affect the result.
 func NewChapter(slug Slug, title string, position Position, concepts []Concept) (Chapter, error) {
 	if slug.IsZero() {
 		return Chapter{}, fmt.Errorf("curriculum: chapter: slug: %w", ErrInvalidSlug)
@@ -50,6 +55,9 @@ func NewChapter(slug Slug, title string, position Position, concepts []Concept) 
 
 	copied := make([]Concept, len(concepts))
 	copy(copied, concepts)
+	slices.SortFunc(copied, func(a, b Concept) int {
+		return cmp.Compare(a.position.Int(), b.position.Int())
+	})
 	return Chapter{slug: slug, title: trimmedTitle, position: position, concepts: copied}, nil
 }
 
@@ -57,8 +65,8 @@ func (ch Chapter) Slug() Slug         { return ch.slug }
 func (ch Chapter) Title() string      { return ch.title }
 func (ch Chapter) Position() Position { return ch.position }
 
-// Concepts returns a copy of the chapter's concepts; mutating the result
-// does not affect the Chapter.
+// Concepts returns a copy of the chapter's concepts in ascending position
+// order; mutating the result does not affect the Chapter.
 func (ch Chapter) Concepts() []Concept {
 	out := make([]Concept, len(ch.concepts))
 	copy(out, ch.concepts)

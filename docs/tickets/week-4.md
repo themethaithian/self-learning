@@ -9,6 +9,7 @@
 - **Scope**: `internal/review/domain` — SM2State VO (EF, interval, repetitions, due), สูตร SM-2 เต็ม (grade < 3 reset repetitions, EF ต่ำสุด 1.3), `migrations/003_review.sql`
 - **Acceptance**: **table-driven test ละเอียดสุดในโปรเจกต์** — ทุก grade 0–5 × สถานะ (การ์ดใหม่/ทวนแล้ว n รอบ), ค่า expected คำนวณมือแนบใน test
 - **Review focus**: เทียบสูตรกับ SM-2 spec ตรง ๆ, ปัดเศษ interval, EF ไม่ต่ำกว่า 1.3, due date ใช้ DATE ไม่ใช่ DATETIME
+- **รูปแบบ transition** (จาก deep review ของ T5): `Apply` ต้องเป็น `func (c ReviewCard) Apply(g Grade) (ReviewCard, error)` — value receiver คืนค่าใหม่ ไม่แก้ตัวเอง (pure = table-driven test ได้เต็ม) และต้องมี `CardID` VO เป็น surrogate id ไม่เหมือน T5 ที่ใช้ natural key
 - Status: `todo`
 
 ## T17 — Event dispatcher + RecallFailed → ReviewCard `[go-implementer]` ~45 นาที

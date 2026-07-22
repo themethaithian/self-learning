@@ -59,6 +59,7 @@
 - **Scope**: `content/curriculum/{ddd,distsys,aws,go,dsa}.json` (แปลงจาก design §7 ตรง ๆ), `cmd/import-curriculum` (idempotent upsert ตาม slug)
 - **Acceptance**: import 2 รอบ ได้ผลเท่าเดิม (no duplicate), `GET /curriculum` เห็นครบ ~175 concepts
 - **Review focus**: upsert logic (`INSERT … ON DUPLICATE KEY UPDATE` หรือ select-then-update ใน tx), slug ใน JSON ตรงกับ design
+- **ต้อง import ใน transaction เสมอ** (จาก deep review ของ T5): `NewTopic` เป็นทางเดียวที่สร้าง Topic ได้ และมันบังคับ `ErrNoChildren` ดังนั้น topic ที่ถูกเขียนลง DB ค้างไว้แบบยังไม่มี chapter จะทำให้ `GET /curriculum` (T6 reconstitute ผ่าน constructor) ล้มทั้งเส้น ไม่ใช่แค่ topic เดียว
 - Status: `todo`
 
 ## T8 — Next.js scaffold + curriculum tree page `[go-implementer]` ~45 นาที

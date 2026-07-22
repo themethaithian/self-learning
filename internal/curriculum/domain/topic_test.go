@@ -100,6 +100,17 @@ func TestNewTopic(t *testing.T) {
 			},
 			wantErr: ErrDuplicatePosition,
 		},
+		{
+			name: "duplicate concept slug across chapters", track: mustTrack(t, "ddd"), slug: mustSlug(t, "tactical-patterns"),
+			title: "Tactical Patterns", position: mustPosition(t, 1),
+			chapters: func(t *testing.T) []Chapter {
+				return []Chapter{
+					mustChapter(t, "modeling", "Modeling", 1, []Concept{mustConcept(t, "idempotency", "Idempotency Concept Title", "Idempotency Concept Outline Body", 1)}),
+					mustChapter(t, "strategic-design", "Strategic Design", 2, []Concept{mustConcept(t, "idempotency", "Idempotency Again Concept Title", "Idempotency Again Concept Outline Body", 1)}),
+				}
+			},
+			wantErr: ErrDuplicateSlug,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -134,7 +145,7 @@ func TestNewTopic(t *testing.T) {
 			}
 			for i, ch := range chapters {
 				if gotChapters[i].Slug() != ch.Slug() {
-					t.Errorf("Chapters()[%d].Slug() = %v, want %v (order not preserved)", i, gotChapters[i].Slug(), ch.Slug())
+					t.Errorf("Chapters()[%d].Slug() = %v, want %v (not in ascending position order)", i, gotChapters[i].Slug(), ch.Slug())
 				}
 			}
 		})
@@ -181,6 +192,45 @@ func TestTopicChaptersDefensiveCopyAtDepth(t *testing.T) {
 	}
 	if again[1].Slug().String() != "strategic-design" {
 		t.Errorf("Chapters()[1] mutated externally: got slug %q, want %q", again[1].Slug().String(), "strategic-design")
+	}
+}
+
+func TestNewTopicSortsChaptersByPosition(t *testing.T) {
+	topic, err := NewTopic(mustTrack(t, "ddd"), mustSlug(t, "tactical-patterns"), "Tactical Patterns", mustPosition(t, 1), []Chapter{
+		mustChapter(t, "strategic-design", "Strategic Design", 2, []Concept{
+			mustConcept(t, "bounded-context", "Bounded Context Concept Title", "Bounded Context Concept Outline Body", 1),
+		}),
+		mustChapter(t, "modeling", "Modeling", 1, []Concept{
+			mustConcept(t, "aggregate", "Aggregate Concept Title", "Aggregate Concept Outline Body", 1),
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewTopic() failed: %v", err)
+	}
+
+	chapters := topic.Chapters()
+	if len(chapters) != 2 {
+		t.Fatalf("len(Chapters()) = %d, want 2", len(chapters))
+	}
+	if chapters[0].Slug().String() != "modeling" {
+		t.Errorf("Chapters()[0].Slug() = %q, want %q (not sorted by position)", chapters[0].Slug().String(), "modeling")
+	}
+	if chapters[1].Slug().String() != "strategic-design" {
+		t.Errorf("Chapters()[1].Slug() = %q, want %q (not sorted by position)", chapters[1].Slug().String(), "strategic-design")
+	}
+
+	concepts := chapters[0].Concepts()
+	if len(concepts) != 1 {
+		t.Fatalf("len(Chapters()[0].Concepts()) = %d, want 1", len(concepts))
+	}
+	if got, want := concepts[0].Slug().String(), "aggregate"; got != want {
+		t.Errorf("Chapters()[0].Concepts()[0].Slug() = %q, want %q", got, want)
+	}
+	if got, want := concepts[0].Title(), "Aggregate Concept Title"; got != want {
+		t.Errorf("Chapters()[0].Concepts()[0].Title() = %q, want %q", got, want)
+	}
+	if got, want := concepts[0].Outline(), "Aggregate Concept Outline Body"; got != want {
+		t.Errorf("Chapters()[0].Concepts()[0].Outline() = %q, want %q", got, want)
 	}
 }
 

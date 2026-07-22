@@ -10,6 +10,7 @@
 - **Scope**: `internal/learning/domain` (Session state machine), app service, infra handler+repo, routes `POST /sessions`, `GET /sessions/active`, `POST /sessions/{id}/complete|abandon`
 - **Acceptance**: เปิด session ซ้อน → 409, state ผิด transition → error, tests ครอบ state machine ทุกเส้น
 - **Review focus**: race ตอนเปิด session พร้อมกัน (unique constraint หรือ `SELECT … FOR UPDATE`), เวลาใช้ UTC ใน DB
+- **ห้าม copy T5 แบบหลับตา** (จาก deep review ของ T5): T5 เป็น reference data จึงมีแต่ constructor + getter ถ้าลอกทั้งดุ้นจะได้ anemic domain — context นี้ต้องมีเพิ่ม 3 อย่าง (1) state transition เป็น method ที่คืนค่าใหม่ `func (s Session) Complete(now time.Time) (Session, error)` ไม่ใช่ setter และไม่ใช่ logic ที่ app service (2) **surrogate identity VO** `SessionID` — "ไม่มี id ใน domain" ของ T5 เป็น choice เฉพาะ reference data ที่มี natural key ไม่ใช่กฎของโปรเจกต์ route `POST /sessions/{id}/complete` ต้องการ id จริง (3) invariant "active ทีละ 1" span หลาย instance → constructor บังคับไม่ได้ ต้องอยู่ app layer + DB constraint
 - Status: `todo`
 
 ## T13 — Recall attempt endpoint + gating `[go-implementer]` ~45 นาที

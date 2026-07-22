@@ -108,7 +108,7 @@ func TestNewChapter(t *testing.T) {
 			}
 			for i, c := range tt.concepts {
 				if concepts[i].Slug() != c.Slug() {
-					t.Errorf("Concepts()[%d].Slug() = %v, want %v (order not preserved)", i, concepts[i].Slug(), c.Slug())
+					t.Errorf("Concepts()[%d].Slug() = %v, want %v (not in ascending position order)", i, concepts[i].Slug(), c.Slug())
 				}
 			}
 		})
@@ -149,6 +149,24 @@ func TestChapterConceptsDefensiveCopyAtDepth(t *testing.T) {
 	}
 	if again[1].Slug().String() != "entity" {
 		t.Errorf("Concepts()[1] mutated externally: got slug %q, want %q", again[1].Slug().String(), "entity")
+	}
+}
+
+func TestNewChapterSortsConceptsByPosition(t *testing.T) {
+	ch := mustChapter(t, "modeling", "Modeling", 1, []Concept{
+		mustConcept(t, "entity", "Entity Concept Title", "Entity Concept Outline Body", 2),
+		mustConcept(t, "aggregate", "Aggregate Concept Title", "Aggregate Concept Outline Body", 1),
+	})
+
+	concepts := ch.Concepts()
+	if len(concepts) != 2 {
+		t.Fatalf("len(Concepts()) = %d, want 2", len(concepts))
+	}
+	if concepts[0].Slug().String() != "aggregate" {
+		t.Errorf("Concepts()[0].Slug() = %q, want %q (not sorted by position)", concepts[0].Slug().String(), "aggregate")
+	}
+	if concepts[1].Slug().String() != "entity" {
+		t.Errorf("Concepts()[1].Slug() = %q, want %q (not sorted by position)", concepts[1].Slug().String(), "entity")
 	}
 }
 
