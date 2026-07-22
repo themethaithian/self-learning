@@ -45,7 +45,7 @@
 - **Scope**: `internal/curriculum/domain` — Topic/Chapter/Concept entities, VOs (Slug, Track, Position) validate ใน constructor, ห้าม import อะไรนอก stdlib
 - **Acceptance**: table-driven tests ครอบ constructor ทุกตัว (valid/invalid), `go vet` ผ่าน
 - **Review focus**: **นี่คือ ticket ที่ควรรีวิวละเอียดสุดของสัปดาห์** — VO เป็น immutable ไหม, error เป็น sentinel/wrapped ถูกแบบไหม, ไม่มี DB/JSON tag ใน domain struct
-- Status: `todo`
+- Status: `done`
 
 ## T6 — Curriculum repo + GET /curriculum `[go-implementer]` ~45 นาที
 - **Goal**: เส้นแรกที่ต่อครบ 3 layers: handler → app service → repo
@@ -59,6 +59,7 @@
 - **Scope**: `content/curriculum/{ddd,distsys,aws,go,dsa}.json` (แปลงจาก design §7 ตรง ๆ), `cmd/import-curriculum` (idempotent upsert ตาม slug)
 - **Acceptance**: import 2 รอบ ได้ผลเท่าเดิม (no duplicate), `GET /curriculum` เห็นครบ ~175 concepts
 - **Review focus**: upsert logic (`INSERT … ON DUPLICATE KEY UPDATE` หรือ select-then-update ใน tx), slug ใน JSON ตรงกับ design
+- **ต้อง import ใน transaction เสมอ** (จาก deep review ของ T5): `NewTopic` เป็นทางเดียวที่สร้าง Topic ได้ และมันบังคับ `ErrNoChildren` ดังนั้น topic ที่ถูกเขียนลง DB ค้างไว้แบบยังไม่มี chapter จะทำให้ `GET /curriculum` (T6 reconstitute ผ่าน constructor) ล้มทั้งเส้น ไม่ใช่แค่ topic เดียว
 - Status: `todo`
 
 ## T8 — Next.js scaffold + curriculum tree page `[go-implementer]` ~45 นาที
