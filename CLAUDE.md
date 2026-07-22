@@ -5,6 +5,11 @@ system design (DDD + Distributed Systems concepts), AWS (SAA-C03), deep Golang,
 DSA interview prep. The app itself is part of the curriculum: I am learning by
 building it.
 
+## Working with the user
+
+- Converse in THAI; keep technical terms in English (no transliterated
+  jargon). Project docs are Thai, app UI copy is English, lessons are Thai.
+
 ## Orchestration rules (IMPORTANT)
 
 - The main session (you) is the ORCHESTRATOR ONLY. Delegate ALL work:
