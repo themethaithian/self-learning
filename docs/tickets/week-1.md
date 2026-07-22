@@ -17,7 +17,7 @@
 - **Scope**: `internal/platform/config`, `internal/platform/mysql` (pool + runner อ่าน `migrations/*.sql` เรียง version, บันทึกลง `schema_migrations`), `migrations/001_curriculum.sql` (ตาราง topics/chapters/concepts/lessons/recall_checks)
 - **Acceptance**: รัน API ครั้งแรกแล้ว migrate อัตโนมัติ, รันซ้ำ = no-op, มี table-driven test ของ runner (เรียงลำดับ, ข้าม version ที่ apply แล้ว)
 - **Review focus**: transaction ตอน apply migration, SQL injection ใน runner (ห้าม interpolate ชื่อไฟล์ลง query), pool settings (`SetMaxOpenConns` ฯลฯ)
-- Status: `todo`
+- Status: `done`
 
 ## T3 — HTTP server + healthz + logging/recovery middleware `[go-implementer]` ~45 นาที
 - **Goal**: `net/http` server + middleware chain เขียนเอง (learning goal หลักของโปรเจกต์)
