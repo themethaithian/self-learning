@@ -38,6 +38,11 @@
   - `TestCORS` ใช้ `Header().Get("Vary")` (ได้ค่าแรกค่าเดียว) → เปลี่ยนเป็น `Values()` + `slices.Contains`
   - `TestBearerAuthPanicsOnEmptyToken` ไม่ได้ assert ข้อความ panic
   - `TrimSpace` ให้ `API_BEARER_TOKEN` ตอนโหลด config (token ที่มีเว้นวรรคนำ = 401 ทุก request แบบงง ๆ)
+- **ค้างจาก T5** (code-reviewer, non-blocking):
+  - `ErrInvalidTitle`/`ErrInvalidOutline` แยกตามแกน field แต่รวม empty กับ too-long ไว้ด้วยกัน — ถ้า UI อยากแยก "กรอกด้วย" กับ "สั้นลงหน่อย" ต้องกลับมาแตะ (ตัดสินใจก่อน copy pattern ไป context อื่น)
+  - error message ซ้อน context ซ้ำ (`... title: empty: invalid title`) — ให้ `validateBounded` คืน sentinel ตรง ๆ แล้วให้ caller ใส่ context ชั้นเดียว
+  - `Slug` เป็น type เดียวใช้ทั้ง 3 ชั้น — compiler จับไม่ได้ถ้า T6 ส่ง chapter slug ไปตำแหน่งที่ต้องการ concept slug
+  - truncate ค่า raw ที่ echo ใน error message (`slug.go` ใส่ `%q` ของ input ดิบ — input 300 ตัวอักษรได้ error ยาว 333 ตัวอักษรไหลเข้า logging middleware)
 - **Acceptance**: list ที่ตกลงกันไว้เคลียร์หมดหรือมีเหตุผลที่ข้าม
 - Status: `todo`
 

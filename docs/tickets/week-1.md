@@ -45,7 +45,7 @@
 - **Scope**: `internal/curriculum/domain` — Topic/Chapter/Concept entities, VOs (Slug, Track, Position) validate ใน constructor, ห้าม import อะไรนอก stdlib
 - **Acceptance**: table-driven tests ครอบ constructor ทุกตัว (valid/invalid), `go vet` ผ่าน
 - **Review focus**: **นี่คือ ticket ที่ควรรีวิวละเอียดสุดของสัปดาห์** — VO เป็น immutable ไหม, error เป็น sentinel/wrapped ถูกแบบไหม, ไม่มี DB/JSON tag ใน domain struct
-- Status: `todo`
+- Status: `done`
 
 ## T6 — Curriculum repo + GET /curriculum `[go-implementer]` ~45 นาที
 - **Goal**: เส้นแรกที่ต่อครบ 3 layers: handler → app service → repo
