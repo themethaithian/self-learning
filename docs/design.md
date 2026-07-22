@@ -16,6 +16,7 @@ ticket รายชิ้นอยู่ [`tickets/`](tickets/)
 | 2026-07-22 | Lesson มี `references` 2–4 แหล่ง (primary sources จริง ห้ามแต่ง URL); เพิ่มบทเรียนภายหลังได้เสมอ (pipeline เป็น additive) |
 | 2026-07-22 | ขึ้น VPS ตั้งแต่สัปดาห์ 2 + ทุก ticket เป็น PR เข้า develop, รีวิวผ่าน GitHub mobile ได้, merge = auto-deploy |
 | 2026-07-22 | Vision: v1 เป็นหนังสือเรียนส่วนตัวใช้คนเดียว → Phase 2 publish เป็น portfolio (ไม่หาเงิน) — ดู §8 |
+| 2026-07-23 | `GET /curriculum` คืน `{"tracks":[{"track","topics":[…]}]}` group ตาม track — `topics.position` ไม่ scope ต่อ track ลำดับข้าม track จึงไม่มีความหมาย; ลำดับ track เป็นของ domain (`domain.Tracks()`) ไม่ใช่ลำดับประกาศ ENUM |
 
 ## 1. DDD Tactical Design
 

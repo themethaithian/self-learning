@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	curriculumapp "github.com/themethaithian/self-learning/internal/curriculum/app"
+	curriculuminfra "github.com/themethaithian/self-learning/internal/curriculum/infra"
 	"github.com/themethaithian/self-learning/internal/platform/config"
 	"github.com/themethaithian/self-learning/internal/platform/httpserver"
 	"github.com/themethaithian/self-learning/internal/platform/middleware"
@@ -52,7 +54,11 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("migrate: %w", err)
 	}
 
-	mux := httpserver.NewMux(db, cfg.APIBearerToken)
+	curriculumRepo := curriculuminfra.NewRepository(db)
+	curriculumService := curriculumapp.NewService(curriculumRepo)
+	curriculumHandler := curriculuminfra.NewHandler(curriculumService, logger)
+
+	mux := httpserver.NewMux(db, cfg.APIBearerToken, curriculumHandler)
 	handler := middleware.Logging(logger)(middleware.Recovery(logger)(middleware.CORS(cfg.CORSAllowedOrigin)(mux)))
 	srv := httpserver.New(fmt.Sprintf(":%d", cfg.APIPort), handler)
 
