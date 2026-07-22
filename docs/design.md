@@ -205,16 +205,20 @@ Cadence: just-in-time — generate ล่วงหน้า 1 chapter ก่อ�
 `content/curriculum/<track>.json` → `import-curriculum` → รัน batch writer/verifier
 → `import-lessons` — ทุกขั้น idempotent/additive จะเพิ่ม track ใหม่ทั้ง track ก็ได้
 
-## 7. Curriculum Tree v1 (~175 concepts)
+## 7. Curriculum Tree v1 (195 concepts)
 
-### (a) Domain-Driven Design — 5 บท, 27 concepts
+> จำนวนด้านล่างนับจากลิสต์จริงในหัวข้อนั้น ๆ (แก้ 2026-07-23 — ตัวเลขเดิม 27/37/~41
+> เป็นค่าประมาณตอนร่างที่ไม่ตรงกับลิสต์) **ลิสต์คือความจริง ไม่ใช่ตัวเลขในหัวข้อ**
+> โครงในฐานข้อมูลคือ 1 topic ต่อ 1 track: ข้อที่ออกเลข = chapter, ใบ = concept
+
+### (a) Domain-Driven Design — 5 บท, 33 concepts
 1. **Model-Driven Foundations**: ubiquitous-language, model-driven-design, knowledge-crunching, hands-on-modelers
 2. **Building Blocks**: layered-architecture, entities, value-objects, domain-services, modules, aggregates, aggregate-design-rules, factories, repositories, domain-events
 3. **Supple Design & Refactoring**: intention-revealing-interfaces, side-effect-free-functions, assertions, specification-pattern, making-implicit-concepts-explicit, refactoring-toward-deeper-insight
 4. **Strategic Design**: bounded-context, context-mapping, shared-kernel, customer-supplier-conformist, anticorruption-layer, open-host-service-published-language, core-domain-distillation, generic-subdomains, large-scale-structure
 5. **DDD in Go**: ddd-go-project-layout, persistence-without-orm, in-process-domain-events, testing-the-domain-layer
 
-### (b) Distributed Systems — 8 บท, 37 concepts
+### (b) Distributed Systems — 8 บท, 43 concepts
 1. **Foundations**: why-distributed, transparency-goals, scalability-dimensions, fallacies-of-distributed-computing
 2. **Architectures**: client-server, multi-tier-layered, peer-to-peer, microservices-vs-monolith, event-driven-architecture
 3. **Communication**: rpc-fundamentals, message-queues, publish-subscribe, rest-vs-grpc, serialization-formats
@@ -238,7 +242,7 @@ Cadence: just-in-time — generate ล่วงหน้า 1 chapter ก่อ�
 5. **Performance & Tooling**: pprof-cpu-heap, execution-tracer, benchmarking-methodology, race-detector, compiler-optimizations-pgo
 6. **Stdlib Internals**: net-http-server, http-client-transport, database-sql-pooling, encoding-json, errors-wrapping, slices-maps-internals
 
-### (e) DSA — NeetCode 150 patterns — 18 patterns, ~41 concepts
+### (e) DSA — NeetCode 150 patterns — 18 patterns, 49 concepts
 | Pattern | Concepts |
 |---|---|
 | arrays-hashing | hash-frequency, prefix-sums, two-sum-family |

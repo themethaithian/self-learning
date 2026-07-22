@@ -54,12 +54,19 @@
 - **Review focus**: repository interface ประกาศฝั่ง app (ไม่ใช่ infra), query N+1 (ควร join/รวม query), DTO แปลงที่ infra ไม่ใช่ domain
 - Status: `done` — response เปลี่ยนเป็น group ตาม track (ดู design.md decision log 2026-07-23)
 
-## T7 — Curriculum JSONs + cmd/import-curriculum `[go-implementer]` ~45 นาที
-- **Goal**: tree ทั้ง 5 track (จาก design §7) ลง MySQL
-- **Scope**: `content/curriculum/{ddd,distsys,aws,go,dsa}.json` (แปลงจาก design §7 ตรง ๆ), `cmd/import-curriculum` (idempotent upsert ตาม slug)
-- **Acceptance**: import 2 รอบ ได้ผลเท่าเดิม (no duplicate), `GET /curriculum` เห็นครบ ~175 concepts
+## T7 — JSON format + cmd/import-curriculum + ddd.json `[go-implementer]` ~45 นาที
+- **Goal**: write path template + track แรกลง MySQL (แยกจาก T7b เพราะ 195 concepts เกิน 45 นาทีแน่)
+- **Scope**: `content/curriculum/ddd.json` (1 topic / 5 chapters / 33 concepts), loader ใน infra, `Writer` port ใน app, `SaveTopic` (1 transaction ต่อ 1 topic) — idempotent upsert ตาม slug **และ** reconcile ลบ chapter/concept ที่หายไปจากไฟล์ (orphan) ภายใน transaction เดียวกัน, `cmd/import-curriculum` (T7b จะ copy format นี้ไปอีก 4 ไฟล์ ต้องรู้ไว้ว่า import ไม่ใช่ additive-only ล้วน ๆ)
+- **Acceptance**: import 2 รอบ ได้ผลเท่าเดิม (no duplicate), มี test ที่โหลดไฟล์ content จริงเพื่อจับ typo
 - **Review focus**: upsert logic (`INSERT … ON DUPLICATE KEY UPDATE` หรือ select-then-update ใน tx), slug ใน JSON ตรงกับ design
 - **ต้อง import ใน transaction เสมอ** (จาก deep review ของ T5): `NewTopic` เป็นทางเดียวที่สร้าง Topic ได้ และมันบังคับ `ErrNoChildren` ดังนั้น topic ที่ถูกเขียนลง DB ค้างไว้แบบยังไม่มี chapter จะทำให้ `GET /curriculum` (T6 reconstitute ผ่าน constructor) ล้มทั้งเส้น ไม่ใช่แค่ topic เดียว
+- Status: `done`
+
+## T7b — Curriculum JSON อีก 4 track `[go-implementer × 4 ขนาน]` ~40 นาที
+- **Goal**: distsys (43) + aws (37) + go (33) + dsa (49) = 162 concepts ที่เหลือ
+- **Scope**: `content/curriculum/{distsys,aws,go,dsa}.json` ตาม format ของ T7 — slug ลอกจาก design §7 ตรงตัวอักษร (เป็น contract กับ `content/lessons/<topic>/<concept>.json`), title อังกฤษ, outline ไทย 2–4 bullet
+- **Acceptance**: loader test ของแต่ละไฟล์ผ่าน + จำนวน chapter/concept ตรงกับ design §7, `GET /curriculum` เห็นครบ 195 concepts
+- **Review focus**: slug ตรง design เป๊ะไหม (typo = lesson file ไปคนละที่), outline สั้นพอที่จะเป็น guidance ไม่ใช่บทเรียนย่อ
 - Status: `todo`
 
 ## T8 — Next.js scaffold + curriculum tree page `[go-implementer]` ~45 นาที

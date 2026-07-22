@@ -1,0 +1,24 @@
+{
+  "track": "go",
+  "slug": "go-basics",
+  "title": "Go Basics",
+  "position": 1,
+  "chapters": [
+    {
+      "slug": "syntax",
+      "title": "Syntax",
+      "position": 1,
+      "concepts": [
+        { "slug": "idempotency", "title": "Idempotency", "outline": "ตัวอย่าง outline หนึ่ง", "position": 1 }
+      ]
+    },
+    {
+      "slug": "concurrency",
+      "title": "Concurrency",
+      "position": 2,
+      "concepts": [
+        { "slug": "idempotency", "title": "Idempotency Again", "outline": "ตัวอย่าง outline สอง", "position": 1 }
+      ]
+    }
+  ]
+}
