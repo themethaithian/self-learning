@@ -49,6 +49,16 @@ func TestFromEnv(t *testing.T) {
 			wantErr: `CORS_ALLOWED_ORIGIN must not be "*"`,
 		},
 		{
+			name:    "CORS_ALLOWED_ORIGIN with trailing slash rejected",
+			mutate:  func(env map[string]string) { env["CORS_ALLOWED_ORIGIN"] = "https://app.example.com/" },
+			wantErr: `CORS_ALLOWED_ORIGIN must be a scheme and host with no path, got "https://app.example.com/"`,
+		},
+		{
+			name:    "CORS_ALLOWED_ORIGIN missing scheme rejected",
+			mutate:  func(env map[string]string) { env["CORS_ALLOWED_ORIGIN"] = "app.example.com" },
+			wantErr: `CORS_ALLOWED_ORIGIN must be a scheme and host with no path, got "app.example.com"`,
+		},
+		{
 			name:    "non-numeric API_PORT",
 			mutate:  func(env map[string]string) { env["API_PORT"] = "not-a-number" },
 			wantErr: `API_PORT must be a number, got "not-a-number"`,

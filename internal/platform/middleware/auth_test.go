@@ -25,6 +25,9 @@ func TestBearerAuth(t *testing.T) {
 		{name: "correct token", authHeader: "Bearer correct-token", setHeader: true, wantStatus: http.StatusOK},
 		{name: "wrong scheme", authHeader: "Basic x", setHeader: true, wantStatus: http.StatusUnauthorized},
 		{name: "bearer with no space or token", authHeader: "Bearer", setHeader: true, wantStatus: http.StatusUnauthorized},
+		{name: "trailing space, empty token", authHeader: "Bearer ", setHeader: true, wantStatus: http.StatusUnauthorized},
+		{name: "lowercase scheme is accepted per RFC 6750", authHeader: "bearer correct-token", setHeader: true, wantStatus: http.StatusOK},
+		{name: "two spaces before token per RFC 7235", authHeader: "Bearer  correct-token", setHeader: true, wantStatus: http.StatusOK},
 	}
 
 	for _, tt := range tests {
@@ -63,4 +66,13 @@ func TestBearerAuthDoesNotDistinguishMissingFromWrong(t *testing.T) {
 	if string(noHeaderBody) != string(wrongTokenBody) {
 		t.Fatalf("response bodies differ: missing=%q wrong=%q; must be identical so callers can't tell which failed", noHeaderBody, wrongTokenBody)
 	}
+}
+
+func TestBearerAuthPanicsOnEmptyToken(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("BearerAuth(\"\") did not panic; an empty token must fail at construction, not authenticate every request")
+		}
+	}()
+	BearerAuth("")
 }

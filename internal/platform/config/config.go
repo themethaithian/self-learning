@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -58,8 +59,14 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	if origin := getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
 		cfg.CORSAllowedOrigin = origin
 	}
-	if cfg.CORSAllowedOrigin == "*" {
+	switch u, err := url.Parse(cfg.CORSAllowedOrigin); {
+	case cfg.CORSAllowedOrigin == "*":
 		errs = append(errs, `CORS_ALLOWED_ORIGIN must not be "*"; every request carries a bearer token`)
+	case err != nil || u.Scheme == "" || u.Host == "" || u.Path != "":
+		// A trailing path (even just "/") never equals a browser Origin
+		// header, which is always scheme+host with no path — that request
+		// would fail closed with no signal at startup.
+		errs = append(errs, fmt.Sprintf("CORS_ALLOWED_ORIGIN must be a scheme and host with no path, got %q", cfg.CORSAllowedOrigin))
 	}
 
 	portRaw := getenv("DB_PORT")
