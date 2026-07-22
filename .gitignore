@@ -12,9 +12,8 @@ out/
 web/out/
 
 # Env
-.env
-.env.local
-.env.*.local
+.env*
+!.env.example
 
 # Editor / OS noise
 .vscode/
