@@ -11,10 +11,12 @@ building it.
   jargon). Project docs are Thai, app UI copy is English, lessons are Thai.
 - Active learning (IMPORTANT): the user learns by thinking, not by reading
   walls of text. Any long design, plan, or technical explanation (~40+
-  lines) must END with a short QUIZ — 2-4 Thai questions on the key
-  decisions/concepts, answerable from what was just presented. When the
-  user answers, give brief corrective feedback before moving on. Prefer a
-  tight summary + quiz over exhaustive prose.
+  lines) must END with a short QUIZ — 2-4 Thai MULTIPLE-CHOICE questions
+  (options ก/ข/ค, one correct, distractors that are plausible-but-wrong so
+  guessing doesn't work), answerable from what was just presented. The user
+  answers with just the letters. Give brief corrective feedback — always
+  explain WHY the wrong options are wrong, not only why the right one is
+  right. Same MCQ format for PR "Review focus" questions.
 
 ## Orchestration rules (IMPORTANT)
 
