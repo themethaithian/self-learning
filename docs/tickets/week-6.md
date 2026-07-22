@@ -44,6 +44,9 @@
   - `Slug` เป็น type เดียวใช้ทั้ง 3 ชั้น — compiler จับไม่ได้ถ้า T6 ส่ง chapter slug ไปตำแหน่งที่ต้องการ concept slug
   - `Track` hardcode 5 ค่าใน domain + ENUM ใน migration 001 ขัดกับ design §6 ที่บอกว่าเพิ่ม track ได้โดยไม่แก้โค้ด — ตัดสินใจว่ายอมรับ (เพิ่ม track = migration + แก้ 2 จุด) หรือเปลี่ยนเป็น lookup table
   - truncate ค่า raw ที่ echo ใน error message (`slug.go` ใส่ `%q` ของ input ดิบ — input 300 ตัวอักษรได้ error ยาว 333 ตัวอักษรไหลเข้า logging middleware)
+- **ค้างจาก T6** (code-reviewer, non-blocking):
+  - `GET /curriculum` ดึง `co.outline` มาแล้วทิ้ง — วัดจริงบน tree 175 concepts (outline ไทย 400 runes) = ดึงจาก MySQL 222 KB ในนั้นเป็น outline 210 KB (94%) เพื่อตอบ 13 KB **ขยาย ~17 เท่า** สาเหตุคือ rehydrate ผ่าน `NewConcept` ที่บังคับ outline ไม่ว่าง → ตัดสินใจว่ายอมรับ (single user) หรือทำ read projection แยกจาก domain (CQRS-lite)
+  - schema ถือข้อมูลที่ domain ไม่ยอมรับได้: `position INT` รับ 0/ติดลบ, `title VARCHAR(255)` รับ `''`, `slug` รับตัวพิมพ์ใหญ่ — และเพราะ assemble เป็น all-or-nothing แถวเสียแถวเดียว 500 ทั้ง 175 concepts → พิจารณา `CHECK` constraint (MySQL 8.0.16+) + `UNIQUE KEY (track, position)` บน topics
 - **Acceptance**: list ที่ตกลงกันไว้เคลียร์หมดหรือมีเหตุผลที่ข้าม
 - Status: `todo`
 

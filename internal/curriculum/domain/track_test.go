@@ -49,3 +49,25 @@ func TestTrackZeroValue(t *testing.T) {
 		t.Errorf("zero-value Track.IsZero() = false, want true")
 	}
 }
+
+func TestTracks(t *testing.T) {
+	got := Tracks()
+	want := []string{"ddd", "distsys", "aws", "go", "dsa"}
+	if len(got) != len(want) {
+		t.Fatalf("Tracks() returned %d tracks, want %d", len(got), len(want))
+	}
+
+	seen := make(map[string]bool, len(got))
+	for i, tr := range got {
+		if tr.IsZero() {
+			t.Fatalf("Tracks()[%d] is zero-value", i)
+		}
+		if tr.String() != want[i] {
+			t.Fatalf("Tracks()[%d] = %q, want %q", i, tr.String(), want[i])
+		}
+		seen[tr.String()] = true
+	}
+	if len(seen) != 5 {
+		t.Fatalf("Tracks() contains %d distinct tracks, want exactly 5", len(seen))
+	}
+}

@@ -52,7 +52,7 @@
 - **Scope**: `internal/curriculum/app` (service + repository interface), `internal/curriculum/infra` (MySQL repo + HTTP handler), route `GET /api/v1/curriculum` คืน tree ซ้อน 3 ชั้น
 - **Acceptance**: curl ได้ tree JSON, repo มี test ต่อ MySQL จริง (ใน docker) หรือ interface test
 - **Review focus**: repository interface ประกาศฝั่ง app (ไม่ใช่ infra), query N+1 (ควร join/รวม query), DTO แปลงที่ infra ไม่ใช่ domain
-- Status: `todo`
+- Status: `done` — response เปลี่ยนเป็น group ตาม track (ดู design.md decision log 2026-07-23)
 
 ## T7 — Curriculum JSONs + cmd/import-curriculum `[go-implementer]` ~45 นาที
 - **Goal**: tree ทั้ง 5 track (จาก design §7) ลง MySQL
