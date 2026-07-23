@@ -27,7 +27,9 @@ Write to `content/lessons/<topic>/<concept-id>.json`:
 as-is (e.g. aggregate root, quorum, eventual consistency).
 Structure: why it matters (2-3 sentences) → core explanation →
 one concrete example (fintech-flavored where natural) →
-common misconception → interview angle (how it gets asked).",
+common misconception → limits/trade-offs (when NOT to use it and
+what it costs — senior interviews probe the trade-off, not the pitch,
+so this section is REQUIRED) → interview angle (how it gets asked).",
 "recall_checks": [
 { "q": "...", "expected_answer": "...", "type": "short_answer" },
 { "q": "...", "expected_answer": "...", "type": "mcq", "options": ["...", "...", "..."] }
@@ -43,6 +45,12 @@ common misconception → interview angle (how it gets asked).",
 
 ## Rules
 
+- Each lesson OWNS one core claim. Where a sibling concept in the same topic
+  is relevant (e.g. aggregates, bounded context), reference it in one line and
+  move on — do NOT re-teach its material. Repetition across a chapter is a smell.
+- If your example depends on a rule taught in a LATER concept (e.g. an example
+  that crosses an aggregate boundary), flag it in one sentence ("this is the
+  X problem, covered in <concept>") so the reader doesn't memorize a naive model.
 - Thai content, English technical terms. No transliterated jargon.
 - When the concept involves a flow, architecture, state machine, or
   interaction between parts, include at least one ```mermaid``` diagram
