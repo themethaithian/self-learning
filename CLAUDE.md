@@ -81,8 +81,14 @@ building it.
   only; hands-on labs happen in a separate free-tier sandbox account.
 - LLM integration: hand-written Anthropic API client using net/http in
   `internal/platform/llm` (no vendor SDK, no agent framework).
-- Runtime LLM: Anthropic API, `claude-haiku-4-5` for grading/quizzes.
-  Context assembled per request from MySQL (notes, answer history).
+- Runtime grading: v1 is SELF-GRADED — the user reveals the expected answer
+  and rates recall 0–5 → SM-2 (`graded_by='self'`). No external LLM, no API
+  cost, no key; the whole read+recall loop runs on this. LLM auto-grading
+  (Anthropic API, `claude-haiku-4-5`, the hand-written net/http client above)
+  is a LATER opt-in behind the `Grader` port, wired only when an
+  `ANTHROPIC_API_KEY` is present — swapping self→LLM is an adapter change, not
+  a rewrite. Only VPS is a paid dependency in v1. Context for grading is
+  assembled per request from MySQL (notes, answer history).
 
 ## Content model
 
