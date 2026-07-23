@@ -74,4 +74,4 @@
 - **Scope**: `web/` (Next.js, `output: 'export'`, Tailwind), `lib/api.ts` (fetch wrapper + bearer จาก localStorage), หน้า token entry, หน้า curriculum tree (expand/collapse)
 - **Acceptance**: `npm run build` ผ่าน (static export), เปิดหน้าเว็บ ใส่ token เห็น tree ครบ
 - **Review focus**: **ใช้ skill `frontend-design` เป็นครั้งแรก — เช็คว่า layout/สี/ฟอนต์ตาม skill**, token ไม่โผล่ใน URL, มี loading/error state
-- Status: `todo`
+- Status: `done` — walking skeleton ครบวง: เปิดเว็บ ใส่ token เห็น tree 195 concepts จาก MySQL จริง (screenshot ยืนยันด้วย puppeteer headless); backend T6/T7/T7b พิสูจน์กับ MySQL 8.4 จริงแล้วในตัว
