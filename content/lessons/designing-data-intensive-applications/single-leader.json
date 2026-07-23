@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "single-leader",
+  "version": 1,
+  "title_en": "Leaders and Followers",
+  "est_minutes": 8,
+  "body_md": "# Leaders and Followers\n\n## ทำไมถึงสำคัญ\n\nเมื่อเก็บข้อมูลก้อนเดียวกันไว้หลายเครื่อง (replication) คำถามแรกคือ \"ใครมีสิทธิ์เขียน\". Single-leader คือคำตอบที่พบบ่อยที่สุดและเป็น default ของ MySQL, PostgreSQL, MongoDB replica set เพราะมันตัดปัญหา write conflict ทิ้งด้วยกฎง่าย ๆ ข้อเดียว: เขียนได้ที่เดียว. ราคาที่จ่ายคือ durability กับ latency ของ write ผูกกันแน่น และการเลือก synchronous หรือ asynchronous คือจุดที่ตัดสินว่า \"เขียนสำเร็จ\" แปลว่าอะไรจริง ๆ.\n\n## แก่นของแนวคิด\n\nในโมเดลนี้ replica แต่ละตัวมีบทบาทคงที่:\n\n- **Leader** (master / primary): รับ write ทั้งหมด. client ที่จะเปลี่ยนข้อมูลต้องส่ง request มาที่ leader เท่านั้น.\n- **Follower** (replica / secondary / standby): รับสำเนาการเปลี่ยนแปลงจาก leader ผ่าน **replication log** (เช่น binlog ของ MySQL, WAL ของ PostgreSQL) แล้ว apply ตามลำดับเดียวกับที่ leader ทำ. follower รับได้แค่ **read** ห้ามรับ write.\n\nจุดสำคัญคือคำถาม: leader จะบอก client ว่า \"สำเร็จ\" ตอนไหน — ก่อนหรือหลัง follower ยืนยันว่าได้รับข้อมูลแล้ว. นี่คือความต่างระหว่าง synchronous กับ asynchronous.\n\n- **Synchronous**: leader รอจน follower ตอบกลับว่าได้รับ write นั้นแล้ว จึงค่อยรายงานว่าสำเร็จให้ client. ข้อดี: มั่นใจว่าอย่างน้อยมีอีกเครื่องที่มีข้อมูลชุดล่าสุดครบ — leader ล่มก็ยังกู้ได้จาก follower นั้น (durability สูง). ข้อเสีย: ถ้า follower ตัวนั้นช้า/ล่ม/เน็ตขาด write **บล็อกทั้งหมด** จนกว่ามันจะกลับมา.\n- **Asynchronous**: leader ส่งการเปลี่ยนแปลงออกไปแล้วตอบ client ว่าสำเร็จทันที ไม่รอ follower. ข้อดี: leader เขียนต่อได้เรื่อย ๆ แม้ follower ตกขบวน. ข้อเสีย: ถ้า leader ล่มก่อนที่ write จะ propagate ออกไป และเกิด failover ไป follower ที่ยังไม่มี write นั้น → **write ที่ confirm ไปแล้วหายได้**.\n\nเพราะการทำให้ follower **ทุกตัว** เป็น synchronous แปลว่าเครื่องเดียวล่มก็หยุดทั้งระบบ ในทางปฏิบัติจึงมักใช้ **semi-synchronous**: ให้ follower หนึ่งตัว synchronous ที่เหลือ asynchronous. ได้การรับประกันว่ามีข้อมูลครบอย่างน้อยสองเครื่อง (leader + sync follower) โดยไม่แลกกับการที่ทั้งระบบหยุดเมื่อ follower ตัวใดตัวหนึ่งมีปัญหา (ถ้า sync follower ช้า ก็เลื่อน async ตัวอื่นขึ้นมาเป็น sync แทน).\n\n```mermaid\nsequenceDiagram\n  participant C as Client\n  participant L as Leader\n  participant S as Sync follower\n  participant A as Async follower\n  C->>L: write payment\n  L->>S: replicate change\n  L->>A: replicate change\n  S-->>L: ack\n  L-->>C: OK (after sync ack)\n  A-->>L: ack (later)\n  Note over A: may lag behind leader\n```\n\nสองงาน operational ที่ผูกกับโมเดลนี้ (แตะสั้น ๆ พอให้เห็นภาพ):\n\n- **ตั้ง follower ใหม่**: copy snapshot ของ leader ณ ตำแหน่งหนึ่งใน replication log (log sequence number / binlog position) แล้วให้ follower ขอ change ทั้งหมดตั้งแต่ตำแหน่งนั้นเป็นต้นมาเพื่อ catch up — ไม่ต้อง lock ทั้ง DB.\n- **Failover**: เมื่อ leader ล่ม ต้องเลือก follower ตัวหนึ่งขึ้นเป็น leader ใหม่ แล้ว redirect write ไปที่นั่น. ขั้นตอนนี้อันตราย (เสี่ยง data loss, split brain) — จะลงรายละเอียดในหัวข้อ trade-off ด้านล่าง.\n\n## ตัวอย่าง (payments ledger)\n\nสมมติ ledger service มีตาราง `journal_entry`. ทุก posting (debit/credit) เป็น write ที่ต้องไป leader เท่านั้น. ส่วน read — dashboard ยอดคงเหลือ, รายงาน reconciliation, งาน analytics — กระจายไปอ่านจาก follower หลายตัวเพื่อไม่ให้ query หนัก ๆ ไปกวน write path.\n\nสำหรับ ledger เรายอมให้ transaction ที่ confirm ไปแล้ว \"หาย\" ไม่ได้ จึงตั้งเป็น semi-synchronous: leader + sync follower ต้องมี posting นั้นครบก่อนถึงจะตอบ client ว่า \"payment สำเร็จ\". ผลคือแม้ disk ของ leader พังทันทีหลังตอบ client posting นั้นก็ยังรอดอยู่บน sync follower. แต่ต้องรับรู้ราคา: ทุก write latency ตอนนี้ = round trip ไปหา sync follower + fsync ที่นั่น ถ้า follower ตัวนั้นอยู่คนละ availability zone ก็บวก network latency เข้าไปทุก write.\n\n> หมายเหตุ: การอ่านจาก follower อาจเห็นข้อมูลเก่ากว่า leader เพราะ replication lag — ปัญหา read anomalies (read-your-writes, monotonic reads, consistent prefix) เป็นของ concept `replication-lag-problems` โดยตรง ที่นี่เราสนใจแค่โมเดล write และ durability.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"synchronous replication = follower ทุกตัวต้อง ack\"** — ผิดในทางปฏิบัติ. ทำแบบนั้นเครื่องเดียวล่มระบบหยุดหมด; ของจริงมักเป็น semi-synchronous คือ sync แค่ตัวเดียว.\n- **\"async replication แปลว่า write ไม่ durable\"** — ผิด. write durable บน leader แล้ว (fsync ลง disk ของ leader). async กระทบแค่ว่า follower มีสำเนาช้า; ความเสี่ยงจริงคือ leader ตายก่อน replicate **แล้วเกิด failover** ไปตัวที่ยังไม่มี write นั้น.\n- **\"follower ช่วยแบ่งเบา write ได้\"** — ผิด. follower รับแค่ read; write ยังกระจุกที่ leader ตัวเดียวเสมอ.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\nนี่คือหัวใจที่ senior interview เจาะ — ไม่ใช่ข้อดี แต่คือราคา:\n\n- **Write ไม่ scale ด้วยการเพิ่ม follower**: leader เป็นจุดเดียวที่รับ write เพดาน write throughput คือความสามารถของ leader หนึ่งเครื่อง. เพิ่ม follower ช่วยได้แค่ read. ถ้า write-heavy เกินหนึ่งเครื่องรับไหว ต้อง sharding หรือหันไป multi-leader / leaderless (คนละ concept).\n- **Cross-region write latency**: ทุก write ต้องวิ่งไปหา leader ถ้า client อยู่คนละ region กับ leader ก็กิน round trip ไกลทุกครั้ง. โจทย์ multi-datacenter writes คือเหตุผลคลาสสิกที่คนมองข้าม single-leader ไปหา multi-leader.\n- **Failover เจ็บจริง**: ด้วย async replication, leader ใหม่อาจไม่มี write ล่าสุดของ leader เก่า → write หาย (โดยเฉพาะถ้า primary key/ตัวเลข offset ถูกนำไปใช้แล้วที่ระบบอื่น เช่น Redis/cache จะยิ่งเละ). เสี่ยง **split brain** ถ้าเข้าใจผิดว่า leader เก่าตายทั้งที่แค่เน็ตขาด กลายเป็นสองตัวรับ write พร้อมกัน. และ timeout ที่ตั้งสั้นไปทำให้ failover ถี่เกินเหตุ ยาวไปก็ downtime นาน — ไม่มีค่าที่ถูกต้องตายตัว.\n- **Synchronous แลก availability กับ latency เพื่อ durability**: sync follower ล่ม = write ทั้งระบบบล็อก. และ write latency ผูกกับ follower ที่ช้าที่สุดในกลุ่ม sync เสมอ. ถ้าระบบเน้น availability/latency มากกว่าการันตี durability ระดับนี้ (เช่น log/metrics/analytics ที่หายบางส่วนได้) async เหมาะกว่าและถูกกว่า.\n\nสรุปเมื่อไหร่ไม่ควรใช้: write throughput เกินหนึ่งเครื่อง, ต้องรับ write ได้แม้ระหว่าง network partition, หรือต้องเขียนจากหลาย datacenter พร้อมกัน — พวกนี้ single-leader ตอบไม่ได้.\n\n## มุมสัมภาษณ์\n\n- \"synchronous กับ asynchronous replication ต่างกันยังไงในแง่ durability กับ latency?\" → sync การันตีว่ามีสำเนาครบก่อน ack (durability สูง) แต่ latency ผูกกับ follower ที่ช้าที่สุดและ block เมื่อมันล่ม; async ตอบเร็วแต่เสี่ยง write หายตอน failover.\n- \"ทำไมไม่ทำ follower ทุกตัวเป็น synchronous?\" → เครื่องเดียวมีปัญหา write หยุดทั้งระบบ; จึงใช้ semi-synchronous.\n- \"async replication ทำให้ write ที่ confirm แล้วหายได้ยังไง?\" → leader ล่มก่อน replicate write นั้น + failover ไป follower ที่ยังไม่มีมัน.\n- \"เพิ่ม read replica ช่วย scale อะไร?\" → scale read เท่านั้น; write ยังคอขวดที่ leader.\n- \"failover มีอันตรายอะไรบ้าง?\" → data loss จาก write ที่ยังไม่ replicate, split brain, และการตั้ง timeout ที่ไม่มีค่าถูกต้องตายตัว.\n",
+  "recall_checks": [
+    {
+      "q": "ใน single-leader replication ใครรับ write และใครรับ read ได้บ้าง?",
+      "expected_answer": "เขียน (write) ได้ที่ leader เท่านั้น; follower รับ read และรับ replication stream จาก leader มา apply",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อดีหลักของ synchronous replication เทียบกับ asynchronous คืออะไร?",
+      "expected_answer": "การันตีว่ามีอย่างน้อยอีกเครื่องที่มีข้อมูลชุดล่าสุดครบ ก่อนตอบ client ว่าสำเร็จ (durability สูงกว่า)",
+      "type": "mcq",
+      "options": [
+        "การันตีว่ามีอย่างน้อยอีกเครื่องที่มีข้อมูลชุดล่าสุดครบ ก่อนตอบ client ว่าสำเร็จ (durability สูงกว่า)",
+        "ทำให้ write throughput ของทั้ง cluster สูงขึ้นเพราะเขียนขนานกันได้",
+        "ทำให้ follower รับ write ได้โดยตรงจึงลดภาระ leader"
+      ]
+    },
+    {
+      "q": "ทำไมในทางปฏิบัติจึงไม่ทำ follower ทุกตัวเป็น synchronous แต่ใช้ semi-synchronous แทน?",
+      "expected_answer": "ถ้า sync ทุกตัว เครื่องเดียวช้า/ล่ม จะบล็อก write ทั้งระบบ; semi-synchronous ให้ sync แค่ตัวเดียวจึงยังทนต่อ follower ตัวอื่นล่มได้",
+      "type": "mcq",
+      "options": [
+        "ถ้า sync ทุกตัว เครื่องเดียวช้า/ล่ม จะบล็อก write ทั้งระบบ; semi-synchronous ให้ sync แค่ตัวเดียวจึงยังทนต่อ follower ตัวอื่นล่มได้",
+        "เพราะ synchronous replication ทำให้ข้อมูลบน follower ไม่ตรงกับ leader",
+        "เพราะ semi-synchronous ทำให้ write throughput ของ leader สูงกว่า"
+      ]
+    },
+    {
+      "q": "asynchronous replication ทำให้ write ที่ leader ยืนยันว่าสำเร็จไปแล้ว 'หาย' ได้ในสถานการณ์ใด?",
+      "expected_answer": "เมื่อ leader ล่มก่อนที่ write นั้นจะ propagate ไป follower แล้วเกิด failover ไป follower ที่ยังไม่มี write นั้น",
+      "type": "short_answer"
+    },
+    {
+      "q": "การเพิ่ม follower (read replica) ช่วย scale อะไรใน single-leader replication?",
+      "expected_answer": "scale read เท่านั้น",
+      "type": "mcq",
+      "options": [
+        "scale read เท่านั้น",
+        "scale ทั้ง read และ write",
+        "scale write เท่านั้น"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 5: Replication (Leaders and Followers)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 5",
+      "why": "อ่านต้นฉบับโมเดล leader/follower, synchronous vs asynchronous, semi-synchronous และ failover"
+    },
+    {
+      "title": "PostgreSQL Documentation: High Availability, Load Balancing, and Replication",
+      "source": "PostgreSQL official docs, chapter \"High Availability, Load Balancing, and Replication\" (postgresql.org/docs)",
+      "why": "ดูวิธี synchronous_commit / synchronous replication ทำงานจริงในระบบ production"
+    },
+    {
+      "title": "MySQL Reference Manual: Replication",
+      "source": "MySQL 8.0 Reference Manual, chapter \"Replication\" (binary log / semi-synchronous replication)",
+      "why": "อ่านการตั้ง semi-synchronous replication และ binlog position สำหรับตั้ง follower ใหม่"
+    }
+  ]
+}

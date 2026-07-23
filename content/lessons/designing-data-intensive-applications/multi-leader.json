@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "multi-leader",
+  "version": 1,
+  "title_en": "Multi-Leader Replication",
+  "est_minutes": 8,
+  "body_md": "# Multi-Leader Replication\n\n## ทำไมถึงสำคัญ\n\nSingle-leader replication มี leader เดียวรับ write ทุกตัว จุดแข็งคือไม่มี conflict เลย แต่ client ที่อยู่คนละทวีปกับ leader ต้องจ่าย latency ข้าม region ทุก write และถ้า leader หรือทั้ง datacenter ล่ม การเขียนก็หยุด. Multi-leader replication ให้มีหลาย leader (ปกติหนึ่งตัวต่อ datacenter หรือต่อ device) รับ write พร้อมกันได้ ทำให้เขียน local ได้เร็วและทน datacenter ล่มดีขึ้น. ราคาที่จ่ายคือปัญหาใหม่ที่ single-leader ไม่เคยเจอ นั่นคือ write conflict เมื่อสอง leader แก้ข้อมูลเดียวกันพร้อมกัน และ senior interview มักเจาะที่ trade-off ตรงนี้พอดี.\n\n## แก่นของแนวคิด\n\n- แต่ละ leader รับ write จาก client ของตัวเองลง local ก่อน แล้วค่อย replicate การเปลี่ยนแปลงไปหา leader อื่นแบบ asynchronous. leader หนึ่งตัวจึงทำสองบทบาทพร้อมกัน เป็น leader ให้ client ในเขตตัวเอง และเป็น follower ที่รับ stream การเปลี่ยนแปลงจาก leader อื่น.\n- โมเดลนี้เกิดมาเพื่อ 3 สถานการณ์หลัก:\n  - **Multi-datacenter**: แต่ละ DC มี leader ของตัวเอง เขียน DC ใกล้ตัวได้เลย latency ต่ำ และ network partition ระหว่าง DC ไม่ทำให้เขียนไม่ได้ (แต่ละ DC เดินต่อเองได้)\n  - **Offline clients**: แอป calendar หรือ notes บนมือถือ แต่ละ device คือ datacenter ย่อยที่มี local database ทำตัวเป็น leader เขียนตอน offline ได้ แล้ว sync เมื่อกลับ online\n  - **Collaborative editing**: หลายคนแก้ document เดียวพร้อมกัน แต่ละคนเขียน local replica แล้ว sync/merge เข้าหากัน\n- ปัญหาแกนกลางมีอยู่เรื่องเดียว: **write conflict**. เพราะ replication เป็น async สอง leader จึงรับ write ที่ขัดกันบน record เดียวได้โดยไม่เห็น write ของอีกฝั่งตอนเขียน กว่าจะรู้ว่าชนกันก็ตอน replicate มาเจอกันทีหลัง.\n- ทำไมไม่ detect conflict ตอนเขียนเลย? ทำได้ แต่ถ้า detect แบบ synchronous ก็เท่ากับต้องรอ leader อื่นตอบทุก write ซึ่งลบข้อดีทั้งหมดของ multi-leader ทิ้ง (กลายเป็นเหมือน single-leader). conflict จึงถูกจับตอน replicate/read เป็นปกติ.\n- แนวทาง resolve conflict (ระดับแนวคิด พอให้เห็นภาพ):\n  - **Last-write-wins (LWW)**: เลือกค่าที่ timestamp ใหม่สุด ง่ายที่สุดแต่ทำ data loss เงียบ ๆ (write ที่ถูกตัดสินว่าแพ้หายไปโดยไม่มีใครรู้) และต้องพึ่ง clock ข้ามเครื่องที่เชื่อไม่ได้ (รายละเอียด clock/timestamp ไม่อยู่ในบทนี้)\n  - **Merge / conflict-free**: รวมค่าทั้งสองแบบไม่ทิ้งของใคร (เช่น union ของ set หรือใช้โครงสร้างแบบ CRDT ซึ่งไม่ลงลึกในบทนี้)\n  - **เก็บทั้งสองเวอร์ชันไว้** แล้วให้ application หรือ user เลือกทีหลัง (คล้าย git merge conflict)\n  - เขียน **custom resolution logic** เอง (ทำตอน write หรือตอน read)\n- Topology ของการ replicate ระหว่าง leader มีหลายแบบ (all-to-all, circular, star). all-to-all ทน node ล่มดีสุดแต่มีปัญหา ordering/causality ของ replication message (write มาถึงไม่เรียงลำดับได้) เป็นรายละเอียดที่ลึกกว่าขอบเขตบทนี้ แค่รู้ว่ามันไม่ฟรี.\n- ขอบเขต: ถ้าไม่มี leader เลยแล้วให้ทุก replica รับ write ตรง ๆ นั่นคือ leaderless/quorum (Dynamo-style) ซึ่งเป็นอีกโมเดลหนึ่ง เป็น sibling แยก ไม่กล่าวในบทนี้.\n\n## ตัวอย่าง (multi-region fintech setting)\n\nสมมติแอป fintech เก็บ `spending_limit` และ notification preference ของแต่ละ account แบบ replicate สอง DC คือ EU และ US. user คนหนึ่งเปิดแอปมือถือตอนอยู่ EU ตั้ง limit = 50,000 พร้อม ๆ กับที่ session web ใน US (ที่ยังไม่ sync) ตั้ง limit = 20,000. แต่ละ write ลง leader ใน DC ของตัวเองสำเร็จทันที (latency ต่ำ) แล้วค่อย replicate ข้ามกัน พอ replication มาเจอกัน record เดียวกันกลับมีสองค่า EU ว่า 50,000 US ว่า 20,000 นี่คือ write conflict.\n\nถ้าใช้ LWW ระบบเก็บอันที่ timestamp ใหม่กว่าและอีกอันหายเงียบ ผู้ใช้อาจเห็น limit เป็นค่าที่ตัวเองไม่ได้ตั้ง. ถ้าค่าเป็น scalar เดี่ยว merge ไม่ได้ ทางที่ปลอดภัยกว่าคือ detect แล้วถาม user ให้ยืนยันว่าจะเอาค่าไหน.\n\nสังเกตว่าเราจงใจเลือก setting/preference ไม่ใช่ account balance เพราะ balance เป็นข้อมูลที่ resolve conflict ผิดแล้วเท่ากับเงินหาย (ดูหัวข้อขีดจำกัด). นั่นคือแก่นของการตัดสินใจ multi-leader เหมาะกับข้อมูลที่ merge หรือเลือกผิดแล้วเสียหายพอรับได้ ไม่ใช่ข้อมูลการเงินที่ต้อง authoritative ค่าเดียว.\n\n```mermaid\nflowchart LR\n  UE[User via mobile] -->|set limit=50000| LE\n  UW[User via web] -->|set limit=20000| LU\n  subgraph EU[Datacenter EU]\n    LE[Leader EU]\n  end\n  subgraph US[Datacenter US]\n    LU[Leader US]\n  end\n  LE -. async replicate .-> LU\n  LU -. async replicate .-> LE\n  LE --> CFT{Conflict on same key}\n  LU --> CFT\n  CFT --> RES[Resolve: LWW / merge / ask user]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"multi-leader = scale write ได้ฟรี / เขียนเร็วขึ้นเฉย ๆ\"** ผิด. คุณจ่ายด้วยความซับซ้อนของ conflict resolution ที่ single-leader ไม่มี ไม่ใช่ของแถม.\n- **\"async replication + LWW ก็ปลอดภัยดี\"** ผิด. LWW ทิ้ง concurrent write ที่แพ้ไปเงียบ ๆ เป็น data loss ที่ไม่มี error ให้เห็น.\n- **\"conflict เกิดน้อยมาก เลยไม่ต้องออกแบบ resolution\"** ผิด. มันเกิดตอน concurrent edit ซึ่งมักเป็น edge case ที่แพงสุด และ state divergence สะสมเงียบ.\n- **\"multi-leader ให้ strong consistency ข้าม DC\"** ผิด. ธรรมชาติมันเป็น async/eventual; อยากได้ค่าตรงกันทันทีทุก DC ต้องกลับไป synchronous ซึ่งลบข้อดีทิ้ง.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\nMulti-leader คือการแลก availability กับ low write latency ข้าม region มาด้วยหนี้ก้อนใหม่ นั่นคือ conflict resolution ที่ single-leader ไม่ต้องแตะเลย. default ที่ถูกต้องสำหรับระบบส่วนใหญ่คือ single-leader; ขยับมา multi-leader ต่อเมื่อมีเหตุผลชัดอย่าง multi-DC write locality, offline write, หรือ collaborative editing เท่านั้น.\n\nอย่าใช้ multi-leader กับข้อมูลที่ merge หรือเลือกผิดแล้วเสียหายหนัก:\n- **account balance, ledger, inventory count** — resolve ผิด = เงินหายหรือขายเกิน stock\n- **unique constraint** เช่น username/email — สอง leader อาจรับค่าซ้ำพร้อมกันแล้วชนตอน replicate\n- **autoincrement primary key, sequence, monotonic counter** — ทำงานผิดเพี้ยนข้าม leader\nสำหรับข้อมูลพวกนี้ single-leader ที่มี authority เดียวคือคำตอบ.\n\nต้นทุนจริงที่ต้องพูดได้ในสัมภาษณ์:\n- ต้องเขียนและ **test** conflict resolution logic เอง เป็นโค้ดที่ทดสอบยากเพราะต้องจำลอง concurrency ข้าม node\n- causality/ordering ของ replication (โดยเฉพาะ all-to-all topology) จัดการยาก\n- debugging ยาก เพราะ state divergence เกิดเงียบ ไม่มี exception เด้ง\n\nเทคนิคลด conflict ที่นิยม: ทำให้แต่ละ record มี **home leader เดียว** (route write ของ key หนึ่ง ๆ ไป DC เดิมเสมอ) เพื่อเลี่ยง concurrent write บน key เดียวกัน ได้ multi-DC latency benefit โดย conflict แทบไม่เกิด. ถ้าทำแบบนี้ได้ทั้งระบบ นั่นก็เป็นสัญญาณว่าคุณอาจไม่ต้องการ multi-leader แบบเต็มตั้งแต่แรก.\n\n## มุมสัมภาษณ์\n\n- \"multi-leader ต่างจาก single-leader ตรงไหน และปัญหาหลักคืออะไร?\" → มีหลาย leader รับ write พร้อมกัน; ปัญหาหลักคือ write conflict.\n- \"resolve write conflict ได้ยังไงบ้าง?\" → LWW (พร้อมข้อเสีย data loss), merge/conflict-free, เก็บสองเวอร์ชันให้ user เลือก, หรือ custom logic.\n- \"ทำไม LWW ถึงอันตราย?\" → มันทิ้ง concurrent write ที่แพ้เงียบ ๆ และพึ่ง clock ข้ามเครื่องที่ไม่น่าเชื่อถือ.\n- \"จะใช้ multi-leader กับยอดเงินในบัญชีไหม?\" → ไม่ เพราะ conflict resolution กับเงิน = data loss/ค่าผิด; single-leader per account ดีกว่า. คำถามนี้วัดว่าเข้าใจ trade-off ไม่ใช่แค่ท่องนิยาม.\n- คำถามนี้มักต่อยอดไป leaderless/quorum (Dynamo-style) ซึ่งเป็นอีกโมเดลและเป็น sibling แยก ไม่รวมในบทนี้.\n",
+  "recall_checks": [
+    {
+      "q": "ปัญหาแกนกลางของ multi-leader replication ที่ single-leader ไม่มีคืออะไร?",
+      "expected_answer": "write conflict เมื่อสอง leader แก้ข้อมูลเดียวกันพร้อมกัน แล้วต้อง resolve ทีหลัง",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคือ use case หลักของ multi-leader replication?",
+      "expected_answer": "offline clients ที่ต้องเขียนได้ตอน offline แล้ว sync ทีหลัง",
+      "type": "mcq",
+      "options": [
+        "offline clients ที่ต้องเขียนได้ตอน offline แล้ว sync ทีหลัง",
+        "การเพิ่ม read replica เพื่อ scale read อย่างเดียว",
+        "การรับประกัน strong consistency ข้าม datacenter"
+      ]
+    },
+    {
+      "q": "ทำไม last-write-wins (LWW) ถึงอันตราย?",
+      "expected_answer": "มันทิ้ง concurrent write ที่แพ้ไปเงียบ ๆ เป็น data loss และพึ่ง clock ที่เชื่อไม่ได้",
+      "type": "mcq",
+      "options": [
+        "มันทิ้ง concurrent write ที่แพ้ไปเงียบ ๆ เป็น data loss และพึ่ง clock ที่เชื่อไม่ได้",
+        "มันทำให้ write ช้าลงเพราะต้องรอทุก leader ตอบก่อน",
+        "มันบังคับให้ระบบใช้ synchronous replication เสมอ"
+      ]
+    },
+    {
+      "q": "ข้อมูลแบบไหนไม่ควรเก็บด้วย multi-leader replication?",
+      "expected_answer": "account balance / ledger ที่ resolve conflict ผิดแล้วเงินหาย",
+      "type": "mcq",
+      "options": [
+        "account balance / ledger ที่ resolve conflict ผิดแล้วเงินหาย",
+        "notification preference ของ user",
+        "calendar events บน device ที่แก้ตอน offline"
+      ]
+    },
+    {
+      "q": "ทำไมปกติจึงไม่ detect write conflict แบบ synchronous ตอนเขียน?",
+      "expected_answer": "เพราะต้องรอ leader อื่นตอบทุก write ซึ่งลบข้อดีของ multi-leader ทิ้ง กลายเป็นเหมือน single-leader",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 5: Replication (Multi-Leader Replication)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 5",
+      "why": "อ่านต้นฉบับโมเดล multi-leader, use cases, และภาพรวม conflict"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 5, section 'Handling Write Conflicts'",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 5",
+      "why": "เจาะแนวทาง resolve conflict และปัญหาของ last-write-wins"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 5, section 'Multi-Leader Replication Topologies'",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 5",
+      "why": "อ่านต่อเรื่อง all-to-all/circular/star และปัญหา ordering/causality"
+    }
+  ]
+}

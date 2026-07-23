@@ -10,9 +10,9 @@ additive หลัง v1 — radar กลายเป็น 6 แกน. โค�
 - `migrations/003_ddia-track.sql` ขยาย ENUM `topics.track`
 - verify บน MySQL จริงแล้ว track `ddia` live บน develop
 
-## T-ddia-curriculum — content/curriculum/ddia.json + loader test (THIS TICKET)
+## T-ddia-curriculum — content/curriculum/ddia.json + loader test (DONE, PR #19 merged)
 
-**Status:** in progress (branch `ticket/T-ddia-curriculum`)
+**Status:** DONE — PR #19 merged. ddia.json (12 บท/61 concept) + loader test เข้า develop แล้ว.
 
 สร้างไฟล์ tree ของ track `ddia` ให้ import-curriculum โหลดได้ + ล็อก slug ด้วย
 loader test เหมือนทุก track.
@@ -39,7 +39,15 @@ Acceptance:
 3. ทำไม slug ถึงถือเป็น contract ที่เปลี่ยนไม่ได้หลัง import (คิดถึง URL ของหน้า
    lesson + progress ที่ผูกกับ concept)?
 
-## T-ddia-lessons-* — lesson batches (NEXT, หลัง ticket นี้ merge)
+## T-ddia-lessons — lesson batches (batch = 1 บท)
 
-lesson-writer → lesson-verifier ทีละบท เริ่มที่ **Replication** หรือ **Transactions**
-(ถูกถามใน interview บ่อยสุด). ทุก lesson ต้องมี section trade-off / "when not to use".
+lesson-writer → lesson-verifier ทีละ concept. ทุก lesson มี section trade-off /
+"when not to use". ไฟล์ลง `content/lessons/designing-data-intensive-applications/<concept>.json`
+(topic slug = folder name, บังคับโดย `LoadLesson`), import ด้วย `cmd/import-lessons`.
+
+- **batch 1 — ch.5 Replication (5 lessons):** single-leader, replication-lag-problems,
+  multi-leader, leaderless-dynamo-style, quorum-consistency. verifier PASS ครบ 5.
+  → **branch `content/ddia-replication`, PR รอ merge.**
+- **batch 2 — ch.7 Transactions (5 lessons):** acid-meaning, read-committed,
+  snapshot-isolation-mvcc, lost-updates-and-write-skew, serializability. (NEXT)
+- ที่เหลืออีก 10 บท ตาม tree ใน `content/curriculum/ddia.json`.
