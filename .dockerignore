@@ -1,0 +1,29 @@
+# Node
+node_modules/
+web/node_modules/
+web/.next/
+web/out/
+
+# Go build artifacts
+/bin/
+*.exe
+*.test
+
+# VCS / IDE / docs
+.git/
+.github/
+.claude/
+docs/
+*.md
+
+# Env and local overrides — never bake secrets into an image. Docker's
+# matcher is root-anchored, so **/ is needed to also catch nested env files.
+**/.env*
+!**/.env.example
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

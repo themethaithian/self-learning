@@ -1,0 +1,124 @@
+# Prod stack: caddy is the only service exposed on the host. mysql and api
+# talk to each other and to caddy over the "internal" network only.
+#
+# Run every command below from the REPO ROOT (paths and --env-file assume
+# that cwd), with the real .env checked out next to this file's parent:
+#
+#   docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d --build
+#   docker compose -f deploy/docker-compose.prod.yml --env-file .env run --rm import-curriculum
+#   docker compose -f deploy/docker-compose.prod.yml --env-file .env run --rm import-lessons
+#   docker compose -f deploy/docker-compose.prod.yml --env-file .env down
+#
+# --env-file is required explicitly: this file lives in deploy/, and Compose
+# does not walk up to the repo root looking for .env on its own.
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [internal]
+
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      # Pinned (not read from .env): Caddyfile and this healthcheck both
+      # hardcode :8080, so a stray API_PORT in .env can't desync them.
+      API_PORT: 8080
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks: [internal]
+
+  caddy:
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    environment:
+      # Only what the TLS-terminating edge needs — no env_file here, so it
+      # never sees API_BEARER_TOKEN/ANTHROPIC_API_KEY/DB_ROOT_PASSWORD.
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-placeholder@localhost.invalid}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [internal]
+
+  # One-shot content seeding, idempotent (upsert by slug/version). Never
+  # started by `up`; run explicitly, curriculum before lessons:
+  #   docker compose -f deploy/docker-compose.prod.yml --env-file .env run --rm import-curriculum
+  #   docker compose -f deploy/docker-compose.prod.yml --env-file .env run --rm import-lessons
+  #
+  # These only depend_on mysql (not api) — the schema must already exist
+  # before they run, so always `up` first (api migrates on startup).
+  import-curriculum:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file: ../.env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+    entrypoint: ["/app/import-curriculum"]
+    command: ["-dir", "/app/content/curriculum"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    profiles: ["tools"]
+    networks: [internal]
+
+  import-lessons:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file: ../.env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+    entrypoint: ["/app/import-lessons"]
+    command: ["-dir", "/app/content/lessons"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    profiles: ["tools"]
+    networks: [internal]
+
+networks:
+  internal:
+
+volumes:
+  mysql_data:
+  caddy_data:
+  caddy_config:
