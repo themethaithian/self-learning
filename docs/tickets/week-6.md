@@ -47,6 +47,9 @@
 - **ค้างจาก T6** (code-reviewer, non-blocking):
   - `GET /curriculum` ดึง `co.outline` มาแล้วทิ้ง — วัดจริงบน tree 175 concepts (outline ไทย 400 runes) = ดึงจาก MySQL 222 KB ในนั้นเป็น outline 210 KB (94%) เพื่อตอบ 13 KB **ขยาย ~17 เท่า** สาเหตุคือ rehydrate ผ่าน `NewConcept` ที่บังคับ outline ไม่ว่าง → ตัดสินใจว่ายอมรับ (single user) หรือทำ read projection แยกจาก domain (CQRS-lite)
   - schema ถือข้อมูลที่ domain ไม่ยอมรับได้: `position INT` รับ 0/ติดลบ, `title VARCHAR(255)` รับ `''`, `slug` รับตัวพิมพ์ใหญ่ — และเพราะ assemble เป็น all-or-nothing แถวเสียแถวเดียว 500 ทั้ง 175 concepts → พิจารณา `CHECK` constraint (MySQL 8.0.16+) + `UNIQUE KEY (track, position)` บน topics
+- **ค้างจาก T8** (code-reviewer + visual check, non-blocking):
+  - `CurriculumTree.tsx` `ChapterRow` — ที่จอ 375px ถ้า title ยาวจนวรรค (เช่น "Supple Design & Refactoring") badge "N concepts" จะตกลงมาชิดซ้ายแทนที่จะชิดขวา (flex 2 children + `justify-between` พอวรรคแล้ว child ที่สองไปชิดซ้าย) — cosmetic, แก้ด้วยการจัด layout ใหม่ (เช่น badge เป็น shrink-0 หรือใช้ grid)
+  - `ci.yml` web job รันทุก PR ไม่มี path filter (จงใจ — path-filtered required check อาจค้าง "expected but never ran" บล็อก merge) ถ้าอยาก optimize ใช้ `dorny/paths-filter` ไม่ใช่ top-level `paths:`
 - **Acceptance**: list ที่ตกลงกันไว้เคลียร์หมดหรือมีเหตุผลที่ข้าม
 - Status: `todo`
 

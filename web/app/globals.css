@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/*
+ * Semantic design tokens (frontend-design skill). Components use these
+ * utilities (bg-page, text-body, border-subtle, ...) — never raw zinc-*
+ * or violet-* classes. Palette values are the skill's fixed light theme.
+ */
+@theme {
+  --color-page: #fafafa; /* zinc-50 */
+  --color-surface: #ffffff;
+  --color-heading: #18181b; /* zinc-900 */
+  --color-body: #27272a; /* zinc-800 */
+  --color-muted: #52525b; /* zinc-600 */
+  --color-faint: #71717a; /* zinc-500 — lightest text allowed on white */
+  --color-subtle: #e4e4e7; /* zinc-200 — hairline borders */
+
+  --color-accent: #7c3aed; /* violet-600 */
+  --color-accent-hover: #6d28d9; /* violet-700 */
+  --color-accent-tint: #f5f3ff; /* violet-50 */
+  --color-accent-strong: #6d28d9; /* violet-700 — active nav text */
+  --color-focus: #8b5cf6; /* violet-500 — focus ring only */
+
+  --color-success: #059669; /* emerald-600 */
+  --color-warning: #d97706; /* amber-600 */
+  --color-danger: #e11d48; /* rose-600 */
+
+  --font-sans: var(--font-inter);
+  --font-thai: var(--font-thai);
+  --font-mono: var(--font-mono);
+}
+
+body {
+  background-color: var(--color-page);
+  color: var(--color-body);
+}
