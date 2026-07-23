@@ -13,10 +13,12 @@ stop and ask the orchestrator.
 ## Identity
 
 - Mood: quiet focus — like a good reading app, not a dashboard-y SaaS.
-- Light theme only. Page background `zinc-50` (off-white, not pure white —
-  pure white glares in long night sessions), surfaces `white`, hairline
-  borders `zinc-200`, text `zinc-900` (headings) / `zinc-600` (secondary).
-  Body copy is `zinc-800`, never pure black.
+- Light theme only. Page background is a warm cream off-white `#faf7f2`
+  (not pure white, not cool zinc-50 — pure white glares in long night
+  sessions, and a cool/blue-ish near-white reads as harsh; warm tone reduces
+  eye strain), surfaces a warm-nudged near-white `#fffdfa`, hairline borders
+  a warm-nudged `#e6e2dc`, text `zinc-900` (headings) / `zinc-600`
+  (secondary). Body copy is `zinc-800`, never pure black.
 - One accent colour only: `violet-600` (actions, active nav, chart primary),
   `violet-700` on hover, `violet-50` for tinted surfaces and selected rows.
 - Semantic colours: success `emerald-600`, warning `amber-600`, danger
@@ -77,8 +79,9 @@ stop and ask the orchestrator.
 
 ## Accessibility & quality gate (check before ticket done)
 
-- [ ] Contrast AA on all text (`zinc-500` on `white` is the lightest allowed;
-      violet text on white must be `violet-600` or darker)
+- [ ] Contrast AA on all text (`zinc-500` on the cream page `#faf7f2` is the
+      lightest text allowed — verified ≈4.5:1, AA; violet text on white must
+      be `violet-600` or darker)
 - [ ] Focus rings visible (`focus-visible:ring-2 ring-violet-500 ring-offset-2`)
 - [ ] Colour is never the only signal (pass/fail also carries an icon or label)
 - [ ] Works at 375px width and 1440px; no horizontal scroll
