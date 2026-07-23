@@ -1,8 +1,10 @@
-# Week 2 — ขึ้น VPS + แกนของระบบอ่าน
+# Week 2 — แกนของระบบอ่าน (reading-first) + ขึ้น VPS
 
-**เป้าหมาย**: skeleton จากสัปดาห์ 1 รันจริงบน HTTPS ที่ DigitalOcean, merge → auto-deploy,
-แล้ววางฐาน Read & Recall (schema + importer + LLM client)
-**เตรียมก่อน**: GitHub repo (จากสัปดาห์ 1), บัญชี DigitalOcean, domain/DuckDNS, Anthropic API key (T11)
+**ปรับลำดับ (2026-07-23)**: ทำ **reading slice ก่อน** ให้เว็บ "อ่านบทเรียนได้จริง" — T9 (domain) →
+T10 (import-lessons) → C-content (เขียนบทเรียนจริงผ่าน subscription) → T-read (GET /lessons + หน้าอ่าน +
+recall แบบ **self-grade**). **T11 (LLM client) เลื่อนออกจาก critical path** — v1 ตรวจ recall เองไม่ใช้ API key
+(ดู design.md decision 2026-07-23). Deploy (T28-30) ทำหลัง reading slice ใช้งานได้
+**เตรียมก่อน**: GitHub repo (มีแล้ว), บัญชี DigitalOcean + domain/DuckDNS (ก่อน deploy) — **ไม่ต้องมี Anthropic key จนกว่าจะเปิด LLM grading ทีหลัง**
 
 ---
 
@@ -29,7 +31,7 @@
 - **Scope**: `internal/curriculum/domain` (Lesson, RecallCheck, References), `internal/learning/domain` (LessonProgress + ChunkState), `migrations/002_lessons_learning.sql` — ตาราง lessons มีคอลัมน์ `refs JSON` (แหล่งอ่านต่อของจริง, ชื่อคอลัมน์เลี่ยงคำสงวน REFERENCES)
 - **Acceptance**: table-driven tests ของ gating: lesson แรกของบท = ปลดล็อกเสมอ, ถัดไปปลดเมื่อก่อนหน้า passed, ข้ามบทไม่ได้
 - **Review focus**: กติกา gating อยู่ใน domain method ไม่ใช่ SQL/handler, state transition ผิด order ต้อง error
-- Status: `todo`
+- Status: `done` — `Gate(states)` pure function (mutation 9/9 caught), `LessonProgress` transition เป็น value-receiver method (ไม่ anemic), migration 002 ยืนยันกับ MySQL จริงแล้ว (idempotent). `migrations/002_learning.sql` = `lesson_progress` (lessons/recall_checks มีใน 001 แล้ว)
 
 ## T10 — cmd/import-lessons `[go-implementer]` ~30 นาที
 - **Goal**: importer ตาม schema JSON ของ lesson-writer (ดู `.claude/agents/lesson-writer.md`)

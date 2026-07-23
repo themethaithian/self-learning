@@ -17,6 +17,7 @@ ticket รายชิ้นอยู่ [`tickets/`](tickets/)
 | 2026-07-22 | ขึ้น VPS ตั้งแต่สัปดาห์ 2 + ทุก ticket เป็น PR เข้า develop, รีวิวผ่าน GitHub mobile ได้, merge = auto-deploy |
 | 2026-07-22 | Vision: v1 เป็นหนังสือเรียนส่วนตัวใช้คนเดียว → Phase 2 publish เป็น portfolio (ไม่หาเงิน) — ดู §8 |
 | 2026-07-23 | `GET /curriculum` คืน `{"tracks":[{"track","topics":[…]}]}` group ตาม track — `topics.position` ไม่ scope ต่อ track ลำดับข้าม track จึงไม่มีความหมาย; ลำดับ track เป็นของ domain (`domain.Tracks()`) ไม่ใช่ลำดับประกาศ ENUM |
+| 2026-07-23 | **Runtime grading v1 = self-grade** (เผยเฉลย + ให้คะแนนตัวเอง 0–5 → SM-2, `graded_by='self'`) — ไม่ใช้ LLM ตอน runtime, จ่ายแค่ VPS. LLM auto-grade (Anthropic API key, haiku) เป็น opt-in ทีหลังหลัง `Grader` port. **การสร้างบทเรียนใช้ Claude Code subscription แบบ offline อยู่แล้ว (ไม่แตะ API key)**. เหตุผล: อยากจ่าย VPS ก่อน, subscription เอามาทำ runtime grading ไม่ควร (OAuth บน server เปราะ + ผิดเจตนา) → deprioritize T11 ออกจาก critical path |
 
 ## 1. DDD Tactical Design
 

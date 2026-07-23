@@ -50,6 +50,8 @@
 - **ค้างจาก T8** (code-reviewer + visual check, non-blocking):
   - `CurriculumTree.tsx` `ChapterRow` — ที่จอ 375px ถ้า title ยาวจนวรรค (เช่น "Supple Design & Refactoring") badge "N concepts" จะตกลงมาชิดซ้ายแทนที่จะชิดขวา (flex 2 children + `justify-between` พอวรรคแล้ว child ที่สองไปชิดซ้าย) — cosmetic, แก้ด้วยการจัด layout ใหม่ (เช่น badge เป็น shrink-0 หรือใช้ grid)
   - `ci.yml` web job รันทุก PR ไม่มี path filter (จงใจ — path-filtered required check อาจค้าง "expected but never ran" บล็อก merge) ถ้าอยาก optimize ใช้ `dorny/paths-filter` ไม่ใช่ top-level `paths:`
+- **ค้างจาก T9** (code-reviewer, non-blocking / watch-item):
+  - `LessonProgress` ไม่ถือ `first_passed_at`/`last_read_at` — วันนี้ถูกต้อง (ไม่มี invariant ไหนอ่านมัน, repository stamp เอง) แต่**ถ้าวันหน้ามีกฎที่ใช้ "passed เมื่อไหร่" เป็น input ตัดสินใจ** (streak, "passed ใน session", retro delta) ต้องย้าย timestamp เข้า aggregate ไม่งั้น logic "first pass พิเศษ" จะรั่วไป app/infra
 - **Acceptance**: list ที่ตกลงกันไว้เคลียร์หมดหรือมีเหตุผลที่ข้าม
 - Status: `todo`
 
