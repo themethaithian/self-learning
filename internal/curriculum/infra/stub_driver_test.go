@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -529,6 +530,57 @@ func (tb *stubTables) lookupConceptID(args []driver.NamedValue) []stubRow {
 	return []stubRow{{"co.id": int(id)}}
 }
 
+// lookupLessonByConcept answers selectLessonByConceptSQL by resolving
+// (topic slug, concept slug) through the same lessonConcepts map
+// resolveConceptID uses, then looking up that concept's lesson row — so a
+// concept slug that only exists under a different topic (or a concept with
+// no lesson saved) both correctly produce no row, the same way a query that
+// dropped the t.slug predicate would NOT.
+func (tb *stubTables) lookupLessonByConcept(args []driver.NamedValue) []stubRow {
+	if len(args) != 2 {
+		return nil
+	}
+	key := lessonConceptKey{topicSlug: argString(args[0]), conceptSlug: argString(args[1])}
+	conceptID, ok := tb.lessonConcepts[key]
+	if !ok {
+		return nil
+	}
+	lesson, ok := tb.lessons[conceptID]
+	if !ok {
+		return nil
+	}
+	return []stubRow{{
+		"l.id": int(lesson.id), "l.version": int(lesson.version), "l.title_en": lesson.titleEn,
+		"l.est_minutes": int(lesson.estMinutes), "l.body_md": lesson.bodyMd, "l.refs": lesson.refs,
+	}}
+}
+
+// lookupRecallChecksByLesson answers selectRecallChecksByLessonSQL, sorted
+// by position — recallChecks is a delete-then-insert table (see
+// stubTables' field comment), so insertion order alone cannot be trusted to
+// reflect position order the way ORDER BY position does in production.
+func (tb *stubTables) lookupRecallChecksByLesson(args []driver.NamedValue) []stubRow {
+	if len(args) != 1 {
+		return nil
+	}
+	lessonID := argInt64(args[0])
+	checks := append([]stubRecallCheckRow(nil), tb.recallChecks[lessonID]...)
+	sort.Slice(checks, func(i, j int) bool { return checks[i].position < checks[j].position })
+
+	rows := make([]stubRow, len(checks))
+	for i, c := range checks {
+		var options any
+		if c.options != nil {
+			options = *c.options
+		}
+		rows[i] = stubRow{
+			"position": int(c.position), "type": c.kind, "question": c.question,
+			"expected_answer": c.expectedAnswer, "options": options,
+		}
+	}
+	return rows
+}
+
 func keepSet(args []driver.NamedValue) map[string]bool {
 	keep := make(map[string]bool, len(args))
 	for _, a := range args {
@@ -644,6 +696,10 @@ func (c *stubConn) QueryContext(ctx context.Context, query string, args []driver
 			rows = c.result.tables.toRows()
 		case selectConceptIDSQL:
 			rows = c.result.tables.lookupConceptID(args)
+		case selectLessonByConceptSQL:
+			rows = c.result.tables.lookupLessonByConcept(args)
+		case selectRecallChecksByLessonSQL:
+			rows = c.result.tables.lookupRecallChecksByLesson(args)
 		}
 	}
 	queryErr := c.result.queryErr

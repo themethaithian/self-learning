@@ -3,30 +3,43 @@ package infra
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
+	curriculumapp "github.com/themethaithian/self-learning/internal/curriculum/app"
 	"github.com/themethaithian/self-learning/internal/curriculum/domain"
 )
 
-// treeService is the minimal capability Handler needs; app.Service
-// satisfies it, and tests can fake it without wiring a repository.
+// treeService and lessonService are the minimal capabilities Handler needs;
+// app.Service satisfies both, and tests can fake either without wiring a
+// repository.
 type treeService interface {
 	Tree(ctx context.Context) ([]domain.Topic, error)
 }
 
+type lessonService interface {
+	Lesson(ctx context.Context, topicSlug, conceptSlug string) (domain.Lesson, error)
+}
+
+type curriculumService interface {
+	treeService
+	lessonService
+}
+
 // Handler is the HTTP adapter for the curriculum bounded context.
 type Handler struct {
-	service treeService
+	service curriculumService
 	logger  *slog.Logger
 }
 
-func NewHandler(service treeService, logger *slog.Logger) *Handler {
+func NewHandler(service curriculumService, logger *slog.Logger) *Handler {
 	return &Handler{service: service, logger: logger}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/curriculum", h.getTree)
+	mux.HandleFunc("GET /api/v1/lessons/{topicSlug}/{conceptSlug}", h.getLesson)
 }
 
 type conceptDTO struct {
@@ -124,6 +137,85 @@ func toConceptDTOs(concepts []domain.Concept) []conceptDTO {
 			Slug:     c.Slug().String(),
 			Title:    c.Title(),
 			Position: c.Position().Int(),
+		})
+	}
+	return out
+}
+
+type referenceDTO struct {
+	Title  string `json:"title"`
+	Source string `json:"source"`
+	Why    string `json:"why"`
+}
+
+type recallCheckDTO struct {
+	Position       int      `json:"position"`
+	Type           string   `json:"type"`
+	Question       string   `json:"question"`
+	ExpectedAnswer string   `json:"expected_answer"`
+	Options        []string `json:"options,omitempty"`
+}
+
+// lessonDTO carries each recall check's expected_answer and options: grading
+// is self-graded client-side (the user reveals the answer and rates
+// themselves), and single-user bearer auth means there is no cheating
+// concern in exposing them over the API.
+type lessonDTO struct {
+	Topic        string           `json:"topic"`
+	Concept      string           `json:"concept"`
+	TitleEn      string           `json:"title_en"`
+	EstMinutes   int              `json:"est_minutes"`
+	BodyMd       string           `json:"body_md"`
+	References   []referenceDTO   `json:"references"`
+	RecallChecks []recallCheckDTO `json:"recall_checks"`
+}
+
+func (h *Handler) getLesson(w http.ResponseWriter, r *http.Request) {
+	topicSlug := r.PathValue("topicSlug")
+	conceptSlug := r.PathValue("conceptSlug")
+
+	lesson, err := h.service.Lesson(r.Context(), topicSlug, conceptSlug)
+	if err != nil {
+		if errors.Is(err, curriculumapp.ErrLessonNotFound) {
+			h.writeJSON(w, http.StatusNotFound, map[string]string{"error": "lesson not found"})
+			return
+		}
+		h.logger.Error("curriculum: get lesson failed", "topic", topicSlug, "concept", conceptSlug, "error", err)
+		h.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	h.writeJSON(w, http.StatusOK, toLessonDTO(topicSlug, conceptSlug, lesson))
+}
+
+func toLessonDTO(topicSlug, conceptSlug string, l domain.Lesson) lessonDTO {
+	return lessonDTO{
+		Topic:        topicSlug,
+		Concept:      conceptSlug,
+		TitleEn:      l.TitleEn(),
+		EstMinutes:   l.EstMinutes().Int(),
+		BodyMd:       l.BodyMd(),
+		References:   toReferenceDTOs(l.References()),
+		RecallChecks: toRecallCheckDTOs(l.RecallChecks()),
+	}
+}
+
+func toReferenceDTOs(refs []domain.Reference) []referenceDTO {
+	out := make([]referenceDTO, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, referenceDTO{Title: ref.Title(), Source: ref.Source(), Why: ref.Why()})
+	}
+	return out
+}
+
+func toRecallCheckDTOs(checks []domain.RecallCheck) []recallCheckDTO {
+	out := make([]recallCheckDTO, 0, len(checks))
+	for _, c := range checks {
+		out = append(out, recallCheckDTO{
+			Position:       c.Position().Int(),
+			Type:           c.Kind().String(),
+			Question:       c.Question(),
+			ExpectedAnswer: c.ExpectedAnswer(),
+			Options:        c.Options(),
 		})
 	}
 	return out

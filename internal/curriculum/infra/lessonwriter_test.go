@@ -54,7 +54,7 @@ func newTestLesson(t *testing.T, slug string, version int) domain.Lesson {
 		[]domain.Reference{newTestReference(t, "ref-a"), newTestReference(t, "ref-b")},
 		[]domain.RecallCheck{
 			newTestRecallCheck(t, 1, "short_answer", nil),
-			newTestRecallCheck(t, 2, "mcq", []string{"opt-a", "opt-b"}),
+			newTestRecallCheck(t, 2, "mcq", []string{"answer 2", "opt-b"}),
 			newTestRecallCheck(t, 3, "short_answer", nil),
 		},
 	)
@@ -247,7 +247,7 @@ func TestRepositorySaveLesson_RecallChecksReplacedInOrder(t *testing.T) {
 		options  any
 	}{
 		{1, "short_answer", nil},
-		{2, "mcq", `["opt-a","opt-b"]`},
+		{2, "mcq", `["answer 2","opt-b"]`},
 		{3, "short_answer", nil},
 	}
 	for i, want := range wantInserts {

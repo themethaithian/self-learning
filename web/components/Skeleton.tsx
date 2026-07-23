@@ -18,3 +18,19 @@ export function CurriculumTreeSkeleton() {
     </div>
   );
 }
+
+export function LessonSkeleton() {
+  return (
+    <div className="max-w-[68ch] space-y-6" aria-hidden>
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="h-8 w-2/3" />
+      <div className="space-y-3">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+      </div>
+    </div>
+  );
+}

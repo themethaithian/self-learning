@@ -56,6 +56,14 @@ func TestNewRecallCheck(t *testing.T) {
 			name: "mcq with an empty option string", position: mustPosition(t, 1), kind: mustRecallKind(t, "mcq"),
 			question: "q", expectedAnswer: "a", options: []string{"a", ""}, wantErr: ErrInvalidRecallOptions,
 		},
+		{
+			name: "mcq answer not among options", position: mustPosition(t, 1), kind: mustRecallKind(t, "mcq"),
+			question: "q", expectedAnswer: "z", options: []string{"a", "b", "c"}, wantErr: ErrInvalidRecallAnswer,
+		},
+		{
+			name: "mcq answer matches option only after trimming whitespace", position: mustPosition(t, 1), kind: mustRecallKind(t, "mcq"),
+			question: "q", expectedAnswer: "  b  ", options: []string{"a", "b", "c"}, wantOptionsLen: 3,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
