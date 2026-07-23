@@ -67,7 +67,7 @@
 - **Scope**: `content/curriculum/{distsys,aws,go,dsa}.json` ตาม format ของ T7 — slug ลอกจาก design §7 ตรงตัวอักษร (เป็น contract กับ `content/lessons/<topic>/<concept>.json`), title อังกฤษ, outline ไทย 2–4 bullet
 - **Acceptance**: loader test ของแต่ละไฟล์ผ่าน + จำนวน chapter/concept ตรงกับ design §7, `GET /curriculum` เห็นครบ 195 concepts
 - **Review focus**: slug ตรง design เป๊ะไหม (typo = lesson file ไปคนละที่), outline สั้นพอที่จะเป็น guidance ไม่ใช่บทเรียนย่อ
-- Status: `todo`
+- Status: `done` — 4 ไฟล์ยิงขนาน 4 agent (คนละไฟล์ ไม่ชนกัน), reviewer เขียนสคริปต์ diff slug กับ design §7 เชิงกลไก
 
 ## T8 — Next.js scaffold + curriculum tree page `[go-implementer]` ~45 นาที
 - **Goal**: frontend แรก — เห็น tree จริงจาก API

@@ -1,0 +1,322 @@
+{
+  "track": "distsys",
+  "slug": "distributed-systems",
+  "title": "Distributed Systems",
+  "position": 2,
+  "chapters": [
+    {
+      "slug": "foundations",
+      "title": "Foundations",
+      "position": 1,
+      "concepts": [
+        {
+          "slug": "why-distributed",
+          "title": "Why Distributed Systems",
+          "outline": "อธิบายเหตุผลที่ระบบต้อง distributed แทนที่จะรันบนเครื่องเดียว\nยกตัวอย่าง trade-off ที่ได้มา (scale, availability) กับที่เสียไป (complexity)\nเชื่อมโยงกับนิยามคร่าว ๆ ของ distributed system",
+          "position": 1
+        },
+        {
+          "slug": "transparency-goals",
+          "title": "Transparency Goals",
+          "outline": "อธิบายประเภทของ transparency ที่ระบบ distributed พยายามให้ผู้ใช้ เช่น access, location, replication\nเน้นว่า transparency สมบูรณ์แบบทำได้ยากในทางปฏิบัติ\nยกตัวอย่างจุดที่ transparency รั่วออกมาให้ผู้ใช้เห็น",
+          "position": 2
+        },
+        {
+          "slug": "scalability-dimensions",
+          "title": "Scalability Dimensions",
+          "outline": "อธิบายมิติของ scalability: size, geographical, administrative\nเปรียบเทียบ vertical กับ horizontal scaling\nยกตัวอย่างเทคนิครับมือแต่ละมิติ เช่น partitioning, caching, replication",
+          "position": 3
+        },
+        {
+          "slug": "fallacies-of-distributed-computing",
+          "title": "Fallacies of Distributed Computing",
+          "outline": "อธิบาย 8 fallacies ที่วิศวกรมักเข้าใจผิดเกี่ยวกับ network\nยกตัวอย่างผลกระทบเชิงระบบเมื่อสมมติฐานเหล่านี้ผิด\nเชื่อมโยงกับการออกแบบระบบที่ resilient ต่อความผิดพลาดของ network",
+          "position": 4
+        }
+      ]
+    },
+    {
+      "slug": "architectures",
+      "title": "Architectures",
+      "position": 2,
+      "concepts": [
+        {
+          "slug": "client-server",
+          "title": "Client-Server",
+          "outline": "อธิบายสถาปัตยกรรม client-server พื้นฐานและบทบาทของแต่ละฝั่ง\nยกตัวอย่างข้อจำกัดเรื่อง single point of bottleneck\nเปรียบเทียบกับสถาปัตยกรรมอื่นที่จะพูดถึงต่อไปในบทนี้",
+          "position": 1
+        },
+        {
+          "slug": "multi-tier-layered",
+          "title": "Multi-Tier & Layered",
+          "outline": "อธิบายการแบ่ง multi-tier เช่น presentation, application, data tier\nเน้นเหตุผลที่แยก layer ช่วยเรื่อง scaling และ maintainability\nยกตัวอย่าง deployment จริงที่แต่ละ tier อยู่คนละเครื่อง",
+          "position": 2
+        },
+        {
+          "slug": "peer-to-peer",
+          "title": "Peer-to-Peer",
+          "outline": "อธิบายสถาปัตยกรรม peer-to-peer ที่ไม่มี server กลาง\nยกตัวอย่าง structured กับ unstructured overlay network\nเปรียบเทียบข้อดีข้อเสียกับ client-server ในแง่ scalability และ trust",
+          "position": 3
+        },
+        {
+          "slug": "microservices-vs-monolith",
+          "title": "Microservices vs Monolith",
+          "outline": "เปรียบเทียบ monolith กับ microservices ในแง่ deployment, ownership, failure isolation\nเตือนต้นทุนแฝงของ microservices เช่น distributed complexity, network hop\nยกตัวอย่างสัญญาณที่บอกว่าควรเปลี่ยนสถาปัตยกรรม",
+          "position": 4
+        },
+        {
+          "slug": "event-driven-architecture",
+          "title": "Event-Driven Architecture",
+          "outline": "อธิบายสถาปัตยกรรมที่ service สื่อสารกันผ่าน event แทนการเรียกตรง\nยกตัวอย่างประโยชน์เรื่อง decoupling และ async processing\nเตือนความซับซ้อนเพิ่มเรื่อง eventual consistency และ debugging",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "communication",
+      "title": "Communication",
+      "position": 3,
+      "concepts": [
+        {
+          "slug": "rpc-fundamentals",
+          "title": "RPC Fundamentals",
+          "outline": "อธิบายหลักการ Remote Procedure Call ให้เรียก remote function เหมือน local\nยกตัวอย่างขั้นตอน marshal/unmarshal ผ่าน stub\nเตือนข้อจำกัดที่ network ทำให้ RPC ไม่เหมือน local call จริง เช่น partial failure",
+          "position": 1
+        },
+        {
+          "slug": "message-queues",
+          "title": "Message Queues",
+          "outline": "อธิบายบทบาทของ message queue ในการ decouple producer กับ consumer\nยกตัวอย่าง delivery guarantee เช่น at-least-once, at-most-once\nเชื่อมโยงกับการใช้ queue รองรับ backpressure และ retry",
+          "position": 2
+        },
+        {
+          "slug": "publish-subscribe",
+          "title": "Publish-Subscribe",
+          "outline": "อธิบาย pub/sub pattern ที่แยก publisher กับ subscriber ผ่าน topic\nเปรียบเทียบกับ point-to-point message queue\nยกตัวอย่าง use case ที่ต้องการ fan-out ให้หลาย consumer",
+          "position": 3
+        },
+        {
+          "slug": "rest-vs-grpc",
+          "title": "REST vs gRPC",
+          "outline": "เปรียบเทียบ REST กับ gRPC ในแง่ protocol, serialization, performance\nยกตัวอย่างสถานการณ์ที่เหมาะกับแต่ละแบบ เช่น public API เทียบ internal service\nเน้นข้อดีของ gRPC เรื่อง streaming และ strongly-typed contract",
+          "position": 4
+        },
+        {
+          "slug": "serialization-formats",
+          "title": "Serialization Formats",
+          "outline": "อธิบายรูปแบบ serialization ที่พบบ่อย เช่น JSON, Protocol Buffers, Avro\nเปรียบเทียบ trade-off เรื่อง human-readability, ขนาด, ความเร็ว, schema evolution\nยกตัวอย่างผลกระทบต่อ backward compatibility เมื่อ schema เปลี่ยน",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "naming-discovery",
+      "title": "Naming & Discovery",
+      "position": 4,
+      "concepts": [
+        {
+          "slug": "flat-naming",
+          "title": "Flat Naming",
+          "outline": "อธิบาย flat naming ที่ชื่อไม่มีโครงสร้างและต้อง resolve ผ่านกลไกอื่น เช่น broadcast หรือ DHT\nยกตัวอย่างข้อจำกัดเรื่อง scalability ของแต่ละวิธี resolve\nเปรียบเทียบกับ structured naming ที่จะพูดถึงต่อไป",
+          "position": 1
+        },
+        {
+          "slug": "structured-naming-dns",
+          "title": "Structured Naming & DNS",
+          "outline": "อธิบายระบบ naming แบบมีโครงสร้างลำดับชั้นและตัวอย่างจริงคือ DNS\nอธิบายขั้นตอน resolve ชื่อผ่าน hierarchy ของ DNS server\nเชื่อมโยงกับการใช้ DNS ใน service ที่ต้องหา endpoint ของ dependency",
+          "position": 2
+        },
+        {
+          "slug": "service-discovery",
+          "title": "Service Discovery",
+          "outline": "อธิบายกลไก service discovery แบบ client-side กับ server-side\nยกตัวอย่างเครื่องมือ เช่น service registry และ health check\nเชื่อมโยงกับความจำเป็นในสถาปัตยกรรม microservices ที่ instance ขึ้นลงตลอดเวลา",
+          "position": 3
+        }
+      ]
+    },
+    {
+      "slug": "coordination-time",
+      "title": "Coordination & Time",
+      "position": 5,
+      "concepts": [
+        {
+          "slug": "physical-clocks-ntp",
+          "title": "Physical Clocks & NTP",
+          "outline": "อธิบายปัญหา clock drift ระหว่างเครื่องในระบบ distributed\nอธิบายหลักการ NTP ในการ sync นาฬิกาให้ใกล้เคียงกัน\nเตือนว่าทำไม physical clock ยังไม่พอสำหรับการเรียงลำดับ event",
+          "position": 1
+        },
+        {
+          "slug": "lamport-clocks",
+          "title": "Lamport Clocks",
+          "outline": "อธิบาย logical clock ของ Lamport สำหรับเรียงลำดับ event แบบ happens-before\nยกตัวอย่างกฎการ increment counter เมื่อส่ง/รับ message\nเตือนข้อจำกัดที่ Lamport clock บอก causality ได้ไม่สมบูรณ์",
+          "position": 2
+        },
+        {
+          "slug": "vector-clocks",
+          "title": "Vector Clocks",
+          "outline": "อธิบาย vector clock ที่แก้ข้อจำกัดของ Lamport clock เรื่องตรวจ concurrent event\nยกตัวอย่างการเปรียบเทียบ vector เพื่อบอกว่า event ใด happens-before หรือ concurrent\nเชื่อมโยงกับการใช้งานจริงใน distributed database",
+          "position": 3
+        },
+        {
+          "slug": "distributed-mutex",
+          "title": "Distributed Mutex",
+          "outline": "อธิบายปัญหา mutual exclusion เมื่อ resource ถูกแชร์ข้ามเครื่อง\nยกตัวอย่างแนวทาง เช่น centralized coordinator หรือ token-based algorithm\nเตือนต้นทุนเรื่อง latency และ single point of failure ของแต่ละแนวทาง",
+          "position": 4
+        },
+        {
+          "slug": "leader-election",
+          "title": "Leader Election",
+          "outline": "อธิบายความจำเป็นของ leader election ในระบบ distributed\nยกตัวอย่าง algorithm พื้นฐาน เช่น bully algorithm หรือ ring-based election\nเชื่อมโยงกับการใช้ leader ประสานงาน write หรือ coordination อื่น",
+          "position": 5
+        },
+        {
+          "slug": "gossip-protocols",
+          "title": "Gossip Protocols",
+          "outline": "อธิบายหลักการ gossip protocol ในการกระจายข้อมูลแบบ epidemic\nยกตัวอย่างการใช้ gossip เพื่อ membership หรือ failure detection\nเน้นคุณสมบัติ eventually consistent และทนต่อ node failure",
+          "position": 6
+        }
+      ]
+    },
+    {
+      "slug": "consistency-replication",
+      "title": "Consistency & Replication",
+      "position": 6,
+      "concepts": [
+        {
+          "slug": "replication-motivation",
+          "title": "Replication Motivation",
+          "outline": "อธิบายเหตุผลที่ต้อง replicate ข้อมูล เช่น availability, read performance, fault tolerance\nเตือนต้นทุนที่แลกมาคือความซับซ้อนของ consistency\nเชื่อมโยงกับหัวข้อ consistency model ที่จะตามมาในบทนี้",
+          "position": 1
+        },
+        {
+          "slug": "linearizability-sequential",
+          "title": "Linearizability & Sequential Consistency",
+          "outline": "อธิบาย linearizability ว่าเป็น consistency model ที่เข้มที่สุดแบบหนึ่ง\nเปรียบเทียบกับ sequential consistency ที่ผ่อนลำดับ real-time ลงมา\nยกตัวอย่างสถานการณ์ที่ต้องการความเข้มระดับนี้",
+          "position": 2
+        },
+        {
+          "slug": "causal-consistency",
+          "title": "Causal Consistency",
+          "outline": "อธิบาย causal consistency ว่ารักษาลำดับเฉพาะ event ที่มีความสัมพันธ์ causal\nเปรียบเทียบกับ linearizability ในแง่ performance ที่ดีกว่า\nยกตัวอย่างการใช้ vector clock ช่วย track causal order",
+          "position": 3
+        },
+        {
+          "slug": "eventual-consistency",
+          "title": "Eventual Consistency",
+          "outline": "อธิบาย eventual consistency ว่า replica จะ converge กันในที่สุดเมื่อไม่มี update ใหม่\nยกตัวอย่างระบบที่เลือกใช้โมเดลนี้เพื่อแลก availability\nเตือนผลกระทบต่อ user experience เมื่อข้อมูลยังไม่ sync",
+          "position": 4
+        },
+        {
+          "slug": "client-centric-models",
+          "title": "Client-Centric Consistency Models",
+          "outline": "อธิบาย consistency model ที่มองจากมุมมอง client เดียว เช่น read-your-writes, monotonic reads\nยกตัวอย่างสถานการณ์ที่ผู้ใช้จะสังเกตเห็นความผิดปกติถ้าไม่มี guarantee เหล่านี้\nเปรียบเทียบกับ consistency model ระดับระบบทั้งหมด",
+          "position": 5
+        },
+        {
+          "slug": "quorum-protocols",
+          "title": "Quorum Protocols",
+          "outline": "อธิบายหลักการ quorum-based read/write ด้วยสูตร R+W>N\nยกตัวอย่างการปรับ quorum เพื่อ trade-off ระหว่าง consistency กับ availability\nเชื่อมโยงกับระบบ distributed database ที่ใช้ quorum จริง",
+          "position": 6
+        },
+        {
+          "slug": "crdt-intro",
+          "title": "Introduction to CRDTs",
+          "outline": "อธิบายแนวคิด Conflict-free Replicated Data Type ที่ merge กันได้โดยไม่ conflict\nยกตัวอย่างประเภทพื้นฐาน เช่น counter หรือ set แบบ CRDT\nเชื่อมโยงกับการใช้งานในระบบที่ต้องการ high availability แบบ multi-writer",
+          "position": 7
+        }
+      ]
+    },
+    {
+      "slug": "fault-tolerance",
+      "title": "Fault Tolerance",
+      "position": 7,
+      "concepts": [
+        {
+          "slug": "failure-models",
+          "title": "Failure Models",
+          "outline": "อธิบายประเภทของ failure เช่น crash, omission, timing, byzantine\nเน้นว่าการออกแบบระบบต้องระบุ failure model ที่รองรับให้ชัดเจน\nยกตัวอย่างผลกระทบเมื่อ assumption เรื่อง failure model ผิด",
+          "position": 1
+        },
+        {
+          "slug": "failure-detection",
+          "title": "Failure Detection",
+          "outline": "อธิบายกลไก failure detector เช่น heartbeat และ timeout\nเตือนข้อจำกัดพื้นฐานที่แยกไม่ออกระหว่าง node ตายกับ network ช้า\nยกตัวอย่างการปรับ timeout เพื่อ trade-off ความไวกับ false positive",
+          "position": 2
+        },
+        {
+          "slug": "process-resilience",
+          "title": "Process Resilience",
+          "outline": "อธิบายเทคนิคทำให้ process ทนต่อความล้มเหลว เช่น replication group และ redundancy\nยกตัวอย่างกลยุทธ์ active replication กับ passive replication\nเชื่อมโยงกับจำนวน replica ที่ต้องมีเพื่อทน failure ได้ตามต้องการ",
+          "position": 3
+        },
+        {
+          "slug": "consensus-raft",
+          "title": "Consensus & Raft",
+          "outline": "อธิบายปัญหา consensus และเหตุผลที่ยากในระบบ distributed\nอธิบายภาพรวม Raft algorithm: leader election, log replication\nเชื่อมโยงกับการใช้ consensus algorithm ในระบบจริง เช่น etcd",
+          "position": 4
+        },
+        {
+          "slug": "two-phase-commit",
+          "title": "Two-Phase Commit",
+          "outline": "อธิบายขั้นตอน two-phase commit สำหรับ distributed transaction\nเตือนจุดอ่อนเรื่อง blocking เมื่อ coordinator ล่ม\nเปรียบเทียบกับแนวทาง saga ที่จะพูดถึงถัดไป",
+          "position": 5
+        },
+        {
+          "slug": "sagas-compensation",
+          "title": "Sagas & Compensation",
+          "outline": "อธิบาย saga pattern สำหรับจัดการ transaction ข้าม service โดยไม่ล็อกยาว\nอธิบายแนวคิด compensating transaction เมื่อ step ใด step หนึ่งล้มเหลว\nเปรียบเทียบ choreography กับ orchestration saga",
+          "position": 6
+        },
+        {
+          "slug": "recovery-checkpointing",
+          "title": "Recovery & Checkpointing",
+          "outline": "อธิบายเทคนิค checkpointing เพื่อลดงานที่ต้อง redo หลัง crash\nยกตัวอย่างการ recovery จาก checkpoint ร่วมกับ log\nเชื่อมโยงกับ trade-off ระหว่างความถี่ checkpoint กับ overhead",
+          "position": 7
+        }
+      ]
+    },
+    {
+      "slug": "interview-patterns",
+      "title": "Interview Patterns",
+      "position": 8,
+      "concepts": [
+        {
+          "slug": "cap-pacelc",
+          "title": "CAP & PACELC",
+          "outline": "อธิบาย CAP theorem และข้อจำกัดในการเลือก consistency หรือ availability เมื่อ partition เกิด\nอธิบาย PACELC ที่ขยายให้คิดถึง latency-consistency trade-off แม้ไม่มี partition\nยกตัวอย่างระบบจริงที่เลือกจุดต่างกันบนสเปกตรัมนี้",
+          "position": 1
+        },
+        {
+          "slug": "partitioning-sharding",
+          "title": "Partitioning & Sharding",
+          "outline": "อธิบายเทคนิคแบ่งข้อมูลออกเป็น shard เพื่อ scale เขียน/อ่าน\nยกตัวอย่างกลยุทธ์ partition เช่น range-based, hash-based, consistent hashing\nเตือนปัญหา hot shard และ rebalancing เมื่อ node เปลี่ยนแปลง",
+          "position": 2
+        },
+        {
+          "slug": "idempotency-retries",
+          "title": "Idempotency & Retries",
+          "outline": "อธิบายว่าทำไม operation ต้อง idempotent เมื่อ client ทำการ retry\nยกตัวอย่างเทคนิค เช่น idempotency key หรือ deduplication\nเชื่อมโยงกับ delivery guarantee ที่ไม่การันตี exactly-once โดยธรรมชาติ",
+          "position": 3
+        },
+        {
+          "slug": "backpressure-rate-limiting",
+          "title": "Backpressure & Rate Limiting",
+          "outline": "อธิบายแนวคิด backpressure เพื่อป้องกัน consumer ล้นเมื่อ producer เร็วกว่า\nอธิบาย rate limiting algorithm พื้นฐาน เช่น token bucket\nยกตัวอย่างผลลัพธ์เมื่อระบบไม่มีกลไกเหล่านี้ภายใต้ load สูง",
+          "position": 4
+        },
+        {
+          "slug": "outbox-pattern",
+          "title": "Outbox Pattern",
+          "outline": "อธิบายปัญหา dual-write ระหว่าง database กับ message broker\nอธิบายวิธีแก้ด้วย outbox table และ relay process ที่ publish event ภายหลัง\nเชื่อมโยงกับการรักษา atomicity ระหว่าง state change กับ event",
+          "position": 5
+        },
+        {
+          "slug": "distributed-caching",
+          "title": "Distributed Caching",
+          "outline": "อธิบายกลยุทธ์ cache แบบ distributed เช่น cache-aside, write-through\nยกตัวอย่างปัญหา cache invalidation และ stale data ข้าม node\nเชื่อมโยงกับการเลือกใช้ consistent hashing กระจาย cache key",
+          "position": 6
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,428 @@
+{
+  "track": "dsa",
+  "slug": "dsa-neetcode-150",
+  "title": "DSA — NeetCode 150 Patterns",
+  "position": 5,
+  "chapters": [
+    {
+      "slug": "arrays-hashing",
+      "title": "Arrays & Hashing",
+      "position": 1,
+      "concepts": [
+        {
+          "slug": "hash-frequency",
+          "title": "Hash Frequency",
+          "outline": "อธิบาย pattern การใช้ hash map นับความถี่ของ element เพื่อลด time complexity จาก O(n^2) เหลือ O(n)\nยกตัวอย่างโจทย์แบบ frequency counting เช่น anagram หรือ duplicate detection\nเน้น trade-off ระหว่าง time O(n) กับ space O(n) ที่ต้องใช้ hash map",
+          "position": 1
+        },
+        {
+          "slug": "prefix-sums",
+          "title": "Prefix Sums",
+          "outline": "อธิบาย prefix sum array ที่ precompute ผลรวมสะสมเพื่อตอบ range sum query ได้ใน O(1)\nยกตัวอย่างเมื่อควรใช้ prefix sum แทนการวน loop ซ้ำทุกครั้ง\nเปรียบเทียบ time complexity: build O(n) ครั้งเดียว, query O(1) ต่อครั้ง",
+          "position": 2
+        },
+        {
+          "slug": "two-sum-family",
+          "title": "Two Sum Family",
+          "outline": "อธิบายกลุ่มโจทย์ two-sum/three-sum ที่ใช้ hash map หรือ sorted + two pointers หาคู่ที่ผลรวมตรงเป้า\nเปรียบเทียบ approach hash map O(n) space กับ two-pointer หลัง sort O(n log n) time O(1) space\nเน้นการปรับ pattern จาก two-sum ไป three-sum/four-sum",
+          "position": 3
+        }
+      ]
+    },
+    {
+      "slug": "two-pointers",
+      "title": "Two Pointers",
+      "position": 2,
+      "concepts": [
+        {
+          "slug": "converging",
+          "title": "Converging Pointers",
+          "outline": "อธิบาย two pointers ที่วิ่งเข้าหากันจากปลายสองข้างของ array หรือ string ที่ sorted แล้ว\nยกตัวอย่างโจทย์ตรวจ palindrome หรือหาคู่ผลรวมเป้าหมายใน sorted array\nเน้น time complexity O(n) เทียบกับ nested loop O(n^2)",
+          "position": 1
+        },
+        {
+          "slug": "in-place-partition",
+          "title": "In-Place Partition",
+          "outline": "อธิบายการใช้ two pointers แบ่งกลุ่ม element ใน array แบบ in-place โดยไม่ใช้ extra space\nยกตัวอย่างโจทย์ move zeroes หรือ sort colors (Dutch national flag)\nเน้น time O(n) space O(1) เป็นข้อได้เปรียบหลักของ pattern นี้",
+          "position": 2
+        }
+      ]
+    },
+    {
+      "slug": "sliding-window",
+      "title": "Sliding Window",
+      "position": 3,
+      "concepts": [
+        {
+          "slug": "fixed",
+          "title": "Fixed-Size Window",
+          "outline": "อธิบาย fixed-size sliding window ที่ขนาด window คงที่ เลื่อนทีละ 1 แล้วอัปเดตผลลัพธ์แบบ incremental\nยกตัวอย่างโจทย์ max sum of subarray ขนาด k\nเน้น time complexity O(n) แทนที่จะ recompute ทุก window เป็น O(n*k)",
+          "position": 1
+        },
+        {
+          "slug": "variable-shrink",
+          "title": "Variable-Size Window (Shrink)",
+          "outline": "อธิบาย variable-size window ที่ขยาย/หด window ตามเงื่อนไข แล้วใช้ two pointers ควบคุมขอบเขต\nยกตัวอย่างโจทย์ smallest subarray ที่ผลรวม >= target หรือ longest substring without repeat\nเน้น time complexity O(n) เพราะแต่ละ pointer เดินหน้าอย่างเดียวไม่ถอยหลัง",
+          "position": 2
+        }
+      ]
+    },
+    {
+      "slug": "stack",
+      "title": "Stack",
+      "position": 4,
+      "concepts": [
+        {
+          "slug": "monotonic-stack",
+          "title": "Monotonic Stack",
+          "outline": "อธิบาย monotonic stack ที่รักษาลำดับ increasing หรือ decreasing เพื่อหา next greater/smaller element\nยกตัวอย่างโจทย์ daily temperatures หรือ largest rectangle in histogram\nเน้น time complexity O(n) เพราะแต่ละ element เข้า-ออก stack แค่ครั้งเดียว",
+          "position": 1
+        },
+        {
+          "slug": "matching-pairs",
+          "title": "Matching Pairs",
+          "outline": "อธิบายการใช้ stack จับคู่ opening-closing เช่น parenthesis matching หรือ nested structure validation\nยกตัวอย่างโจทย์ valid parentheses หรือ decode string\nเน้น time complexity O(n) และเหตุผลว่าทำไม stack เหมาะกับปัญหาที่มีลำดับ LIFO",
+          "position": 2
+        }
+      ]
+    },
+    {
+      "slug": "binary-search",
+      "title": "Binary Search",
+      "position": 5,
+      "concepts": [
+        {
+          "slug": "on-index",
+          "title": "Binary Search on Index",
+          "outline": "อธิบาย binary search แบบดั้งเดิมบน sorted array เพื่อหา target index ใน O(log n)\nยกตัวอย่างโจทย์ search in sorted array หรือ find first/last occurrence\nเน้นเงื่อนไข invariant ของ pointer low/high ที่ต้อง converge ถูกต้อง",
+          "position": 1
+        },
+        {
+          "slug": "on-answer-space",
+          "title": "Binary Search on Answer Space",
+          "outline": "อธิบาย binary search on answer ที่ binary search บน range ของคำตอบที่เป็นไปได้ ไม่ใช่ index ของ array\nยกตัวอย่างโจทย์ minimize max/maximize min เช่น split array largest sum\nเน้นการออกแบบ predicate function ที่ monotonic เพื่อให้ binary search ใช้ได้",
+          "position": 2
+        },
+        {
+          "slug": "rotated-arrays",
+          "title": "Rotated Arrays",
+          "outline": "อธิบายการปรับ binary search ให้ทำงานกับ rotated sorted array ที่มีจุดหมุนไม่รู้ตำแหน่ง\nยกตัวอย่างโจทย์ search in rotated sorted array หรือ find minimum in rotated array\nเน้นการเช็คว่าฝั่งไหนของ mid ยัง sorted อยู่ก่อนตัดสินใจเลื่อน pointer",
+          "position": 3
+        }
+      ]
+    },
+    {
+      "slug": "linked-list",
+      "title": "Linked List",
+      "position": 6,
+      "concepts": [
+        {
+          "slug": "reversal",
+          "title": "Reversal",
+          "outline": "อธิบายเทคนิค reverse linked list แบบ iterative ด้วย pointer prev/curr/next\nยกตัวอย่างโจทย์ reverse linked list ทั้งเส้นหรือ reverse เฉพาะช่วง\nเน้น time complexity O(n) space O(1) เทียบกับ recursive ที่กิน stack space",
+          "position": 1
+        },
+        {
+          "slug": "fast-slow-cycle",
+          "title": "Fast & Slow Pointers (Cycle Detection)",
+          "outline": "อธิบาย Floyd's cycle detection ด้วย fast/slow pointer เพื่อหา cycle หรือจุดกึ่งกลาง list\nยกตัวอย่างโจทย์ linked list cycle หรือ find middle of linked list\nเน้น time O(n) space O(1) โดยไม่ต้องใช้ hash set เก็บ node ที่เจอแล้ว",
+          "position": 2
+        },
+        {
+          "slug": "merge",
+          "title": "Merge",
+          "outline": "อธิบายเทคนิค merge สอง linked list ที่ sorted แล้วให้เป็น list เดียวโดยไม่สร้าง node ใหม่\nยกตัวอย่างโจทย์ merge two sorted lists หรือ merge k sorted lists ร่วมกับ heap\nเน้น time complexity O(n+m) สำหรับสอง list หรือ O(n log k) เมื่อรวม k list ด้วย heap",
+          "position": 3
+        }
+      ]
+    },
+    {
+      "slug": "trees",
+      "title": "Trees",
+      "position": 7,
+      "concepts": [
+        {
+          "slug": "dfs-patterns",
+          "title": "DFS Patterns",
+          "outline": "อธิบาย DFS บน binary tree ทั้งแบบ preorder, inorder, postorder และการใช้ recursion\nยกตัวอย่างโจทย์ path sum, max depth, diameter of tree\nเน้น time complexity O(n) เพราะเยี่ยมทุก node ครั้งเดียว space O(h) ตาม recursion stack",
+          "position": 1
+        },
+        {
+          "slug": "bfs-level-order",
+          "title": "BFS Level Order",
+          "outline": "อธิบาย BFS บน tree ด้วย queue เพื่อประมวลผลทีละ level\nยกตัวอย่างโจทย์ level order traversal หรือ right side view\nเน้น time complexity O(n) space O(w) ตามความกว้างสุดของ tree",
+          "position": 2
+        },
+        {
+          "slug": "bst-properties",
+          "title": "BST Properties",
+          "outline": "อธิบายคุณสมบัติ BST ที่ left < root < right และการใช้ inorder traversal คืนค่าเรียงลำดับ\nยกตัวอย่างโจทย์ validate BST หรือ kth smallest element in BST\nเน้นว่า operation ส่วนใหญ่ทำได้ O(log n) เมื่อ tree balanced แต่ O(n) เมื่อ skewed",
+          "position": 3
+        },
+        {
+          "slug": "lca",
+          "title": "Lowest Common Ancestor",
+          "outline": "อธิบาย Lowest Common Ancestor คือ node ลึกที่สุดที่เป็นบรรพบุรุษร่วมของสอง node\nยกตัวอย่างวิธีหา LCA ต่างกันระหว่าง BST (ใช้ property) กับ binary tree ทั่วไป (recursive)\nเน้น time complexity O(n) สำหรับ binary tree ทั่วไป หรือ O(log n) สำหรับ BST ที่ balanced",
+          "position": 4
+        },
+        {
+          "slug": "serialization",
+          "title": "Serialization",
+          "outline": "อธิบายการแปลง tree เป็น string (serialize) และแปลงกลับ (deserialize) เพื่อเก็บหรือส่งข้อมูล\nยกตัวอย่างการใช้ preorder traversal พร้อม marker แทน null child\nเน้น time complexity O(n) ทั้งสองทิศทาง",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "tries",
+      "title": "Tries",
+      "position": 8,
+      "concepts": [
+        {
+          "slug": "build-search",
+          "title": "Build & Search",
+          "outline": "อธิบายโครงสร้าง Trie ที่แต่ละ node แทนตัวอักษร ใช้ insert และ search คำได้ใน O(L) ตามความยาวคำ\nยกตัวอย่างการ implement Trie ด้วย map หรือ array ของ children\nเน้นข้อได้เปรียบเทียบกับ hash set เมื่อต้องหา prefix",
+          "position": 1
+        },
+        {
+          "slug": "word-search-with-trie",
+          "title": "Word Search with Trie",
+          "outline": "อธิบายการรวม Trie เข้ากับ DFS/backtracking บน grid เพื่อค้นหาหลายคำพร้อมกันอย่างมีประสิทธิภาพ\nยกตัวอย่างโจทย์ word search II ที่ต้อง prune กิ่งที่ไม่มีทางเป็นคำ\nเน้นว่า Trie ช่วยตัด search space เมื่อเทียบกับการค้นแต่ละคำแยกกัน",
+          "position": 2
+        }
+      ]
+    },
+    {
+      "slug": "heap",
+      "title": "Heap",
+      "position": 9,
+      "concepts": [
+        {
+          "slug": "top-k",
+          "title": "Top-K Elements",
+          "outline": "อธิบายการใช้ min-heap หรือ max-heap ขนาด k เพื่อหา top-k element โดยไม่ต้อง sort ทั้ง array\nยกตัวอย่างโจทย์ kth largest element หรือ top k frequent elements\nเน้น time complexity O(n log k) ดีกว่า sort ทั้งหมดที่ O(n log n)",
+          "position": 1
+        },
+        {
+          "slug": "two-heaps-median",
+          "title": "Two Heaps Median",
+          "outline": "อธิบายเทคนิคใช้ max-heap ครึ่งล่างคู่กับ min-heap ครึ่งบนเพื่อหา median ของ stream ข้อมูลแบบ real-time\nยกตัวอย่างโจทย์ find median from data stream\nเน้น time complexity O(log n) ต่อการ insert หนึ่งค่า ดีกว่า sort ใหม่ทุกครั้งที่ O(n log n)",
+          "position": 2
+        },
+        {
+          "slug": "k-way-merge",
+          "title": "K-Way Merge",
+          "outline": "อธิบายการใช้ min-heap รวม k sorted list/array เข้าด้วยกันโดยเลือกค่าน้อยสุดจาก head ของแต่ละ list\nยกตัวอย่างโจทย์ merge k sorted lists หรือ smallest range covering elements from k lists\nเน้น time complexity O(n log k) เมื่อ n คือจำนวน element ทั้งหมด",
+          "position": 3
+        }
+      ]
+    },
+    {
+      "slug": "backtracking",
+      "title": "Backtracking",
+      "position": 10,
+      "concepts": [
+        {
+          "slug": "subsets-permutations",
+          "title": "Subsets & Permutations",
+          "outline": "อธิบาย backtracking pattern สำหรับสร้าง subsets, permutations, combinations ด้วยการ choose-explore-unchoose\nยกตัวอย่างโจทย์ subsets, permutations, combination sum\nเน้น time complexity แบบ exponential O(2^n) หรือ O(n!) ตามลักษณะโจทย์",
+          "position": 1
+        },
+        {
+          "slug": "constraint-pruning",
+          "title": "Constraint Pruning",
+          "outline": "อธิบายการเพิ่ม constraint check เพื่อ prune กิ่งที่ไม่มีทางได้คำตอบออกจาก backtracking tree\nยกตัวอย่างโจทย์ N-queens หรือ sudoku solver ที่ต้อง prune ตาม constraint ทันทีที่ผิดกฎ\nเน้นว่า pruning ช่วยลด actual runtime มาก แม้ worst-case complexity ยังเป็น exponential",
+          "position": 2
+        }
+      ]
+    },
+    {
+      "slug": "graphs",
+      "title": "Graphs",
+      "position": 11,
+      "concepts": [
+        {
+          "slug": "representation-traversal",
+          "title": "Representation & Traversal",
+          "outline": "อธิบายวิธี represent graph ด้วย adjacency list/matrix และ traversal พื้นฐานด้วย DFS/BFS\nยกตัวอย่างโจทย์ clone graph หรือ find path between nodes\nเน้น time complexity O(V+E) สำหรับ traversal บน adjacency list",
+          "position": 1
+        },
+        {
+          "slug": "islands-components",
+          "title": "Islands & Components",
+          "outline": "อธิบายการใช้ DFS/BFS นับ connected component บน grid หรือ graph เช่น จำนวนเกาะ\nยกตัวอย่างโจทย์ number of islands หรือ number of connected components\nเน้น time complexity O(V+E) หรือ O(rows*cols) สำหรับ grid",
+          "position": 2
+        },
+        {
+          "slug": "topological-sort",
+          "title": "Topological Sort",
+          "outline": "อธิบาย topological sort สำหรับเรียงลำดับ node ใน DAG ตาม dependency ด้วย Kahn's algorithm หรือ DFS\nยกตัวอย่างโจทย์ course schedule หรือ task ordering ที่มี prerequisite\nเน้น time complexity O(V+E) และเงื่อนไขที่ทำไม่ได้เมื่อมี cycle",
+          "position": 3
+        },
+        {
+          "slug": "union-find",
+          "title": "Union-Find",
+          "outline": "อธิบาย Union-Find (Disjoint Set) พร้อม path compression และ union by rank เพื่อเช็ค connectivity\nยกตัวอย่างโจทย์ number of provinces หรือ redundant connection\nเน้น time complexity เกือบ O(1) amortized ต่อ operation ด้วย optimization ทั้งสอง",
+          "position": 4
+        }
+      ]
+    },
+    {
+      "slug": "advanced-graphs",
+      "title": "Advanced Graphs",
+      "position": 12,
+      "concepts": [
+        {
+          "slug": "dijkstra",
+          "title": "Dijkstra's Algorithm",
+          "outline": "อธิบาย Dijkstra's algorithm หาเส้นทางสั้นสุดจาก single source บน graph ที่มี weight ไม่ติดลบ ด้วย priority queue\nยกตัวอย่างโจทย์ network delay time หรือ cheapest flights\nเน้น time complexity O(E log V) ด้วย min-heap",
+          "position": 1
+        },
+        {
+          "slug": "mst",
+          "title": "Minimum Spanning Tree",
+          "outline": "อธิบาย Minimum Spanning Tree ด้วย Prim's หรือ Kruskal's algorithm เพื่อเชื่อมทุก node ด้วย cost น้อยสุด\nยกตัวอย่างโจทย์ min cost to connect all points\nเน้น time complexity O(E log E) สำหรับ Kruskal's ด้วย union-find",
+          "position": 2
+        },
+        {
+          "slug": "bellman-ford",
+          "title": "Bellman-Ford Algorithm",
+          "outline": "อธิบาย Bellman-Ford algorithm หาเส้นทางสั้นสุดที่รองรับ weight ติดลบ และตรวจจับ negative cycle\nยกตัวอย่างโจทย์ cheapest flights within k stops\nเน้น time complexity O(V*E) ช้ากว่า Dijkstra แต่รองรับ negative weight ได้",
+          "position": 3
+        }
+      ]
+    },
+    {
+      "slug": "dp-1d",
+      "title": "1-D Dynamic Programming",
+      "position": 13,
+      "concepts": [
+        {
+          "slug": "memo-vs-tabulation",
+          "title": "Memoization vs Tabulation",
+          "outline": "อธิบายความต่างระหว่าง top-down memoization (recursion + cache) กับ bottom-up tabulation (iterative array)\nยกตัวอย่างการแปลง recursive solution ให้เป็น DP ทั้งสองแบบ\nเน้น trade-off: memoization เขียนง่ายกว่าแต่กิน stack, tabulation control space ได้ดีกว่า",
+          "position": 1
+        },
+        {
+          "slug": "house-robber-family",
+          "title": "House Robber Family",
+          "outline": "อธิบาย DP pattern เลือกหรือไม่เลือก element ติดกันไม่ได้ ด้วย state dp[i] = max(dp[i-1], dp[i-2]+nums[i])\nยกตัวอย่างโจทย์ house robber และ house robber II (circular array)\nเน้น time complexity O(n) space ลดเหลือ O(1) ได้ด้วย rolling variable",
+          "position": 2
+        },
+        {
+          "slug": "coin-change",
+          "title": "Coin Change",
+          "outline": "อธิบาย unbounded knapsack pattern หาจำนวน coin น้อยสุดหรือจำนวนวิธีรวมเป็นเป้าหมาย\nยกตัวอย่างโจทย์ coin change (min coins) และ coin change II (count ways)\nเน้น time complexity O(amount * coins) และความต่างของ loop order ระหว่าง permutation กับ combination",
+          "position": 3
+        },
+        {
+          "slug": "lis",
+          "title": "Longest Increasing Subsequence",
+          "outline": "อธิบาย Longest Increasing Subsequence ด้วย DP O(n^2) หรือ binary search + patience sorting O(n log n)\nยกตัวอย่างการ trace dp[i] = longest subsequence ที่ลงท้ายที่ index i\nเน้นการเลือก approach ตาม constraint ของ n ในโจทย์",
+          "position": 4
+        }
+      ]
+    },
+    {
+      "slug": "dp-2d",
+      "title": "2-D Dynamic Programming",
+      "position": 14,
+      "concepts": [
+        {
+          "slug": "grid-paths",
+          "title": "Grid Paths",
+          "outline": "อธิบาย DP บน 2D grid เพื่อนับจำนวนเส้นทางหรือหา path cost ต่ำสุดจากมุมหนึ่งไปอีกมุม\nยกตัวอย่างโจทย์ unique paths หรือ minimum path sum\nเน้น time complexity O(rows*cols) space ลดเหลือ O(cols) ได้ด้วย rolling row",
+          "position": 1
+        },
+        {
+          "slug": "lcs-edit-distance",
+          "title": "Longest Common Subsequence & Edit Distance",
+          "outline": "อธิบาย DP บนสอง string ด้วย 2D table เพื่อหา longest common subsequence หรือ edit distance\nยกตัวอย่างโจทย์ longest common subsequence และ edit distance (Levenshtein)\nเน้น time complexity O(m*n) ตามความยาวสอง string",
+          "position": 2
+        },
+        {
+          "slug": "knapsack-01",
+          "title": "0/1 Knapsack",
+          "outline": "อธิบาย 0/1 knapsack ที่แต่ละ item เลือกได้ครั้งเดียว ต่างจาก unbounded knapsack\nยกตัวอย่างโจทย์ partition equal subset sum หรือ target sum\nเน้น time complexity O(n*capacity) และการลด space เหลือ O(capacity) ด้วย 1D array วน backward",
+          "position": 3
+        }
+      ]
+    },
+    {
+      "slug": "greedy",
+      "title": "Greedy",
+      "position": 15,
+      "concepts": [
+        {
+          "slug": "exchange-argument",
+          "title": "Exchange Argument",
+          "outline": "อธิบาย exchange argument วิธีพิสูจน์ว่า greedy choice ถูกต้องโดยแสดงว่า swap แล้วไม่แย่ลง\nยกตัวอย่างโจทย์ assign cookies หรือ task scheduling ที่พิสูจน์ด้วยการ sort ก่อนโลภ\nเน้นว่า greedy ต้องพิสูจน์ optimality ไม่ใช่เดาว่าใช้ได้",
+          "position": 1
+        },
+        {
+          "slug": "jump-gas",
+          "title": "Jump Game & Gas Station",
+          "outline": "อธิบาย greedy pattern สำหรับโจทย์ reachability เช่น jump game และ gas station ด้วยการ track ค่า feasible ระหว่างวน loop เดียว\nยกตัวอย่างโจทย์ jump game (max reach) และ gas station (total tank ไม่ติดลบ)\nเน้น time complexity O(n) เทียบกับ backtracking ที่ exponential",
+          "position": 2
+        }
+      ]
+    },
+    {
+      "slug": "intervals",
+      "title": "Intervals",
+      "position": 16,
+      "concepts": [
+        {
+          "slug": "sort-merge",
+          "title": "Sort & Merge",
+          "outline": "อธิบาย pattern sort interval ตาม start แล้ว merge ที่ overlap กันเป็น interval เดียว\nยกตัวอย่างโจทย์ merge intervals หรือ insert interval\nเน้น time complexity O(n log n) จากการ sort เป็นหลัก",
+          "position": 1
+        },
+        {
+          "slug": "sweep-line-rooms",
+          "title": "Sweep Line (Meeting Rooms)",
+          "outline": "อธิบาย sweep line technique แยก event start/end แล้ววนตามเวลาเพื่อนับจำนวน resource ที่ใช้พร้อมกัน\nยกตัวอย่างโจทย์ meeting rooms II หรือ minimum number of platforms\nเน้น time complexity O(n log n) จากการ sort events",
+          "position": 2
+        }
+      ]
+    },
+    {
+      "slug": "math-geometry",
+      "title": "Math & Geometry",
+      "position": 17,
+      "concepts": [
+        {
+          "slug": "matrix-ops",
+          "title": "Matrix Operations",
+          "outline": "อธิบาย pattern การหมุน, transpose, หรือ traverse matrix แบบ in-place\nยกตัวอย่างโจทย์ rotate image หรือ spiral matrix\nเน้น time complexity O(rows*cols) space O(1) เมื่อทำ in-place ได้",
+          "position": 1
+        },
+        {
+          "slug": "number-theory-basics",
+          "title": "Number Theory Basics",
+          "outline": "อธิบายพื้นฐาน number theory ที่ใช้บ่อยใน DSA เช่น GCD, prime sieve, modular arithmetic\nยกตัวอย่างโจทย์ happy number หรือ count primes ด้วย Sieve of Eratosthenes\nเน้น time complexity เช่น O(n log log n) สำหรับ sieve",
+          "position": 2
+        }
+      ]
+    },
+    {
+      "slug": "bit-manipulation",
+      "title": "Bit Manipulation",
+      "position": 18,
+      "concepts": [
+        {
+          "slug": "bit-tricks",
+          "title": "Bit Tricks",
+          "outline": "อธิบาย bit trick พื้นฐานเช่น check power of two, count set bits, ใช้ AND/OR/shift แทนการคำนวณปกติ\nยกตัวอย่างโจทย์ number of 1 bits หรือ counting bits\nเน้น time complexity O(1) ถึง O(log n) ต่อ operation ขึ้นกับ trick ที่ใช้",
+          "position": 1
+        },
+        {
+          "slug": "xor-patterns",
+          "title": "XOR Patterns",
+          "outline": "อธิบายคุณสมบัติ XOR (a^a=0, a^0=a) ที่ใช้หา element ที่ไม่ซ้ำหรือค่าที่หายไปโดยไม่ใช้ extra space\nยกตัวอย่างโจทย์ single number หรือ missing number\nเน้น time complexity O(n) space O(1) ซึ่งดีกว่าการใช้ hash set",
+          "position": 2
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,258 @@
+{
+  "track": "aws",
+  "slug": "aws-saa-c03",
+  "title": "AWS Certified Solutions Architect Associate (SAA-C03)",
+  "position": 3,
+  "chapters": [
+    {
+      "slug": "secure-architectures",
+      "title": "Secure Architectures",
+      "position": 1,
+      "concepts": [
+        {
+          "slug": "iam-users-roles-policies",
+          "title": "IAM Users, Roles & Policies",
+          "outline": "อธิบายความแตกต่างระหว่าง IAM User, IAM Role และ IAM Policy\nยกตัวอย่างการใช้ Role สำหรับ EC2 หรือ Lambda แทนการฝัง credential\nเน้น principle of least privilege ในการออกแบบ policy",
+          "position": 1
+        },
+        {
+          "slug": "iam-policy-evaluation",
+          "title": "IAM Policy Evaluation Logic",
+          "outline": "อธิบายลำดับการประเมิน IAM policy: explicit deny > explicit allow > default deny\nยกตัวอย่างการรวม policy หลายชั้น เช่น identity-based กับ resource-based\nพูดถึง SCP ที่มาจำกัด permission เพิ่มอีกชั้น",
+          "position": 2
+        },
+        {
+          "slug": "organizations-scp",
+          "title": "AWS Organizations & Service Control Policies (SCPs)",
+          "outline": "อธิบาย AWS Organizations สำหรับจัดการหลาย account แบบรวมศูนย์\nอธิบาย Service Control Policy (SCP) ว่ากำหนด permission boundary สูงสุดของ account ในกลุ่ม\nยกตัวอย่างการใช้ OU (Organizational Unit) แบ่งกลุ่ม account",
+          "position": 3
+        },
+        {
+          "slug": "cognito",
+          "title": "Amazon Cognito",
+          "outline": "อธิบาย Amazon Cognito User Pools สำหรับ authentication และ Identity Pools สำหรับออก temporary AWS credential\nยกตัวอย่าง flow การ login ผ่าน Cognito แล้วแลก JWT token\nเชื่อมโยงกับการใช้งานร่วม API Gateway หรือ mobile app",
+          "position": 4
+        },
+        {
+          "slug": "kms-encryption",
+          "title": "AWS KMS & Encryption",
+          "outline": "อธิบาย AWS KMS จัดการ encryption key แบบ envelope encryption\nเปรียบเทียบ customer managed key กับ AWS managed key\nยกตัวอย่างการเข้ารหัสข้อมูลที่ rest ใน S3, EBS, RDS ผ่าน KMS",
+          "position": 5
+        },
+        {
+          "slug": "secrets-vs-parameter-store",
+          "title": "Secrets Manager vs Systems Manager Parameter Store",
+          "outline": "เปรียบเทียบ Secrets Manager กับ Systems Manager Parameter Store ในการเก็บ credential/config\nเน้นจุดต่าง เช่น automatic rotation และค่าใช้จ่าย\nยกตัวอย่างสถานการณ์ที่ควรเลือกใช้แต่ละบริการ",
+          "position": 6
+        },
+        {
+          "slug": "sg-vs-nacl",
+          "title": "Security Groups vs NACLs",
+          "outline": "อธิบายความแตกต่างระหว่าง Security Group (stateful) กับ NACL (stateless)\nเน้นว่า Security Group ทำงานระดับ instance ส่วน NACL ทำงานระดับ subnet\nยกตัวอย่างการออกแบบ rule ทั้งสองชั้นร่วมกัน",
+          "position": 7
+        },
+        {
+          "slug": "vpc-endpoints-privatelink",
+          "title": "VPC Endpoints & PrivateLink",
+          "outline": "อธิบาย VPC Endpoint แบบ Gateway (S3, DynamoDB) กับแบบ Interface (PrivateLink)\nเน้นว่าใช้เข้าถึง AWS service โดยไม่ผ่าน public internet\nยกตัวอย่างการออกแบบ PrivateLink สำหรับเชื่อม service ข้าม VPC",
+          "position": 8
+        },
+        {
+          "slug": "waf-shield",
+          "title": "AWS WAF & Shield",
+          "outline": "อธิบาย AWS WAF สำหรับกรอง web request ด้วย rule เช่น SQL injection, rate limit\nอธิบาย AWS Shield Standard/Advanced สำหรับป้องกัน DDoS\nยกตัวอย่างการวาง WAF หน้า CloudFront หรือ ALB",
+          "position": 9
+        },
+        {
+          "slug": "s3-security",
+          "title": "Amazon S3 Security",
+          "outline": "อธิบายกลไกความปลอดภัยของ S3: bucket policy, ACL, Block Public Access\nเน้นการเข้ารหัส SSE-S3, SSE-KMS และ access logging\nยกตัวอย่าง misconfiguration ที่ทำให้ bucket เปิด public โดยไม่ตั้งใจ",
+          "position": 10
+        }
+      ]
+    },
+    {
+      "slug": "resilient-architectures",
+      "title": "Resilient Architectures",
+      "position": 2,
+      "concepts": [
+        {
+          "slug": "regions-az-edge",
+          "title": "Regions, Availability Zones & Edge Locations",
+          "outline": "อธิบายโครงสร้าง Region, Availability Zone (AZ) และ Edge Location ของ AWS\nเน้นว่า AZ หลายแห่งในหนึ่ง Region เชื่อมด้วย low-latency network เพื่อทำ HA\nยกตัวอย่างการออกแบบ workload ให้ทนต่อการล่มของทั้ง AZ",
+          "position": 1
+        },
+        {
+          "slug": "elb-types",
+          "title": "Elastic Load Balancer Types",
+          "outline": "อธิบายความแตกต่างของ Application Load Balancer, Network Load Balancer และ Gateway Load Balancer\nเน้นว่าแต่ละแบบเหมาะกับ layer และ use case ไหน\nยกตัวอย่างการทำ health check และ target group",
+          "position": 2
+        },
+        {
+          "slug": "auto-scaling-groups",
+          "title": "Auto Scaling Groups",
+          "outline": "อธิบาย Auto Scaling Group (ASG) ทำงานร่วมกับ launch template และ scaling policy\nเน้นความแตกต่างของ target tracking, step scaling และ scheduled scaling\nยกตัวอย่างการออกแบบ ASG ร่วมกับ ELB เพื่อความยืดหยุ่น",
+          "position": 3
+        },
+        {
+          "slug": "rds-multi-az-read-replicas",
+          "title": "RDS Multi-AZ & Read Replicas",
+          "outline": "อธิบาย RDS Multi-AZ สำหรับ high availability ด้วย synchronous replication\nเปรียบเทียบกับ Read Replica ที่ใช้ asynchronous replication เพื่อ scale read\nเน้นว่า Multi-AZ ไม่ได้ช่วยเรื่อง read scaling",
+          "position": 4
+        },
+        {
+          "slug": "aurora-ha",
+          "title": "Amazon Aurora High Availability",
+          "outline": "อธิบายสถาปัตยกรรม Aurora storage ที่กระจายข้อมูลข้าม 3 AZ อัตโนมัติ\nเน้น Aurora Replica และ failover ที่เร็วกว่า RDS ทั่วไป\nยกตัวอย่าง Aurora Global Database สำหรับ multi-region DR",
+          "position": 5
+        },
+        {
+          "slug": "sqs-sns-decoupling",
+          "title": "SQS & SNS for Decoupling",
+          "outline": "อธิบาย SQS ใช้ decouple service แบบ queue point-to-point\nอธิบาย SNS ใช้ทำ pub/sub แบบ fan-out ไปหลาย subscriber\nยกตัวอย่างการรวม SNS+SQS เพื่อ fan-out แบบ reliable",
+          "position": 6
+        },
+        {
+          "slug": "eventbridge",
+          "title": "Amazon EventBridge",
+          "outline": "อธิบาย EventBridge เป็น event bus สำหรับเชื่อม service แบบ event-driven\nเน้นการใช้ rule และ pattern matching เพื่อ route event ไปยัง target\nยกตัวอย่างการเชื่อม third-party SaaS ผ่าน partner event source",
+          "position": 7
+        },
+        {
+          "slug": "route53-routing-policies",
+          "title": "Route 53 Routing Policies",
+          "outline": "อธิบาย Route 53 routing policy: simple, weighted, latency, failover, geolocation\nยกตัวอย่างการใช้ health check ร่วมกับ failover routing\nเน้นว่าแต่ละ policy เหมาะกับสถานการณ์ HA หรือ traffic management แบบไหน",
+          "position": 8
+        },
+        {
+          "slug": "dr-strategies",
+          "title": "Disaster Recovery Strategies",
+          "outline": "อธิบาย 4 กลยุทธ์ disaster recovery: backup & restore, pilot light, warm standby, multi-site active-active\nเน้น trade-off ระหว่าง RTO/RPO กับต้นทุน\nยกตัวอย่างการเลือกกลยุทธ์ตาม business requirement",
+          "position": 9
+        },
+        {
+          "slug": "backup-strategies",
+          "title": "AWS Backup Strategies",
+          "outline": "อธิบาย AWS Backup สำหรับจัดการ backup แบบรวมศูนย์ข้ามหลายบริการ\nเน้น backup plan, retention policy และ cross-region copy\nยกตัวอย่างการทำ automated backup สำหรับ RDS, EBS, DynamoDB",
+          "position": 10
+        }
+      ]
+    },
+    {
+      "slug": "high-performing",
+      "title": "High-Performing Architectures",
+      "position": 3,
+      "concepts": [
+        {
+          "slug": "ec2-families-purchasing",
+          "title": "EC2 Instance Families & Purchasing Options",
+          "outline": "อธิบายกลุ่ม EC2 instance family หลัก เช่น general purpose, compute optimized, memory optimized\nอธิบาย purchasing option: On-Demand, Reserved, Savings Plans, Spot\nยกตัวอย่างการเลือก instance type ตาม workload",
+          "position": 1
+        },
+        {
+          "slug": "ebs-efs-instance-store",
+          "title": "EBS, EFS & Instance Store",
+          "outline": "เปรียบเทียบ EBS (block storage ผูกกับ AZ), EFS (shared file system) และ Instance Store (ephemeral)\nเน้นเรื่อง persistence และ use case ที่เหมาะกับแต่ละแบบ\nยกตัวอย่าง EBS volume type เช่น gp3, io2",
+          "position": 2
+        },
+        {
+          "slug": "s3-performance",
+          "title": "Amazon S3 Performance",
+          "outline": "อธิบายเทคนิคเพิ่ม performance ของ S3 เช่น request rate scaling อัตโนมัติ\nเน้น multipart upload และ S3 Transfer Acceleration\nยกตัวอย่างการออกแบบ key naming เพื่อลด throttling",
+          "position": 3
+        },
+        {
+          "slug": "cloudfront",
+          "title": "Amazon CloudFront",
+          "outline": "อธิบาย CloudFront เป็น CDN ที่ cache content ที่ edge location\nเน้น origin (S3/ALB) การทำ cache invalidation และ signed URL\nยกตัวอย่างการใช้ CloudFront ลด latency และ load บน origin",
+          "position": 4
+        },
+        {
+          "slug": "elasticache",
+          "title": "Amazon ElastiCache",
+          "outline": "อธิบาย ElastiCache รองรับ Redis และ Memcached สำหรับ in-memory cache\nเปรียบเทียบ use case ที่ต้องการ persistence/replication (Redis) กับแบบง่าย (Memcached)\nยกตัวอย่างการใช้ cache-aside pattern ลด load บน database",
+          "position": 5
+        },
+        {
+          "slug": "dynamodb-fundamentals",
+          "title": "DynamoDB Fundamentals",
+          "outline": "อธิบาย DynamoDB เป็น NoSQL key-value/document database แบบ managed\nอธิบาย partition key, sort key และการออกแบบ table เพื่อกระจาย load\nยกตัวอย่าง read/write capacity mode: on-demand กับ provisioned",
+          "position": 6
+        },
+        {
+          "slug": "dynamodb-advanced",
+          "title": "DynamoDB Advanced Patterns",
+          "outline": "อธิบาย Global Secondary Index (GSI) และ Local Secondary Index (LSI)\nเน้น DynamoDB Streams สำหรับ capture การเปลี่ยนแปลงข้อมูล\nยกตัวอย่าง Global Table สำหรับ multi-region replication",
+          "position": 7
+        },
+        {
+          "slug": "rds-performance",
+          "title": "RDS Performance",
+          "outline": "อธิบายเทคนิคเพิ่ม performance ของ RDS เช่น instance class, storage type (io1/gp3)\nเน้น Performance Insights สำหรับวิเคราะห์ bottleneck\nยกตัวอย่างการใช้ Read Replica แบ่งเบา read-heavy workload",
+          "position": 8
+        },
+        {
+          "slug": "kinesis",
+          "title": "Amazon Kinesis",
+          "outline": "อธิบาย Kinesis Data Streams สำหรับประมวลผล real-time streaming data\nเปรียบเทียบกับ Kinesis Data Firehose ที่ load ข้อมูลไปยัง destination อัตโนมัติ\nยกตัวอย่างการใช้ shard และ consumer ในการ scale throughput",
+          "position": 9
+        },
+        {
+          "slug": "athena-glue",
+          "title": "Amazon Athena & AWS Glue",
+          "outline": "อธิบาย Athena สำหรับ query ข้อมูลบน S3 ด้วย SQL แบบ serverless\nอธิบาย AWS Glue สำหรับ ETL และสร้าง Glue Data Catalog\nยกตัวอย่างการใช้ Glue Crawler สร้าง schema ให้ Athena query",
+          "position": 10
+        },
+        {
+          "slug": "lambda-performance",
+          "title": "AWS Lambda Performance",
+          "outline": "อธิบายปัจจัยที่กระทบ performance ของ Lambda เช่น cold start, memory allocation\nเน้นการตั้งค่า concurrency (reserved/provisioned) เพื่อลด latency\nยกตัวอย่างการออกแบบ function ให้ execute เร็วและประหยัด cost",
+          "position": 11
+        },
+        {
+          "slug": "ecs-eks-fargate",
+          "title": "ECS, EKS & Fargate",
+          "outline": "เปรียบเทียบ ECS (AWS-native orchestration) กับ EKS (managed Kubernetes)\nอธิบาย Fargate เป็น serverless compute engine ที่ไม่ต้องจัดการ EC2 เอง\nยกตัวอย่างการเลือกใช้ launch type ตามความต้องการ control และ ecosystem",
+          "position": 12
+        }
+      ]
+    },
+    {
+      "slug": "cost-optimized",
+      "title": "Cost-Optimized Architectures",
+      "position": 4,
+      "concepts": [
+        {
+          "slug": "pricing-models-ri-sp-spot",
+          "title": "Pricing Models: Reserved Instances, Savings Plans & Spot",
+          "outline": "เปรียบเทียบ Reserved Instance, Savings Plans และ Spot Instance ในการลดต้นทุน compute\nเน้น trade-off ระหว่าง commitment, ความยืดหยุ่น และความเสี่ยงถูก interrupt\nยกตัวอย่างการผสม pricing model ตาม workload pattern",
+          "position": 1
+        },
+        {
+          "slug": "s3-storage-classes-lifecycle",
+          "title": "S3 Storage Classes & Lifecycle Policies",
+          "outline": "อธิบาย S3 storage class: Standard, IA, One Zone-IA, Glacier tiers\nเน้น lifecycle policy สำหรับย้ายข้อมูลอัตโนมัติตามอายุการใช้งาน\nยกตัวอย่างการเลือก storage class ตาม access pattern",
+          "position": 2
+        },
+        {
+          "slug": "compute-cost-optimization",
+          "title": "Compute Cost Optimization",
+          "outline": "อธิบายแนวทางลดต้นทุน compute เช่น right-sizing instance และใช้ Auto Scaling\nเน้นการเลือก purchasing option ให้เหมาะกับ workload ที่ predictable หรือ variable\nยกตัวอย่างการใช้ Compute Optimizer แนะนำขนาด instance",
+          "position": 3
+        },
+        {
+          "slug": "data-transfer-costs",
+          "title": "Data Transfer Costs",
+          "outline": "อธิบายโครงสร้างค่าใช้จ่าย data transfer: inbound ฟรี, outbound คิดเงิน, cross-AZ/cross-region\nเน้นวิธีลดต้นทุนด้วย CloudFront, VPC Endpoint หรือออกแบบ architecture ให้ traffic อยู่ใน AZ เดียวกัน\nยกตัวอย่างสถานการณ์ transfer cost ที่มักถูกมองข้าม",
+          "position": 4
+        },
+        {
+          "slug": "cost-tools-budgets",
+          "title": "AWS Cost Tools & Budgets",
+          "outline": "อธิบาย AWS Cost Explorer สำหรับวิเคราะห์และ forecast ค่าใช้จ่าย\nอธิบาย AWS Budgets สำหรับตั้ง alert เมื่อ spending เกินเกณฑ์\nยกตัวอย่างการใช้ Cost Allocation Tags แยกต้นทุนตาม project",
+          "position": 5
+        }
+      ]
+    }
+  ]
+}

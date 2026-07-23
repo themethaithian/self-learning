@@ -1,0 +1,248 @@
+{
+  "track": "go",
+  "slug": "deep-go",
+  "title": "Deep Go",
+  "position": 4,
+  "chapters": [
+    {
+      "slug": "runtime-scheduler",
+      "title": "Runtime & Scheduler",
+      "position": 1,
+      "concepts": [
+        {
+          "slug": "gmp-model",
+          "title": "GMP Scheduler Model",
+          "outline": "อธิบาย G (goroutine), M (OS thread), P (processor) และความสัมพันธ์ระหว่างสามส่วนนี้ใน Go scheduler\nอธิบาย local run queue กับ global run queue และ work-stealing ระหว่าง P\nยกตัวอย่างว่า GOMAXPROCS มีผลต่อจำนวน P อย่างไร",
+          "position": 1
+        },
+        {
+          "slug": "goroutine-stacks-growth",
+          "title": "Goroutine Stacks & Growth",
+          "outline": "อธิบายว่า goroutine เริ่มด้วย stack ขนาดเล็ก (2KB) และ grow แบบ dynamic ได้อย่างไร\nอธิบาย stack copying เมื่อ stack เต็มและ pointer adjustment ระหว่าง copy\nเปรียบเทียบกับ OS thread ที่มี fixed stack size ขนาดใหญ่กว่ามาก",
+          "position": 2
+        },
+        {
+          "slug": "preemption",
+          "title": "Preemption",
+          "outline": "อธิบายความแตกต่างระหว่าง cooperative preemption (แบบเก่า) กับ async preemption (Go 1.14+)\nอธิบายว่า sysmon ใช้ signal (SIGURG) เพื่อ preempt goroutine ที่ทำงานนานเกินไปอย่างไร\nยกตัวอย่างปัญหาก่อนมี async preemption เช่น tight loop บล็อก GC",
+          "position": 3
+        },
+        {
+          "slug": "netpoller",
+          "title": "Netpoller",
+          "outline": "อธิบายว่า netpoller ใช้ epoll/kqueue/IOCP ของ OS เพื่อทำ non-blocking I/O ให้ goroutine ที่รอ network\nอธิบายว่า goroutine ที่ block บน I/O ถูก park และ M ถูกปล่อยไปทำงานอื่นได้อย่างไร\nเชื่อมโยงกับว่าทำไม net/http server รองรับ concurrent connection จำนวนมากได้โดยไม่ต้องใช้ thread ต่อ connection",
+          "position": 4
+        },
+        {
+          "slug": "sysmon",
+          "title": "sysmon Background Monitor",
+          "outline": "อธิบายว่า sysmon เป็น thread พิเศษที่รันนอก GMP scheduling ปกติ ทำงานเป็น background loop ตลอดเวลา\nอธิบายหน้าที่หลัก เช่น force preemption, ปลุก netpoller, ตรวจ GC pacing\nเน้นว่า sysmon ไม่ผูกกับ P ใด ๆ ทำให้ทำงานได้แม้ scheduler ติดขัด",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "memory-gc",
+      "title": "Memory & GC",
+      "position": 2,
+      "concepts": [
+        {
+          "slug": "escape-analysis",
+          "title": "Escape Analysis",
+          "outline": "อธิบายว่า compiler ตัดสินใจอย่างไรว่าตัวแปรควรอยู่บน stack หรือ heap\nยกตัวอย่าง pattern ที่ทำให้ตัวแปร escape เช่น การคืน pointer หรือส่งผ่าน interface\nแนะนำวิธีตรวจด้วย go build -gcflags=\"-m\" และผลต่อ performance",
+          "position": 1
+        },
+        {
+          "slug": "allocator-layout",
+          "title": "Memory Allocator Layout",
+          "outline": "อธิบายโครงสร้าง allocator ของ Go: mspan, mcache, mcentral, mheap และความสัมพันธ์กัน\nอธิบาย size class และทำไม allocator แบ่ง object ตามขนาดเป็น class\nเชื่อมโยงกับว่า per-P mcache ช่วยลด lock contention ระหว่าง goroutine ได้อย่างไร",
+          "position": 2
+        },
+        {
+          "slug": "gc-tricolor-write-barriers",
+          "title": "Tricolor GC & Write Barriers",
+          "outline": "อธิบาย tricolor mark-and-sweep algorithm: white, grey, black และขั้นตอน mark-sweep\nอธิบายว่า write barrier ป้องกัน pointer ที่ mutator เขียนระหว่าง concurrent marking ไม่ให้หลุดหาย\nเชื่อมโยงกับ concurrent GC ของ Go ที่รันพร้อมกับ program โดยไม่ stop-the-world นาน",
+          "position": 3
+        },
+        {
+          "slug": "gc-pacing-gogc",
+          "title": "GC Pacing & GOGC",
+          "outline": "อธิบายว่า GC pacer ตัดสินใจเมื่อไรควรเริ่ม GC cycle รอบถัดไปจาก heap growth ratio\nอธิบายตัวแปร GOGC และ GOMEMLIMIT มีผลต่อความถี่ GC และ memory usage อย่างไร\nยกตัวอย่าง trade-off ระหว่าง CPU time กับ memory footprint เมื่อ tune ค่าเหล่านี้",
+          "position": 4
+        },
+        {
+          "slug": "stack-vs-heap-performance",
+          "title": "Stack vs Heap Performance",
+          "outline": "เปรียบเทียบต้นทุนการ allocate บน stack (แทบฟรี) กับ heap (ต้องผ่าน allocator และ GC)\nอธิบายผลของ allocation บน heap ต่อ GC pressure และ latency ของโปรแกรม\nยกตัวอย่างเทคนิคลด heap allocation เช่น การ reuse buffer หรือ sync.Pool",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "concurrency-internals",
+      "title": "Concurrency Internals",
+      "position": 3,
+      "concepts": [
+        {
+          "slug": "channel-internals-hchan",
+          "title": "Channel Internals (hchan)",
+          "outline": "อธิบายโครงสร้าง hchan: circular buffer, sendq, recvq และ lock ภายใน\nอธิบายพฤติกรรม unbuffered กับ buffered channel ตอน send/receive ต่างกันอย่างไร\nเชื่อมโยงกับว่าทำไม channel ถึงปลอดภัยสำหรับหลาย goroutine โดยไม่ต้อง lock เพิ่มเอง",
+          "position": 1
+        },
+        {
+          "slug": "select-implementation",
+          "title": "select Statement Implementation",
+          "outline": "อธิบายว่า runtime สุ่มเลือก case ที่พร้อมทำงานใน select อย่างไรเพื่อป้องกัน starvation\nอธิบายขั้นตอนเมื่อไม่มี case ไหนพร้อมและมี default เทียบกับไม่มี default\nยกตัวอย่างการใช้ select ทำ timeout หรือ cancellation ร่วมกับ context",
+          "position": 2
+        },
+        {
+          "slug": "mutex-internals",
+          "title": "Mutex Internals",
+          "outline": "อธิบาย sync.Mutex สองโหมด: normal mode กับ starvation mode และเงื่อนไขสลับโหมด\nอธิบาย spinning ก่อนเข้าสู่ sleep queue เพื่อลด context switch cost\nเตือนปัญหา lock contention และวิธีสังเกตจาก pprof",
+          "position": 3
+        },
+        {
+          "slug": "waitgroup-once-cond",
+          "title": "WaitGroup, Once & Cond",
+          "outline": "อธิบาย sync.WaitGroup ใช้ counter เพื่อรอ goroutine หลายตัวจบงานอย่างไร\nอธิบาย sync.Once รับประกัน initialization ทำครั้งเดียวแม้เรียกพร้อมกันหลาย goroutine\nอธิบาย sync.Cond ใช้ signal/broadcast ระหว่าง goroutine ที่รอ condition ร่วมกัน",
+          "position": 4
+        },
+        {
+          "slug": "atomics-memory-model",
+          "title": "Atomics & the Memory Model",
+          "outline": "อธิบาย sync/atomic operations และทำไมต้องใช้แทนการ read/write ตัวแปรตรง ๆ ข้าม goroutine\nอธิบาย Go memory model กำหนด happens-before relationship ระหว่าง goroutine ผ่าน channel หรือ lock\nยกตัวอย่าง data race ที่เกิดจากการมองข้าม memory model และวิธีตรวจด้วย race detector",
+          "position": 5
+        },
+        {
+          "slug": "context-propagation",
+          "title": "Context Propagation",
+          "outline": "อธิบายว่า context.Context ใช้ propagate cancellation, deadline และ value ผ่าน call chain อย่างไร\nอธิบายโครงสร้าง context แบบ tree ที่ cancel parent แล้ว cancel ลูกทั้งหมดตามไปด้วย\nเตือน anti-pattern เช่นเก็บ context ใน struct หรือใช้ context.Value พร่ำเพรื่อ",
+          "position": 6
+        },
+        {
+          "slug": "common-concurrency-bugs",
+          "title": "Common Concurrency Bugs",
+          "outline": "ยกตัวอย่าง data race, goroutine leak, deadlock และสาเหตุทั่วไปของแต่ละแบบ\nอธิบายวิธีตรวจจับด้วย race detector และ pprof goroutine profile\nแนะนำ pattern ป้องกัน เช่น ปิด channel ให้ถูกที่หรือใช้ context cancellation คุม lifecycle",
+          "position": 7
+        }
+      ]
+    },
+    {
+      "slug": "types-generics",
+      "title": "Types & Generics",
+      "position": 4,
+      "concepts": [
+        {
+          "slug": "interface-internals-itab",
+          "title": "Interface Internals (itab)",
+          "outline": "อธิบายโครงสร้าง interface value: type pointer กับ data pointer และ itab cache method set\nอธิบายว่าทำไม interface ที่ห่อ concrete type ใหญ่ทำให้เกิด heap allocation\nเชื่อมโยงกับ type assertion และ type switch ว่า runtime ตรวจสอบ type อย่างไร",
+          "position": 1
+        },
+        {
+          "slug": "nil-interface-pitfalls",
+          "title": "Nil Interface Pitfalls",
+          "outline": "อธิบายว่าทำไม interface ที่ห่อ nil pointer ไม่เท่ากับ nil interface (type ไม่ nil)\nยกตัวอย่างบั๊กจริงเมื่อคืน error เป็น concrete nil pointer type ผ่าน interface\nแนะนำวิธีตรวจสอบและป้องกันด้วยการคืน nil ตรง ๆ แทนตัวแปร typed nil",
+          "position": 2
+        },
+        {
+          "slug": "embedding-composition",
+          "title": "Embedding & Composition",
+          "outline": "อธิบายว่า struct embedding ให้ method/field ของ type ที่ embed ถูกส่งต่อ (promote) มาได้อย่างไร\nเปรียบเทียบ embedding กับ inheritance ของภาษาอื่นว่าไม่ใช่สิ่งเดียวกัน\nยกตัวอย่างการใช้ embedding ทำ interface composition ในโปรเจกต์นี้",
+          "position": 3
+        },
+        {
+          "slug": "generics-implementation",
+          "title": "Generics Implementation",
+          "outline": "อธิบายว่า compiler ใช้ GC shape stenciling สร้างโค้ดเฉพาะ type แต่ละกลุ่มอย่างไร\nอธิบาย type constraint และ type set กำหนดว่า generic function รับ type อะไรได้บ้าง\nเตือน trade-off เรื่อง compile time กับ runtime performance เทียบกับ interface{}",
+          "position": 4
+        },
+        {
+          "slug": "reflection-cost",
+          "title": "Reflection Cost",
+          "outline": "อธิบายว่า reflect package ให้ตรวจสอบและแก้ type ตอน runtime ได้อย่างไรผ่าน Type และ Value\nเตือนต้นทุน performance ของ reflection เทียบกับโค้ดที่รู้ type ตอน compile time\nยกตัวอย่างการใช้ reflection ใน encoding/json และแนวทางเลี่ยงเมื่อ performance สำคัญ",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "performance-tooling",
+      "title": "Performance & Tooling",
+      "position": 5,
+      "concepts": [
+        {
+          "slug": "pprof-cpu-heap",
+          "title": "pprof: CPU & Heap Profiling",
+          "outline": "อธิบายวิธีเก็บ CPU profile และ heap profile ด้วย net/http/pprof หรือ runtime/pprof\nอธิบายวิธีอ่านผล flame graph เพื่อหาจุดที่กิน CPU หรือ memory มากที่สุด\nยกตัวอย่าง workflow วิเคราะห์ performance bottleneck จริงด้วย pprof",
+          "position": 1
+        },
+        {
+          "slug": "execution-tracer",
+          "title": "Execution Tracer",
+          "outline": "อธิบายว่า execution tracer เก็บ event ระดับ scheduler เช่น goroutine start/stop/block อย่างไร\nเปรียบเทียบกับ pprof ว่า tracer เห็น timeline การทำงานของ scheduler ไม่ใช่แค่สรุปเวลา\nยกตัวอย่างการใช้ trace หาปัญหา เช่น goroutine ถูก block บ่อยหรือ GC หยุดโปรแกรมนาน",
+          "position": 2
+        },
+        {
+          "slug": "benchmarking-methodology",
+          "title": "Benchmarking Methodology",
+          "outline": "อธิบายวิธีเขียน Go benchmark ด้วย testing.B และการอ่านผล ns/op, allocs/op\nเตือนข้อผิดพลาดที่ทำให้ benchmark ไม่น่าเชื่อถือ เช่น compiler optimize โค้ดที่ไม่ได้ใช้ผลลัพธ์ทิ้ง\nแนะนำการใช้ benchstat เปรียบเทียบผล benchmark ก่อน-หลังเปลี่ยนโค้ดอย่างมีนัยสำคัญทางสถิติ",
+          "position": 3
+        },
+        {
+          "slug": "race-detector",
+          "title": "Race Detector",
+          "outline": "อธิบายหลักการทำงานของ race detector (vector clock แบบ ThreadSanitizer) ตรวจจับ data race อย่างไร\nอธิบายวิธีเปิดใช้งานด้วย flag -race ตอน test หรือ build\nเตือนข้อจำกัดว่า detector จับได้เฉพาะ race ที่เกิดขึ้นจริงระหว่างรัน ไม่ใช่ static analysis",
+          "position": 4
+        },
+        {
+          "slug": "compiler-optimizations-pgo",
+          "title": "Compiler Optimizations & PGO",
+          "outline": "อธิบาย optimization พื้นฐานของ Go compiler เช่น inlining, escape analysis, dead code elimination\nอธิบาย Profile-Guided Optimization (PGO) ใช้ profile จริงจาก production ช่วย compiler ตัดสินใจ inline ดีขึ้นอย่างไร\nยกตัวอย่างขั้นตอนเก็บ CPU profile แล้วใช้เป็น default.pgo ตอน build",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "stdlib-internals",
+      "title": "Stdlib Internals",
+      "position": 6,
+      "concepts": [
+        {
+          "slug": "net-http-server",
+          "title": "net/http Server Internals",
+          "outline": "อธิบายว่า net/http server สร้าง goroutine ใหม่ต่อ 1 connection อย่างไรและทำไมถึง scale ได้ดี\nอธิบายบทบาทของ Handler, ServeMux และ middleware chain ในการ route request\nเชื่อมโยงกับ hand-written middleware (logging, recovery) ที่โปรเจกต์นี้เขียนเอง",
+          "position": 1
+        },
+        {
+          "slug": "http-client-transport",
+          "title": "HTTP Client & Transport",
+          "outline": "อธิบายว่า http.Transport จัดการ connection pooling และ keep-alive อย่างไรเพื่อ reuse TCP connection\nเตือนปัญหาที่พบบ่อย เช่น ไม่ปิด response body ทำให้ connection รั่ว ไม่ถูก reuse\nยกตัวอย่างการตั้งค่า timeout ที่เหมาะสมสำหรับเรียก external API เช่น Anthropic API",
+          "position": 2
+        },
+        {
+          "slug": "database-sql-pooling",
+          "title": "database/sql Connection Pooling",
+          "outline": "อธิบายว่า database/sql ดูแล connection pool ให้อัตโนมัติผ่าน DB handle ตัวเดียว\nอธิบายค่าตั้ง MaxOpenConns, MaxIdleConns, ConnMaxLifetime มีผลต่อ pool อย่างไร\nเตือนพฤติกรรมที่ทำให้ pool รั่ว เช่น ลืมปิด *sql.Rows หลังอ่านข้อมูลเสร็จ",
+          "position": 3
+        },
+        {
+          "slug": "encoding-json",
+          "title": "encoding/json Internals",
+          "outline": "อธิบายว่า encoding/json ใช้ reflection กับ struct tag เพื่อ marshal/unmarshal อย่างไร\nอธิบายกฎการ export field (ต้องขึ้นต้นตัวใหญ่) และผลของ struct tag เช่น omitempty\nเตือนต้นทุน performance ของ reflection-based JSON เทียบกับ code-generation approach",
+          "position": 4
+        },
+        {
+          "slug": "errors-wrapping",
+          "title": "Errors & Wrapping",
+          "outline": "อธิบายการสร้าง error ด้วย errors.New, fmt.Errorf และการห่อ error ด้วย %w\nอธิบายวิธีตรวจสอบ error ด้วย errors.Is และ errors.As แทนการเทียบ string\nยกตัวอย่าง sentinel error pattern ที่โปรเจกต์นี้ใช้ใน domain layer",
+          "position": 5
+        },
+        {
+          "slug": "slices-maps-internals",
+          "title": "Slices & Maps Internals",
+          "outline": "อธิบายโครงสร้าง slice header (pointer, len, cap) และพฤติกรรม append ที่อาจทำให้ backing array เปลี่ยน\nอธิบายโครงสร้าง map แบบ hash table พร้อม bucket และทำไม map ไม่ safe สำหรับ concurrent write\nเตือนข้อผิดพลาดทั่วไป เช่น slice aliasing แชร์ backing array โดยไม่ตั้งใจ",
+          "position": 6
+        }
+      ]
+    }
+  ]
+}

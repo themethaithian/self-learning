@@ -88,15 +88,17 @@ func TestLoadTopic_MissingFile(t *testing.T) {
 	}
 }
 
-// wantDDDChapter is one chapter's contract: its slug and the exact,
-// in-order concept slugs design.md §7(a) lists under it. Positions are
-// implied by list order (1-based).
-type wantDDDChapter struct {
+// wantContentChapter is one chapter's contract: its slug and the exact,
+// in-order concept slugs design.md §7 lists under it. Positions are
+// implied by list order (1-based). Shared across all track content-file
+// tests (ddd, distsys, aws, go, dsa). Named distinctly from repository_test.go's
+// wantChapter, which asserts DB row assembly and carries extra fields.
+type wantContentChapter struct {
 	slug     string
 	concepts []string
 }
 
-var wantDDDChapters = []wantDDDChapter{
+var wantDDDChapters = []wantContentChapter{
 	{"model-driven-foundations", []string{"ubiquitous-language", "model-driven-design", "knowledge-crunching", "hands-on-modelers"}},
 	{"building-blocks", []string{"layered-architecture", "entities", "value-objects", "domain-services", "modules", "aggregates", "aggregate-design-rules", "factories", "repositories", "domain-events"}},
 	{"supple-design-refactoring", []string{"intention-revealing-interfaces", "side-effect-free-functions", "assertions", "specification-pattern", "making-implicit-concepts-explicit", "refactoring-toward-deeper-insight"}},
