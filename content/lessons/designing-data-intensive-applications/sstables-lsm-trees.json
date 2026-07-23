@@ -1,0 +1,72 @@
+{
+  "concept_id": "sstables-lsm-trees",
+  "version": 1,
+  "topic": "designing-data-intensive-applications",
+  "title_en": "SSTables and LSM-Trees",
+  "est_minutes": 9,
+  "body_md": "# SSTables and LSM-Trees\n\n## ทำไมถึงสำคัญ\n\nStorage engine แบบ log-structured เขียนเร็วเพราะ append อย่างเดียว แต่ log ดิบ ๆ ที่เรียงตามลำดับการเขียนมีปัญหา: index ต้องเก็บทุก key ไว้ใน memory และ merge หลายไฟล์เข้าด้วยกันทำได้ลำบาก (พื้นฐาน append-only log + hash index อยู่ที่ concept พี่น้อง `log-structured-storage`). SSTable แก้ทั้งสองข้อด้วยกฎเดียว — **sort ตาม key** — และ LSM-tree คือโครงสร้างที่เอา SSTable มาประกอบเป็น engine ที่รับ write throughput สูงมากได้ (หัวใจของ Cassandra, ScyllaDB, RocksDB, LevelDB, HBase).\n\n## แก่นของแนวคิด\n\n**SSTable (Sorted String Table)** คือไฟล์ key-value ที่ **sort ตาม key แล้ว** และแต่ละ key ปรากฏครั้งเดียวต่อไฟล์. การ sort ปลดล็อกสามอย่าง:\n\n- **Merge ได้แบบ mergesort**: อ่านหลาย SSTable พร้อมกันแบบ sequential, เดินหน้าไปตาม key ที่น้อยที่สุด, เจอ key ซ้ำก็เก็บค่าจากไฟล์ที่ใหม่กว่า — merge n ไฟล์ที่ใหญ่กว่า memory ได้โดยไม่ต้องโหลดทั้งหมด.\n- **Sparse index**: ไม่ต้องเก็บทุก key ใน memory. เก็บแค่ index ห่าง ๆ (เช่นทุก ๆ ไม่กี่ KB) แล้วอ่านช่วงระหว่าง index สอง entry ด้วยการ scan สั้น ๆ. ช่วงระหว่าง sparse index entry ยัง **compress เป็น block** ได้ ประหยัดทั้ง disk และ I/O bandwidth.\n- **Range query** เร็ว: key ที่ติดกันอยู่ติดกันบน disk อยู่แล้ว.\n\n**LSM-tree (Log-Structured Merge-Tree)** เอา SSTable มาต่อเป็น pipeline การเขียน:\n\n1. Write เข้ามา → ใส่ใน **memtable** ซึ่งเป็น balanced tree ใน memory (เช่น red-black / AVL tree) ที่เก็บ key เรียงอยู่ตลอด.\n2. ทุก write ยัง append ลง log บน disk ก่อน (WAL) เผื่อ memtable หายตอน crash — log นี้ไม่ต้อง sort เพราะหน้าที่เดียวคือ recover.\n3. เมื่อ memtable โตเกิน threshold → **flush** เป็น SSTable ใหม่บน disk. เพราะ memtable sort อยู่แล้ว การเขียนจึงเป็น sequential write ล้วน ๆ และ SSTable ที่ได้เป็น **immutable**.\n4. Read: เช็ค memtable ก่อน → ถ้าไม่เจอค่อยไล่ SSTable จากใหม่สุดไปเก่าสุด.\n5. **Background compaction** ค่อย ๆ merge SSTable หลายไฟล์เป็นไฟล์ใหญ่ขึ้น ทิ้งค่าที่ถูกเขียนทับและ key ที่ถูกลบ (การลบเขียนเป็น marker พิเศษเรียก **tombstone** ที่ค่อยหายไปตอน compaction).\n\n**Bloom filter** คือ probabilistic set membership structure ที่นั่งอยู่หน้า SSTable แต่ละไฟล์. มันตอบได้สองแบบ: \"key นี้ **ไม่มีแน่นอน**\" (ไม่มี false negative) หรือ \"**อาจจะมี**\" (มี false positive ได้). ประโยชน์คือ query หา key ที่ไม่มีอยู่จริงจะถูก Bloom filter ปัดตกก่อน ไม่ต้องไปอ่าน disk จริงในทุก SSTable.\n\n## ตัวอย่าง (payments event store)\n\nระบบรับ payment event หลายแสน write ต่อวินาที เก็บลง LSM engine โดยตั้ง key เป็น `(account_id, event_time)`. ผลที่ได้:\n\n- **Write throughput สูง**: ทุก event ลง memtable + WAL แล้วจบ, flush เป็น SSTable แบบ sequential — ไม่มี random write ทีละจุดบน disk.\n- **Range query ถูกจริต**: \"ขอ transaction ของ account 123 ในเดือนที่แล้ว\" คือการ scan ช่วง key ที่ติดกัน — เร็วเพราะ SSTable sort ตาม key.\n- **Bloom filter กับ idempotency**: ก่อนรับ event ใหม่ ระบบเช็คว่า `idempotency_key` เคยเข้ามาแล้วหรือยัง. เกือบทุกครั้งเป็น key ใหม่ (ยังไม่มีใน store) — Bloom filter ตอบ \"ไม่มีแน่นอน\" ทันทีโดยไม่ต้องอ่าน SSTable สิบ ๆ ไฟล์บน disk. ถ้าไม่มี Bloom filter การ dedup นี้จะแพงมากเพราะทุก key ใหม่บังคับให้อ่านครบทุกไฟล์เพื่อยืนยันว่า \"ไม่เจอจริง\".\n\n```mermaid\nflowchart TD\n  W[Write] --> WAL[Append-only log on disk]\n  W --> MT[Memtable: sorted tree in memory]\n  MT -->|exceeds threshold| S1[SSTable L0 immutable]\n  S1 --> C{Background compaction}\n  S2[SSTable L0] --> C\n  C -->|merge + drop overwritten/tombstone| S3[SSTable L1 larger]\n  R[Read key] --> MT\n  R -.miss.-> BF[Bloom filter per SSTable]\n  BF -.probably present.-> S3\n  BF -.definitely absent.-> X[Skip disk read]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Bloom filter บอกได้ว่า key อยู่ใน SSTable ไหน\"** ผิด. มันบอกได้แค่ \"ไม่มีแน่นอน\" กับ \"อาจจะมี\"; เมื่อมันบอกว่าอาจจะมี ก็ยังต้องไปอ่าน disk จริง และบางครั้งเป็น false positive.\n- **\"SSTable แก้ไขได้\"** ผิด. SSTable เป็น immutable; การ update/delete คือการเขียนค่าใหม่หรือ tombstone ทับใน memtable แล้วปล่อยให้ compaction สะสาง ค่าเก่าไม่ได้ถูกแก้ที่เดิม.\n- **\"compaction คือ optimization ที่มีก็ดีไม่มีก็ได้\"** ผิด. ถ้าไม่ compaction จำนวน SSTable จะพอกขึ้นเรื่อย ๆ ทำให้ read ต้องเช็คไฟล์มากขึ้นและ disk เต็มด้วยค่าซ้ำ — compaction เป็นส่วนที่ขาดไม่ได้ของ engine.\n- **\"LSM = เขียนเร็วเสมอ ดังนั้นดีกว่า B-tree ทุกกรณี\"** ผิด (ดูหัวข้อถัดไป และการเทียบลึกอยู่ที่พี่น้อง `b-trees`).\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ และต้นทุนคืออะไร\n\n- **Read amplification**: read หนึ่งครั้งอาจต้องเช็ค memtable + SSTable หลายไฟล์กว่าจะเจอ (หรือยืนยันว่าไม่มี). Bloom filter ช่วยลดเคส key ไม่มีจริง แต่ไม่ได้ทำให้ read path เป็น single lookup เหมือน B-tree — read latency ของ LSM จึง**คาดเดายากกว่า** โดยเฉพาะ p99. งานที่ต้องการ read latency นิ่งและ predictable (read-heavy, point lookup เยอะ) B-tree มักเหมาะกว่า (เทียบลึกที่ `b-trees`).\n- **Write amplification**: หนึ่ง logical write ถูกเขียนลง disk จริงหลายครั้งตลอดชีวิตของมัน (WAL + flush + ถูก compaction rewrite ซ้ำหลายรอบเมื่อเลื่อน level). กิน disk write bandwidth และเร่ง SSD wear.\n- **Compaction แย่ง I/O**: compaction รันเบื้องหลังบน disk เดียวกับ read/write ปกติ. ที่ write throughput สูงมาก ถ้า compaction ตามไม่ทัน จำนวน SSTable จะพอกขึ้น → read amplification พุ่ง และ compaction ที่กระชากมาแย่ bandwidth ทำให้ p99 latency ของ request ปกติแกว่ง. compaction throughput ต้องถูก provision เผื่อไว้ ไม่ใช่ของฟรี.\n- สรุปเมื่อไม่ควรใช้: workload ที่ read หนักและต้องการ latency นิ่ง, หรือระบบที่ SSD write endurance เป็นข้อจำกัด และ write ไม่ได้หนักพอจะคุ้มค่ากับ write amplification.\n\n## มุมสัมภาษณ์\n\n- \"ทำไม SSTable ถึง merge และทำ sparse index ได้ ในขณะที่ log ดิบทำไม่ได้?\" → เพราะ sort ตาม key: merge แบบ mergesort ได้ และ index ห่าง ๆ ก็พอเพราะ scan ช่วงสั้น ๆ ได้.\n- \"LSM รับ write เยอะได้ยังไง แล้วจ่ายด้วยอะไร?\" → memtable + sequential flush ทำให้ write เร็ว, จ่ายด้วย read amplification และ write amplification จาก compaction.\n- \"Bloom filter ช่วยตรงไหน และช่วยไม่ได้ตรงไหน?\" → ตัดการอ่าน disk สำหรับ key ที่ไม่มีจริง (ไม่มี false negative); ช่วยไม่ได้เมื่อ key มีจริงหรือเจอ false positive ก็ยังต้องอ่าน.\n- \"เลือก LSM หรือ B-tree ยังไง?\" → LSM ชนะเรื่อง write throughput และ compression, B-tree ชนะเรื่อง read latency ที่ predictable — โยงต่อไป concept `b-trees`.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม SSTable ถึง merge หลายไฟล์เข้าด้วยกันได้อย่างมีประสิทธิภาพ?",
+      "expected_answer": "เพราะ key ถูก sort ไว้แล้ว จึง merge แบบ mergesort ได้โดยไม่ต้องโหลดทั้งไฟล์เข้า memory",
+      "type": "mcq",
+      "options": [
+        "เพราะ key ถูก sort ไว้แล้ว จึง merge แบบ mergesort ได้โดยไม่ต้องโหลดทั้งไฟล์เข้า memory",
+        "เพราะเก็บทุก key ไว้ใน memory ครบทุกไฟล์",
+        "เพราะ SSTable แก้ไขค่าเดิมในไฟล์ได้ตลอดเวลา"
+      ]
+    },
+    {
+      "q": "เมื่อ memtable โตเกิน threshold มันถูก flush เป็นอะไรบน disk?",
+      "expected_answer": "SSTable ที่ immutable ซึ่ง sort ตาม key อยู่แล้ว จึงเขียนแบบ sequential write",
+      "type": "short_answer"
+    },
+    {
+      "q": "Bloom filter ช่วยลด read amplification ได้อย่างไร?",
+      "expected_answer": "มันบอกได้ว่า key ไม่มีอยู่แน่นอน จึงข้ามการอ่าน SSTable บน disk สำหรับ key ที่ไม่มีจริงได้",
+      "type": "mcq",
+      "options": [
+        "มันบอกตำแหน่งแน่นอนว่า key อยู่ใน SSTable ไฟล์ไหน จึงอ่านไฟล์เดียว",
+        "มันบอกได้ว่า key ไม่มีอยู่แน่นอน จึงข้ามการอ่าน SSTable บน disk สำหรับ key ที่ไม่มีจริงได้",
+        "มันเก็บทุก key ของทุก SSTable ไว้ใน memory จึงไม่ต้องอ่าน disk เลย"
+      ]
+    },
+    {
+      "q": "compaction ใน LSM-tree ก่อให้เกิดต้นทุนอะไรบ้าง?",
+      "expected_answer": "write amplification (ข้อมูลถูกเขียนซ้ำหลายรอบ) และการแย่ง disk I/O กับ read/write ปกติจนกระทบ p99 latency",
+      "type": "mcq",
+      "options": [
+        "ทำให้ write ช้าลงเพราะทุก write ต้องรอ compaction เสร็จก่อน",
+        "ไม่มีต้นทุนใด ๆ เพราะรันเบื้องหลัง",
+        "write amplification (ข้อมูลถูกเขียนซ้ำหลายรอบ) และการแย่ง disk I/O กับ read/write ปกติจนกระทบ p99 latency"
+      ]
+    },
+    {
+      "q": "ในแง่ read latency LSM-tree ต่างจาก B-tree อย่างไร?",
+      "expected_answer": "LSM read อาจต้องเช็คหลาย SSTable ทำให้ read latency คาดเดายากกว่า ส่วน B-tree อ่านจากที่เดียวจึง predictable กว่า",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 3: Storage and Retrieval (SSTables and LSM-Trees)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 3",
+      "why": "อ่านต้นฉบับของ SSTable, LSM-tree, memtable, compaction และ Bloom filter ในบริบทเดียวกัน"
+    },
+    {
+      "title": "The Log-Structured Merge-Tree (LSM-Tree)",
+      "source": "Patrick O'Neil, Edward Cheng, Dieter Gawlick, Elizabeth O'Neil, Acta Informatica 33 (1996)",
+      "why": "อ่าน paper ต้นกำเนิดที่นิยาม LSM-tree และ trade-off write vs. read amplification อย่างเป็นทางการ"
+    },
+    {
+      "title": "Bigtable: A Distributed Storage System for Structured Data",
+      "source": "Fay Chang et al., Google, OSDI 2006",
+      "why": "อ่านต้นกำเนิดของคำว่า SSTable และ memtable ในระบบจริงระดับ production"
+    },
+    {
+      "title": "Space/Time Trade-offs in Hash Coding with Allowable Errors",
+      "source": "Burton H. Bloom, Communications of the ACM 13(7) (1970)",
+      "why": "อ่านต้นฉบับ Bloom filter ว่าทำไมถึงมีแต่ false positive ไม่มี false negative"
+    }
+  ]
+}

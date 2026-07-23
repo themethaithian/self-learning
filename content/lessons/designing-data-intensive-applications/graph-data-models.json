@@ -1,0 +1,72 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "graph-data-models",
+  "version": 1,
+  "title_en": "Graph-Like Data Models",
+  "est_minutes": 8,
+  "body_md": "# Graph-Like Data Models\n\n## ทำไมถึงสำคัญ\n\nบางโดเมน \"เส้นเชื่อม\" ระหว่างข้อมูลสำคัญกว่าตัวข้อมูลเอง และเป็น many-to-many ที่ลึก/ยาวไม่คงที่ เช่น \"เงินไหลจากบัญชี A ไปถึงใครบ้างภายในกี่ทอด\" หรือ \"บัญชีไหนโยงกันผ่าน device เดียวกัน\". graph model ออกแบบมาเพื่อ traverse ความสัมพันธ์เหล่านี้โดยตรง — เดินตาม edge ทีละก้าว รวมถึงความยาว path ที่ไม่รู้ล่วงหน้า — ซึ่งใน relational ต้องเขียนเป็น recursive join ที่ยุ่งและ optimize ยาก. รู้ว่าเมื่อไหร่ข้อมูลเป็น \"graph-shaped\" จริง (และเมื่อไหร่ไม่ใช่) คือสิ่งที่ senior interview เจาะ ไม่ใช่แค่ท่องว่า graph DB คืออะไร.\n\n## แก่นของแนวคิด\n\ngraph คือชุดของ **vertex** (จุด/node) ที่เชื่อมกันด้วย **edge** (เส้นความสัมพันธ์มีทิศทางและมี type). มันเป็นตัวเลือกที่ *สาม* ถัดจาก relational กับ document (สอง model นั้นเป็น sibling ของบทนี้ — relational เก่ง many-to-many ด้วย join, document เก่ง one-to-many tree). graph เข้ามาเมื่อ many-to-many หนาแน่นและต้อง traverse ลึก/ยาวไม่คงที่.\n\nมีสองสไตล์หลัก:\n\n- **Property graph** (เช่น Neo4j): vertex และ edge ต่างมี id, label, และ properties (key-value) ของตัวเอง; edge มีทิศทางและ type เช่น `SENT_TO`, `USED_DEVICE`. query ด้วย **Cypher**.\n- **Triple-store** (เช่น RDF): เก็บทุกอย่างเป็น triple สามช่อง **(subject, predicate, object)** เช่น `(account_a, sent_to, account_m)`. query ด้วย **SPARQL**. โมเดลเรียบง่ายมาก เหมาะกับ knowledge graph / semantic web ที่ schema เปิดกว้าง.\n\nจุดขายแกนเดียวคือ **traversal**: graph query เดินตาม edge ได้ตรง ๆ รวมถึง **variable-length path** (\"1 ถึง N ทอด\") ซึ่งใน SQL ต้องพึ่ง `WITH RECURSIVE` ที่เขียนยากและ query optimizer จัดการได้ไม่ดีนัก. (Cypher/SPARQL เป็น declarative — บอกว่าอยากได้ pattern อะไร ไม่ต้องบอกวิธีเดินทีละขั้น — รายละเอียด declarative vs imperative อยู่ในบท sibling ไม่ซ้ำที่นี่.)\n\n## ตัวอย่าง (fraud ring ใน fintech)\n\nสืบ fraud ring: บัญชีหลายใบที่ดู \"ไม่เกี่ยวกัน\" แต่จริง ๆ โยงกันผ่าน device เดียว แล้วโอนเงินไปรวมที่บัญชี mule เดียว. โมเดลเป็น property graph:\n\n- vertex: `Account`, `Device`\n- edge: `USED_DEVICE` (Account → Device), `SENT_TO` (Account → Account)\n\n```mermaid\nflowchart LR\n  A[Account A] -->|SENT_TO| M[Account Mule]\n  B[Account B] -->|SENT_TO| M\n  C[Account C] -->|SENT_TO| M\n  A -->|USED_DEVICE| D[Device d1]\n  B -->|USED_DEVICE| D\n  M -->|SENT_TO| X[Account X]\n```\n\nCypher หา ring ที่ใช้ device ร่วมกันแล้วโอนเข้าบัญชีเดียวกัน:\n\n```\nMATCH (a:Account)-[:USED_DEVICE]->(d:Device)<-[:USED_DEVICE]-(b:Account),\n      (a)-[:SENT_TO]->(m:Account)<-[:SENT_TO]-(b)\nWHERE a <> b\nRETURN d, m, collect(a.id)\n```\n\nตามเงินแบบ variable-length (\"จาก A ไหลถึงใครบ้างภายใน 4 ทอด\"):\n\n```\nMATCH (a:Account {id:'A'})-[:SENT_TO*1..4]->(dst:Account)\nRETURN DISTINCT dst.id\n```\n\n`*1..4` คือหัวใจ — เดิน 1 ถึง 4 hop โดยไม่ต้องรู้ล่วงหน้าว่ากี่ทอด. เขียนใน SQL ต้องเป็น recursive CTE ยาว ๆ ที่อ่านยากและ tune ยาก. ในโลก triple-store ข้อมูลเดียวกันคือ `(A, sent_to, B)`, `(B, sent_to, M)` ... แล้วให้ SPARQL เดิน property path แบบเดียวกัน.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ข้อมูล many-to-many = ต้องใช้ graph database\"** ผิด. relational จัดการ many-to-many ได้สบายด้วย join table. graph คุ้มเฉพาะเมื่อ *traversal ลึก/ยาวไม่คงที่* เป็น query หลักที่รันบ่อย ไม่ใช่แค่มี many-to-many.\n- **\"graph = property graph เท่านั้น\"** ผิด. triple-store/RDF + SPARQL เป็นอีกสไตล์ที่ต่างกันทั้งโครงสร้างการเก็บและภาษา query.\n- **\"graph DB เร็วกว่า relational เสมอ\"** ผิด. เร็วกว่าเฉพาะ query แบบ traversal; งาน aggregate/scan ตารางกว้าง graph มักช้ากว่าและเครื่องมือน้อยกว่า.\n- **\"ต้องมี graph DB แยกถึงจะทำ graph query ได้\"** ผิด (บางส่วน). Postgres ทำ recursive CTE ได้ระดับหนึ่ง; ยังไม่จำเป็นต้องเพิ่ม datastore ใหม่จนกว่า traversal จะเป็น bottleneck จริง.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\ngraph model ทรงพลังกับ relationship-heavy data แต่เป็น **overkill และเพิ่ม operational complexity** เมื่อข้อมูลส่วนใหญ่เป็น tabular/aggregate ที่ความสัมพันธ์ตื้นและคงที่. อย่าเอื้อมไปหยิบ graph DB เป็น default.\n\nต้นทุนจริงที่ต้องพูดได้ในสัมภาษณ์:\n- **datastore เพิ่มอีกตัว**: ต้อง run, backup, monitor, upgrade และหาคนที่รู้ Cypher/SPARQL — ecosystem/tooling เล็กกว่า SQL มาก.\n- **sharding ยาก**: partition graph แล้ว traversal ส่วนใหญ่จะข้าม partition (เพราะ edge เชื่อมข้ามได้ทุกทิศ) ทำให้ scale-out ยากกว่า data ที่แบ่งเป็นก้อนอิสระได้.\n- **query ตารางธรรมดาช้ากว่า**: aggregate/report แบบ scan ทั้งตาราง row-store/column-store ทำได้ดีกว่า.\n- **ROI**: many-to-many อย่างเดียวไม่พอ — ต้องเป็น *deep/variable-length traversal ที่เป็น hot path* ถึงจะคุ้มกับการรับ datastore ใหม่. ที่ scale กลาง ๆ recursive CTE บน relational ที่มีอยู่แล้วมักคุ้มกว่าจนกว่าจะพิสูจน์ว่าไม่ไหว.\n\nเมื่อไหร่ควรใช้จริง: social graph, fraud/AML network, recommendation, knowledge graph, dependency/network topology — โดเมนที่ \"เส้นเชื่อม\" คือคำถามหลัก ไม่ใช่ตัว record.\n\n## มุมสัมภาษณ์\n\n- \"ข้อมูลนี้มี many-to-many เยอะ จะใช้ graph DB ไหม?\" → ถามกลับว่า query หลักเป็น deep/variable-length traversal หรือแค่ join ธรรมดา; ถ้าอย่างหลัง relational join table ก็พอ. คำถามนี้วัด trade-off ไม่ใช่ท่องนิยาม.\n- \"friends-of-friends เขียนใน SQL กับ Cypher ต่างกันยังไง?\" → SQL ต้อง recursive CTE/self-join ซ้อน ๆ; Cypher เขียน pattern `(a)-[:FRIEND*2]->(b)` ตรง ๆ.\n- \"property graph ต่างจาก triple-store ตรงไหน?\" → property graph เก็บ properties บน vertex/edge, query ด้วย Cypher; triple-store เก็บ (subject, predicate, object), query ด้วย SPARQL.\n- \"เมื่อไหร่ graph DB *ไม่* คุ้ม?\" → เมื่อข้อมูลส่วนใหญ่ tabular/aggregate, traversal ตื้นคงที่ — เพิ่ม datastore ใหม่โดยไม่ได้ประโยชน์และ sharding ยาก.\n",
+  "recall_checks": [
+    {
+      "q": "จุดขายแกนกลางของ graph model ที่ทำได้ดีกว่า relational คืออะไร?",
+      "expected_answer": "การ traverse ความสัมพันธ์ลึก/variable-length path ได้ตรง ๆ",
+      "type": "mcq",
+      "options": [
+        "การ traverse ความสัมพันธ์ลึก/variable-length path ได้ตรง ๆ",
+        "การเก็บข้อมูล tabular ที่มี column กว้างมาก",
+        "การทำ aggregate scan ทั้งตารางให้เร็ว"
+      ]
+    },
+    {
+      "q": "property graph กับ triple-store เก็บข้อมูลและ query ต่างกันอย่างไร?",
+      "expected_answer": "property graph = vertex+edge ที่มี properties, query ด้วย Cypher; triple-store = (subject, predicate, object) triples, query ด้วย SPARQL",
+      "type": "short_answer"
+    },
+    {
+      "q": "เมื่อไหร่ที่ graph database *ไม่* คุ้มค่า?",
+      "expected_answer": "เมื่อข้อมูลส่วนใหญ่เป็น tabular/aggregate ที่ความสัมพันธ์ตื้นและคงที่",
+      "type": "mcq",
+      "options": [
+        "เมื่อ query หลักเป็น deep/variable-length traversal ที่เป็น hot path",
+        "เมื่อข้อมูลส่วนใหญ่เป็น tabular/aggregate ที่ความสัมพันธ์ตื้นและคงที่",
+        "เมื่อโดเมนเป็น social graph หรือ fraud network"
+      ]
+    },
+    {
+      "q": "traversal แบบ friends-of-friends ใน relational SQL ต้องเขียนด้วยอะไรที่ทำให้ยุ่งกว่า graph query?",
+      "expected_answer": "recursive join (WITH RECURSIVE CTE)",
+      "type": "mcq",
+      "options": [
+        "GROUP BY กับ aggregate function",
+        "index scan บน primary key",
+        "recursive join (WITH RECURSIVE CTE)"
+      ]
+    },
+    {
+      "q": "ข้อใดคือความเข้าใจผิดเกี่ยวกับ graph model?",
+      "expected_answer": "ข้อมูลที่มี many-to-many ต้องใช้ graph database เสมอ",
+      "type": "mcq",
+      "options": [
+        "Cypher เป็นภาษา query สำหรับ property graph",
+        "ข้อมูลที่มี many-to-many ต้องใช้ graph database เสมอ",
+        "triple-store query ด้วย SPARQL"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 2: Graph-Like Data Models",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 2",
+      "why": "อ่านต้นฉบับ property graph, triple-store, Cypher/SPARQL และการเทียบกับ relational"
+    },
+    {
+      "title": "Cypher Manual — Patterns and variable-length relationships",
+      "source": "neo4j.com/docs/cypher-manual/current/",
+      "why": "อ่าน syntax จริงของ Cypher โดยเฉพาะ variable-length path เช่น [:REL*1..4]"
+    },
+    {
+      "title": "SPARQL 1.1 Query Language",
+      "source": "w3.org/TR/sparql11-query/",
+      "why": "อ่านโมเดล triple + SPARQL property path จากสเปคทางการของ W3C"
+    }
+  ]
+}

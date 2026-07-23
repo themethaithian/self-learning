@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "oltp-vs-olap",
+  "version": 1,
+  "title_en": "OLTP vs. OLAP",
+  "est_minutes": 8,
+  "body_md": "# OLTP vs. OLAP\n\n## ทำไมถึงสำคัญ\n\nDatabase หนึ่งตัวมักถูกขอให้ทำสองงานที่มี access pattern ตรงข้ามกัน: รับ transaction ของ user แบบ real-time กับตอบคำถามเชิงวิเคราะห์ที่กวาดข้อมูลทั้งกอง. งานสองแบบนี้คือ OLTP กับ OLAP และการเข้าใจว่ามันต่างกันตรงไหนคือเหตุผลว่าทำไมแทบทุกองค์กรถึงมี production database แยกจาก data warehouse. ถ้าเอา report หนัก ๆ ไปยิงบน production DB ตรง ๆ latency ของ payment ที่ user กำลังรออยู่จะพังตามไปด้วย.\n\n## แก่นของแนวคิด\n\n**OLTP (Online Transaction Processing)** — workload ของระบบที่ user ใช้งานจริง:\n\n- จำนวน query เยอะมาก แต่ละ query แตะ record จำนวนน้อย (มักดึง/แก้ทีละแถวด้วย key หรือ index)\n- เป็น mix ของ read และ write, latency-sensitive (หน่วยเป็น millisecond ที่ user รออยู่)\n- ตัวชี้วัดคือ throughput ของ transaction และ tail latency\n\n**OLAP (Online Analytical Processing)** — workload ของ analyst / BI / reporting:\n\n- จำนวน query น้อยกว่ามาก แต่แต่ละ query หนัก: scan แถวจำนวนมหาศาลแล้ว aggregate (SUM, COUNT, AVG, GROUP BY) บน column ไม่กี่คอลัมน์\n- read-heavy เกือบล้วน, ยอมให้ latency เป็นวินาทีถึงนาทีได้\n- ตัวชี้วัดคือ throughput ของ bytes ที่ scan ได้ ไม่ใช่ latency ต่อ transaction\n\nเพราะ pattern ตรงข้ามกัน การเอา DB เดียวมารับทั้งคู่ทำให้แย่ทั้งสองทาง: analytic query ที่ scan หลายล้านแถวจะแย่ง buffer cache, disk I/O และ CPU ไปจาก transaction ที่ user รออยู่ ส่วน index ที่ optimize มาเพื่อ point lookup ก็ไม่ใช่สิ่งที่ full scan ต้องการ. ทางแก้มาตรฐานคือแยกออกเป็น **data warehouse** ต่างหาก — copy ข้อมูลจากทุก OLTP system ขององค์กรมารวมไว้ที่เดียวสำหรับ analytics โดยเฉพาะ เพื่อไม่ให้ analyst ยิง query ไปแตะ production เลย.\n\nการย้ายข้อมูลจาก OLTP มาที่ warehouse ทำผ่านกระบวนการ **ETL (Extract–Transform–Load)**: *extract* ดึงข้อมูลออกจากแต่ละ source (dump เป็นไฟล์ หรือดักผ่าน change stream), *transform* clean และปรับให้เข้ากับ schema ของ warehouse, *load* เขียนเข้า warehouse. จะทำเป็นรอบ (เช่น ทุกคืน) หรือแบบ near-real-time ก็ได้.\n\nWarehouse มักออกแบบ schema แบบ **star schema**: มี **fact table** ตรงกลางเก็บ event หนึ่งแถวต่อหนึ่งเหตุการณ์ (เช่น หนึ่งธุรกรรม) พร้อม foreign key ชี้ไปยัง **dimension table** รอบ ๆ ที่อธิบายว่า ใคร/อะไร/ที่ไหน/เมื่อไหร่ ของ event นั้น (customer, merchant, product, date). **Snowflake schema** คือ star ที่ dimension ถูก normalize ต่อออกไปอีกชั้น. รูปทรงนี้ทำให้ analytic query แบบ group by dimension แล้ว aggregate fact เขียนง่ายและ join มีแบบแผน.\n\n```mermaid\nflowchart LR\n  P[Payments DB] --> E[ETL pipeline]\n  L[Ledger DB] --> E\n  U[KYC DB] --> E\n  E --> DW[(Data warehouse)]\n  DW --> F[Fact table transactions]\n  DW --> BI[Analytics and reporting]\n  subgraph Star schema\n    F --> D1[Dim customer]\n    F --> D2[Dim merchant]\n    F --> D3[Dim date]\n  end\n```\n\n> ทำไม warehouse ถึง scan ข้อมูลมหาศาลได้เร็ว เป็นเรื่องของ **column-oriented storage** (เก็บค่าของแต่ละ column ต่อเนื่องกัน) — อยู่ใน concept `column-oriented-storage` จะไม่ลงรายละเอียดที่นี่. ฝั่ง OLTP มักใช้ row-oriented storage engine (LSM-tree / B-tree, ดู concept พี่น้อง) ที่เหมาะกับ point lookup.\n\n## ตัวอย่าง (fintech)\n\npayment platform หนึ่งมี OLTP หลายตัว: `payments` service (บันทึกทุกการชำระ), `ledger` service (debit/credit posting), `kyc` service (ข้อมูลลูกค้า). งานแบบ OLTP เช่น:\n\n- ดึง balance ปัจจุบันของ account 123 มาโชว์ → point lookup ด้วย key, ต้องเสร็จใน < 50 ms\n- insert ledger posting เมื่อ payment สำเร็จ → write ทีละแถว\n\nคืนนั้น ETL job ดึงธุรกรรมของวันมาลง warehouse. เช้าวันรุ่งขึ้นทีม risk/finance ยิง OLAP query เช่น:\n\n- ยอดธุรกรรมรวมต่อ merchant category ต่อจังหวัด ย้อนหลัง 90 วัน\n- อัตรา chargeback ต่อ issuing bank เทียบเดือนต่อเดือน\n\nquery พวกนี้ scan หลายสิบล้านแถวของ fact table `transactions` แล้ว group by dimension (merchant, region, date). ถ้ายิงบน production `payments` DB ตรง ๆ มันจะแย่ง I/O จน checkout ของลูกค้าจริงช้าลง — เหตุผลตรง ๆ ว่าทำไมต้องแยก warehouse.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **OLAP = ข้อมูลเยอะ, OLTP = ข้อมูลน้อย** — ผิด. แยกกันที่ *access pattern* ไม่ใช่ขนาด. OLTP DB ก็ใหญ่มหาศาลได้ ประเด็นคือแต่ละ query แตะไม่กี่แถวด้วย key; OLAP คือแต่ละ query กวาดทั้งกองแล้ว aggregate.\n- **data warehouse คือ replica ของ production DB** — ไม่เชิง. read replica เป็น copy เหมือนต้นฉบับเป๊ะ ใช้ storage engine เดียวกัน (row-oriented) และ schema เดิม; warehouse ถูก transform และรวมจากหลาย source, มัก reschema เป็น star, และใช้ storage engine คนละแบบ (column-oriented) เพื่อ analytics.\n- **แยก warehouse แล้วได้ข้อมูล real-time** — ผิด. ข้อมูลใน warehouse ตามหลัง production ตามรอบ ETL (freshness lag) เสมอ ไม่ใช่ที่สำหรับดู state ปัจจุบันที่ต้องเป๊ะระดับวินาที.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรแยก\n\nTrade-off คือหัวใจที่ interview เจาะ ไม่ใช่ตัว pitch:\n\n- **DB เดียวทำทั้งคู่ = ง่ายกว่าแต่จ่ายด้วย performance ทั้งสองฝั่ง**: ไม่มี pipeline ให้ดูแล, ข้อมูล fresh, query ได้ทันที — แต่ analytic query หนัก ๆ จะกิน resource จน OLTP latency แกว่ง และ engine ที่ tune มาเพื่อ point lookup ก็ไม่เร็วสำหรับ full scan. เหมาะเฉพาะตอนข้อมูลยังเล็กและ analytic ยังเบา.\n- **แยก warehouse = เพิ่ม ETL pipeline + freshness lag**: ต้องมีทีม/เครื่องมือดูแล pipeline (schedule, monitor, backfill, จัดการ schema drift ของ source) และ analyst เห็นข้อมูลช้ากว่าจริงเท่ากับรอบ ETL. ถ้าต้องการ analytics บนข้อมูล real-time เป๊ะ warehouse แบบ batch ETL ตอบไม่ได้ ต้องขยับไป streaming/CDC ซึ่งแพงและซับซ้อนกว่า.\n- **เมื่อไหร่ไม่ควรลงทุนแยก**: startup หรือระบบเล็กที่ report ยิงบน read replica แล้วยังไหว, หรือ analytic ยังเป็น query เบา ๆ ไม่กี่อัน — ตั้ง warehouse + ETL แต่แรกคือ over-engineering ที่เพิ่ม moving parts โดยยังไม่มี pain ที่ต้องแก้. ควรแยกเมื่อ analytic query เริ่มกระทบ production latency จริง หรือ analyst ต้อง join ข้อมูลข้ามหลาย source.\n\n## มุมสัมภาษณ์\n\n- \"OLTP กับ OLAP ต่างกันยังไง ยกตัวอย่าง query แต่ละแบบ\" → OLTP: point read/write ไม่กี่แถวด้วย key, latency-sensitive; OLAP: scan + aggregate หลายล้านแถวบนไม่กี่ column. ต้องยกตัวอย่างได้ทั้งสองฝั่ง.\n- \"ทำไมไม่ยิง analytic query บน production DB เลย?\" → มันแย่ง I/O/CPU/cache จาก transaction ที่ user รอ ทำให้ latency พัง; storage engine ก็คนละแบบกับที่ full scan ต้องการ.\n- \"ETL คืออะไร มีขั้นไหนบ้าง\" → Extract–Transform–Load: ดึงจาก source, transform ให้เข้า schema ของ warehouse, load เข้า warehouse.\n- \"star schema ประกอบด้วยอะไร\" → fact table (event) ตรงกลาง ล้อมด้วย dimension table รอบ ๆ.\n- \"ต้นทุนของการแยก warehouse คืออะไร\" → pipeline ที่ต้องดูแล + freshness lag; ไม่คุ้มเมื่อข้อมูลเล็กหรือ analytic ยังเบา.\n",
+  "recall_checks": [
+    {
+      "q": "OLTP กับ OLAP ต่างกันที่ access pattern อย่างไร?",
+      "expected_answer": "OLTP มี query จำนวนมาก แต่ละ query อ่าน/เขียน record ไม่กี่แถวด้วย key และ latency-sensitive; OLAP มี query น้อยกว่าแต่แต่ละอัน scan/aggregate แถวจำนวนมหาศาลบน column ไม่กี่คอลัมน์",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดเป็น OLAP query (ไม่ใช่ OLTP)?",
+      "expected_answer": "SUM ยอดธุรกรรมของทุก merchant ย้อนหลัง 90 วัน แล้ว group by จังหวัด",
+      "type": "mcq",
+      "options": [
+        "ดึง balance ปัจจุบันของ account เลข 123 มาแสดงบนหน้า dashboard",
+        "insert ledger posting ใหม่หนึ่งแถวเมื่อ payment หนึ่งรายการสำเร็จ",
+        "SUM ยอดธุรกรรมของทุก merchant ย้อนหลัง 90 วัน แล้ว group by จังหวัด"
+      ]
+    },
+    {
+      "q": "ทำไมองค์กรถึงแยก data warehouse ออกจาก production database?",
+      "expected_answer": "เพราะ analytic query ที่ scan ข้อมูลมหาศาลจะแย่ง I/O/CPU/cache ไปจาก transaction ที่ user กำลังรออยู่ ทำให้ latency ฝั่ง OLTP พัง",
+      "type": "mcq",
+      "options": [
+        "เพราะ analytic query ที่ scan ข้อมูลมหาศาลจะแย่ง I/O/CPU/cache ไปจาก transaction ที่ user กำลังรออยู่ ทำให้ latency ฝั่ง OLTP พัง",
+        "เพราะ data warehouse ปลอดภัยจากการโจมตีมากกว่า production database เสมอ",
+        "เพราะ production database เก็บข้อมูลย้อนหลังหลายปีไม่ได้"
+      ]
+    },
+    {
+      "q": "ETL ย่อมาจากอะไร และทำหน้าที่อะไรในการ populate data warehouse?",
+      "expected_answer": "Extract–Transform–Load: extract ดึงข้อมูลจาก OLTP source, transform clean และปรับให้เข้ากับ schema ของ warehouse, load เขียนเข้า warehouse",
+      "type": "short_answer"
+    },
+    {
+      "q": "star schema ประกอบด้วยอะไร?",
+      "expected_answer": "fact table ตรงกลาง (หนึ่งแถวต่อหนึ่ง event) ล้อมด้วย dimension table (customer, merchant, date ฯลฯ)",
+      "type": "mcq",
+      "options": [
+        "หนึ่งตารางใหญ่ที่ denormalize รวมทุกอย่างไว้ด้วยกันตารางเดียว",
+        "fact table ตรงกลาง (หนึ่งแถวต่อหนึ่ง event) ล้อมด้วย dimension table (customer, merchant, date ฯลฯ)",
+        "หลาย fact table ที่ join กันเองโดยไม่มี dimension table"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 3: Transaction Processing or Analytics?",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 3",
+      "why": "อ่านต้นฉบับความต่างของ OLTP กับ OLAP และเหตุผลที่แยก data warehouse"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 3: Data Warehousing / Stars and Snowflakes",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 3",
+      "why": "อ่านต่อเรื่อง ETL, star schema และ snowflake schema (fact + dimension tables)"
+    },
+    {
+      "title": "The Data Warehouse Toolkit (Dimensional Modeling)",
+      "source": "Ralph Kimball & Margy Ross, The Data Warehouse Toolkit, 3rd ed. (Wiley), ch. 1-2",
+      "why": "เจาะลึก dimensional modeling / star schema จากต้นตำรับ ถ้าจะออกแบบ warehouse จริง"
+    }
+  ]
+}

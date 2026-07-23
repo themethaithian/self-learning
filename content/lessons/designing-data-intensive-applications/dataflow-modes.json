@@ -1,0 +1,67 @@
+{
+  "concept_id": "dataflow-modes",
+  "topic": "designing-data-intensive-applications",
+  "version": 1,
+  "title_en": "Modes of Dataflow",
+  "est_minutes": 8,
+  "body_md": "# Modes of Dataflow\n\n## ทำไมถึงสำคัญ\n\nทุกครั้งที่ข้อมูลออกจาก memory ของ process หนึ่งไปถึงอีก process มันต้องถูก encode แล้ว decode และสอง process นั้นแทบไม่เคยรันโค้ดเวอร์ชันเดียวกันพร้อมกันระหว่าง rolling deploy. ช่องทางที่ข้อมูลเดินทาง (dataflow mode) เป็นตัวกำหนดว่าใครคุยกับใคร ใครรอใคร และเวอร์ชันไหนต้องอ่านข้อมูลของเวอร์ชันไหนได้ ซึ่งเปลี่ยนคำตอบว่าคุณต้องแคร์ backward หรือ forward compatibility ด้านไหน. เลือก mode ผิดคือเลือกชุดปัญหา failure และ coupling ผิดไปทั้งระบบ.\n\n## แก่นของแนวคิด\n\nDDIA แยกช่องทางหลักของ encoded data ออกเป็น 3 แบบ แต่ละแบบมีข้อสมมติเรื่องเวอร์ชันของ sender/receiver ต่างกัน (ตัว *กฎ* compatibility เอง เช่น นิยาม backward/forward, ห้ามแก้ field tag อยู่ที่ sibling `schema-evolution-compatibility`; ตัวเลือก encoding เช่น JSON/Protobuf/Avro อยู่ที่ sibling อื่นในบทนี้ บทเรียนนี้เป็นเจ้าของแค่ *สาม mode และความต่างของ compatibility concern*):\n\n**1) ผ่าน database** — process หนึ่งเขียน อีก process อ่าน (อาจคนละเวลา คนละเวอร์ชันโค้ด). จุดสำคัญคือ **data outlives code**: แถวที่เขียนวันนี้อาจถูกอ่านอีกหลายปีข้างหน้าโดยโค้ดที่ยังไม่มีอยู่ตอนเขียน และระหว่าง rolling upgrade โค้ดใหม่กับโค้ดเก่าอ่าน/เขียน DB ตัวเดียวกันพร้อมกัน. จึงต้องการ **ทั้ง backward** (โค้ดใหม่อ่านข้อมูลเก่าได้) **และ forward compatibility** (โค้ดเก่าอ่านข้อมูลใหม่ได้). กับดักคลาสสิก: โค้ดเก่าอ่านทั้งแถว แก้ field เดียว แล้วเขียนกลับ ถ้ามันไม่รู้จัก field ใหม่ที่โค้ดใหม่เพิ่งใส่ไว้ มันอาจ **drop field นั้นทิ้ง** ตอน rewrite (data loss เงียบ ๆ) เว้นแต่ decode/encode จะรักษา unknown field ไว้.\n\n**2) ผ่าน service (REST / RPC)** — request/response แบบ synchronous: client ส่ง request รอ แล้ว server ตอบ. client กับ server มักเป็นคนละทีม deploy คนละจังหวะ จึงต้อง evolve อิสระ: server ใหม่ต้องรับ request จาก client เก่าได้ และ client เก่าต้องอ่าน response จาก server ใหม่ได้ (compatibility จึงมีทั้งบน request และ response). RPC พยายามทำให้ remote call หน้าตาเหมือน local function call แต่มันโกหก: local call เร็ว/แน่นอน/สำเร็จหรือ throw ชัดเจน ส่วน network call มี latency ไม่แน่นอน และมี **partial failure** คุณแยกไม่ออกว่า request หายก่อนถึง server, server ทำเสร็จแล้วแต่ response หาย, หรือ server แค่ช้า. เพราะแยกไม่ออก การ **retry** จึงทำให้ operation อาจถูกทำซ้ำ ต้องออกแบบให้ **idempotent**.\n\n**3) ผ่าน async message-passing (message broker / actor)** — sender (producer) ส่ง message เข้า broker แล้วไม่รอคำตอบ; broker เก็บ/buffer แล้วส่งต่อให้ receiver (consumer) เมื่อพร้อม. สิ่งที่ได้: **decoupling** (producer ไม่ต้องรู้จัก consumer ไม่ต้อง online พร้อมกัน), **buffering** (consumer ล่มชั่วคราว message ไม่หาย broker ถือไว้ก่อน), **redelivery** (ส่งซ้ำได้ถ้า consumer ไม่ ack) และ **one-to-many** (หนึ่ง message ส่งถึงหลาย consumer). ราคาที่จ่าย: มันเป็น one-way ไม่มี response ในตัว (อยากได้คำตอบต้องทำ reply channel เอง) และการ redelivery แปลว่า consumer ต้องทน duplicate. Actor model (Akka/Erlang) ก็เป็น async message-passing แบบหนึ่งในโค้ด actor คุยกันด้วย message ไม่ share memory จึงเจอโจทย์เวอร์ชันคล้ายกันเมื่อ actor สองเวอร์ชันส่ง message หากันระหว่าง rolling upgrade. กลไก broker เชิงลึก (partitioned log, offset, exactly-once) เก็บไว้ที่บท stream processing.\n\n## ตัวอย่าง (fintech: payment event)\n\nสมมติเกิดเหตุการณ์ payment สำเร็จ 1,000 บาท สาม mode พาข้อมูลเดียวกันนี้คนละแบบ:\n\n- **ผ่าน database**: service เขียนแถว `payments(id, amount, status='captured', currency)`. ทีมออก feature ใหม่เพิ่ม field `fee_bps`. ระหว่าง deploy pod เก่ายังรันอยู่ มันอ่านแถวที่ pod ใหม่เขียน (มี `fee_bps`) มาแก้ `status` แล้วเขียนกลับ ถ้า serialization ไม่รักษา unknown field ค่า `fee_bps` หายไปเงียบ ๆ นี่คือเหตุผลว่าทำไม DB ต้องการทั้ง backward และ forward compatibility.\n- **ผ่าน REST/RPC**: `checkout-service` เรียก `POST /charges` ที่ `payment-service` แบบ synchronous แล้วรอผล. ถ้า network timeout charge เกิดขึ้นจริงหรือไม่? ไม่รู้ (partial failure). retry ตรง ๆ อาจเก็บเงินซ้ำ ต้องส่ง idempotency key เพื่อให้ retry ปลอดภัย.\n- **ผ่าน Kafka-style topic**: `payment-service` publish event `PaymentCaptured` ลง topic `payments`. `ledger-service`, `notification-service`, `fraud-service` ต่างเป็น consumer อ่าน event เดียวกันอิสระจากกัน. `payment-service` ไม่ต้องรู้จักใครเลย และถ้า `fraud-service` ล่ม 5 นาที event ยังค้างใน topic ให้อ่านย้อนได้.\n\n```mermaid\nflowchart TD\n  subgraph DBm [Via database]\n    W1[\"Writer new code\"] -->|write row| DBS[(\"payments table\")]\n    DBS -->|read row| R1[\"Reader old code\"]\n  end\n  subgraph RPCm [Via service REST or RPC]\n    CL[\"checkout-service\"] -->|request| SV[\"payment-service\"]\n    SV -->|response| CL\n  end\n  subgraph MSGm [Via async message broker]\n    P[\"payment-service\"] -->|publish PaymentCaptured| BRK[(\"topic payments\")]\n    BRK -->|deliver| C1[\"ledger-service\"]\n    BRK -->|deliver| C2[\"fraud-service\"]\n  end\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ข้อมูลใน DB แคร์แค่ backward compatibility ก็พอ\"** ผิด เพราะ data outlives code และ rolling upgrade ทำให้โค้ดเก่ายังอ่านข้อมูลที่โค้ดใหม่เขียน จึงต้อง **forward** ด้วย และต้องระวังโค้ดเก่า rewrite แถวแล้ว drop field ที่มันไม่รู้จัก.\n- **\"RPC ก็แค่ function call ผ่าน network\"** ผิด remote call มี partial failure, latency ไม่แน่นอน และต้อง idempotency สำหรับ retry สิ่งที่ local call ไม่มี การทำให้มันหน้าตาเหมือน local คือการซ่อนความจริงเหล่านี้.\n- **\"async messaging = RPC ที่ช้ากว่า\"** ผิด มันคนละโมเดล: one-way, sender ไม่รอ, decouple ด้วย broker, ได้ buffering/redelivery/one-to-many ที่ request-response ให้ไม่ได้.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรใช้ และจ่ายอะไร)\n\nAsync messaging ให้ decoupling และ resilience สูงสุด แต่ไม่ฟรี:\n\n- **ไม่มีคำตอบในตัว**: producer ไม่รู้ผลลัพธ์ ถ้า logic ต้องใช้ค่าที่คำนวณจากปลายทางทันที (เช่น อนุมัติวงเงินแล้วต้องบอกผู้ใช้เดี๋ยวนี้) request-response ตรง ๆ ง่ายและถูกกว่ามาก.\n- **ordering**: broker ส่วนใหญ่การันตี order แค่ภายใน partition เดียว ไม่ใช่ทั้ง topic logic ที่พึ่งลำดับ global จะพัง.\n- **delivery guarantee**: ปกติได้ at-least-once จึงมี duplicate consumer ทุกตัวต้อง idempotent; จะเอา exactly-once ต้องเพิ่ม dedup state (จ่ายด้วย throughput + storage รายละเอียดอยู่บท stream processing).\n- **debuggability**: flow แบบ fire-and-forget ข้ามหลาย consumer ตาม trace ยากกว่า synchronous call stack มาก.\n\nเลือกตาม coupling ที่ต้องการจริง: ต้องการคำตอบทันที/consistency แน่น → RPC; งานที่ทนช้าได้ กระจายหลายปลายทาง ทน spike → messaging; แชร์ข้อมูลระยะยาวข้ามเวลา/เวอร์ชัน → database (แล้วจ่ายค่า compatibility ทั้งสองทิศ). ไม่มี mode ไหนดีที่สุดลอย ๆ senior interview ถามว่าคุณ *แลก* อะไรเพื่ออะไร.\n\n## มุมสัมภาษณ์\n\n- \"ข้อมูลที่ไหลผ่าน database ต้องแคร์ compatibility ทิศไหน ทำไม?\" ตอบทั้ง backward และ forward เพราะ data outlives code + rolling upgrade แล้วต่อด้วยกับดัก drop unknown field ตอน rewrite.\n- \"ทำไม RPC ไม่ควรถูกมองเป็น local call?\" partial failure + latency ไม่แน่นอน + retry/idempotency.\n- \"จะเลือก REST call กับ publish event ลง Kafka อย่างไร?\" ตาม coupling / ต้องการ response ทันทีไหม / ทนช้าได้ไหม / หนึ่งต่อหลายไหม แล้วพูดถึงราคาเรื่อง ordering + delivery guarantee ของ messaging.\n- \"at-least-once delivery กระทบ design ของ consumer อย่างไร?\" ต้อง idempotent เพราะมี duplicate.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไมข้อมูลที่ไหลผ่าน database จึงต้องการทั้ง backward และ forward compatibility?",
+      "expected_answer": "เพราะ data outlives code และระหว่าง rolling upgrade โค้ดเก่ากับโค้ดใหม่อ่าน/เขียน DB ตัวเดียวกันพร้อมกัน",
+      "type": "mcq",
+      "options": [
+        "เพราะ data outlives code และระหว่าง rolling upgrade โค้ดเก่ากับโค้ดใหม่อ่าน/เขียน DB ตัวเดียวกันพร้อมกัน",
+        "เพราะ database เก็บข้อมูลเป็น binary จึงต้อง encode สองรอบเสมอ",
+        "เพราะทุก query ต้องผ่าน ORM ที่ตรวจ schema สองด้าน"
+      ]
+    },
+    {
+      "q": "กับดักคลาสสิกเมื่อโค้ดเก่าอ่านแถวจาก DB มาแก้ field เดียวแล้วเขียนกลับคืออะไร?",
+      "expected_answer": "มันอาจ drop field ใหม่ที่มันไม่รู้จักทิ้งตอน rewrite (data loss เงียบ ๆ) เว้นแต่จะรักษา unknown field ไว้",
+      "type": "short_answer"
+    },
+    {
+      "q": "RPC ต่างจาก local function call ที่จุดใดเป็นหลัก?",
+      "expected_answer": "RPC มี partial failure และ latency ไม่แน่นอน จึงต้อง idempotency สำหรับ retry",
+      "type": "mcq",
+      "options": [
+        "RPC ช้ากว่าเพราะต้อง serialize เป็น JSON เสมอ",
+        "RPC มี partial failure และ latency ไม่แน่นอน จึงต้อง idempotency สำหรับ retry",
+        "RPC เรียกได้แค่ function ที่ return void"
+      ]
+    },
+    {
+      "q": "ข้อได้เปรียบหลักของ async message broker เหนือ synchronous RPC คือข้อใด?",
+      "expected_answer": "decouple sender/receiver พร้อม buffering, redelivery และ one-to-many",
+      "type": "mcq",
+      "options": [
+        "รับประกัน exactly-once delivery โดยไม่ต้องทำอะไรเพิ่ม",
+        "ได้ response กลับมาเร็วกว่า RPC เสมอ",
+        "decouple sender/receiver พร้อม buffering, redelivery และ one-to-many"
+      ]
+    },
+    {
+      "q": "ราคาหลักที่ async messaging เรียกเก็บเมื่อเทียบกับ RPC ตรง ๆ คืออะไร (อย่างน้อยสองข้อ)?",
+      "expected_answer": "ความซับซ้อนเรื่อง ordering (การันตีแค่ใน partition) และ delivery guarantee (ปกติ at-least-once จึงมี duplicate ทำให้ consumer ต้อง idempotent); บวกกับไม่มี response ในตัวและ debug ยากกว่า",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 4: Encoding and Evolution (Modes of Dataflow)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 4",
+      "why": "อ่านต้นฉบับสามช่องทาง dataflow และ compatibility concern ของแต่ละแบบ"
+    },
+    {
+      "title": "A Note on Distributed Computing",
+      "source": "Waldo, Wyant, Wollrath, Kendall (Sun Microsystems, 1994)",
+      "why": "อ่านว่าทำไม RPC ที่ทำหน้าตาเหมือน local call ถึงหลอกเรื่อง latency และ partial failure"
+    },
+    {
+      "title": "What do you mean by \"Event-Driven\"?",
+      "source": "martinfowler.com/articles/201701-event-driven.html",
+      "why": "อ่านมุม async message-passing / event และ decoupling ที่ต่างจาก request-response"
+    }
+  ]
+}

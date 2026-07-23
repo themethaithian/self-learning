@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "hot-spots-skew",
+  "version": 1,
+  "title_en": "Skewed Workloads and Relieving Hot Spots",
+  "est_minutes": 7,
+  "body_md": "# Skewed Workloads and Relieving Hot Spots\n\n## ทำไมถึงสำคัญ\n\nHash partitioning กระจาย key ที่ *ต่างกัน* ให้ตกลง partition อย่างสม่ำเสมอ (ตรงข้ามกับ key-range ที่เสี่ยง hot spot จาก key ต่อเนื่อง — ดู `partitioning-key-range` / `partitioning-by-hash`). แต่มันไม่ได้แก้ปัญหาเมื่อ key *ตัวเดียว* ร้อนผิดปกติ: เพราะ `hash(k)` เป็น deterministic — key เดิมได้ partition เดิมเสมอ — traffic ของ key ร้อนตัวนั้นก็ยังกองลง partition เดียว. ผลคือ node หนึ่งคอขาด ขณะที่อีกสิบ node ว่าง นี่คือ **skewed workload** และ partition ที่รับภาระเกินคือ **hot spot**.\n\n## แก่นของแนวคิด\n\n- **Skew** คือ load ที่กระจายไม่เท่ากันข้าม partition; **hot spot** คือ partition ที่โดนถล่มจน throughput/latency พัง.\n- Hash แก้ได้แค่กรณี \"หลาย key ที่ต่างกัน\" — มันเฉลี่ยการกระจายของ *ชุด key*. แต่ถ้า workload เอียงไปที่ key เดียว (celebrity account, viral merchant, trending symbol) hash ช่วยอะไรไม่ได้เลย เพราะทุก request ของ key นั้นชี้ไป bucket เดียว.\n- **วิธีบรรเทา — split hot key ด้วย random suffix (write sharding):** เมื่อรู้ว่า key ไหนร้อน ให้เติมเลขสุ่ม 0..N-1 ต่อท้าย key ตอนเขียน. `acct#42` กลายเป็น `acct#42_00` … `acct#42_15` เสมือนเป็น N key ที่ต่างกัน → hash กระจาย write ออกได้ถึง N partition → write load ของ hot key หารด้วย N.\n- **ต้นทุนติดมาทันที:** ตอน read ต้องยิง query ไปทุก suffix ทั้ง N ตัวแล้วเอาผลมารวม (scatter-gather / recombine). เขียนกระจายง่าย แต่อ่านแพงขึ้น N เท่า.\n- **เป็น workaround ระดับ application:** database ส่วนใหญ่ *ไม่* ตรวจจับและ split hot key ให้อัตโนมัติ. แอปต้องรับผิดชอบเอง ทั้งการรู้ว่า key ไหนร้อน, ใส่/ถอด suffix, และ recombine ตอนอ่าน.\n\n## ตัวอย่าง (payments / merchant ledger)\n\nระบบรับชำระเงินเก็บ movement ของแต่ละร้านค้าโดย partition ด้วย `merchant_id`. ปกติ hash กระจายร้านนับล้านได้เรียบ. แต่วันหนึ่งดารามาไลฟ์ขายของ ยอดโอนไมโครเพย์เมนต์หลายพัน tx/วินาที พุ่งเข้า `merchant_id = M` ตัวเดียว — ทุก write hash ไป partition เดียว node นั้น saturate ขณะที่ node อื่นแทบว่าง (skew ชัดเจน).\n\nบรรเทาด้วยการ split เฉพาะ hot merchant นี้:\n\n- **Write:** เขียน movement ไปที่ key `M_r` เมื่อ `r = random(0..15)` → กระจาย write ออกได้ถึง 16 partition\n- **Read ยอดรวมของร้าน M:** อ่านทั้ง `M_0` … `M_15` แล้ว sum เข้าด้วยกัน (recombine) — 16 sub-query ต่อการอ่านหนึ่งครั้ง\n- **Bookkeeping:** แอปต้องจำว่า `M` ถูก split เป็น 16 shard (เก็บ metadata ว่า key ไหนร้อนและใช้ N เท่าไร)\n\nข้อควรระวัง: ledger เป็น aggregate ที่ต้องรักษา invariant ของยอด (นี่เป็นเรื่องของ aggregate boundary / consistency ซึ่งเป็นคนละปัญหา) — การ split key แบบนี้เปลี่ยนแค่ *physical placement* เพื่อกระจาย load ไม่ได้เปลี่ยนความหมายเชิงธุรกิจของยอดรวม.\n\n```mermaid\nflowchart TD\n  W[Writes to hot key acct42] --> S{append random suffix 0..N-1}\n  S --> K0[acct42_0] --> P0[Partition A]\n  S --> K1[acct42_1] --> P1[Partition B]\n  S --> K2[acct42_2] --> P2[Partition C]\n  R[Read acct42 total] -. query all N shards .-> P0\n  R -.-> P1\n  R -.-> P2\n  P0 --> C[recombine / sum]\n  P1 --> C\n  P2 --> C\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Hash partitioning แก้ hot spot ได้หมด\"** ผิด. hash เฉลี่ยการกระจายของ *หลาย key ที่ต่างกัน* เท่านั้น; key ร้อนตัวเดียวยังตกลง partition เดียวเสมอ.\n- **\"งั้นก็เติม random suffix ให้ทุก key ไปเลย\"** ผิด. ถ้า split ทุก key การอ่าน *ทุกครั้ง* กลายเป็น scatter-gather ทั้ง N partition — จ่าย read amplification ให้ทั้งระบบเพื่อแก้ปัญหาของ key ไม่กี่ตัว. ทำเฉพาะ key ที่รู้ว่าร้อนจริง.\n- **\"database จัดการ hot key ให้เอง\"** ส่วนใหญ่ไม่. มันเป็นภาระของ application layer: ตรวจจับ hotness, ใส่/ถอด suffix, recombine.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ และแลกอะไร\n\n- **Read amplification:** ทุกการอ่าน hot key กลายเป็น N sub-query + recombine → read latency และ load เพิ่มตาม N. ยิ่ง split มากยิ่งกระจาย write ดี แต่ยิ่ง read แพง — ต้องจูน N ให้พอดี (เล็กไปไม่บรรเทา ใหญ่ไปเปลืองและทำ read ช้า).\n- **ภาระ bookkeeping:** แอปต้องรู้ว่า key ไหนร้อน (บ่อยครั้งต้องมี hot-key detection เอง) และเก็บ mapping key→N. hotness มัก transient (ดาราไลฟ์จบแล้วหาย) การจัดการ split/unsplit แบบ dynamic ยิ่งซับซ้อน.\n- **แก้เฉพาะ write-heavy hot key:** เทคนิคนี้กระจาย *write*. ถ้า key ร้อนเพราะ *read* หนัก (เช่น โปรไฟล์ดาราที่คนแห่เปิดดู) การ split write ไม่ช่วยเลย — ทางที่ถูกคือ cache หรือ read replica ไม่ใช่ suffix.\n- **ไม่อัตโนมัติ:** เป็น manual workaround ระดับแอป เพิ่ม accidental complexity ให้ทั้ง read path และ data model. ถ้า skew ไม่รุนแรงพอ ต้นทุนความซับซ้อนนี้มักไม่คุ้ม — อย่าเพิ่ม sharding เชิงป้องกันโดยยังไม่มี hot spot จริง.\n\n## มุมสัมภาษณ์\n\n- \"ใช้ hash partitioning แล้วยังเจอ hot spot ได้ไหม เพราะอะไร?\" → ได้ เพราะ hash(key) deterministic; key ร้อนตัวเดียวยังกองลง partition เดียว hash ไม่ได้ split ภายใน key.\n- \"celebrity / viral-account problem แก้ยังไง?\" → เติม random suffix แตก hot key ออกหลาย shard ตอนเขียน แล้ว recombine ตอนอ่าน.\n- \"ต้นทุนของการ split คืออะไร และทำกับทุก key ได้ไหม?\" → read ต้อง query รวมจาก N partition (read amplification); ทำเฉพาะ key ร้อน ไม่ใช่ทุก key ไม่งั้นทั้งระบบจ่าย scatter-gather.\n- \"ถ้า hot key ร้อนเพราะ read ล่ะ?\" → suffix ไม่ช่วย เพราะมันกระจาย write; ใช้ cache / read replica แทน. คำถามนี้มักต่อไปเรื่อง replication และ secondary index (`partitioning-secondary-indexes`).\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม hash partitioning ถึงไม่แก้ปัญหา hot key ที่มีคน access ตัวเดียวสูงผิดปกติ?",
+      "expected_answer": "เพราะ hash(key) เป็น deterministic — key เดิมได้ partition เดิมเสมอ ทุก request ของ key ร้อนตัวนั้นจึงยังกองลง partition เดียว",
+      "type": "short_answer"
+    },
+    {
+      "q": "เทคนิคบรรเทา hot key ด้วย random suffix ทำให้ต้นทุนฝั่งไหนเพิ่มขึ้น?",
+      "expected_answer": "การ read ต้อง query รวมจากทุก suffix (หลาย partition) แล้ว recombine",
+      "type": "mcq",
+      "options": [
+        "การ read ต้อง query รวมจากทุก suffix (หลาย partition) แล้ว recombine",
+        "การ write ช้าลงเพราะต้องเขียนซ้ำทุก partition",
+        "storage เพิ่มเป็นสองเท่าเพราะต้องเก็บ key สองชุด"
+      ]
+    },
+    {
+      "q": "ข้อใดคือความเข้าใจผิดเกี่ยวกับการ split hot key?",
+      "expected_answer": "ควรเติม random suffix ให้ทุก key เพื่อกันไว้ก่อน",
+      "type": "mcq",
+      "options": [
+        "ควรเติม random suffix ให้ทุก key เพื่อกันไว้ก่อน",
+        "ควรทำเฉพาะ key ที่รู้ว่าร้อนจริง",
+        "แอปต้องเก็บ metadata ว่า key ไหนถูก split เป็นกี่ shard"
+      ]
+    },
+    {
+      "q": "ถ้า key ร้อนเพราะ read หนัก (ไม่ใช่ write) เทคนิค random suffix ช่วยได้ไหม และควรใช้อะไรแทน?",
+      "expected_answer": "ไม่ช่วย เพราะ suffix กระจายเฉพาะ write; ควรใช้ cache หรือ read replica แทน",
+      "type": "short_answer"
+    },
+    {
+      "q": "ใครเป็นผู้รับผิดชอบการ split hot key ในระบบส่วนใหญ่?",
+      "expected_answer": "application layer เพราะ database ส่วนใหญ่ไม่ตรวจจับและ split hot key ให้อัตโนมัติ",
+      "type": "mcq",
+      "options": [
+        "application layer เพราะ database ส่วนใหญ่ไม่ตรวจจับและ split hot key ให้อัตโนมัติ",
+        "database ทำให้อัตโนมัติทุกเจ้า",
+        "load balancer ที่หน้าคลัสเตอร์"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 6: Partitioning — Skewed Workloads and Relieving Hot Spots",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 6",
+      "why": "อ่านต้นฉบับแนวคิด skew, hot spot และเทคนิคเติม random suffix พร้อมข้อจำกัดของมัน"
+    },
+    {
+      "title": "Best practices for designing and using partition keys effectively (write sharding)",
+      "source": "Amazon DynamoDB Developer Guide — Using Write Sharding to Distribute Workloads Evenly",
+      "why": "อ่านตัวอย่างจริงของ random/calculated suffix ที่แตก hot partition key ในระบบ production"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 6: Partitioning by Hash of Key",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 6",
+      "why": "อ่านทบทวนว่าทำไม hash กระจาย key ที่ต่างกันได้ดี แต่ยังเหลือช่องโหว่เรื่อง key ร้อนตัวเดียว"
+    }
+  ]
+}

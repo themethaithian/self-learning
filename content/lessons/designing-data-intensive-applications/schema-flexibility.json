@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "schema-flexibility",
+  "version": 1,
+  "title_en": "Schema Flexibility in the Document Model",
+  "est_minutes": 8,
+  "body_md": "# Schema Flexibility in the Document Model\n\n## ทำไมถึงสำคัญ\n\nDocument database มักถูกโฆษณาว่า \"schemaless\" แต่คำนี้ทำให้เข้าใจผิด — ที่ถูกคือมันใช้ **schema-on-read** (structure ถูกตีความตอน *อ่าน*) แทน **schema-on-write** ของ relational (schema ถูกบังคับตอน *เขียน*). ความต่างนี้ตัดสินว่าใครเป็นคนรับผิดชอบ \"รูปร่าง\" ของข้อมูล: database หรือ application code. senior interview ไม่ได้ถามว่าอันไหนดีกว่า แต่ถามว่าคุณรู้ไหมว่าความยืดหยุ่นนี้ *ย้ายต้นทุนไปไว้ที่ไหน*.\n\n## แก่นของแนวคิด\n\n(สมมติว่าคุณรู้ความต่าง relational vs document อยู่แล้ว — sibling concept `relational-vs-document`; ตรงนี้โฟกัสที่ schema เท่านั้น)\n\n- **schema-on-write (relational):** schema ถูกประกาศล่วงหน้า (column, type, `NOT NULL`, foreign key). ทุก row ที่เขียนเข้ามาถูก database ตรวจกับ schema — เขียนผิดรูป = ถูก reject ทันที. ผลคือทุก row มีรูปเดียวกันเสมอ และ reader มั่นใจได้ว่า structure ตรงตามที่ประกาศ.\n- **schema-on-read (document):** database เก็บ document (JSON/BSON) ตามที่ส่งมา *โดยไม่ตรวจ*. structure มีอยู่จริง แต่เป็น **implicit schema** ที่ตัว application สมมติเอาเองตอนอ่าน — ไม่ใช่ \"ไม่มี schema\" แต่คือ \"schema ไม่ถูก enforce โดย DB\".\n- จุดตัดสำคัญ: schema-on-read เปล่งประกายเมื่อ item **heterogeneous** (หลายชนิด field ไม่เท่ากัน), เมื่อ structure ถูกกำหนดโดยระบบภายนอกที่เราคุมไม่ได้, หรือเมื่อ **structure เปลี่ยนบ่อย** — เพราะเพิ่ม field ใหม่ทำได้โดย *ไม่ต้อง migration*: เขียน document ใหม่ที่มี field เพิ่ม ส่วน document เก่ายังอยู่รูปเดิม.\n- แลกกับอะไร: การที่ DB ไม่ตรวจ แปลว่า **validation และ interpretation ถูกย้ายไปอยู่ที่ application code** — app ต้องรับมือทั้งรูปเก่าและรูปใหม่พร้อมกัน. schema-on-write จับ error ตั้งแต่ write (เร็ว, ที่เดียว) แต่ต้อง migration (เช่น `ALTER TABLE`) เพื่อ evolve.\n- (การ evolve *encoding format* ข้าม service ด้วย Avro/Protobuf เป็นคนละเรื่อง — schema evolution ระดับ wire format อยู่ ch.4; ตรงนี้พูดถึง schema ของ data model เท่านั้น)\n\n```mermaid\nflowchart TD\n  A[Application writes a record]\n  A --> SoW[schema-on-write: relational]\n  A --> SoR[schema-on-read: document]\n  SoW --> V{DB validates shape}\n  V -->|mismatch| M[Reject until ALTER TABLE migration]\n  V -->|ok| S1[Stored: every row same schema]\n  SoR --> S2[Stored as-is: no DB check]\n  S1 --> RR[Read: shape guaranteed by DB]\n  S2 --> RA[Read: app code interprets + handles old and new shape]\n```\n\n## ตัวอย่าง (fintech: customer profile ข้ามเวอร์ชันแอป)\n\nแอป v1 เก็บชื่อลูกค้าเป็น field เดียว:\n\n```json\n{ \"customer_id\": \"c_842\", \"full_name\": \"สมชาย ใจดี\", \"kyc_tier\": 1 }\n```\n\nv2 ต้องการแยกเป็น `first_name` / `last_name` เพื่อทำ KYC matching กับบัตรประชาชน.\n\n- **ฝั่ง document (schema-on-read):** deploy v2 แล้วเริ่มเขียน document ใหม่ที่มี `first_name`/`last_name` ได้ทันที — *ไม่มี migration, ไม่มี downtime*. document เก่าหลายล้านใบยังมีแค่ `full_name`. ภาระตกที่ **read path** ของ app:\n\n  ```js\n  const first = doc.first_name ?? doc.full_name.split(\" \")[0];\n  ```\n\n  โค้ดต้องรู้จักทั้งสองรูปตราบใดที่ยังมี document เก่าค้างอยู่ (หรือทำ lazy migration: พอแตะ document เก่าเมื่อไรก็ค่อยเขียนกลับเป็นรูปใหม่).\n\n- **ฝั่ง relational (schema-on-write):** ต้อง `ALTER TABLE customers ADD COLUMN first_name ...` + backfill ทั้งตาราง ก่อนโค้ดใหม่จะเขียนได้. บนตารางใหญ่ นี่คืองาน migration ที่อาจ lock/ใช้เวลานาน และต้อง coordinate กับ deploy. แลกกับความยุ่งนี้: หลัง migrate เสร็จ ทุก row รูปเดียว reader ทุกตัวไม่ต้องเดา.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"document DB คือ schemaless / ไม่มี schema เลย\"** ผิด. มี schema อยู่เสมอ — แค่เป็น implicit schema ที่ enforce ตอนอ่านโดย application ไม่ใช่ตอนเขียนโดย DB. พิมพ์ชื่อ field ผิด (`fisrt_name`) จะไม่มีใครเตือน: เขียนสำเร็จ แต่ตอนอ่านได้ค่า null เงียบ ๆ.\n- **\"schema-on-read = ยืดหยุ่นกว่า เลยดีกว่าเสมอ\"** ผิด. มันแค่ *ย้าย* งาน validate ไปไว้ที่ app ไม่ได้ทำให้งานนั้นหายไป — และเมื่อมีหลาย service อ่าน collection เดียวกัน ทุกตัวต้องตกลง implicit schema ให้ตรงกันเอง ซึ่งเป็นต้นทุน coordination ที่ DB ไม่ช่วยแล้ว.\n- **\"เพิ่ม field ใน relational ก็แค่ ALTER TABLE เร็ว ๆ\"** ประมาทเกินไปบนตารางใหญ่ — migration บาง engine lock ตารางหรือ rewrite ทั้งก้อน; นั่นแหละคือต้นทุนที่ schema-on-read พยายามเลี่ยง.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรใช้ และแลกด้วยอะไร)\n\nschema-on-read ไม่ฟรี — มันย้ายต้นทุนสามอย่างไปที่ application:\n\n1. **โค้ดสะสม conditional:** app ต้องรองรับทุกรูปในอดีตตลอดไป (หรือลงทุนทำ migration เอง). ยิ่งเปลี่ยน structure หลายรอบ read path ยิ่งบวม `if` เช็ครูปเก่า.\n2. **ไม่มี single source of truth ของ structure:** DB ไม่การันตี type/required/foreign key ให้; data-quality กลายเป็นงานของ app ทั้งหมด. error ที่ schema-on-write จับได้ทันทีตอน write กลายเป็น bug เงียบตอน read.\n3. **coordination ข้าม reader:** หลาย service ที่อ่าน collection เดียวต้อง sync ความเข้าใจ implicit schema กันเอง — เปลี่ยนรูปข้างเดียวทำ reader อื่นพังโดย DB ไม่เตือน.\n\n**เมื่อไหร่ควรเลือก schema-on-write แทน:** ข้อมูล homogeneous (ทุก record รูปเดียวกัน), มีหลาย consumer, หรือ ต้องการ data integrity สูง — โดยเฉพาะ fintech ledger/บัญชี ที่ยอมจ่ายค่า migration เพื่อให้ DB จับ error ตั้งแต่ write และบังคับ constraint (`NOT NULL`, foreign key, type) นั้นคุ้มกว่าความยืดหยุ่น. **ต้นทุนของ schema-on-write** ที่ต้องยอมรับคือ migration discipline: `ALTER TABLE`, backfill, coordinated deploy, และความเสี่ยง lock บนตารางใหญ่. งานของ senior คือเลือกให้ตรงกับ *ลักษณะข้อมูล* ไม่ใช่ตามกระแส.\n\n## มุมสัมภาษณ์\n\n- \"document DB เป็น schemaless จริงไหม?\" → ไม่ มี implicit schema (schema-on-read) แค่ไม่ได้ enforce ที่ DB.\n- \"เพิ่ม field ใหม่ document vs relational ต่างกันยังไง?\" → document เขียนได้เลยไม่ต้อง migration; relational ต้อง `ALTER TABLE` + backfill.\n- \"ใน schema-on-read validation/interpretation ไปอยู่ที่ไหน?\" → application code ตอน read (ต้อง handle รูปเก่า+ใหม่).\n- \"ทั้งที่ยืดหยุ่นน้อยกว่า เมื่อไหร่ยังเลือก schema-on-write?\" → ข้อมูล homogeneous, หลาย reader, ต้องการ integrity สูง — ยอมจ่ายค่า migration เพื่อจับ error ตั้งแต่ write (คำถามนี้คือกับดัก: คนตอบว่า document ดีกว่าเสมอจะตก).\n",
+  "recall_checks": [
+    {
+      "q": "schema-on-read กับ schema-on-write ต่างกันตรงที่ structure ถูก enforce/interpret ตอนไหน?",
+      "expected_answer": "schema-on-write บังคับ schema ตอนเขียน (DB ตรวจ), schema-on-read ตีความ structure ตอนอ่าน (app ตรวจเอง)",
+      "type": "short_answer"
+    },
+    {
+      "q": "การเพิ่ม field ใหม่ในระบบแบบ schema-on-read (document) ต้องทำอะไร?",
+      "expected_answer": "ไม่ต้อง migration — เขียน document ที่มี field ใหม่ได้เลย ส่วน document เก่ายังอยู่รูปเดิม",
+      "type": "mcq",
+      "options": [
+        "ไม่ต้อง migration — เขียน document ที่มี field ใหม่ได้เลย ส่วน document เก่ายังอยู่รูปเดิม",
+        "ต้อง ALTER TABLE แล้ว backfill ทั้งตารางก่อน",
+        "ต้อง drop collection แล้วสร้างใหม่"
+      ]
+    },
+    {
+      "q": "ใน schema-on-read งาน validate/interpret structure ถูกย้ายไปอยู่ที่ไหน?",
+      "expected_answer": "application code ตอน read",
+      "type": "mcq",
+      "options": [
+        "database engine ตอน write",
+        "network / transport layer",
+        "application code ตอน read"
+      ]
+    },
+    {
+      "q": "ทำไมคำว่า \"schemaless\" จึงทำให้เข้าใจผิด?",
+      "expected_answer": "เพราะยังมี implicit schema อยู่เสมอ (schema-on-read) แค่ไม่ได้ถูก enforce โดย database",
+      "type": "short_answer"
+    },
+    {
+      "q": "เมื่อไหร่ควรเลือก schema-on-write มากกว่า schema-on-read?",
+      "expected_answer": "เมื่อข้อมูล homogeneous มีหลาย reader และต้องการ data integrity สูง — ยอมจ่ายค่า migration เพื่อจับ error ตั้งแต่ write",
+      "type": "mcq",
+      "options": [
+        "เมื่อ structure เปลี่ยนบ่อยและ item heterogeneous",
+        "เมื่อข้อมูล homogeneous มีหลาย reader และต้องการ data integrity สูง — ยอมจ่ายค่า migration เพื่อจับ error ตั้งแต่ write",
+        "เมื่ออยากหลีกเลี่ยง migration ในทุกกรณี"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 2: Data Models and Query Languages (\"Schema flexibility in the document model\")",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 2",
+      "why": "อ่านต้นฉบับ schema-on-read vs schema-on-write และตัวอย่างการ evolve structure โดยไม่ migration"
+    },
+    {
+      "title": "Schemaless Data Structures",
+      "source": "martinfowler.com/articles/schemaless/",
+      "why": "อ่านว่าทำไม \"schemaless\" จริง ๆ คือ implicit schema และภาระตกที่ application code"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 4: Encoding and Evolution",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 4",
+      "why": "อ่านต่อเรื่อง schema evolution ระดับ wire format (Avro/Protobuf) ซึ่งเป็นคนละชั้นกับ schema ของ data model"
+    }
+  ]
+}

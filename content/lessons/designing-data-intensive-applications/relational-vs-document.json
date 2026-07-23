@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "relational-vs-document",
+  "version": 1,
+  "title_en": "Relational vs. Document Model",
+  "est_minutes": 9,
+  "body_md": "# Relational vs. Document Model\n\n## ทำไมถึงสำคัญ\n\nเวลาออกแบบระบบ คำถามแรกที่ตัดสินทุกอย่างที่ตามมาคือ \"จะจัดรูปข้อมูลเป็นแบบไหน\" — ตารางที่แยกเป็นชิ้น ๆ แล้วต่อกันด้วย join (relational) หรือเอกสารก้อนเดียวที่มีข้อมูลซ้อนกันอยู่ในตัว (document). การเลือกผิดไม่ได้ทำให้ query ช้าอย่างเดียว แต่บังคับรูปแบบโค้ด application ทั้งชั้นและแก้ทีหลังแพงมาก. แก่นของการเลือกไม่ใช่ \"SQL vs NoSQL\" หรือ \"ใหม่ vs เก่า\" แต่คือรูปร่างความสัมพันธ์ของข้อมูล: tree-structured ที่ดึงพร้อมกันบ่อย เอนไปทาง document ส่วน many-to-many ที่เชื่อมโยงกันแน่น เอนไปทาง relational.\n\n## แก่นของแนวคิด\n\n**Relational model** เก็บข้อมูลเป็น table (row/column) ที่ผ่านการ **normalize** — แต่ละข้อเท็จจริงเก็บที่เดียว, ความสัมพันธ์ระหว่างตารางแทนด้วย **foreign key** แล้วประกอบกลับตอน query ด้วย **join**. ข้อมูลลูกค้าคนหนึ่งอยู่แถวเดียวในตาราง `customers` ต่อให้มีใบแจ้งหนี้พันใบอ้างถึง.\n\n**Document model** เก็บข้อมูลที่เกี่ยวข้องกันเป็นเอกสาร JSON ก้อนเดียวที่ **self-contained** — ข้อมูลลูกหลาน (nested) ฝังอยู่ในเอกสารแม่. คุณสมบัติเด่นคือ **locality**: ข้อมูลที่มักถูกอ่านพร้อมกันถูกเก็บติดกันบน disk จึงโหลดทั้งก้อนได้ในการอ่านครั้งเดียว ไม่ต้องไปไล่ join หลายตาราง.\n\nจุดที่แยกสองโมเดลออกจากกันจริง ๆ คือ **รูปร่างความสัมพันธ์**:\n\n- **One-to-many / tree-structured** (แม่หนึ่งมีลูกหลาย, ลูกไม่แชร์กับแม่อื่น): เช่น invoice → line items. รูปนี้เข้ากับ document อย่างสวยงาม — ทั้ง tree คือหนึ่งเอกสาร, อ่านทีเดียวจบ, ได้ locality เต็ม ๆ.\n- **Many-to-many** (ของชิ้นเดียวถูกอ้างถึงจากหลายที่ และแต่ละที่อ้างถึงหลายชิ้น): เช่น สินค้าตัวเดียวปรากฏในหลายใบแจ้งหนี้, ลูกค้าคนเดียวมีหลายใบแจ้งหนี้. รูปนี้ relational จัดการดีกว่า เพราะเก็บของที่ถูกแชร์ไว้ที่เดียวแล้วชี้ด้วย foreign key + join. ฝั่ง document ทำ join ได้ **อ่อนหรือต้องทำเอง** (app-side join หรือ `$lookup`) จึงมักหนีไปทาง **denormalize** = ก็อปข้อมูลซ้ำเข้าไปในหลายเอกสาร ซึ่งเปิดช่องให้เกิด update anomaly.\n\n```mermaid\nflowchart TB\n  subgraph REL[Relational: normalized + join]\n    L[invoice_lines row] --> I[invoices row]\n    L --> P[products row]\n    I --> C[customers row]\n  end\n  subgraph DOC[Document: one JSON per invoice]\n    D[invoice document]\n    D -.->|nested array| DL[lines: sku, qty, price]\n    D -.->|embedded| DC[customer snapshot]\n  end\n```\n\n> ซ้ายต้อง join กับอีก 3 ตาราง (รวม 4 ตาราง) เพื่อประกอบใบแจ้งหนี้หนึ่งใบ; ขวาอ่านเอกสารเดียวได้ครบ (locality) แต่ `products` / `customer` ถูกก็อปเข้าไปในเอกสาร. อีกสองแกนของการเปรียบเทียบแยกไปเป็น concept พี่น้อง: ความยืดหยุ่นของ schema (schema-on-read vs schema-on-write) อยู่ที่ `schema-flexibility`, ส่วนปัญหา object ในโค้ดไม่ตรงกับ table ตรง ๆ อยู่ที่ `object-relational-mismatch` — ที่นี่โฟกัสแค่ความสัมพันธ์กับ locality.\n\n## ตัวอย่าง (invoice ใน fintech)\n\nใบแจ้งหนี้หนึ่งใบมี header (เลขที่, วันที่, ลูกค้า) และ line items หลายรายการ. สองวิธีเก็บ:\n\n**Relational (normalized):**\n\n- `invoices(id, customer_id, issued_at, status)`\n- `invoice_lines(id, invoice_id, product_id, qty, unit_price)`\n- `customers(id, name, tax_id)` , `products(id, sku, name)`\n\nเรนเดอร์ใบเดียวต้อง `JOIN` สี่ตาราง. แต่ถ้าลูกค้าแก้ชื่อ แก้แถวเดียวใน `customers` ทุกใบเห็นค่าล่าสุดทันที.\n\n**Document (embedded):**\n\n```json\n{\n  \"invoice_id\": \"INV-2024-001\",\n  \"issued_at\": \"2024-03-01\",\n  \"customer\": { \"name\": \"ACME Co.\", \"tax_id\": \"0105558000000\" },\n  \"lines\": [\n    { \"sku\": \"SVC-01\", \"qty\": 2, \"unit_price\": 500.00 },\n    { \"sku\": \"SVC-07\", \"qty\": 1, \"unit_price\": 1200.00 }\n  ]\n}\n```\n\nอ่าน `invoice_id` เดียวได้ทั้งใบ — ไม่มี join, locality เต็ม, เหมาะกับหน้าจอที่แสดงทั้งใบพร้อมกัน.\n\nน่าสังเกตว่าใน fintech การ **embed customer snapshot** มักเป็นสิ่งที่ *ตั้งใจ* ไม่ใช่ข้อผิดพลาด: ใบแจ้งหนี้เป็นเอกสารทางกฎหมายที่ต้อง **freeze** ชื่อลูกค้าและราคา ณ วันออกใบ ต่อให้ลูกค้าเปลี่ยนชื่อทีหลังก็ห้ามกระทบใบเก่า (audit). แต่พอโจทย์เปลี่ยนเป็น \"ขอค่าปัจจุบันร่วมกันหลายใบ\" เช่น รายงานยอดขายต่อสินค้าตัวหนึ่งที่กระจายอยู่ในหมื่นใบ — นั่นคือ many-to-many และการ embed กลายเป็นภาระ (ดู trade-off).\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"document = schemaless คือแก่นของความต่าง\"** — ผิด. ความยืดหยุ่นของ schema เป็นคนละแกน (อยู่ที่ `schema-flexibility`). แกนที่กำหนด relational vs document จริง ๆ คือ **รูปร่างความสัมพันธ์และ locality** — document DB ก็บังคับ schema ได้, relational DB ก็เก็บ JSON column ได้.\n- **\"join เป็นของ relational เท่านั้น ทำใน document ไม่ได้\"** — ผิด. document DB ทำ join ได้ แต่ **อ่อนกว่า**: ผลักไป application code (เสี่ยง N+1 query) หรือใช้ operator อย่าง `$lookup` ที่ optimizer จัดการได้ไม่ดีเท่า relational.\n- **\"document ใหม่กว่าจึงดีกว่า relational เสมอ\"** — ผิด. ทั้งคู่มีมานาน (hierarchical/network model ยุค 1970 คือบรรพบุรุษของ document ด้วยซ้ำ). เลือกจาก **รูปข้อมูล** ไม่ใช่ปีที่เกิด.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ (trade-off)\n\nหัวใจที่ senior interview เจาะคือราคาของแต่ละฝั่ง ไม่ใช่จุดขาย:\n\n**เมื่อไหร่ document เจ็บ:**\n\n- **Many-to-many และข้อมูลเชื่อมโยงกันแน่น**: join อ่อน → ต้อง denormalize → **data duplication**. พอข้อเท็จจริงที่ซ้ำต้องเปลี่ยน (เช่น ชื่อสินค้า, อัตราภาษี) ต้องไล่ update **หลายเอกสาร** = update anomaly, เสี่ยงข้อมูลไม่ตรงกันถ้า update ไม่ครบ. ตรงข้ามกับ relational ที่แก้ที่เดียว.\n- **Locality ย้อนกลับมาทำร้ายเมื่อเอกสารใหญ่**: ข้อดีของ \"โหลดทั้งก้อน\" กลายเป็นข้อเสียเมื่อคุณต้องการแค่ field เดียวแต่ DB ยังต้องอ่าน/เขียนทั้งเอกสาร. และ document DB หลายตัว **เขียนทับทั้งเอกสาร** ตอน update — ถ้า `lines` array โตไม่จำกัด (เช่น log ต่อท้ายเรื่อย ๆ) ทุก update คือการ rewrite blob ก้อนใหญ่. กฎคร่าว ๆ: เก็บเอกสารให้ค่อนข้างเล็กและ nesting ไม่ลึกเกิน.\n- **Access pattern หลากหลายทีหลัง**: document ดีเมื่อ \"อ่านทั้งก้อนตามรูปเดิม\" แต่พอ requirement ใหม่ต้อง query ตัดขวางแบบไม่คาดคิด (group by, aggregate ข้ามเอกสาร) relational + ad-hoc SQL ยืดหยุ่นกว่ามาก.\n\n**เมื่อไหร่ relational เจ็บ:**\n\n- **Tree ที่อ่านพร้อมกันเสมอ**: การ normalize บังคับให้แตกเป็นหลายตารางแล้ว join ทุกครั้งทั้งที่ไม่เคยใช้แยกกัน — เพิ่ม overhead และ shredding ของ object โดยไม่ได้ประโยชน์ (นี่โยงไป `object-relational-mismatch`).\n\nในทางปฏิบัติสองโมเดล **บรรจบกัน**: relational DB (Postgres/MySQL) มี `JSON`/`JSONB` column, ส่วน document DB (MongoDB) เพิ่ม `$lookup` join แล้ว — เส้นแบ่งจึงไม่ตายตัว. และเมื่อข้อมูลเป็น many-to-many *หนักมากและซับซ้อน* (relationship คือพระเอก เช่น social graph, fraud ring) แม้ relational ก็เริ่มอึดอัด → พิจารณา graph model (concept `graph-data-models`).\n\n**สรุปเลือกยังไง:** ข้อมูลเป็น tree ที่อ่านทั้งก้อนพร้อมกัน + ความสัมพันธ์ส่วนใหญ่เป็น one-to-many → document. ข้อมูลเชื่อมโยงกันแน่น many-to-many, ของถูกแชร์และต้องการค่าล่าสุดร่วมกัน, หรือ access pattern จะหลากหลาย → relational.\n\n## มุมสัมภาษณ์\n\n- **\"เมื่อไหร่เลือก document เมื่อไหร่ relational?\"** → document สำหรับ tree/one-to-many ที่อ่านพร้อมกัน (locality); relational สำหรับ many-to-many / ข้อมูลเชื่อมโยงกันแน่น (join แก้ที่เดียว).\n- **\"document model แก้ปัญหาอะไรได้ดี?\"** → ลด impedance mismatch กับ object ในโค้ด และให้ locality — มักตามด้วยคำถามเรื่อง object-relational mismatch (concept แยก).\n- **\"ถ้า many-to-many เพิ่มขึ้นเรื่อย ๆ ใน document DB จะเจ็บยังไง?\"** → join อ่อน, ต้อง denormalize, data duplication → update anomaly และ N+1 query ฝั่ง application.\n- **\"locality เป็นข้อดีเสมอไหม?\"** → ไม่. เอกสารใหญ่ / อ่านแค่บางส่วน / เขียนทับทั้งก้อน ทำให้ locality กลายเป็นต้นทุน.\n- **\"document DB join ไม่ได้ใช่ไหม?\"** → ได้ แต่อ่อนกว่าและมักผลักไป application code หรือ `$lookup`.\n",
+  "recall_checks": [
+    {
+      "q": "document model เหมาะกับข้อมูลรูปแบบไหนมากที่สุด และเพราะคุณสมบัติอะไร?",
+      "expected_answer": "ข้อมูลแบบ one-to-many / tree-structured ที่มักถูกดึงทั้งก้อนพร้อมกัน เพราะได้ locality (อ่านเอกสารเดียวได้ข้อมูลครบ ไม่ต้อง join)",
+      "type": "short_answer"
+    },
+    {
+      "q": "เมื่อความสัมพันธ์แบบ many-to-many เพิ่มขึ้น โมเดลไหนจัดการได้ดีกว่า และเพราะอะไร?",
+      "expected_answer": "relational model เพราะ join ข้ามตารางผ่าน foreign key ทำได้ในตัว database (เก็บของที่แชร์ไว้ที่เดียว)",
+      "type": "mcq",
+      "options": [
+        "document model เพราะ nested JSON รองรับการอ้างอิงหลายทางได้ในตัว",
+        "relational model เพราะ join ข้ามตารางผ่าน foreign key ทำได้ในตัว database (เก็บของที่แชร์ไว้ที่เดียว)",
+        "ทั้งสองเท่ากัน เพราะ many-to-many ไม่เกี่ยวกับ data model"
+      ]
+    },
+    {
+      "q": "คำว่า locality ใน document model หมายถึงอะไร?",
+      "expected_answer": "ข้อมูลที่เกี่ยวข้องกันถูกเก็บรวมในเอกสารเดียว จึงอ่านได้ครบในการอ่านครั้งเดียว",
+      "type": "mcq",
+      "options": [
+        "ข้อมูลถูกกระจายไปหลาย partition โดยอัตโนมัติเพื่อความเร็ว",
+        "database เก็บ index แยกไฟล์ออกจาก data file",
+        "ข้อมูลที่เกี่ยวข้องกันถูกเก็บรวมในเอกสารเดียว จึงอ่านได้ครบในการอ่านครั้งเดียว"
+      ]
+    },
+    {
+      "q": "การ embed ข้อมูล customer ลงในทุก invoice document สร้างปัญหาอะไรเมื่อต้องการค่าปัจจุบันร่วมกันหลายใบ และ relational แก้ต่างออกไปยังไง?",
+      "expected_answer": "เกิด data duplication ทำให้ต้องไล่ update หลายเอกสารเมื่อค่าเปลี่ยน (update anomaly เสี่ยงข้อมูลไม่ตรงกัน); relational เก็บ customer ที่เดียวแล้ว join จึงแก้ที่เดียวเห็นค่าล่าสุดทุกใบ",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดเป็นความเข้าใจผิดเกี่ยวกับความต่างของ relational กับ document model?",
+      "expected_answer": "join ทำได้เฉพาะใน relational database เท่านั้น เป็นไปไม่ได้เลยในฝั่ง document",
+      "type": "mcq",
+      "options": [
+        "join ทำได้เฉพาะใน relational database เท่านั้น เป็นไปไม่ได้เลยในฝั่ง document",
+        "document model เหมาะกับ one-to-many tree ที่อ่านพร้อมกันเพราะ locality",
+        "relational จัดการ many-to-many ได้ดีกว่าด้วย join ผ่าน foreign key"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 2: Data Models and Query Languages (Many-to-One and Many-to-Many Relationships; Relational Versus Document Databases Today)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 2",
+      "why": "อ่านต้นฉบับการเปรียบเทียบ relational vs document, locality, และเมื่อ many-to-many ทำให้ document เสียเปรียบ"
+    },
+    {
+      "title": "AggregateOrientedDatabase",
+      "source": "martinfowler.com/bliki/AggregateOrientedDatabase.html",
+      "why": "อ่านมุมมองว่า document DB คือ aggregate-oriented ทำไม tree ก้อนเดียวถึงเหมาะและ many-to-many ถึงยาก"
+    },
+    {
+      "title": "MongoDB Manual: Data Modeling — Embedded Data vs. References",
+      "source": "MongoDB official docs, section \"Data Modeling\" (mongodb.com/docs)",
+      "why": "ดูเกณฑ์ตัดสินจริงว่าเมื่อไหร่ควร embed (locality) เมื่อไหร่ควรใช้ reference (เลี่ยง duplication)"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "declarative-vs-imperative-queries",
+  "version": 1,
+  "title_en": "Declarative vs. Imperative Query Languages",
+  "est_minutes": 7,
+  "body_md": "# Declarative vs. Imperative Query Languages\n\n## ทำไมถึงสำคัญ\n\nการเลือกระหว่าง declarative กับ imperative ไม่ใช่แค่ style การเขียน แต่ตัดสินว่า *ใคร* เป็นคนตัดสินใจว่างานจะถูกรันอย่างไร — คุณ หรือ database. เมื่อคุณเขียน SQL แบบ declarative คุณบอกแค่ว่าต้องการ **ผลลัพธ์อะไร** แล้วยกหน้าที่เลือก execution plan ให้ query optimizer ทำให้ query ตัวเดิม เร็วขึ้นเองได้ เมื่อมี index ใหม่หรือ engine เวอร์ชันใหม่ โดยคุณไม่ต้องแก้อะไร. นี่คือเหตุผลที่ relational database ครองงาน data access มาหลายสิบปี และเป็นจุดที่ senior interview ชอบเจาะเพื่อดูว่าคุณเข้าใจ trade-off ของการยก control ให้ engine จริงไหม.\n\n## แก่นของแนวคิด\n\n**Declarative query** — คุณระบุ **what**: รูปร่างของผลลัพธ์และเงื่อนไข ไม่ใช่ขั้นตอนการคำนวณ. SQL และ relational algebra เป็นตัวแทนหลัก. analogy คลาสสิกคือ **CSS**: คุณเขียน `h1 { color: blue }` — บอกว่าอยากให้ผลออกมาเป็นแบบนี้ ไม่ได้สั่งให้ browser loop ไล่ทีละ DOM node แล้ว set สี. browser (หรือ database) เป็นคนเลือกวิธีทำเอง.\n\nจุดสำคัญที่ตามมาจากการ *ไม่ระบุ how*:\n\n- **Query optimizer เลือก execution plan ได้เอง** — จะใช้ index ไหน, join order แบบใด, scan หรือ hash aggregate — คุณไม่ได้ผูกไว้ในตัว query. และมันเปลี่ยน plan ทีหลังได้ (มี index ใหม่, statistics เปลี่ยน, upgrade DB) โดย query ตัวเดิม ไม่ต้องแก้แม้แต่ตัวอักษรเดียว.\n- **Parallelize ได้ดี** — เพราะคุณไม่ได้กำหนดลำดับ operation หรือการ mutate ตัวแปรร่วมทีละขั้น engine จึงแตกงานกระจายข้ามหลาย core / หลายเครื่องได้อิสระ.\n\n**Imperative code** — คุณระบุ **how** ทีละขั้น: loop, การ assign ตัวแปร, ลำดับ operation ที่ต้องเป๊ะ. ได้ control ละเอียด แต่ engine ต้องรักษาลำดับที่คุณเขียนไว้ จึง reorder หรือ parallelize ให้ไม่ได้ และผูกติดกับ execution strategy เดียวตายตัว.\n\n> MapReduce เป็นทางสายกลาง: มี declarative frame (map/reduce) แต่ให้คุณเขียน callback แบบ imperative — รายละเอียดอยู่ใน concept `mapreduce`.\n\n```mermaid\nflowchart TD\n  Q[SQL states what result you want] --> OPT[Query optimizer]\n  OPT --> P1[Plan A index scan]\n  OPT --> P2[Plan B parallel hash aggregate]\n  OPT -. can switch plan later .-> P2\n  P1 --> R[Result]\n  P2 --> R\n  IC[Imperative loop states how step by step] --> S1[Scan every row into app]\n  S1 --> S2[Fixed order single strategy]\n  S2 --> R2[Same result but pinned]\n```\n\n## ตัวอย่าง (fintech)\n\nโจทย์: หายอดรวมที่ settled ต่อ merchant ของวันนี้.\n\nแบบ declarative — SQL อยากได้แค่ผลลัพธ์:\n\n```sql\nSELECT merchant_id, SUM(amount)\nFROM transactions\nWHERE status = 'settled' AND created_at >= '2026-07-23'\nGROUP BY merchant_id;\n```\n\noptimizer อาจใช้ index บน `(status, created_at)` แล้วทำ hash aggregate แบบ parallel ข้าม 8 core. พรุ่งนี้ถ้ามีคนเพิ่ม index บน `merchant_id` หรือ upgrade engine — SQL ตัวเดิม รันด้วย plan ที่ดีขึ้นเอง คุณไม่แตะโค้ดเลย.\n\nแบบ imperative — hand-written loop ใน application:\n\n```python\ntotals = {}\nfor tx in db.query(\"SELECT * FROM transactions\"):   # ดึงทุกแถวออกมา\n    if tx.status == 'settled' and tx.created_at >= today:\n        totals[tx.merchant_id] += tx.amount\n```\n\nโค้ดนี้ตอกย้ำ strategy เดียว: full scan ทุกแถว, ลากข้อมูลข้าม network เข้ามาใน app memory, filter ทีละแถว, accumulate แบบ single-thread. database ใช้ index ไม่ได้ (คุณขอ *ทุกแถว*), parallelize ไม่ได้, และจะไม่เร็วขึ้นเลยแม้มี index ใหม่. คุณกลายเป็นเจ้าของภาระ performance นี้ตลอดไป — และนี่คือ pattern pull ทุกอย่างมา filter ที่ app ซึ่งเป็น anti-pattern คลาสสิก.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"เขียน loop เองใกล้ metal กว่า เลยเร็วกว่า SQL\"** — สำหรับงาน set-oriented แทบทุกครั้งผิด: optimizer + index + parallelism ชนะ naive loop ขาด และการลากทุกแถวเข้ามา filter ที่ app คือการทิ้งงานหลายสิบปีของ optimizer ไปเปล่า ๆ.\n- **\"declarative แปลว่าคุม performance ไม่ได้เลย\"** — ไม่เชิง. คุณ shape plan ทางอ้อมได้ (สร้าง index, rewrite query, บางที hint) แค่ไม่ได้สั่ง how ทีละขั้นเท่านั้น.\n- **\"optimizer เลือก plan ดีที่สุดเสมอ\"** — ผิด และนี่คือ trade-off ตัวจริง: บน query ซับซ้อนหรือ statistics เก่า optimizer เลือก plan แย่ได้ กลายเป็น performance surprise ตอน production.\n\n## ขีดจำกัด / trade-off\n\nInterview เจาะที่ trade-off ไม่ใช่ตัว pitch:\n\n- **Declarative = ยก control ให้ engine**: ข้อดีคือ engine optimize/parallelize/เปลี่ยน plan ให้เอง; ข้อเสียคือคุณ **สั่ง execution ตรง ๆ ไม่ได้**. เมื่อ optimizer เลือก plan แย่ คุณแก้ได้แค่ทางอ้อม (เพิ่ม index, rewrite, อ่าน EXPLAIN, บางทีใส่ hint) ไม่ใช่บอกว่า ทำขั้นนี้ก่อน. การ debug คำถาม ทำไมช้า กลายเป็นการอ่าน query plan ไม่ใช่อ่าน loop ของตัวเอง.\n- **Imperative = control ละเอียดแต่จ่ายแพงตลอดชีพ**: เมื่อ logic เป็น algorithm ที่ query language แสดงไม่ได้ (custom traversal, streaming ที่ต้อง early-exit, stateful computation) imperative คือเครื่องมือที่ถูก. ต้นทุน: คุณเป็นเจ้าของ optimization เองตลอด, ผูกกับ execution strategy เดียว, parallelize ยาก, และไม่ได้ของแถมเมื่อ engine ดีขึ้น.\n- **เมื่อไหร่ไม่ควรใช้ declarative**: เมื่อการคำนวณ express ใน query language ไม่ได้ หรือจำเป็นต้องคุม execution เป๊ะ (เช่น real-time constraint, ต้อง early-exit กลางทาง).\n- **เมื่อไหร่ไม่ควร hand-roll imperative**: สำหรับ set-oriented data operation ทั่วไป — การ loop filter/aggregate เองใน app แทนที่จะให้ database ทำ คือทิ้ง index และ parallelism ทิ้ง แลก control ที่ไม่ได้ต้องการ.\n\n## มุมสัมภาษณ์\n\n- \"ทำไม SQL ถึงให้ database optimize ได้ แต่ hand-written loop ทำไม่ได้?\" → declarative ไม่ระบุ execution order/strategy optimizer จึงเลือกและเปลี่ยน plan ได้; imperative ตรึงไว้ strategy เดียว.\n- \"ทำไม declarative query ถึง parallelize ดีกว่า?\" → ไม่มีลำดับ operation หรือ shared mutable state ที่ถูกสั่งไว้ engine เลยแตกงานข้าม core/เครื่องได้.\n- \"เมื่อไหร่จะ drop ลงไปเขียน imperative?\" → เมื่อ algorithm express declaratively ไม่ได้ หรือต้องการ control execution เอง.\n- \"declarative แปลว่าคุม performance ไม่ได้ใช่ไหม?\" → ไม่ใช่ คุมทางอ้อมผ่าน index/rewrite/EXPLAIN; คำถามนี้มักต่อไปเรื่อง query optimizer และการอ่าน execution plan.\n",
+  "recall_checks": [
+    {
+      "q": "ในเชิง declarative vs imperative, SQL query แบบ declarative บอกอะไรกับ database?",
+      "expected_answer": "บอกว่าต้องการ 'ผลลัพธ์อะไร' (what) ไม่ใช่ 'ทำอย่างไรทีละขั้น' (how); ปล่อยให้ query optimizer เลือก execution plan เอง",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม declarative query ถึงเปิดช่องให้ database optimize และ parallelize ได้ แต่ imperative loop ทำไม่ได้?",
+      "expected_answer": "เพราะ declarative ไม่ได้ระบุลำดับขั้นตอน/execution strategy ตายตัว optimizer จึงเลือกและเปลี่ยน plan รวมถึงกระจายงานข้าม core ได้เอง",
+      "type": "mcq",
+      "options": [
+        "เพราะ SQL รันบน hardware ที่เร็วกว่าโค้ด application เสมอ",
+        "เพราะ declarative ไม่ได้ระบุลำดับขั้นตอน/execution strategy ตายตัว optimizer จึงเลือกและเปลี่ยน plan รวมถึงกระจายงานข้าม core ได้เอง",
+        "เพราะ imperative code เขียนผิด syntax บ่อยกว่า"
+      ]
+    },
+    {
+      "q": "ข้อใดคือ trade-off ที่แท้จริงของการใช้ declarative query?",
+      "expected_answer": "คุณเสีย control ตรง ๆ over execution — optimizer อาจเลือก plan ที่แย่บน query ซับซ้อนหรือ statistics เก่า และคุณแก้ได้แค่ทางอ้อม (index, rewrite, hint)",
+      "type": "mcq",
+      "options": [
+        "คุณเสีย control ตรง ๆ over execution — optimizer อาจเลือก plan ที่แย่บน query ซับซ้อนหรือ statistics เก่า และคุณแก้ได้แค่ทางอ้อม (index, rewrite, hint)",
+        "declarative query ไม่สามารถทำ aggregate เช่น SUM หรือ GROUP BY ได้",
+        "declarative query ผูกกับ execution strategy เดียว เปลี่ยน plan ไม่ได้เลย"
+      ]
+    },
+    {
+      "q": "เมื่อไหร่ที่ควรเลือก imperative แทน declarative?",
+      "expected_answer": "เมื่อ logic เป็น algorithm ที่ query language แสดงไม่ได้ หรือจำเป็นต้องคุม execution เอง (เช่น stateful/streaming ที่ต้อง early-exit)",
+      "type": "mcq",
+      "options": [
+        "เมื่อต้องการให้ database upgrade แล้ว query เร็วขึ้นเองอัตโนมัติ",
+        "เมื่อต้องการ scan และ aggregate ข้อมูลจำนวนมากให้เร็วที่สุด",
+        "เมื่อ logic เป็น algorithm ที่ query language แสดงไม่ได้ หรือจำเป็นต้องคุม execution เอง (เช่น stateful/streaming ที่ต้อง early-exit)"
+      ]
+    },
+    {
+      "q": "ข้อใดคือความเข้าใจผิดเกี่ยวกับ declarative vs imperative?",
+      "expected_answer": "เขียน loop filter/aggregate เองใน app ใกล้ metal กว่า จึงเร็วกว่า SQL เสมอ",
+      "type": "mcq",
+      "options": [
+        "declarative ปล่อยให้ query optimizer เลือก execution plan เอง",
+        "เขียน loop filter/aggregate เองใน app ใกล้ metal กว่า จึงเร็วกว่า SQL เสมอ",
+        "declarative query สามารถ parallelize ได้ดีเพราะไม่ได้กำหนดลำดับ operation ตายตัว"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 2: Query Languages for Data",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 2",
+      "why": "อ่านต้นฉบับแนวคิด declarative vs imperative พร้อม CSS analogy และ MapReduce ในฐานะทางสายกลาง"
+    },
+    {
+      "title": "A Relational Model of Data for Large Shared Data Banks",
+      "source": "E. F. Codd, Communications of the ACM, Vol. 13, No. 6 (1970)",
+      "why": "อ่านที่มาว่าทำไม relational model ถึงออกแบบให้ query แบบ declarative แยกจากการ implement storage"
+    },
+    {
+      "title": "PostgreSQL Documentation: Using EXPLAIN",
+      "source": "postgresql.org/docs/current/using-explain.html",
+      "why": "อ่านของจริงว่า query optimizer เลือก execution plan อย่างไร และเราตรวจ/ปรับทางอ้อมได้แค่ไหน"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "column-oriented-storage",
+  "version": 1,
+  "title_en": "Column-Oriented Storage",
+  "est_minutes": 8,
+  "body_md": "# Column-Oriented Storage\n\n## ทำไมถึงสำคัญ\n\nData warehouse เก็บตาราง fact ที่กว้างมาก (หลายสิบถึงร้อย column) และลึกมาก (หลายร้อยล้านถึงพันล้านแถว) แต่ analytic query ทั่วไปแตะแค่ไม่กี่ column. ถ้าเก็บแบบ row-oriented ระบบต้องอ่านทั้งแถว (ทุก column) ขึ้นมาจาก disk แล้วทิ้งเกือบหมด — เปลือง I/O มหาศาล. Column-oriented storage พลิกวิธีเก็บเพื่อให้ query อ่านเฉพาะ column ที่ใช้จริง และเปิดทางให้ compression กับ vectorized processing ที่ row store ทำได้ไม่ดีเท่า. นี่คือเหตุผลที่ engine อย่าง Vertica, Redshift, BigQuery, ClickHouse และ format อย่าง Parquet เลือกโครงสร้างนี้สำหรับงาน analytics.\n\n## แก่นของแนวคิด\n\nความต่างอยู่ที่ \"อะไรถูกเก็บติดกันบน disk\":\n\n- **Row-oriented**: ทุก field ของแถวเดียวถูกเก็บต่อเนื่องกัน เหมาะกับดึง/แทรกทั้งแถวด้วย key เดียว (OLTP).\n- **Column-oriented**: ค่าทุกแถวของ *column เดียวกัน* ถูกเก็บต่อเนื่องกันในไฟล์ของ column นั้น. การประกอบแถวกลับคืนทำได้เพราะทุก column เรียงแถวในลำดับเดียวกันเป๊ะ — ค่าตำแหน่งที่ n ของทุก column คือแถวที่ n.\n\nการแบ่งว่า workload ไหนเป็น analytic (OLAP) กับ transactional (OLTP) เป็นเรื่องของ concept `oltp-vs-olap`; ที่นี่สนใจเฉพาะ *วิธีเก็บ* ที่ทำให้ analytic query เร็ว.\n\nผล 3 อย่างที่ตามมาจากการเก็บ column ติดกัน:\n\n**1. อ่านเฉพาะ column ที่ query อ้างถึง.** query `SELECT category, SUM(amount) ...` แตะแค่ 2 column จาก 50 → อ่าน 2 ไฟล์ ข้ามอีก 48 ไป. I/O ลดลงตามสัดส่วน column ที่ใช้จริง.\n\n**2. Compression แรงเป็นพิเศษ.** ค่าใน column เดียวกันมี type และ domain เดียวกัน และมักซ้ำ (low cardinality) จึงบีบได้ดีกว่าข้อมูลต่าง type ปนกันแบบ row:\n\n- **Bitmap encoding**: column ที่มีค่า distinct จำนวนน้อย (เช่น `category`, `country`, `status`) สร้าง bitmap หนึ่งชุดต่อค่า distinct หนึ่งค่า แต่ละ bit บอกว่าแถวนั้นมีค่านั้นหรือไม่. query แบบ `WHERE category IN (x, y)` กลายเป็น bitwise OR ของ bitmap; `cat = x AND country = y` เป็น bitwise AND — เร็วมากและทำทีละหลายแถวพร้อมกัน.\n- **Run-length encoding (RLE)**: เมื่อ column ถูก sort ค่าซ้ำติดกันยาว ๆ เก็บเป็น (ค่า, จำนวนซ้ำ) แทนการเก็บทีละตัว. bitmap ที่ sparse ก็ RLE ต่อได้อีกชั้น.\n\n**3. Vectorized processing.** column ที่ถูก compress มีขนาดเล็กพอโหลดเข้า CPU cache (L1/L2) ได้ทั้งก้อน. query engine จึงประมวลผลทีละ chunk (vector) ในลูปแน่น ๆ ใช้ SIMD และ bitwise operator บน bitmap ทำงานหลายแถวต่อหนึ่งคำสั่ง แทน function call ต่อแถวแบบ row-at-a-time ที่ไม่เป็นมิตรกับ CPU cache.\n\nนอกจากนี้ column store เลือก **sort order** ให้ทั้งตารางได้ (เช่น sort ตาม `ts`) ซึ่งช่วยทั้ง range query และเพิ่มพลัง RLE. บางระบบ (แนวคิดจาก C-Store) เก็บข้อมูลชุดเดียวกันซ้ำในหลาย sort order เพื่อรองรับ query คนละแบบ — แลก storage กับความเร็ว.\n\n```mermaid\nflowchart TB\n  QR[\"Q: SUM(amount) GROUP BY category\"] --> R1\n  QR --> R2\n  QR --> R3\n  subgraph Row-oriented storage\n    R1[\"Row1 = id, category, amount, +47 fields\"]\n    R2[\"Row2 = id, category, amount, +47 fields\"]\n    R3[\"Row3 = id, category, amount, +47 fields\"]\n  end\n  QC[\"Q: SUM(amount) GROUP BY category\"] --> CCAT\n  QC --> CAMT\n  QC -. not read .-> COTH\n  subgraph Column-oriented storage\n    CCAT[\"category column: bitmap encoded\"]\n    CAMT[\"amount column: compressed\"]\n    COTH[\"the other 47 columns\"]\n  end\n```\n\n## ตัวอย่าง (payments analytics)\n\nทีม fintech มี fact table `transactions` ~50 column (txn_id, ts, merchant_id, category, amount, currency, card_bin, status, country, ...) ราว 800 ล้านแถว. ทีม risk ถามคำถามซ้ำ ๆ ว่า \"เดือนนี้ยอดรวมแยกตาม category เป็นเท่าไร\":\n\n```sql\nSELECT category, SUM(amount)\nFROM transactions\nWHERE ts >= '2026-07-01'\nGROUP BY category;\n```\n\n- Row store: อ่านทั้ง 800 ล้านแถว × 50 column ขึ้นมา แล้วใช้จริงแค่ `ts`, `category`, `amount` — เปลือง I/O ~94%.\n- Column store: อ่านแค่ 3 column file. `category` เป็น low-cardinality → bitmap encoded, `GROUP BY` ทำผ่าน bitmap ได้เร็ว. `amount` ถูก compress และ engine sum ทีละ vector. `ts` ที่เป็น sort order ช่วยตัดช่วงวันที่โดยไม่ scan ทั้งหมด. ผลคือ query เดียวกันเร็วขึ้นหลายเท่าและกิน bandwidth น้อยกว่ามาก.\n\nแต่ตาราง `transactions` ที่เป็น system of record (เขียนทีละ transaction ตอน payment เข้ามา) ควรอยู่ใน OLTP database แบบ row-oriented; ตัว column store คือสำเนา analytic ที่ load เข้ามาเป็น batch — เหตุผลอยู่ในหัวข้อ trade-off.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"column store คือ index แบบหนึ่งที่วางทับ row store\"** — ผิด. มันคือ *primary storage layout* เอง ไม่มีสำเนา row เก็บคู่ (เว้นแต่ตั้งใจทำหลาย projection); การ reconstruct แถวต้องไปเก็บค่าตำแหน่งเดียวกันจากทุก column.\n- **\"compression มีไว้ประหยัด disk เป็นหลัก\"** — ไม่ครบ. กำไรที่ใหญ่กว่าคือลด I/O bandwidth และทำให้ข้อมูลอยู่ใน CPU cache เพื่อ vectorized processing; ความเร็ว query มาจากตรงนี้มากกว่าการประหยัดพื้นที่.\n- **\"column store เร็วกว่า row store เสมอ\"** — ผิด. เร็วเฉพาะงาน scan/aggregate; point lookup และ insert/update ทีละแถวช้ากว่า row store ชัดเจน.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\nหัวใจที่ senior interview เจาะคือ *ราคาของฝั่ง write และ point read*:\n\n- **Insert/update ทีละแถวแพงมาก**: field ของแถวเดียวกระจายอยู่คนละ column file ที่ถูก sort และ compress แยกกัน. แทรกแถวเดียวตรงกลางแปลว่าต้องแตะ (และอาจ rewrite) ทุก column file — และจะ update ค่าใน compressed/sorted column ในที่เดิมก็แทบทำไม่ได้. ระบบจริงจึงไม่เขียนตรงลง column แต่พัก write ไว้ใน write-optimized store ในหน่วยความจำ (row-oriented) แล้ว merge เข้า column file เป็น batch เบื้องหลัง. ผลคือ write throughput ต่อแถวต่ำและข้อมูลใหม่ \"เห็น\" แบบหน่วงเวลา ไม่ใช่ทันที.\n- **Point lookup ช้า**: อ่านแถวเดียวให้ครบทุก field ต้องไปดึงจากหลาย column file แทน seek เดียวแบบ row store → ไม่เหมาะกับ query ที่ดึงทั้งแถวด้วย primary key บ่อย ๆ.\n- **หลาย sort order / projection = storage บาน**: การเก็บข้อมูลซ้ำหลาย sort order เพื่อเร่ง query กิน disk เพิ่ม และทุกชุดต้องอัปเดตตอนเขียน.\n- **สรุปเมื่อไหร่ไม่ควรใช้**: OLTP ที่มี single-row read/write หนาแน่น, งานที่ต้อง point lookup ทั้งแถวบ่อย, หรือระบบที่ต้องเห็นข้อมูลล่าสุดทันทีหลังเขียน — พวกนี้ row-oriented ตอบได้ดีกว่าและถูกกว่า. Column store คือเครื่องมือของฝั่ง analytics ไม่ใช่ system of record.\n\n## มุมสัมภาษณ์\n\n- \"ทำไม column store จึง compress ได้ดีกว่า row store?\" → ค่าใน column เดียวกัน type/domain เดียวและมักซ้ำ (low cardinality) ใช้ bitmap/RLE ได้ดี; row store สลับ field ต่าง type ติดกันทำให้บีบยาก.\n- \"ให้ query `SUM(amount) GROUP BY category` อธิบายว่าทำไม columnar เร็วกว่า\" → อ่านเฉพาะ column ที่อ้างถึง (I/O น้อย), compressed data อยู่ใน cache, vectorized + bitmap AND/OR ทำหลายแถวต่อคำสั่ง.\n- \"ทำไม insert/update ทีละแถวจึงแพงใน column store แล้วเขาแก้ยังไง?\" → field กระจายหลาย column file ที่ sort/compress แยกกัน; แก้ด้วย write buffer ในหน่วยความจำ + background merge เป็น batch.\n- \"เมื่อไหร่ *ไม่* ควรใช้ column store?\" → OLTP, point lookup ทั้งแถว, หรือต้องเห็นข้อมูลทันทีหลังเขียน.\n",
+  "recall_checks": [
+    {
+      "q": "Column-oriented storage เก็บข้อมูลต่างจาก row-oriented อย่างไร?",
+      "expected_answer": "เก็บค่าทุกแถวของ column เดียวกันไว้ต่อเนื่องกันในไฟล์ของ column นั้น (แทนที่จะเก็บทุก field ของแถวเดียวไว้ด้วยกัน) analytic query จึงอ่านเฉพาะ column ที่ต้องใช้",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม column store จึง compress ได้ดีกว่า row store?",
+      "expected_answer": "เพราะค่าใน column เดียวกันมี type/domain เดียวกันและมักซ้ำ (low cardinality) จึงใช้ bitmap/run-length encoding ได้ดี",
+      "type": "mcq",
+      "options": [
+        "เพราะค่าใน column เดียวกันมี type/domain เดียวกันและมักซ้ำ (low cardinality) จึงใช้ bitmap/run-length encoding ได้ดี",
+        "เพราะ column store ใช้ compression algorithm ที่ใหม่กว่า row store โดยเนื้อแท้",
+        "เพราะ column store แปลงข้อมูลทุกอย่างเป็น text ล้วนซึ่งบีบอัดง่ายกว่า binary"
+      ]
+    },
+    {
+      "q": "ทำไมการ insert/update ทีละแถวใน column store จึงแพงกว่า row store?",
+      "expected_answer": "เพราะ field ของแถวเดียวกระจายอยู่คนละ column file ที่ถูก sort/compress แยกกัน การเขียนแถวเดียวจึงต้องแตะหลายไฟล์",
+      "type": "mcq",
+      "options": [
+        "เพราะ column store ไม่มี index จึงต้อง scan ทั้งตารางก่อนเขียนทุกครั้ง",
+        "เพราะ field ของแถวเดียวกระจายอยู่คนละ column file ที่ถูก sort/compress แยกกัน การเขียนแถวเดียวจึงต้องแตะหลายไฟล์",
+        "เพราะ column store เก็บข้อมูลไว้ใน memory เท่านั้นจึงเขียนลง disk ไม่ได้"
+      ]
+    },
+    {
+      "q": "column store เหมาะกับ workload แบบใดมากที่สุด?",
+      "expected_answer": "OLAP: analytic query ที่ scan บาง column จากข้อมูลจำนวนมหาศาล",
+      "type": "mcq",
+      "options": [
+        "OLTP: point lookup และ update ทีละแถวจำนวนมาก",
+        "งานที่ต้องอ่าน/เขียนทั้งแถวด้วย primary key บ่อย ๆ และต้องเห็นข้อมูลทันที",
+        "OLAP: analytic query ที่ scan บาง column จากข้อมูลจำนวนมหาศาล"
+      ]
+    },
+    {
+      "q": "vectorized processing ใน column store ได้ประโยชน์จากอะไร?",
+      "expected_answer": "ข้อมูล column ที่ถูก compress เล็กพอใส่ CPU cache ได้ query engine จึงประมวลผลทีละ chunk (vector) ในลูปแน่น ๆ ใช้ SIMD / bitwise AND-OR บน bitmap ทำได้หลายแถวต่อคำสั่ง",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 3: Storage and Retrieval (Column-Oriented Storage)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 3",
+      "why": "อ่านต้นฉบับแนวคิด column storage, column compression (bitmap/RLE), sort order และ vectorized processing"
+    },
+    {
+      "title": "C-Store: A Column-oriented DBMS",
+      "source": "Stonebraker et al., Proceedings of VLDB 2005",
+      "why": "อ่านงานต้นทางของ column store สมัยใหม่: projection หลาย sort order + write-optimized store ที่ merge เป็น batch"
+    },
+    {
+      "title": "The Design and Implementation of Modern Column-Oriented Database Systems",
+      "source": "Abadi, Boncz, Harizopoulos et al., Foundations and Trends in Databases, Vol. 5 (2013)",
+      "why": "อ่านลึกเรื่อง compression, vectorized execution และ late materialization ของ column-store engine จริง"
+    }
+  ]
+}

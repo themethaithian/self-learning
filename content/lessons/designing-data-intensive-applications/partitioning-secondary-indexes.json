@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "partitioning-secondary-indexes",
+  "version": 1,
+  "title_en": "Partitioning and Secondary Indexes",
+  "est_minutes": 8,
+  "body_md": "# Partitioning and Secondary Indexes\n\n## ทำไมถึงสำคัญ\n\nSecondary index (index บน field ที่ไม่ใช่ primary/partition key) คือสิ่งที่ทำให้ query แบบ \"หาทุก record ที่ field X = ค่านี้\" เป็นไปได้ — แต่พอ data ถูกแบ่งเป็นหลาย partition แล้ว index เองก็ต้องถูกแบ่งด้วย และมีแค่สองวิธีให้เลือกเท่านั้น: local หรือ global. เลือกผิดแล้ว read จะช้าเพราะต้องถามทุก partition หรือไม่ก็ write ช้า/ข้อมูล lag เพราะต้องอัปเดต index หลายที่. นี่เป็น trade-off ที่ senior interview ถามบ่อย เพราะมันโยงตรงเข้ากับ distributed database และ search engine แทบทุกตัว.\n\n## แก่นของแนวคิด\n\nสมมติ base table ถูก partition ด้วย hash หรือ key range บน **primary key** อยู่แล้ว (สองแบบนี้เป็น sibling concept ในบทนี้). คำถามของหัวข้อนี้คือ แล้ว *secondary* index ควรถูกแบ่งอย่างไร — มีสองแนวทาง:\n\n**1) Document-partitioned index (local index)**\n- แต่ละ partition สร้าง index ของ *เฉพาะเอกสารที่ตัวเองเก็บ* เท่านั้น — index อยู่ติดกับ data. เรียกว่า local index.\n- **Write ถูก (local):** เขียน document ลง partition ไหน ก็อัปเดต index ของ partition นั้นที่เดียว จบในการเขียนก้อนเดียว ไม่ข้าม node.\n- **Read แพง (scatter-gather):** query \"merchant = Starbucks\" ต้องยิงไป *ทุก* partition แล้ว merge ผล เพราะ document ที่ merchant=Starbucks กระจายอยู่ทุก partition (มันถูกแบ่งตาม primary key ไม่ใช่ตาม merchant). เทคนิคนี้เรียก scatter/gather และทำให้ read latency ผูกกับ tail latency ของ partition ที่ช้าที่สุด.\n- ระบบจริงที่ใช้แบบนี้: Cassandra, Elasticsearch, SolrCloud, MongoDB, Riak และ VoltDB.\n\n**2) Term-partitioned index (global index)**\n- index ถูกแบ่งตาม *ค่าที่ index เอง* (the term) ไม่ใช่ตาม primary key ของ document. เช่น term ที่ขึ้นต้น a–r อยู่ index-partition 0, s–z อยู่ index-partition 1.\n- **Read ถูก (partition เดียว):** query \"merchant = Starbucks\" ไปหา index partition ที่ถือ term \"Starbucks\" ที่เดียว ไม่ต้อง scatter. เรียก global เพราะ index หนึ่งชุดครอบคลุม document ทั้ง cluster.\n- **Write แพง (หลาย partition):** เขียน document เดียวที่มี merchant=Starbucks, category=food อาจต้องแตะ index partition ของ term \"Starbucks\" และของ term \"food\" — ซึ่งอยู่คนละ partition กับตัว document และมักคนละ node กัน. อัปเดต index หลายที่แบบ synchronous จะต้องใช้ distributed transaction (แพงมาก) ระบบจริงจึงมัก update **แบบ asynchronous**.\n- ผลของ async: index ตามหลัง data → เขียนเสร็จแล้ว query ทันทีอาจยังไม่เห็นผล (read-your-write lag / index เป็น eventually consistent).\n\nหัวใจของ trade-off: local ย้ายต้นทุนไปไว้ที่ **read**, global ย้ายไปไว้ที่ **write**. เลือกตามว่า workload อ่านหรือเขียนหนักกว่ากัน และรับ index lag ได้แค่ไหน.\n\n> เกร็ด: DynamoDB LSI/GSI เป็นตัวอย่างในโลกจริงของ local vs global secondary index — รายละเอียด consistency guarantee ของแต่ละบริการเรียนใน track AWS.\n\n## ตัวอย่าง (fintech — query transactions)\n\nตาราง `transactions` ถูก partition ด้วย hash ของ `transaction_id` (เพื่อกระจายโหลดเขียน — sibling concept). ฝั่ง product อยากให้ user เปิดดู \"transaction ทั้งหมดของร้าน Starbucks\" และมี dashboard สรุปยอดตาม `category`.\n\n- **แบบ local:** ทุก partition มี index `merchant -> [transaction_id]` ของเฉพาะ transaction ที่อยู่ใน partition นั้น. ตอน settle transaction ใหม่ → เขียน row + อัปเดต index ใน partition เดียว = เร็ว. แต่หน้า \"ประวัติร้าน Starbucks\" ต้อง fan-out ไปทั้ง 16 partition แล้ว merge — ถ้า partition ใดช้า หน้าเว็บทั้งหน้าช้าตาม.\n- **แบบ global:** มี global index `merchant -> [transaction_id]` แบ่งตามชื่อ merchant. หน้า \"ประวัติร้าน Starbucks\" ยิง index partition เดียว = เร็วมาก. แต่ transaction ใหม่ 1 รายการต้องไปอัปเดต global index ของ merchant *และ* ของ category (คนละ partition) จึงทำแบบ async. ผล: user เพิ่งจ่าย Starbucks แล้วรีเฟรชทันที อาจยังไม่เห็นรายการเพราะ index ยังตามไม่ทัน (ถ้า business ต้องการ read-your-write ตรงจุดนี้ ต้องออกแบบเพิ่ม ไม่ใช่ default ของ global index).\n\n```mermaid\nflowchart LR\n  subgraph Local[\"Local index: read = scatter-gather\"]\n    QL[\"Read merchant=Starbucks\"] --> P0[\"Partition 0 index\"]\n    QL --> P1[\"Partition 1 index\"]\n    QL --> P2[\"Partition 2 index\"]\n    P0 --> MG[\"Merge results\"]\n    P1 --> MG\n    P2 --> MG\n  end\n  subgraph Global[\"Global index: read = one partition\"]\n    QG[\"Read merchant=Starbucks\"] --> IX[\"Index partition for term S\"]\n    IX --> RG[\"Result\"]\n  end\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"global index อ่านเร็วกว่า เลยดีกว่าเสมอ\"** ผิด. global แลก read-speed มาด้วย write ที่แพงขึ้นและ index ที่ eventually consistent — บน write-heavy workload หรือกรณีที่ต้องการ read-your-write ทันที local อาจเหมาะกว่า.\n- **\"local index = query เร็วเพราะ index อยู่ติด data\"** ถูกครึ่งเดียว. write และ lookup ภายใน partition เดียวเร็วจริง แต่ query ที่ไม่มี partition key ต้อง scatter-gather ทุก partition — ยิ่ง partition เยอะยิ่งแพง.\n- **\"async global index คือข้อมูลผิด/หาย\"** ไม่ใช่. index ไม่ได้ผิดถาวร แต่เป็น lag ชั่วคราว; เมื่อเขียนสำเร็จ index จะ converge ตามมาในภายหลัง.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรใช้แต่ละแบบ)\n\n- **ต้นทุนของ local index:** read fan-out ทำให้ p99 latency แย่ตาม partition ที่ช้าที่สุด และ query หนึ่งครั้งกินทรัพยากรทุก node แม้ partition ส่วนใหญ่ไม่มีผลลัพธ์เลย. ยิ่ง scale out เพิ่ม partition, read ยิ่งแพง. ไม่เหมาะเมื่อ read pattern เป็น point-lookup บน secondary field ที่ต้องการ low latency และมี partition จำนวนมาก.\n- **ต้นทุนของ global index:** write ต้อง fan-out ไปหลาย index partition; ทำ sync = ต้อง distributed transaction (แทบไม่มีระบบ OLTP ทำ), ทำ async = index lag / eventual consistency → อ่านทันทีหลังเขียนอาจได้ผลไม่ครบ. ไม่เหมาะเมื่อ business ต้องการ strong read-your-write บน field นั้น หรือเมื่อ write หนักจนการ replicate index กลายเป็น bottleneck.\n- **ทางเลือกที่ควรพิจารณา:** หลายทีมเก็บ base table แบบ partition-by-key ไว้ แล้วโยน query ซับซ้อนไปที่ search engine / OLAP store แยกต่างหาก แทนที่จะดัน secondary index หนัก ๆ ลงบน OLTP store — เพราะ index ทั้งสองแบบก็มีต้นทุนของมันเอง. งานของ senior คือรู้ว่ากำลังจ่ายต้นทุนด้วย read หรือด้วย write.\n\n## มุมสัมภาษณ์\n\n- \"จะ query ด้วย non-key field ใน partitioned DB อย่างไร?\" → อธิบาย local (scatter-gather) กับ global (term-partitioned) พร้อม trade-off read/write.\n- \"ถ้า query pattern เปลี่ยนจาก read-heavy เป็น write-heavy จะปรับ index strategy อย่างไร?\" → อาจย้ายจาก global (ที่เน้น read เร็ว) มาเป็น local (ที่ write ถูก) โดยยอมจ่ายด้วย scatter-gather ตอน read.\n- \"ทำไม secondary index บน distributed DB ถึงมักเป็น eventually consistent?\" → เพราะ global index write ต้องแตะหลาย partition; ทำ sync ต้องใช้ distributed transaction ที่แพง จึงเลือกทำ async → เกิด lag.\n- \"read-heavy vs write-heavy จะเลือก index แบบไหน?\" → read-heavy และรับ lag ได้ → global; write-heavy หรือต้องการ read-your-write → local (ยอมจ่ายด้วย scatter-gather ตอน read).\n",
+  "recall_checks": [
+    {
+      "q": "ใน document-partitioned (local) secondary index การ query ด้วยค่าที่ไม่ใช่ partition key ต้องทำอย่างไร?",
+      "expected_answer": "scatter-gather ไปทุก partition แล้ว merge ผลลัพธ์",
+      "type": "mcq",
+      "options": [
+        "scatter-gather ไปทุก partition แล้ว merge ผลลัพธ์",
+        "ยิงไป partition เดียวที่ถือ term นั้นโดยตรง",
+        "อ่านจาก primary key ได้เลยโดยไม่ต้องแตะ index"
+      ]
+    },
+    {
+      "q": "ทำไม global (term-partitioned) index จึงมักถูกอัปเดตแบบ asynchronous และเกิดผลอะไรตามมา?",
+      "expected_answer": "เพราะ write หนึ่งครั้งต้องแตะ index หลาย partition; ถ้าทำ sync ต้องใช้ distributed transaction ที่แพง จึงทำ async → index ตามหลัง data เกิด read-your-write lag (eventually consistent)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดสรุป trade-off ระหว่าง local กับ global secondary index ได้ถูกต้อง?",
+      "expected_answer": "local = write ถูกแต่ read ต้อง scatter-gather; global = read ถูกแต่ write ต้องอัปเดตหลาย partition แบบ async",
+      "type": "mcq",
+      "options": [
+        "local = write ถูกแต่ read ต้อง scatter-gather; global = read ถูกแต่ write ต้องอัปเดตหลาย partition แบบ async",
+        "local = read ถูกแต่ write ต้องอัปเดตหลาย partition; global = write ถูกแต่ read ต้อง scatter-gather",
+        "ทั้งสองแบบทั้ง read และ write ถูกเท่ากัน ต่างแค่ชื่อเรียก"
+      ]
+    },
+    {
+      "q": "ทำไม write บน global (term-partitioned) index จึงแพงกว่า write บน local index?",
+      "expected_answer": "เพราะเอกสารเดียวอาจมีหลาย term (เช่น merchant และ category) ที่อยู่คนละ index partition จึงต้องอัปเดต index หลายที่",
+      "type": "mcq",
+      "options": [
+        "เพราะเอกสารเดียวอาจมีหลาย term (เช่น merchant และ category) ที่อยู่คนละ index partition จึงต้องอัปเดต index หลายที่",
+        "เพราะต้อง scatter-gather ไปทุก partition ก่อนจึงจะเขียนได้",
+        "เพราะ global index บังคับให้เก็บสำเนา document ทั้งก้อนซ้ำในทุก partition"
+      ]
+    },
+    {
+      "q": "workload ที่ write หนักหรือที่ต้องการ read-your-write ทันที ควรเลือก secondary index แบบไหน และแลกกับอะไร?",
+      "expected_answer": "เลือก local (document-partitioned) เพราะ write อยู่ partition เดียวและไม่มี async index lag แต่แลกด้วยการต้อง scatter-gather ทุก partition ตอน read",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 6: Partitioning — section \"Partitioning and Secondary Indexes\"",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 6",
+      "why": "อ่านต้นฉบับ local (document-partitioned) vs global (term-partitioned) และรายชื่อระบบจริงที่ใช้แต่ละแบบ"
+    },
+    {
+      "title": "Elasticsearch Reference — Distributed search (how a query fans out to shards and gathers results)",
+      "source": "Elastic, Elasticsearch Reference, \"Distributed search\" / query-then-fetch section",
+      "why": "อ่านตัวอย่าง scatter-gather บน local (document-partitioned) index ในระบบ search จริง"
+    },
+    {
+      "title": "Apache Cassandra Documentation — How secondary indexes work",
+      "source": "Apache Cassandra Documentation, \"Indexing\" / secondary index section",
+      "why": "อ่านตัวอย่าง local (document-partitioned) index ที่ต้อง scatter-gather ในระบบ production จริง"
+    }
+  ]
+}

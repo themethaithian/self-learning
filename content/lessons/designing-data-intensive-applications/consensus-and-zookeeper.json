@@ -1,0 +1,72 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "consensus-and-zookeeper",
+  "version": 1,
+  "title_en": "Distributed Consensus and ZooKeeper",
+  "est_minutes": 8,
+  "body_md": "# Distributed Consensus and ZooKeeper\n\n## ทำไมถึงสำคัญ\n\nConsensus คือปัญหาแกนที่ยากที่สุดของระบบกระจาย: ทำให้ node หลายตัว \"ตกลงค่าเดียวกัน\" ให้ได้แม้บางตัวจะล่มหรือ network จะช้า. งาน coordination สำคัญ ๆ — leader election, distributed lock, การตัดสินว่าใครถือสิทธิ์เขียน — เกือบทั้งหมดแปลงเป็นปัญหา consensus ได้. งานของ senior คือรู้ว่ามัน \"แก้ได้จริง\" ด้วย algorithm ที่พิสูจน์แล้ว (Raft, Paxos) และรู้ว่าเมื่อไหร่ควร outsource ให้ ZooKeeper/etcd แทนที่จะเขียนเอง (ซึ่งพลาดง่ายมาก).\n\n## แก่นของแนวคิด\n\nConsensus: มี node หนึ่งหรือหลายตัว propose ค่า แล้วทั้งกลุ่มต้อง \"decide\" ค่าเดียวร่วมกัน. formal properties 4 ข้อ (Kleppmann):\n\n- **Uniform agreement**: ไม่มีสอง node ที่ decide ค่าต่างกัน\n- **Integrity**: node หนึ่ง decide ได้ครั้งเดียว ไม่กลับคำ\n- **Validity**: ค่าที่ decide ต้องเป็นค่าที่มี node ใด propose จริง (ห้ามเสกค่าใหม่)\n- **Termination**: ทุก node ที่ไม่ล่ม ต้อง decide ในที่สุด (ห้ามค้างตลอดกาล)\n\nสามข้อแรกคือ safety (จะไม่มีอะไรผิด), Termination คือ liveness (ต้องมีความคืบหน้า). Termination นี่แหละที่บังคับให้ต้อง tolerate fault: algorithm ที่รอ node ครบทุกตัวก่อนตัดสิน จะค้างทันทีถ้ามีตัวเดียวล่ม.\n\n**Fault-tolerant consensus algorithm** ที่ใช้จริง: **Raft, Paxos (Multi-Paxos), Zab (ตัวที่ ZooKeeper ใช้), Viewstamped Replication**. หัวใจร่วมกันคือใช้ **majority (quorum)**: การตัดสินแต่ละครั้งต้องได้เสียงข้างมากของ node เห็นชอบ. เพราะสอง majority ของกลุ่มเดียวกันต้อง overlap กันอย่างน้อย 1 node เสมอ ระบบจึงไม่มีทาง decide สองค่าที่ขัดกัน (กัน split-brain). ผลคือกลุ่ม 5 node ทนล่มได้ 2 (เหลือ 3 ยังเป็น majority), กลุ่ม 3 node ทนได้ 1 — ต่างจาก 2PC ที่ต้องได้เสียงครบทุกตัว (unanimous).\n\nหมายเหตุทฤษฎี: FLP result บอกว่าไม่มี consensus แบบ deterministic ที่การันตี termination ได้เสมอบน asynchronous network — algorithm จริงเลี่ยงด้วยการใช้ timeout เพื่อ detect ว่า leader ตาย ซึ่งเป็นเหตุผลว่าทำไมมันไวต่อการตั้งค่า timeout และสภาพ network.\n\n## ตัวอย่าง: leader election ของ job scheduler (ops / fintech)\n\nระบบ fintech มี job scheduler ยิง batch settlement รอบดึก — ต้องมี **แค่ instance เดียว** ที่เป็น leader รันจริง (ถ้ารันซ้อนกัน = จ่ายเงินซ้ำ). เรารัน scheduler ไว้ 3 ตัวเพื่อ high availability แต่ต้องเลือก leader 1 ตัว และเลือกใหม่อัตโนมัติเมื่อ leader ตาย.\n\nแทนที่จะเขียน consensus เอง เรา outsource ให้ ZooKeeper: ทั้ง 3 ตัวแข่งกัน create znode `/scheduler/leader` แบบ ephemeral — ZooKeeper การันตีว่ามีแค่ตัวเดียวสำเร็จ ตัวนั้นคือ leader. อีกสองตัว watch node นั้นไว้เป็น standby. พอ leader ตาย session หลุด → ephemeral node หายเอง → standby ได้ event → แข่งเป็น leader ใหม่.\n\n```mermaid\nflowchart TD\n  subgraph ENS[ZooKeeper ensemble: agrees via majority quorum]\n    Z1[zk1]\n    Z2[zk2]\n    Z3[zk3]\n  end\n  A[Scheduler A] -->|create /scheduler/leader| ENS\n  B[Scheduler B] -->|create /scheduler/leader| ENS\n  C[Scheduler C] -->|create /scheduler/leader| ENS\n  ENS -->|only A succeeds: A is leader| A\n  ENS -.->|watch: standby| B\n  ENS -.->|watch: standby| C\n```\n\nZooKeeper ยังแถม **fencing token** ให้: ทุก znode มี `zxid` ที่เพิ่มขึ้นแบบ monotonic ใช้เป็น token กันกรณี leader เก่าที่ค้างเพราะ GC pause แล้วฟื้นมาเขียนทับของใหม่ (นี่คือปัญหา process pause + fencing ที่ครอบในบท trouble-with-distributed-systems). สิ่งที่ ZooKeeper/etcd ให้จริงในทางปฏิบัติคือชุดนี้: **leader election, service discovery / membership, config, distributed lock/lease** — ทั้งหมด build อยู่บน consensus (Zab / Raft) ที่มันซ่อนไว้ให้ app ไม่ต้องแตะ.\n\n## เชื่อมกับ sibling concept\n\n- Consensus **เทียบเท่า** total order broadcast: การ decide ว่า message ตัวไหนอยู่ลำดับที่ i ของ log ก็คือ consensus หนึ่งรอบ — รายละเอียดอยู่ที่ concept `total-order-broadcast`. algorithm อย่าง Raft จริง ๆ implement TOB (replicated log) แล้วต่อยอดเป็น leader election.\n- ต่างจาก **2PC** (concept `two-phase-commit`): 2PC ต้องได้เสียง \"ครบทุก participant\" ถึงจะ commit — node เดียวล่มหรือ coordinator ล่ม = block. consensus ต้องการแค่ majority จึงทน minority ล่มได้และไม่ block.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ZooKeeper คือ database / key-value store ทั่วไป เอาไว้เก็บข้อมูล app\"** ผิด. มันออกแบบให้เก็บ metadata ก้อนเล็กที่ต้องเชื่อถือได้สูง (ใครเป็น leader, config, membership) ไม่ใช่ throughput สูงหรือข้อมูลก้อนใหญ่ — data ถูก replicate เต็มทุก node.\n- **\"มี ZooKeeper แล้วระบบทน fault ได้มากขึ้นเรื่อย ๆ\"** ผิด. มันทนได้แค่ minority; ถ้า majority ของ ensemble ล่มหรือถูกแยกจากกัน ตัว ZooKeeper เองก็หยุดรับ write (เลือกความถูกต้องเหนือ availability).\n- **\"consensus แก้ทุกปัญหา coordination\"** ผิด. มันแก้เฉพาะปัญหาที่ต้อง \"ตกลงค่าเดียวอย่างเข้มงวด\"; งานที่ยอม eventual consistency ได้ไม่ควรจ่ายราคานี้.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ และต้นทุนคืออะไร\n\nConsensus ไม่ฟรีและไม่ใช่ default:\n\n- **ต้องมี majority available เสมอ**: ทุกการตัดสินใจต้องรอ round-trip ไปถึงเสียงข้างมาก. ถ้า node ล่มเกินครึ่ง หรือฝั่งที่คุณอยู่กลายเป็น minority ตอน network partition → ระบบ **หยุดรับ write** (unavailable) จนกว่า quorum จะกลับมา. นี่คือการเลือก C เหนือ A ตาม CAP.\n- **latency cost**: ทุก write ที่ผ่าน consensus แพงกว่า write ไป node เดียว เพราะต้อง sync กับ majority ก่อน — ไม่เหมาะเป็น hot path ที่ต้องการ throughput สูง.\n- **ไวต่อ network ที่ไม่นิ่ง**: consensus พึ่ง timeout เพื่อ detect leader ตาย. network ที่ latency แกว่งทำให้เกิด leader election ซ้ำ ๆ (thrashing) จน performance ตก.\n- **จำนวน node มักตายตัวและ scale การเขียนไม่ได้ด้วยการเพิ่ม node**: ยิ่งเพิ่ม node ยิ่งต้องรอ ack มากขึ้น (นิยมใช้ 3 หรือ 5 ตัว เลขคี่); consensus scale การอ่านได้แต่ไม่ scale การเขียน.\n- **operational dependency ก้อนใหม่**: ต้องดูแล ZooKeeper/etcd ให้มีชีวิต — มันกลายเป็นสิ่งที่ทั้งระบบพึ่ง ถ้ามันล่ม ทุกอย่างที่พึ่ง leader election/lock ก็สะดุดตาม.\n\nเมื่อไหร่ไม่ควรใช้: งานที่ยอม stale / eventual ได้ (cache, analytics, counter ที่ approximate ได้) หรือระบบเล็กที่ single-node + failover ธรรมดาก็พอ — การลาก consensus service เข้ามาเพิ่ม failure mode และ latency โดยไม่ได้ correctness ที่ต้องใช้จริง. หน้าที่ของ senior คือแยกให้ออกว่า \"ปัญหานี้ต้อง agree อย่างเข้มงวดจริงไหม\" ก่อนจ่ายราคาของ quorum.\n\n## มุมสัมภาษณ์\n\n- \"consensus ต่างจาก 2PC ยังไงเรื่อง fault tolerance?\" → 2PC ต้อง unanimous (node เดียวล่ม block ทั้งระบบ), consensus ต้องแค่ majority (ทน minority ล่มได้).\n- \"ทำไม consensus ต้องใช้ majority / เลขคี่?\" → เพื่อให้สอง quorum overlap กันเสมอ กัน split-brain; และเลขคี่ให้ fault tolerance คุ้มกว่า (4 node ทนล่มได้ 1 เท่ากับ 3 node).\n- \"จะทำ leader election ในระบบตัวเองยังไง?\" → อย่าเขียน consensus เอง; ใช้ ZooKeeper/etcd (ephemeral node / lease) แล้วอย่าลืม fencing token.\n- \"ZooKeeper ล่มทั้ง majority แล้วเกิดอะไร?\" → บริการที่พึ่ง leader election/lock หยุด progress; ระบบเลือก consistency เหนือ availability.\n- คำถามพวกนี้มักเป็นสะพานเชื่อมไป CAP, total order broadcast, และ linearizability ต่อ.\n",
+  "recall_checks": [
+    {
+      "q": "consensus algorithm ต่างจาก 2PC เรื่อง fault tolerance อย่างไร?",
+      "expected_answer": "consensus ต้องการแค่ majority ของ node เห็นชอบ จึงทน minority ล่มได้ ส่วน 2PC ต้องได้เสียงครบทุก participant (unanimous)",
+      "type": "mcq",
+      "options": [
+        "consensus ต้องการแค่ majority ของ node เห็นชอบ จึงทน minority ล่มได้ ส่วน 2PC ต้องได้เสียงครบทุก participant (unanimous)",
+        "consensus ต้องได้เสียงครบทุก node ส่วน 2PC ต้องการแค่ majority",
+        "ทั้งคู่ต้องได้เสียงครบเท่ากัน ต่างกันแค่ชื่อเรียก"
+      ]
+    },
+    {
+      "q": "ทำไม fault-tolerant consensus algorithm ถึงต้องใช้ majority (quorum) ในการตัดสินใจ?",
+      "expected_answer": "เพราะสอง quorum ของกลุ่มเดียวกันต้อง overlap กันอย่างน้อย 1 node เสมอ ระบบจึงไม่มีทาง decide สองค่าที่ขัดกัน (กัน split-brain)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดเป็น fault-tolerant consensus algorithm ที่ใช้งานจริง?",
+      "expected_answer": "Raft, Paxos, Zab, Viewstamped Replication",
+      "type": "mcq",
+      "options": [
+        "Two-Phase Commit, Three-Phase Commit, Chain Replication",
+        "Raft, Paxos, Zab, Viewstamped Replication",
+        "Gossip protocol, CRDT, Vector clocks"
+      ]
+    },
+    {
+      "q": "เมื่อ majority ของ ZooKeeper ensemble ล่มหรือถูกแยกด้วย network partition จะเกิดอะไรขึ้น?",
+      "expected_answer": "ZooKeeper หยุดรับ write เพราะเลือก consistency เหนือ availability",
+      "type": "mcq",
+      "options": [
+        "ZooKeeper ยังรับ write ได้ปกติจาก node ที่เหลือ",
+        "ZooKeeper สลับไปเป็น eventual consistency อัตโนมัติเพื่อคง availability",
+        "ZooKeeper หยุดรับ write เพราะเลือก consistency เหนือ availability"
+      ]
+    },
+    {
+      "q": "ยกตัวอย่างสิ่งที่ ZooKeeper/etcd ห่อ consensus ไว้ให้ใช้เป็น service (อย่างน้อย 3 อย่าง)",
+      "expected_answer": "leader election, service discovery / membership, config management, distributed lock/lease (ทั้งหมด build บน consensus เช่น Zab/Raft)",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 9: Consistency and Consensus",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 9",
+      "why": "อ่านต้นฉบับนิยาม consensus, properties 4 ข้อ, ความเท่ากับ total order broadcast และบทบาทของ ZooKeeper"
+    },
+    {
+      "title": "In Search of an Understandable Consensus Algorithm (Raft)",
+      "source": "Diego Ongaro & John Ousterhout, USENIX ATC 2014 — raft.github.io",
+      "why": "อ่าน consensus algorithm ตัวจริงที่เข้าใจง่ายที่สุด: leader election + replicated log บน majority quorum"
+    },
+    {
+      "title": "ZooKeeper Recipes and Solutions",
+      "source": "zookeeper.apache.org/doc/current/recipes.html",
+      "why": "อ่านวิธีที่ ZooKeeper ให้ leader election, distributed lock, และ membership เป็น recipe สำเร็จรูป"
+    },
+    {
+      "title": "ZooKeeper: Wait-free Coordination for Internet-scale Systems",
+      "source": "Hunt, Konar, Junqueira & Reed, USENIX ATC 2010",
+      "why": "อ่านว่าเบื้องหลัง ZooKeeper (Zab) ห่อ consensus เป็น coordination service อย่างไร"
+    }
+  ]
+}

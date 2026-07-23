@@ -1,0 +1,72 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "b-trees",
+  "version": 1,
+  "title_en": "B-Trees",
+  "est_minutes": 8,
+  "body_md": "# B-Trees\n\n## ทำไมถึงสำคัญ\n\nB-tree คือ index มาตรฐานของ relational database เกือบทุกตัว (PostgreSQL, MySQL/InnoDB, SQL Server) — ถ้าไม่ได้บอกอะไรเป็นพิเศษ index ที่ได้คือ B-tree. มันเก่ามาก (คิดค้นปี 1970) แต่ยังครองตลาดเพราะให้ทั้ง point lookup และ range query ที่รวดเร็วและ **คาดเดา performance ได้** บนข้อมูลที่ใหญ่กว่า memory. เข้าใจ B-tree ทำให้ตอบได้ว่าทำไม query ที่มี index ถึงเร็ว, ทำไม write ต้องจ่ายสองต่อ, และเมื่อไหร่ควรมองไปที่ LSM-tree แทน.\n\n## แก่นของแนวคิด\n\nB-tree เก็บ key-value ที่ **sort ตาม key** ไว้ใน tree ที่ balanced เสมอ โดยมีหน่วยพื้นฐานคือ **page** (บางที่เรียก block) ขนาดคงที่ — ตาม DDIA มักเป็น 4 KB. ทั้ง read และ write ทำทีละ page ซึ่งตรงกับวิธีที่ disk จัดเก็บข้อมูลเป็น block พอดี.\n\n- แต่ละ page มี address บน disk ทำให้ page หนึ่งชี้ไปอีก page ได้ (เหมือน pointer แต่อยู่บน disk) → ประกอบกันเป็น tree.\n- เริ่มที่ **root page** เสมอ. page ภายในเก็บ key คั่นช่วง + reference ไปยัง child page แต่ละตัวที่รับผิดชอบช่วง key ต่อเนื่องช่วงหนึ่ง. เดินลงไปเรื่อย ๆ จนถึง **leaf page** ที่เก็บ value จริง (หรือ reference ไปยัง value).\n- **branching factor** = จำนวน reference ไปยัง child ใน page เดียว มักหลายร้อย. ยิ่ง branching factor สูง tree ยิ่งตื้น: B-tree ที่มี n key มี depth แค่ O(log n) และในทางปฏิบัติมัก **ลึกเพียง 3–4 ชั้น** (ตาม DDIA, tree 4 ชั้นของ page 4 KB ที่ branching factor 500 เก็บได้ถึงระดับ 256 TB). ลึก 4 ชั้น = อ่านแค่ ~4 page ต่อ lookup.\n- **update in place**: จะแก้ค่าของ key ที่มีอยู่ → หา leaf page นั้น, แก้ค่า, แล้ว **เขียนทับ (overwrite)** page เดิมกลับที่ตำแหน่งเดิม. address ไม่เปลี่ยน reference ทุกตัวจึงยังใช้ได้. จุดนี้ตรงข้ามกับ LSM-tree ที่ append อย่างเดียว ไม่เคยแก้ที่เดิม (ดู sibling `sstables-lsm-trees`).\n- เพิ่ม key ใหม่: หา page ที่ช่วงครอบ key นั้นแล้วแทรก. ถ้า page เต็ม → **page split**: แตกเป็นสอง page ครึ่ง ๆ แล้ว **แก้ parent page** ให้รู้จักเส้นแบ่งใหม่. อัลกอริทึมนี้เองที่รักษาให้ tree balance อยู่เสมอ.\n\n```mermaid\nflowchart TD\n  Root[\"Root page: | <300 | 300-700 | >700 |\"]\n  Root -->|\"tx_id < 300\"| B1[\"Branch page A\"]\n  Root -->|300 to 700| B2[\"Branch page B\"]\n  Root -->|\"tx_id > 700\"| B3[\"Branch page C\"]\n  B2 -->|300 to 500| L1[(\"Leaf: tx 300..499 + values\")]\n  B2 -->|500 to 700| L2[(\"Leaf: tx 500..699 + values\")]\n  L1 -. sibling pointer .-> L2\n```\n\n## ทำไมต้องมี write-ahead log (WAL)\n\nปัญหาของ in-place update: บางการเปลี่ยนต้องเขียนหลาย page พร้อมกัน. page split ต้องเขียน page ใหม่สองใบ **และ** overwrite parent. ถ้า database crash หลังเขียนไปแค่บางใบ จะได้ index ที่พัง — เช่นมี orphan page ที่ไม่มี parent ชี้ถึง.\n\nทางแก้คือ **write-ahead log (WAL)** หรือ redo log: เป็นไฟล์ append-only ที่ทุกการแก้ B-tree ต้องถูกเขียนลงที่นี่ **ก่อน** ไปแตะ page จริง. หลัง crash database เอา WAL มา replay เพื่อกู้ B-tree กลับสู่ state ที่ consistent. WAL คือเหตุผลที่ crash กลางคัน page split แล้วยังกู้ข้อมูลได้ — เป็นหัวใจของ durability และ atomicity ในเชิง storage engine.\n\n```mermaid\nsequenceDiagram\n  participant T as Txn\n  participant W as WAL (append-only)\n  participant P as B-tree pages\n  T->>W: 1. append redo record\n  W-->>T: fsync ok (durable)\n  T->>P: 2. overwrite page(s) in place\n  Note over P: crash ที่นี่ = replay WAL ตอน recovery\n```\n\n## ตัวอย่าง (payments / transactions ledger)\n\nตาราง `transactions` มี primary key `tx_id` และ secondary index บน `account_id`. ทั้งสองเป็น B-tree index.\n\n- **Point lookup**: `SELECT * FROM transactions WHERE tx_id = 'TX-000512'` — เดิน root → branch → leaf ราว 3–4 page read เจอ row พอดี. ไม่ว่าตารางจะมี 10 ล้านหรือ 1 พันล้านแถว depth เพิ่มช้ามาก (log n).\n- **Range query**: `... WHERE account_id = 'A-99' AND created_at BETWEEN ... ` — เพราะ leaf เรียงตาม key และมี **sibling pointer** เชื่อมกัน อ่าน statement ของบัญชีเป็นช่วงเวลาได้โดยไม่ต้องวิ่งขึ้น parent ซ้ำ.\n- เวลามี transaction ใหม่เข้ามาถี่ ๆ ในบัญชีเดียว leaf page นั้นเต็ม → page split เกิดขึ้น และทุกครั้ง WAL รับประกันว่าถ้าไฟดับกลาง split ยอด ledger จะไม่พังเป็นครึ่ง ๆ.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"B-tree เก็บข้อมูลทีละ record\"** ผิด. หน่วยจริงคือ page ขนาดคงที่; แก้ค่าไม่กี่ byte ก็ต้องเขียนทั้ง page กลับ.\n- **\"tree ลึกมากเพราะข้อมูลเยอะ\"** ผิด. branching factor สูงทำให้ลึกแค่ 3–4 ชั้นแม้ข้อมูลระดับ TB; ความเยอะไปโตที่ความกว้าง ไม่ใช่ความลึก.\n- **\"WAL มีไว้เพิ่มความเร็ว\"** ผิด. WAL มีไว้เพื่อ crash recovery / durability เป็นหลัก และที่จริงมัน *เพิ่ม* งานเขียน (เขียนสองที่). ความเร็วที่ได้เป็นผลพลอยได้จากการที่ WAL เขียนแบบ sequential เท่านั้น.\n- **\"B-tree กับ LSM-tree อันไหนดีกว่ากันแบบตายตัว\"** ผิด. เป็น trade-off ระหว่าง read กับ write ไม่ใช่อันหนึ่งชนะขาด (ดูหัวข้อถัดไป).\n\n## ขีดจำกัด / trade-off: B-tree vs LSM-tree\n\nRule of thumb (ตาม DDIA): **B-tree มักเร็วกว่าเรื่อง read, LSM-tree มักเร็วกว่าเรื่อง write.** เหตุผลเชิงโครงสร้าง:\n\n- **Read predictable กว่า**: ใน B-tree แต่ละ key อยู่ **ที่เดียวเป๊ะ** ใน index — lookup รู้ว่าจะจบใน ~depth page. ฝั่ง LSM key เดียวอาจมีหลาย copy กระจายในหลาย SSTable ต้องเช็คหลายชั้น (บรรเทาด้วย Bloom filter — internals อยู่ที่ sibling `sstables-lsm-trees`). ข้อนี้ยังทำให้ B-tree เหมาะกับ **transactional semantics**: วาง lock บนช่วง key ผูกกับ node ของ tree ได้ตรง ๆ.\n- **ต้นทุนของ B-tree = write amplification จาก in-place**: ทุก write เขียนอย่างน้อยสองครั้ง — ลง WAL หนึ่ง, ลง page หนึ่ง (บวกอีกเมื่อ split) — และต้องเขียน **ทั้ง page** แม้แก้ไม่กี่ byte. อีกทั้ง in-place update เป็น **random write** กระจายไปทั่ว disk ซึ่ง throughput ต่ำกว่าการเขียนแบบ sequential.\n- **ทำไม LSM ชนะเรื่อง write throughput**: LSM เขียน SSTable เป็นไฟล์ต่อเนื่องแบบ **sequential** (เร็วกว่า random มากบน disk) และมัก write amplification รวมต่ำกว่า จึงรับ write หนัก ๆ ได้ดีกว่า และ compress ได้แน่นกว่า (B-tree เสียพื้นที่จาก fragmentation ตอน page split).\n- **แต่ LSM มีต้นทุนของมัน**: compaction ที่รันเบื้องหลังไปแย่ง I/O กับ read/write ปัจจุบัน และถ้า write เข้าเร็วกว่าที่ compaction ตามทัน disk จะบวมด้วย segment ที่ยังไม่ merge จน read ช้าลง — ปัญหานี้ B-tree ไม่มี.\n\n**เมื่อไหร่ไม่ควรเลือก B-tree**: workload ที่ write หนักมาก (เช่น ingest event/log/time-series อัตราสูง) ที่ต้องการ write throughput สูงสุดและ read แบบ predictable ไม่ใช่ข้อกำหนดหลัก — LSM-tree มักคุ้มกว่า. B-tree เหมาะที่สุดกับ workload อ่านมาก, ต้องการ range query และ latency ที่นิ่ง, และต้องการ transactional locking.\n\n## มุมสัมภาษณ์\n\n- **\"ทำไม index ทำให้ query เร็ว และ B-tree ลึกแค่ไหน?\"** → sorted tree ของ page, branching factor สูง → depth O(log n) ~3–4 ชั้น → lookup อ่านไม่กี่ page.\n- **\"B-tree update ข้อมูลยังไง และทำไมต้องมี WAL?\"** → overwrite page เดิม in place; หลาย-page write (เช่น page split) อาจ crash กลางคันทำ index พัง จึงต้องเขียน WAL ก่อนเพื่อ replay กู้ state.\n- **\"เทียบ B-tree กับ LSM-tree\"** → B-tree: read predictable (key ที่เดียว), transactional-friendly, แต่ write amplification + random write. LSM: write throughput สูง (sequential), แต่ read ต้องเช็คหลาย SSTable และ compaction แย่ง I/O. เป็นคำถามสะพานไปเรื่อง LSM internals ที่ `sstables-lsm-trees`.\n- **\"write amplification คืออะไรและกระทบอะไร\"** → หนึ่ง logical write กลายเป็นหลาย physical write (WAL + page + split); กระทบ throughput และ SSD wear.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม B-tree จึงต้องมี write-ahead log (WAL)?",
+      "expected_answer": "เพราะการแก้แบบ in-place (เช่น page split) อาจเขียน page ไม่ครบเมื่อ crash ทำให้ index พัง; WAL ให้ replay กลับสู่ state ที่ consistent",
+      "type": "mcq",
+      "options": [
+        "เพื่อบีบอัดข้อมูลให้ page เล็กลง",
+        "เพราะการแก้แบบ in-place (เช่น page split) อาจเขียน page ไม่ครบเมื่อ crash ทำให้ index พัง; WAL ให้ replay กลับสู่ state ที่ consistent",
+        "เพื่อให้ read อ่านได้จากหลาย SSTable พร้อมกัน"
+      ]
+    },
+    {
+      "q": "B-tree เก็บข้อมูลเป็นหน่วยอะไร และ update ค่าที่มีอยู่แล้วอย่างไร?",
+      "expected_answer": "เก็บเป็น fixed-size page (มัก 4 KB) และ update แบบ in place คือ overwrite page เดิมที่ตำแหน่งเดิม",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อได้เปรียบด้าน read ของ B-tree เหนือ LSM-tree คืออะไร?",
+      "expected_answer": "แต่ละ key อยู่ในที่เดียวเป๊ะใน index ทำให้ read predictable ไม่ต้องเช็คหลาย SSTable และยังเอื้อ transactional locking",
+      "type": "mcq",
+      "options": [
+        "แต่ละ key อยู่ในที่เดียวเป๊ะใน index ทำให้ read predictable ไม่ต้องเช็คหลาย SSTable และยังเอื้อ transactional locking",
+        "B-tree ไม่ต้องเขียน WAL จึงเขียนเร็วกว่า",
+        "B-tree เขียนแบบ sequential ทำให้ write throughput สูงกว่า"
+      ]
+    },
+    {
+      "q": "write amplification ของ B-tree มาจากไหน?",
+      "expected_answer": "ทุก write ต้องเขียนทั้ง WAL และ page (และเขียนซ้ำอีกเมื่อ page split) อีกทั้งต้องเขียนทั้ง page แม้แก้ไม่กี่ byte",
+      "type": "mcq",
+      "options": [
+        "จากการเก็บ key เดียวหลาย copy ในหลาย SSTable",
+        "จากการรัน compaction เบื้องหลังตลอดเวลา",
+        "ทุก write ต้องเขียนทั้ง WAL และ page (และเขียนซ้ำอีกเมื่อ page split) อีกทั้งต้องเขียนทั้ง page แม้แก้ไม่กี่ byte"
+      ]
+    },
+    {
+      "q": "branching factor คืออะไร และสัมพันธ์กับความลึกของ B-tree อย่างไร?",
+      "expected_answer": "branching factor คือจำนวน reference ไปยัง child page ใน 1 page; ยิ่งสูง tree ยิ่งตื้น (depth O(log n) มักแค่ 3-4 ชั้น) ทำให้ lookup อ่านไม่กี่ page",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 3: Storage and Retrieval — B-Trees",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 3",
+      "why": "อ่านต้นฉบับโครงสร้าง B-tree, page, in-place update, page split และ write-ahead log"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 3: Comparing B-Trees and LSM-Trees",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 3",
+      "why": "อ่านต่อเรื่อง trade-off read/write, write amplification และเมื่อไหร่ควรเลือกฝั่งไหน"
+    },
+    {
+      "title": "PostgreSQL Documentation: Write-Ahead Logging (WAL)",
+      "source": "postgresql.org/docs/current/wal-intro.html",
+      "why": "อ่านว่า production RDBMS ใช้ WAL กู้ระบบหลัง crash และรับประกัน durability อย่างไรจริง"
+    },
+    {
+      "title": "Modern B-Tree Techniques",
+      "source": "Goetz Graefe, Foundations and Trends in Databases, Vol. 3 (2011)",
+      "why": "เจาะลึก B-tree internals: page split, latching, และ optimization ระดับ production"
+    }
+  ]
+}
