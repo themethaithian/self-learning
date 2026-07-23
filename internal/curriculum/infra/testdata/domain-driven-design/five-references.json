@@ -1,0 +1,19 @@
+{
+  "topic": "domain-driven-design",
+  "concept_id": "five-references",
+  "title_en": "Five References",
+  "est_minutes": 7,
+  "body_md": "body",
+  "recall_checks": [
+    { "q": "q1", "expected_answer": "a1", "type": "short_answer" },
+    { "q": "q2", "expected_answer": "a2", "type": "short_answer" },
+    { "q": "q3", "expected_answer": "a3", "type": "short_answer" }
+  ],
+  "references": [
+    { "title": "t1", "source": "s1", "why": "w1" },
+    { "title": "t2", "source": "s2", "why": "w2" },
+    { "title": "t3", "source": "s3", "why": "w3" },
+    { "title": "t4", "source": "s4", "why": "w4" },
+    { "title": "t5", "source": "s5", "why": "w5" }
+  ]
+}

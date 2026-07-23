@@ -1,0 +1,19 @@
+{
+  "topic": "domain-driven-design",
+  "concept_id": "ubiquitous-language",
+  "version": 1,
+  "title_en": "Ubiquitous Language",
+  "est_minutes": 7,
+  "body_md": "# Ubiquitous Language\n\nเนื้อหาทดสอบสำหรับ loader",
+  "recall_checks": [
+    { "q": "Ubiquitous Language คืออะไร?", "expected_answer": "ภาษากลางระหว่างทีมกับ domain expert", "type": "short_answer" },
+    { "q": "ข้อใดคือประโยชน์หลัก?", "expected_answer": "ลดช่องว่างการสื่อสาร", "type": "mcq", "options": ["ลด bug", "ลดช่องว่างการสื่อสาร", "เพิ่มความเร็ว build"] },
+    { "q": "ใครเป็นคนกำหนดคำศัพท์?", "expected_answer": "ทีมร่วมกับ domain expert", "type": "short_answer" },
+    { "q": "Bounded Context เกี่ยวข้องอย่างไร?", "expected_answer": "แต่ละ context มีภาษาของตัวเอง", "type": "short_answer" }
+  ],
+  "references": [
+    { "title": "Evans ch. 2", "source": "Domain-Driven Design, chapter 2", "why": "ต้นกำเนิดของแนวคิดนี้" },
+    { "title": "Martin Fowler: Ubiquitous Language", "source": "martinfowler.com/bliki/UbiquitousLanguage.html", "why": "สรุปสั้นและตัวอย่าง" },
+    { "title": "Vaughn Vernon: IDDD", "source": "Implementing Domain-Driven Design, chapter 1", "why": "มุมมองเชิงปฏิบัติ" }
+  ]
+}

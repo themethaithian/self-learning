@@ -1,0 +1,16 @@
+{
+  "topic": "domain-driven-design",
+  "concept_id": "est-minutes-too-high",
+  "title_en": "Est Minutes Too High",
+  "est_minutes": 11,
+  "body_md": "body",
+  "recall_checks": [
+    { "q": "q1", "expected_answer": "a1", "type": "short_answer" },
+    { "q": "q2", "expected_answer": "a2", "type": "short_answer" },
+    { "q": "q3", "expected_answer": "a3", "type": "short_answer" }
+  ],
+  "references": [
+    { "title": "t1", "source": "s1", "why": "w1" },
+    { "title": "t2", "source": "s2", "why": "w2" }
+  ]
+}

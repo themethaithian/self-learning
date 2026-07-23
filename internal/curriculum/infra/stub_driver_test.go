@@ -62,8 +62,9 @@ type stubResult struct {
 	execErrOnCall int
 	execErr       error
 
-	lastQuery string
-	lastRows  *stubRows
+	lastQuery     string
+	lastQueryArgs []driver.NamedValue
+	lastRows      *stubRows
 
 	execCalls    []stubExecCall
 	txBegan      int
@@ -83,6 +84,27 @@ func (r *stubResult) query() string {
 	stubMu.Lock()
 	defer stubMu.Unlock()
 	return r.lastQuery
+}
+
+func (r *stubResult) queryArgs() []driver.NamedValue {
+	stubMu.Lock()
+	defer stubMu.Unlock()
+	return r.lastQueryArgs
+}
+
+// seedConcept registers a concept the selectConceptIDSQL lookup can
+// resolve, keyed by exactly the columns its WHERE clause filters on. A
+// SaveLesson test seeds this instead of a canned rows fixture so the
+// lookup's topic-scoping is actually exercised: two concepts sharing a
+// slug under different topics only work if resolveConceptID's args reach
+// the right (topic_slug, concept_slug) pair.
+func (r *stubResult) seedConcept(topicSlug, conceptSlug string, id int64) {
+	stubMu.Lock()
+	defer stubMu.Unlock()
+	if r.tables == nil {
+		r.tables = newStubTables()
+	}
+	r.tables.lessonConcepts[lessonConceptKey{topicSlug: topicSlug, conceptSlug: conceptSlug}] = id
 }
 
 func (r *stubResult) driverRows() *stubRows {
@@ -279,6 +301,33 @@ type stubConceptRow struct {
 	position int64
 }
 
+type stubLessonRow struct {
+	id         int64
+	version    int64
+	titleEn    string
+	estMinutes int64
+	bodyMd     string
+	refs       string
+}
+
+type stubRecallCheckRow struct {
+	id             int64
+	position       int64
+	kind           string
+	question       string
+	expectedAnswer string
+	options        *string
+}
+
+// lessonConceptKey mirrors resolveConceptID's own WHERE predicate — (topic
+// slug, concept slug) — so the concept lookup a SaveLesson test exercises
+// actually discriminates by topic, the way the real query's `t.slug = ?`
+// must, rather than answering the same canned row for any topic.
+type lessonConceptKey struct {
+	topicSlug   string
+	conceptSlug string
+}
+
 // stubTables is a tiny in-memory relational store standing in for MySQL:
 // enough upsert and stale-row-delete semantics to exercise idempotency and
 // orphan cleanup, without a real database. A single id counter spans all
@@ -292,13 +341,30 @@ type stubTables struct {
 	topics   map[string]stubTopicRow
 	chapters map[chapterKey]stubChapterRow
 	concepts map[conceptKey]stubConceptRow
+
+	// lessons is keyed by concept_id, mirroring the schema's UNIQUE KEY
+	// uniq_lessons_concept. recallChecks is keyed by lesson_id: a
+	// delete-then-insert table, not an upsert, so it holds a slice per
+	// lesson rather than a keyed row.
+	lessons      map[int64]stubLessonRow
+	recallChecks map[int64][]stubRecallCheckRow
+
+	// lessonConcepts seeds the concept lookup SaveLesson issues before it
+	// ever upserts a lesson. It is independent of the concepts map above
+	// (keyed by chapter_id, populated only by SaveTopic writes) because a
+	// SaveLesson test has no reason to build a whole topic/chapter/concept
+	// tree just to seed one concept id.
+	lessonConcepts map[lessonConceptKey]int64
 }
 
 func newStubTables() *stubTables {
 	return &stubTables{
-		topics:   make(map[string]stubTopicRow),
-		chapters: make(map[chapterKey]stubChapterRow),
-		concepts: make(map[conceptKey]stubConceptRow),
+		topics:         make(map[string]stubTopicRow),
+		chapters:       make(map[chapterKey]stubChapterRow),
+		concepts:       make(map[conceptKey]stubConceptRow),
+		lessons:        make(map[int64]stubLessonRow),
+		recallChecks:   make(map[int64][]stubRecallCheckRow),
+		lessonConcepts: make(map[lessonConceptKey]int64),
 	}
 }
 
@@ -313,6 +379,12 @@ func (tb *stubTables) apply(query string, args []driver.NamedValue) (driver.Resu
 		return tb.upsertChapter(args)
 	case query == upsertConceptSQL:
 		return tb.upsertConcept(args)
+	case query == upsertLessonSQL:
+		return tb.upsertLesson(args)
+	case query == deleteRecallChecksSQL:
+		return tb.deleteRecallChecks(args)
+	case query == insertRecallCheckSQL:
+		return tb.insertRecallCheck(args)
 	case strings.HasPrefix(query, "DELETE FROM concepts WHERE chapter_id = ?"):
 		return tb.deleteStaleConcepts(args)
 	case strings.HasPrefix(query, "DELETE FROM concepts WHERE chapter_id IN"):
@@ -326,6 +398,18 @@ func (tb *stubTables) apply(query string, args []driver.NamedValue) (driver.Resu
 
 func argString(a driver.NamedValue) string { return a.Value.(string) }
 func argInt64(a driver.NamedValue) int64   { return a.Value.(int64) }
+
+// argOptionalString distinguishes a genuine SQL NULL argument (the
+// recall_checks.options column for a short_answer check) from a JSON
+// string argument (an mcq's marshalled options) — the two must never be
+// confused the way a plain argString would.
+func argOptionalString(a driver.NamedValue) *string {
+	if a.Value == nil {
+		return nil
+	}
+	s := argString(a)
+	return &s
+}
 
 func (tb *stubTables) upsertTopic(args []driver.NamedValue) (driver.Result, error) {
 	track, slug, title, position := argString(args[0]), argString(args[1]), argString(args[2]), argInt64(args[3])
@@ -385,6 +469,64 @@ func (tb *stubTables) upsertConcept(args []driver.NamedValue) (driver.Result, er
 	row.id = tb.nextID
 	tb.concepts[key] = row
 	return stubExecResult{lastInsertID: row.id, rowsAffected: 1}, nil
+}
+
+func (tb *stubTables) upsertLesson(args []driver.NamedValue) (driver.Result, error) {
+	conceptID := argInt64(args[0])
+	row := stubLessonRow{
+		version: argInt64(args[1]), titleEn: argString(args[2]),
+		estMinutes: argInt64(args[3]), bodyMd: argString(args[4]), refs: argString(args[5]),
+	}
+
+	if existing, ok := tb.lessons[conceptID]; ok {
+		row.id = existing.id
+		tb.lessons[conceptID] = row
+		if existing == row {
+			return stubExecResult{lastInsertID: row.id, rowsAffected: 0}, nil
+		}
+		return stubExecResult{lastInsertID: row.id, rowsAffected: 2}, nil
+	}
+
+	tb.nextID++
+	row.id = tb.nextID
+	tb.lessons[conceptID] = row
+	return stubExecResult{lastInsertID: row.id, rowsAffected: 1}, nil
+}
+
+func (tb *stubTables) deleteRecallChecks(args []driver.NamedValue) (driver.Result, error) {
+	lessonID := argInt64(args[0])
+	affected := int64(len(tb.recallChecks[lessonID]))
+	delete(tb.recallChecks, lessonID)
+	return stubExecResult{rowsAffected: affected}, nil
+}
+
+func (tb *stubTables) insertRecallCheck(args []driver.NamedValue) (driver.Result, error) {
+	lessonID := argInt64(args[0])
+	row := stubRecallCheckRow{
+		position: argInt64(args[1]), kind: argString(args[2]),
+		question: argString(args[3]), expectedAnswer: argString(args[4]), options: argOptionalString(args[5]),
+	}
+
+	tb.nextID++
+	row.id = tb.nextID
+	tb.recallChecks[lessonID] = append(tb.recallChecks[lessonID], row)
+	return stubExecResult{lastInsertID: row.id, rowsAffected: 1}, nil
+}
+
+// lookupConceptID answers selectConceptIDSQL's "WHERE t.slug = ? AND
+// co.slug = ?" by both args, not just the second — dropping the topic-slug
+// predicate here would silently resolve to whichever topic seeded the
+// slug first, exactly the bug a real query missing t.slug = ? would cause.
+func (tb *stubTables) lookupConceptID(args []driver.NamedValue) []stubRow {
+	if len(args) != 2 {
+		return nil
+	}
+	key := lessonConceptKey{topicSlug: argString(args[0]), conceptSlug: argString(args[1])}
+	id, ok := tb.lessonConcepts[key]
+	if !ok {
+		return nil
+	}
+	return []stubRow{{"co.id": int(id)}}
 }
 
 func keepSet(args []driver.NamedValue) map[string]bool {
@@ -487,16 +629,22 @@ func (tb *stubTables) toRows() []stubRow {
 	return out
 }
 
-func (c *stubConn) QueryContext(ctx context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
+func (c *stubConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	stubMu.Lock()
 	c.result.lastQuery = query
+	c.result.lastQueryArgs = args
 	rows := c.result.rows
-	if rows == nil && c.result.tables != nil && query == topicsQuery {
-		rows = c.result.tables.toRows()
+	if rows == nil && c.result.tables != nil {
+		switch query {
+		case topicsQuery:
+			rows = c.result.tables.toRows()
+		case selectConceptIDSQL:
+			rows = c.result.tables.lookupConceptID(args)
+		}
 	}
 	queryErr := c.result.queryErr
 	nextErr := c.result.nextErr
