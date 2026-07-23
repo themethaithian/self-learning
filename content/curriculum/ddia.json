@@ -1,0 +1,458 @@
+{
+  "track": "ddia",
+  "slug": "designing-data-intensive-applications",
+  "title": "Designing Data-Intensive Applications",
+  "position": 6,
+  "chapters": [
+    {
+      "slug": "reliable-scalable-maintainable",
+      "title": "Reliable, Scalable, and Maintainable Applications",
+      "position": 1,
+      "concepts": [
+        {
+          "slug": "reliability",
+          "title": "Reliability",
+          "outline": "อธิบายว่า reliability คือระบบทำงานถูกต้องต่อเนื่องแม้เจอ fault (hardware, software, human error)\nแยกความต่างระหว่าง fault กับ failure และเทคนิค tolerate fault แทนที่จะพยายาม prevent ทั้งหมด\nชี้ trade-off: ลงทุน reliability สูงเกินความจำเป็นของระบบก็เสียเวลา/เงินโดยใช่เหตุ",
+          "position": 1
+        },
+        {
+          "slug": "scalability-load",
+          "title": "Scalability and Load",
+          "outline": "อธิบายว่า scalability คือความสามารถรับมือ load ที่เพิ่มขึ้น ต้องนิยาม load parameter ให้ชัดก่อนถึงจะวัดได้\nยกตัวอย่างการอธิบาย load ด้วยกรณีศึกษาเช่น Twitter fan-out\nชี้ trade-off: ออกแบบเผื่อ scale ล่วงหน้ามากไปทำให้ระบบซับซ้อนเกินจำเป็นสำหรับ load ปัจจุบัน",
+          "position": 2
+        },
+        {
+          "slug": "latency-percentiles",
+          "title": "Latency and Percentiles",
+          "outline": "อธิบายว่าทำไมควรวัด response time ด้วย percentile (p50, p95, p99) แทน average\nยกตัวอย่างว่า tail latency กระทบ user experience อย่างไรเมื่อ request ต่อกันหลายชั้น\nชี้ trade-off: ไล่ optimize p999 ทุกจุดมีต้นทุนสูง ต้องเลือกว่าคุ้มค่ากับ SLA จริงหรือไม่",
+          "position": 3
+        },
+        {
+          "slug": "coping-with-load",
+          "title": "Approaches for Coping with Load",
+          "outline": "อธิบายแนวคิด scaling up (vertical) เทียบกับ scaling out (horizontal) และ elastic system\nพูดถึงว่าสถาปัตยกรรมสำหรับ load หนึ่งไม่จำเป็นต้องเหมาะกับ load อีกระดับหนึ่ง\nชี้ trade-off: distributed architecture แก้ปัญหา scale แต่แลกมาด้วย operational complexity ที่สูงขึ้นมาก",
+          "position": 4
+        },
+        {
+          "slug": "maintainability",
+          "title": "Maintainability",
+          "outline": "อธิบาย 3 หลักการออกแบบเพื่อ maintainability: operability, simplicity, evolvability\nยกตัวอย่างว่า accidental complexity ทำให้ระบบยากต่อการเปลี่ยนแปลงในระยะยาวอย่างไร\nชี้ trade-off: ลงทุนเวลาเพื่อความเรียบง่ายวันนี้ แลกกับ velocity ที่ช้าลงในระยะสั้น",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "data-models-query-languages",
+      "title": "Data Models and Query Languages",
+      "position": 2,
+      "concepts": [
+        {
+          "slug": "relational-vs-document",
+          "title": "Relational vs. Document Model",
+          "outline": "อธิบายความต่างพื้นฐานระหว่าง relational model (tables/rows) กับ document model (nested JSON)\nยกตัวอย่างเมื่อ document เหมาะกับ one-to-many tree-structured data ที่ดึงมาพร้อมกันบ่อย\nชี้ trade-off: document model ทำ join ข้าม entity ยากกว่า relational เมื่อ many-to-many เพิ่มขึ้น",
+          "position": 1
+        },
+        {
+          "slug": "object-relational-mismatch",
+          "title": "The Object-Relational Mismatch",
+          "outline": "อธิบายปัญหาที่ object ในโค้ด application ไม่ตรงกับ normalized table โดยตรง จึงต้องมี translation layer\nยกตัวอย่าง ORM ช่วยลด boilerplate แต่ก็ซ่อน query cost ไว้\nชี้ trade-off: ยิ่ง ORM ทำให้ mismatch มองไม่เห็นมากเท่าไร ยิ่งเสี่ยง performance surprise ตอน production",
+          "position": 2
+        },
+        {
+          "slug": "schema-flexibility",
+          "title": "Schema Flexibility in the Document Model",
+          "outline": "อธิบายแนวคิด schema-on-read (document) เทียบกับ schema-on-write (relational)\nยกตัวอย่างว่า schema-on-read ช่วยตอนข้อมูลมี structure หลากหลายหรือเปลี่ยนบ่อย\nชี้ trade-off: ความยืดหยุ่นนี้ผลักภาระ validate/interpret ข้อมูลไปที่ application code แทน database",
+          "position": 3
+        },
+        {
+          "slug": "declarative-vs-imperative-queries",
+          "title": "Declarative vs. Imperative Query Languages",
+          "outline": "อธิบายความต่างระหว่าง declarative query (SQL, บอกว่าต้องการอะไร) กับ imperative code (บอกว่าทำอย่างไรทีละขั้น)\nยกตัวอย่างว่า declarative เปิดช่องให้ query optimizer ปรับแผนการทำงานได้เองโดยไม่กระทบผู้เขียน query\nชี้ trade-off: imperative ให้ control ละเอียดกว่าแต่เขียนยากกว่าและ optimize เองทั้งหมด",
+          "position": 4
+        },
+        {
+          "slug": "graph-data-models",
+          "title": "Graph-Like Data Models",
+          "outline": "อธิบายว่า graph model (property graph, triple-store) เหมาะกับข้อมูลที่มี many-to-many relationship ซับซ้อน\nยกตัวอย่าง query language อย่าง Cypher ที่ traverse relationship ได้ตรงไปตรงมา\nชี้ trade-off: graph model ทรงพลังสำหรับ relationship-heavy data แต่ overkill และช้ากว่าถ้าข้อมูลส่วนใหญ่เป็น tabular ธรรมดา",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "storage-and-retrieval",
+      "title": "Storage and Retrieval",
+      "position": 3,
+      "concepts": [
+        {
+          "slug": "log-structured-storage",
+          "title": "Log-Structured Storage",
+          "outline": "อธิบายแนวคิดพื้นฐานของ append-only log และทำไม sequential write ถึงเร็วกว่า random write บน disk\nยกตัวอย่าง hash index แบบง่ายที่ชี้ไปยัง offset ใน log file\nชี้ trade-off: log-structured เขียนเร็วแต่ต้องมี compaction/merge เพื่อไม่ให้ disk เต็มไปด้วยข้อมูลซ้ำ",
+          "position": 1
+        },
+        {
+          "slug": "sstables-lsm-trees",
+          "title": "SSTables and LSM-Trees",
+          "outline": "อธิบายว่า SSTable คือ log ที่ sort ตาม key แล้ว ทำให้ merge และ range query มีประสิทธิภาพขึ้น\nอธิบายโครงสร้าง LSM-tree: memtable ใน memory + immutable SSTable บน disk + background compaction\nชี้ trade-off: LSM-tree เขียนเร็วมากแต่ read อาจต้องเช็คหลาย SSTable จึงพึ่ง Bloom filter ช่วยลด read amplification",
+          "position": 2
+        },
+        {
+          "slug": "b-trees",
+          "title": "B-Trees",
+          "outline": "อธิบายโครงสร้าง B-tree ที่แบ่งข้อมูลเป็น fixed-size page และ update ข้อมูล in place\nพูดถึง write-ahead log (WAL) ที่ช่วยกู้คืนหลัง crash ระหว่าง page ถูกเขียนไม่สมบูรณ์\nชี้ trade-off: B-tree read เร็วและอ่านง่ายกว่า LSM-tree แต่ random write in-place ทำให้เขียนช้ากว่าโดยทั่วไป",
+          "position": 3
+        },
+        {
+          "slug": "oltp-vs-olap",
+          "title": "OLTP vs. OLAP",
+          "outline": "อธิบายความต่างของ workload pattern: OLTP (transaction จำนวนมาก อ่าน/เขียนทีละ record) กับ OLAP (query วิเคราะห์ scan ข้อมูลจำนวนมาก)\nยกตัวอย่างว่าทำไมองค์กรแยก data warehouse ออกจาก production database ผ่าน ETL\nชี้ trade-off: ใช้ database เดียวกันทำทั้งสองอย่างมักแลกมาด้วย performance ที่แย่ลงทั้งคู่",
+          "position": 4
+        },
+        {
+          "slug": "column-oriented-storage",
+          "title": "Column-Oriented Storage",
+          "outline": "อธิบายว่า column-oriented storage เก็บค่าของแต่ละ column ต่อเนื่องกัน เหมาะกับ analytic query ที่อ่านบาง column จากตารางกว้างมาก\nยกตัวอย่างเทคนิค compression และ vectorized processing ที่ column store ใช้ประโยชน์ได้ดี\nชี้ trade-off: column store เร็วมากสำหรับ aggregate query แต่ insert/update ทีละแถวทำได้ช้ากว่า row-oriented มาก",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "encoding-and-evolution",
+      "title": "Encoding and Evolution",
+      "position": 4,
+      "concepts": [
+        {
+          "slug": "language-specific-formats-pitfalls",
+          "title": "Language-Specific Formats and Their Pitfalls",
+          "outline": "อธิบายว่า built-in serialization ของแต่ละภาษา (เช่น Java Serializable) สะดวกแต่ผูกกับภาษาเดียว\nยกตัวอย่างปัญหา security และ versioning ที่มักเกิดกับ format เหล่านี้\nชี้ trade-off: ความสะดวกระยะสั้นแลกกับการ lock-in ภาษาและความเสี่ยงระยะยาวเมื่อระบบต้อง interop ข้ามภาษา",
+          "position": 1
+        },
+        {
+          "slug": "json-xml-binary",
+          "title": "JSON, XML, and Binary Variants",
+          "outline": "อธิบายจุดแข็งของ JSON/XML คือ human-readable และ interoperable ข้ามภาษา\nพูดถึง binary variant (เช่น MessagePack) ที่พยายามลดขนาดโดยรักษาความยืดหยุ่นของ schema-less format\nชี้ trade-off: ไม่มี schema บังคับทำให้ยืดหยุ่นแต่ก็เสี่ยง ambiguity เรื่อง type (เช่น ตัวเลขกับ string) มากกว่า binary schema-based format",
+          "position": 2
+        },
+        {
+          "slug": "protobuf-thrift-avro",
+          "title": "Protocol Buffers, Thrift, and Avro",
+          "outline": "อธิบายแนวคิด binary encoding ที่มี schema ชัดเจน (Protobuf, Thrift, Avro) และวิธีอ้างอิง field ด้วย tag number หรือ schema resolution\nยกตัวอย่างว่า schema ทำให้ encoding กระชับและ generate code ได้หลายภาษา\nชี้ trade-off: ต้องดูแล schema file และ registry เพิ่มเติม ซึ่งเป็นต้นทุน operational ที่ format แบบ schema-less ไม่มี",
+          "position": 3
+        },
+        {
+          "slug": "schema-evolution-compatibility",
+          "title": "Schema Evolution and Compatibility",
+          "outline": "อธิบายความหมายของ backward compatibility (โค้ดใหม่อ่านข้อมูลเก่าได้) และ forward compatibility (โค้ดเก่าอ่านข้อมูลใหม่ได้)\nยกตัวอย่างกฎเช่น ห้ามเปลี่ยน field tag, field ใหม่ต้อง optional หรือมี default\nชี้ trade-off: ยิ่งบังคับ compatibility เข้มงวดเท่าไร ยิ่งจำกัดอิสระในการปรับ schema ในอนาคต",
+          "position": 4
+        },
+        {
+          "slug": "dataflow-modes",
+          "title": "Modes of Dataflow",
+          "outline": "อธิบาย 3 ช่องทางที่ encoded data เดินทาง: ผ่าน database, ผ่าน RPC/REST call, ผ่าน async message\nยกตัวอย่างว่าแต่ละ mode มีข้อสมมติเรื่อง sender/receiver version ต่างกันอย่างไร\nชี้ trade-off: async messaging ให้ decoupling ดีกว่า RPC ตรง ๆ แต่แลกมาด้วยความซับซ้อนเรื่อง ordering และ delivery guarantee",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "replication",
+      "title": "Replication",
+      "position": 5,
+      "concepts": [
+        {
+          "slug": "single-leader",
+          "title": "Leaders and Followers",
+          "outline": "อธิบาย single-leader replication: write ไปที่ leader เท่านั้น แล้ว propagate ไปยัง follower\nพูดถึงความต่างระหว่าง synchronous กับ asynchronous replication และผลต่อ durability\nชี้ trade-off: synchronous replication รับประกัน durability สูงกว่าแต่ทำให้ write latency ขึ้นกับ follower ที่ช้าที่สุด",
+          "position": 1
+        },
+        {
+          "slug": "replication-lag-problems",
+          "title": "Problems with Replication Lag",
+          "outline": "อธิบายปัญหาที่เกิดจาก asynchronous replication: read-your-writes, monotonic reads, consistent prefix reads\nยกตัวอย่างสถานการณ์ user เห็นข้อมูลย้อนแย้งกันเมื่ออ่านจาก replica คนละตัว\nชี้ trade-off: การแก้ปัญหาเหล่านี้ (เช่น อ่านจาก leader เสมอ) ลด scalability ของการกระจาย read load ไปที่ replica",
+          "position": 2
+        },
+        {
+          "slug": "multi-leader",
+          "title": "Multi-Leader Replication",
+          "outline": "อธิบายว่า multi-leader เหมาะกับ multi-datacenter หรือ offline client ที่แต่ละที่ต้องเขียนได้เอง\nยกตัวอย่างปัญหาหลัก: write conflict เมื่อสอง leader แก้ข้อมูลเดียวกันพร้อมกัน\nชี้ trade-off: แลก availability ระหว่าง region กับความซับซ้อนของ conflict resolution ที่ single-leader ไม่ต้องเจอ",
+          "position": 3
+        },
+        {
+          "slug": "leaderless-dynamo-style",
+          "title": "Leaderless Replication (Dynamo-Style)",
+          "outline": "อธิบายแนวคิด leaderless replication ที่ client เขียน/อ่านจากหลาย replica พร้อมกันแล้วใช้ quorum ตัดสิน\nยกตัวอย่างเทคนิค read repair และ anti-entropy process ที่ทำให้ replica ตามทันกัน\nชี้ trade-off: ไม่มี single point of failure ที่ leader แต่ผลักภาระ conflict detection ไปที่ read path แทน",
+          "position": 4
+        },
+        {
+          "slug": "quorum-consistency",
+          "title": "Quorums for Reading and Writing",
+          "outline": "อธิบายสูตร quorum w + r > n ที่ทำให้ read เห็น write ล่าสุดได้เสมอในทางทฤษฎี\nยกตัวอย่างการปรับ w, r เพื่อ trade-off ระหว่าง read latency กับ write latency\nชี้ trade-off: quorum ไม่ได้การันตี linearizability เสมอไปเมื่อเจอ concurrent write หรือ sloppy quorum",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "partitioning",
+      "title": "Partitioning",
+      "position": 6,
+      "concepts": [
+        {
+          "slug": "partitioning-key-range",
+          "title": "Partitioning by Key Range",
+          "outline": "อธิบายการแบ่ง partition ตามช่วงของ key ทำให้ range query ทำงานได้มีประสิทธิภาพ\nยกตัวอย่างการเลือก boundary ระหว่าง partition ให้ load กระจายสม่ำเสมอ\nชี้ trade-off: key range เอื้อ range scan แต่เสี่ยง hot spot ถ้า key มี pattern ต่อเนื่อง เช่น timestamp",
+          "position": 1
+        },
+        {
+          "slug": "partitioning-by-hash",
+          "title": "Partitioning by Hash of Key",
+          "outline": "อธิบายการ hash key ก่อนแบ่ง partition เพื่อกระจาย load ให้สม่ำเสมอกว่า key range\nยกตัวอย่าง consistent hashing ที่ลดจำนวน key ที่ต้องย้ายเมื่อเพิ่ม/ลด node\nชี้ trade-off: การกระจายสม่ำเสมอนี้แลกมาด้วยการเสีย ความสามารถทำ efficient range query ข้าม partition",
+          "position": 2
+        },
+        {
+          "slug": "hot-spots-skew",
+          "title": "Skewed Workloads and Relieving Hot Spots",
+          "outline": "อธิบายว่า hash ช่วยกระจาย load แต่ไม่ได้แก้ปัญหา hot key ที่มีคน access เดียวสูงผิดปกติ (เช่น celebrity account)\nยกตัวอย่างเทคนิคเติม random suffix ให้ key เพื่อกระจาย write ของ hot key ออกหลาย partition\nชี้ trade-off: การกระจาย hot key แบบนี้ทำให้ read ต้อง query รวมจากหลาย partition แทนที่จะอ่านจากที่เดียว",
+          "position": 3
+        },
+        {
+          "slug": "partitioning-secondary-indexes",
+          "title": "Partitioning and Secondary Indexes",
+          "outline": "อธิบายสองแนวทาง: document-partitioned index (local ต่อ partition) และ term-partitioned index (global ข้าม partition)\nยกตัวอย่างว่า local index เขียนง่ายแต่ query ต้อง scatter-gather ทุก partition\nชี้ trade-off: global index ทำให้ read เร็วขึ้นแต่ write ต้องอัปเดตหลาย partition ซึ่งมักเป็น asynchronous และเกิด lag",
+          "position": 4
+        },
+        {
+          "slug": "rebalancing-and-routing",
+          "title": "Rebalancing Partitions and Request Routing",
+          "outline": "อธิบายเหตุผลที่ต้อง rebalance (เพิ่ม node, load เปลี่ยน) และหลักการย้ายข้อมูลให้น้อยที่สุด\nยกตัวอย่างการใช้ fixed number of partitions ที่แยกจากจำนวน node เพื่อ rebalance ง่ายขึ้น\nชี้ trade-off: automatic rebalancing สะดวกแต่เสี่ยง rebalance ผิดจังหวะจนกิน resource ซ้ำเติมตอนระบบ load สูงอยู่แล้ว",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "transactions",
+      "title": "Transactions",
+      "position": 7,
+      "concepts": [
+        {
+          "slug": "acid-meaning",
+          "title": "The Meaning of ACID",
+          "outline": "อธิบายความหมายจริงของ Atomicity, Consistency, Isolation, Durability แต่ละตัวแยกกัน\nชี้ให้เห็นว่าคำว่า \"ACID\" ถูกใช้ทางการตลาดหลากหลายความหมาย ต้องดูรายละเอียด implementation จริง\nชี้ trade-off: การรับประกัน ACID เต็มรูปแบบมีต้นทุน performance สูงกว่าระบบที่ผ่อนคลาย guarantee บางข้อ",
+          "position": 1
+        },
+        {
+          "slug": "read-committed",
+          "title": "Read Committed Isolation",
+          "outline": "อธิบายว่า read committed ป้องกัน dirty read และ dirty write แต่ยังอนุญาต non-repeatable read\nยกตัวอย่างกลไก lock สำหรับ write และ snapshot ชั่วคราวสำหรับ read\nชี้ trade-off: เป็น default ที่ overhead ต่ำแต่ยังเปิดช่องให้ anomaly ที่ level สูงกว่าป้องกันได้",
+          "position": 2
+        },
+        {
+          "slug": "snapshot-isolation-mvcc",
+          "title": "Snapshot Isolation and MVCC",
+          "outline": "อธิบายว่า snapshot isolation ให้แต่ละ transaction เห็นข้อมูล ณ จุดเริ่ม transaction ผ่าน Multi-Version Concurrency Control\nยกตัวอย่างว่า MVCC ทำให้ reader ไม่ block writer และ writer ไม่ block reader\nชี้ trade-off: ต้องเก็บหลาย version ของแถวเดียวกัน เพิ่มภาระ storage และ garbage collection ของ version เก่า",
+          "position": 3
+        },
+        {
+          "slug": "lost-updates-and-write-skew",
+          "title": "Lost Updates and Write Skew",
+          "outline": "อธิบาย lost update (สอง transaction read-modify-write ทับกัน) และวิธีป้องกันด้วย atomic operation หรือ explicit lock\nอธิบาย write skew ซึ่งเป็น anomaly ที่ซับซ้อนกว่า เกิดเมื่อ invariant ข้าม row ถูกละเมิดแม้แต่ละ transaction ดู valid\nชี้ trade-off: การป้องกัน write skew ต้องใช้ lock หรือ serializable isolation ที่แพงกว่า snapshot isolation ธรรมดา",
+          "position": 4
+        },
+        {
+          "slug": "serializability",
+          "title": "Serializability",
+          "outline": "อธิบายว่า serializable isolation รับประกันผลลัพธ์เหมือน transaction รันเรียงกันทีละตัว แม้จริงจะรันพร้อมกัน\nยกตัวอย่าง 3 แนวทาง: literal serial execution, two-phase locking (2PL), serializable snapshot isolation (SSI)\nชี้ trade-off: serializability ให้ความปลอดภัยสูงสุดแต่แลกมาด้วย throughput ที่ต่ำกว่า isolation level ที่อ่อนกว่าเสมอ",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "trouble-with-distributed-systems",
+      "title": "The Trouble with Distributed Systems",
+      "position": 8,
+      "concepts": [
+        {
+          "slug": "unreliable-networks",
+          "title": "Unreliable Networks",
+          "outline": "อธิบายว่าเครือข่ายแบบ asynchronous ไม่รับประกัน delivery, order, หรือแม้แต่ upper bound ของ latency\nยกตัวอย่างว่าทำไม timeout ไม่สามารถแยกแยะ slow response กับ network/node ล่มได้แน่นอน\nชี้ trade-off: timeout สั้นตรวจจับ failure ไวขึ้นแต่เพิ่มความเสี่ยง false positive เมื่อ network แค่ช้าชั่วคราว",
+          "position": 1
+        },
+        {
+          "slug": "unreliable-clocks",
+          "title": "Unreliable Clocks",
+          "outline": "อธิบายความต่างระหว่าง time-of-day clock (อาจ jump ตาม NTP sync) กับ monotonic clock (วัด duration ได้แม่นกว่า)\nยกตัวอย่างอันตรายของการใช้ clock timestamp ตัดสิน ordering ระหว่าง node เช่น last-write-wins\nชี้ trade-off: การพึ่ง synchronized clock (เช่น Google TrueTime) แก้ปัญหาได้แต่ต้องลงทุน hardware พิเศษที่ระบบทั่วไปไม่มี",
+          "position": 2
+        },
+        {
+          "slug": "process-pauses",
+          "title": "Process Pauses",
+          "outline": "อธิบายว่า process อาจหยุดชั่วขณะโดยไม่คาดคิด (GC pause, VM suspend, disk I/O) ทำให้ node เข้าใจผิดว่ายังเป็น leader อยู่\nยกตัวอย่างการใช้ fencing token เพื่อป้องกัน node ที่ pause นานแล้วกลับมาเขียนข้อมูลทับ\nชี้ trade-off: fencing token ป้องกัน stale leader ได้แต่ต้องออกแบบให้ทุก resource เช็ค token เพิ่มความซับซ้อนของระบบ",
+          "position": 3
+        },
+        {
+          "slug": "knowledge-truth-lies",
+          "title": "Knowledge, Truth, and Lies",
+          "outline": "อธิบายว่า node หนึ่งไม่มีทางรู้ truth ของระบบทั้งหมด รู้ได้แค่ผ่าน message ที่อาจล่าช้าหรือหายไป\nพูดถึงแนวคิด quorum เป็นกลไกตัดสิน truth แบบ majority vote แทนการเชื่อ node เดียว\nชี้ trade-off: การพึ่ง quorum เพื่อความถูกต้องแลกมาด้วย availability ที่ลดลงเมื่อ node ส่วนใหญ่ unreachable",
+          "position": 4
+        },
+        {
+          "slug": "byzantine-faults",
+          "title": "Byzantine Faults",
+          "outline": "อธิบายว่า Byzantine fault คือ node ที่ทำงานผิดปกติแบบ arbitrary หรือประสงค์ร้าย ไม่ใช่แค่ crash เฉย ๆ\nยกตัวอย่างว่าระบบส่วนใหญ่ในองค์กรเดียวไว้ใจ node ภายในกันได้ จึงไม่จำเป็นต้อง tolerate Byzantine fault\nชี้ trade-off: Byzantine fault tolerance ต้องการ node ซ้ำซ้อนและ overhead สูงมาก คุ้มเฉพาะ context ที่ไว้ใจกันไม่ได้จริง ๆ เช่น blockchain",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "consistency-and-consensus",
+      "title": "Consistency and Consensus",
+      "position": 9,
+      "concepts": [
+        {
+          "slug": "linearizability",
+          "title": "Linearizability",
+          "outline": "อธิบายว่า linearizability ทำให้ระบบกระจายดูเหมือนมี copy เดียวของข้อมูล และ operation เกิดขึ้นทันทีทันใด\nยกตัวอย่างการใช้ linearizability สำหรับ lock, uniqueness constraint\nชี้ trade-off: linearizability การันตีความถูกต้องสูงแต่แลกมาด้วย latency สูงและ availability ต่ำเมื่อ network partition (ตาม CAP)",
+          "position": 1
+        },
+        {
+          "slug": "ordering-and-causality",
+          "title": "Ordering and Causality",
+          "outline": "อธิบายว่า causal order (เหตุมาก่อนผล) อ่อนกว่า total order แต่ยังคง capture ความสัมพันธ์ที่สำคัญของระบบ\nยกตัวอย่างการใช้ version vector หรือ Lamport timestamp เพื่อ track causal dependency\nชี้ trade-off: causal consistency ให้ performance ดีกว่า linearizability แต่ยอมให้ operation ที่ไม่เกี่ยวกันเห็นลำดับต่างกันได้",
+          "position": 2
+        },
+        {
+          "slug": "total-order-broadcast",
+          "title": "Total Order Broadcast",
+          "outline": "อธิบายว่า total order broadcast รับประกันทุก node เห็น message ตามลำดับเดียวกันเป๊ะ\nยกตัวอย่างว่า total order broadcast เทียบเท่ากับปัญหา consensus และใช้ทำ state machine replication\nชี้ trade-off: การรับประกัน total order ต้องแลกกับ throughput เพราะทุก message ต้องผ่านจุดตัดสินใจร่วมเดียวกัน",
+          "position": 3
+        },
+        {
+          "slug": "two-phase-commit",
+          "title": "Two-Phase Commit",
+          "outline": "อธิบายขั้นตอน 2PC: coordinator ถาม prepare แล้วรอทุก participant ตอบ ก่อนสั่ง commit หรือ abort\nยกตัวอย่างปัญหา blocking เมื่อ coordinator ล่มระหว่าง participant กำลังรอคำสั่งใน uncertain state\nชี้ trade-off: 2PC ให้ atomic commit ข้าม node ได้ แต่แลกมาด้วยการที่ทุก participant ต้อง block ทรัพยากรจนกว่า coordinator จะตัดสินใจ",
+          "position": 4
+        },
+        {
+          "slug": "consensus-and-zookeeper",
+          "title": "Distributed Consensus and ZooKeeper",
+          "outline": "อธิบายว่า consensus algorithm (เช่น Raft, Paxos) แก้ปัญหาให้ node ทั้งกลุ่มตกลงค่าเดียวกันได้แม้มี fault\nยกตัวอย่างว่าเครื่องมืออย่าง ZooKeeper ห่อ consensus ไว้ให้ใช้เป็น service กลางสำหรับ leader election, config\nชี้ trade-off: การพึ่ง consensus service ตรงกลางทำให้ระบบพึ่งพา majority ของ node นั้นต้อง available เสมอ ไม่ใช่ solve ทุกปัญหาแบบไม่มีต้นทุน",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "batch-processing",
+      "title": "Batch Processing",
+      "position": 10,
+      "concepts": [
+        {
+          "slug": "mapreduce",
+          "title": "MapReduce and Distributed Filesystems",
+          "outline": "อธิบายโมเดล MapReduce: map function แปลง record, reduce function รวมผลตาม key บน distributed filesystem\nยกตัวอย่างว่าทำไมแยก map/reduce ทำให้ scale ออกได้ง่ายและ fault-tolerant ด้วยการ re-run task ที่ fail\nชี้ trade-off: MapReduce ทนทานต่อ fault ระดับ cluster ใหญ่ได้ดีแต่มี overhead สูงกว่า in-memory processing สำหรับงานเล็ก",
+          "position": 1
+        },
+        {
+          "slug": "batch-joins",
+          "title": "Joins in Batch Processing",
+          "outline": "อธิบายเทคนิค join ใน batch job เช่น sort-merge join และ broadcast hash join\nยกตัวอย่างว่าการเลือกเทคนิค join ขึ้นกับขนาดของแต่ละ dataset ที่เข้าร่วม join\nชี้ trade-off: broadcast join เร็วเมื่อ dataset หนึ่งเล็กพอใส่ memory ได้ แต่ใช้ไม่ได้เมื่อทั้งสองฝั่งใหญ่เกินไป",
+          "position": 2
+        },
+        {
+          "slug": "dataflow-engines",
+          "title": "Dataflow Engines",
+          "outline": "อธิบายว่า dataflow engine (เช่น Spark) สร้าง execution graph ของ operator หลายตัวแทนการเขียนเป็น MapReduce job แยกกัน\nยกตัวอย่างว่า dataflow engine ลด I/O ด้วยการ chain operator ใน memory แทนเขียนผลลัพธ์กลางลง disk ทุกขั้น\nชี้ trade-off: การเก็บ intermediate state ไว้ใน memory เพิ่ม throughput แต่ทำให้ fault recovery ซับซ้อนกว่าการเขียนลง disk ทุกขั้นตอน",
+          "position": 3
+        },
+        {
+          "slug": "graphs-iterative",
+          "title": "Graphs and Iterative Processing",
+          "outline": "อธิบายว่าอัลกอริทึม graph บางแบบ (เช่น PageRank) ต้อง iterate ซ้ำหลายรอบจนกว่าจะ converge\nยกตัวอย่างโมเดล Pregel ที่ให้แต่ละ vertex ส่ง message ถึงเพื่อนบ้านในแต่ละ superstep\nชี้ trade-off: การรัน iterative job แบบนี้บน MapReduce ตรง ๆ ช้ามาก เพราะต้อง restart job ใหม่ทุกรอบ iteration",
+          "position": 4
+        },
+        {
+          "slug": "batch-output",
+          "title": "The Output of Batch Workflows",
+          "outline": "อธิบายว่าผลลัพธ์ของ batch job มักถูกใช้สร้าง derived dataset เช่น search index หรือ recommendation model\nยกตัวอย่างแนวคิดที่ดีคือ batch process เป็น pure function จาก input ไป output ทำให้ re-run ซ้ำได้ปลอดภัย\nชี้ trade-off: การสร้าง derived data ใหม่ทั้งหมดทุกครั้ง (แทน mutate in place) ปลอดภัยกว่าแต่ใช้ storage และเวลามากกว่า",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "stream-processing",
+      "title": "Stream Processing",
+      "position": 11,
+      "concepts": [
+        {
+          "slug": "event-streams-and-brokers",
+          "title": "Transmitting Event Streams",
+          "outline": "อธิบายว่า event stream คือข้อมูลที่ไม่มีจุดจบ ต้อง process แบบ incremental แทน batch ที่มี input จำกัด\nยกตัวอย่างบทบาทของ message broker ในการรับ event จาก producer แล้วส่งต่อให้ consumer\nชี้ trade-off: broker แบบ pub/sub ให้ decoupling ดีแต่ต้องเลือกว่าจะยอม drop message เมื่อ consumer ตามไม่ทันหรือไม่",
+          "position": 1
+        },
+        {
+          "slug": "partitioned-logs",
+          "title": "Partitioned Logs",
+          "outline": "อธิบายว่า log-based message broker (เช่น Kafka) เก็บ event เรียงลำดับถาวรใน partitioned log แทนการลบทิ้งหลัง consume\nยกตัวอย่างว่า consumer อ่านซ้ำได้และหลาย consumer group อ่าน log เดียวกันอิสระจากกัน\nชี้ trade-off: การเก็บ log ถาวรใช้ storage มากกว่า message queue แบบลบทิ้ง แต่แลกมาด้วยความสามารถ replay ข้อมูลย้อนหลัง",
+          "position": 2
+        },
+        {
+          "slug": "change-data-capture",
+          "title": "Change Data Capture (CDC)",
+          "outline": "อธิบายว่า CDC คือการดัก log การเปลี่ยนแปลงของ database แล้วแปลงเป็น stream ของ event ให้ระบบอื่นตาม sync\nยกตัวอย่างการใช้ CDC สร้าง search index หรือ cache ที่ sync กับ database หลักแบบ near real-time\nชี้ trade-off: CDC ทำให้ derived system update ทันเวลามากขึ้นแต่เพิ่ม operational dependency ต่อ replication log ของ database ต้นทาง",
+          "position": 3
+        },
+        {
+          "slug": "event-sourcing",
+          "title": "Event Sourcing",
+          "outline": "อธิบายแนวคิด event sourcing: เก็บลำดับ event ที่เกิดขึ้นเป็น source of truth แทนการเก็บแค่ state ปัจจุบัน\nยกตัวอย่างการ derive current state ด้วยการ replay event log ทั้งหมด (หรือใช้ snapshot ช่วยเร่ง)\nชี้ trade-off: event sourcing เปิดให้ audit และ rebuild state ย้อนหลังได้ดีมาก แต่เพิ่มความซับซ้อนของ query และต้องจัดการ schema evolution ของ event เอง",
+          "position": 4
+        },
+        {
+          "slug": "stream-joins-and-time",
+          "title": "Stream Joins and Notions of Time",
+          "outline": "อธิบาย 3 แบบของ stream join: stream-stream, stream-table, table-table\nอธิบายความต่างระหว่าง event time (เวลาที่เหตุการณ์เกิดจริง) กับ processing time (เวลาที่ระบบเห็น event) และปัญหา event ที่มาถึงช้า\nชี้ trade-off: การรอ window ให้นานขึ้นเพื่อรับ late event ลด incorrect result แต่แลกมาด้วย latency ของผลลัพธ์ที่สูงขึ้น",
+          "position": 5
+        },
+        {
+          "slug": "exactly-once-fault-tolerance",
+          "title": "Fault Tolerance and Exactly-Once Semantics",
+          "outline": "อธิบายว่าการรับประกัน exactly-once จริง ๆ ทำได้ยากในระบบกระจาย ส่วนใหญ่ทำได้แค่ effectively-once ผ่าน idempotency\nยกตัวอย่างเทคนิค microbatching หรือ transactional writes ที่ทำให้ retry ปลอดภัยโดยไม่ process ซ้ำ\nชี้ trade-off: การรับประกัน effectively-once ต้องแลกมาด้วย overhead ของ deduplication state และ throughput ที่ลดลง",
+          "position": 6
+        }
+      ]
+    },
+    {
+      "slug": "future-of-data-systems",
+      "title": "The Future of Data Systems",
+      "position": 12,
+      "concepts": [
+        {
+          "slug": "data-integration",
+          "title": "Data Integration",
+          "outline": "อธิบายว่าแทบไม่มีระบบเดียวตอบโจทย์ทุก use case ได้ องค์กรมักต้อง combine หลาย tool ผ่าน data pipeline\nยกตัวอย่างว่า derived data (cache, index, materialized view) ต้อง maintain ให้ sync กับ system of record\nชี้ trade-off: การผสมหลายระบบเพิ่ม flexibility แต่เพิ่มจุดที่ต้องดูแล consistency ระหว่างระบบ",
+          "position": 1
+        },
+        {
+          "slug": "unbundling-databases",
+          "title": "Unbundling Databases",
+          "outline": "อธิบายแนวคิดมอง database เป็นการรวมฟังก์ชัน (storage engine, index, replication, query) ที่แยกเป็น component อิสระได้\nยกตัวอย่างการต่อ component เหล่านี้เข้าด้วยกันผ่าน stream แทนการพึ่ง monolithic database ตัวเดียว\nชี้ trade-off: unbundling ให้ความยืดหยุ่นในการเลือก tool ที่เหมาะกับแต่ละงาน แต่ต้องแลกกับความซับซ้อนของการประกอบระบบเองแทนที่จะได้ integrated package",
+          "position": 2
+        },
+        {
+          "slug": "lambda-kappa",
+          "title": "Lambda and Kappa Architecture",
+          "outline": "อธิบาย Lambda architecture ที่รัน batch กับ stream pipeline คู่ขนานแล้วรวมผลลัพธ์\nอธิบาย Kappa architecture ที่พยายามใช้ stream processing อย่างเดียวแทน batch เพื่อลดความซับซ้อนของการดูแลสอง pipeline\nชี้ trade-off: Lambda ให้ผลลัพธ์แม่นยำสองทางแต่ดูแลโค้ดสองชุดคู่ขนาน ส่วน Kappa เรียบง่ายกว่าแต่ต้องพึ่ง stream engine ที่ replay ข้อมูลย้อนหลังได้ดีพอ",
+          "position": 3
+        },
+        {
+          "slug": "designing-for-correctness",
+          "title": "Designing for Correctness",
+          "outline": "อธิบายว่า correctness ในระบบกระจายมักพึ่ง idempotency และ end-to-end operation ID มากกว่าพึ่ง transaction ของ storage อย่างเดียว\nยกตัวอย่างการออกแบบ operation ให้ทำซ้ำได้อย่างปลอดภัยแทนที่จะพยายาม prevent duplicate ทุกจุดของ pipeline\nชี้ trade-off: การออกแบบเผื่อ retry/duplicate ทุกจุดเพิ่มงานตอนออกแบบ แต่ลดความเปราะบางเมื่อ network หรือ node ล้มเหลวจริง",
+          "position": 4
+        },
+        {
+          "slug": "ethics-of-data",
+          "title": "Doing the Right Thing: Ethics of Data Systems",
+          "outline": "อธิบายว่าการเก็บและใช้ข้อมูลผู้ใช้มีผลกระทบทางจริยธรรมที่วิศวกรต้องพิจารณา ไม่ใช่แค่ปัญหา technical\nยกตัวอย่างประเด็นเช่น bias ใน predictive model, surveillance, และการยินยอมของผู้ใช้ในการเก็บข้อมูล\nชี้ trade-off: การเก็บข้อมูลมากขึ้นเพิ่มความแม่นยำของ personalization/analytics แต่แลกมาด้วยความเสี่ยงต่อ privacy และความไว้วางใจของผู้ใช้",
+          "position": 5
+        }
+      ]
+    }
+  ]
+}

@@ -41,6 +41,7 @@ Phase 2 ค่อย publish โชว์เป็นผลงาน (ดู des
 - สัปดาห์ 4: [ ] T16 [ ] T17 [ ] T18 [ ] T19 [ ] T20 [ ] T21 [ ] C2
 - สัปดาห์ 5: [ ] T22 [ ] T23 [ ] T24 [ ] T25 [ ] C3 [ ] C4
 - สัปดาห์ 6: [ ] T26 [ ] T27 [ ] T31 [ ] T32 [ ] T34 [ ] C5 [ ] C6
+- DDIA track (additive, [รายละเอียด](tickets/ddia.md)): [x] T-ddia-track [ ] T-ddia-curriculum [ ] T-ddia-lessons-*
 
 ## กติกาการทำงาน (ทุก ticket)
 
