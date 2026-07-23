@@ -13,7 +13,7 @@ type Track struct {
 // tracks is the single source of truth for which tracks exist and their
 // canonical order; NewTrack and Tracks both derive from it so the two can
 // never drift apart.
-var tracks = [...]Track{{value: "ddd"}, {value: "distsys"}, {value: "aws"}, {value: "go"}, {value: "dsa"}}
+var tracks = [...]Track{{value: "ddd"}, {value: "distsys"}, {value: "aws"}, {value: "go"}, {value: "dsa"}, {value: "ddia"}}
 
 func NewTrack(raw string) (Track, error) {
 	for _, t := range tracks {
