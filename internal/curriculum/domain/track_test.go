@@ -16,8 +16,10 @@ func TestNewTrack(t *testing.T) {
 		{name: "aws", raw: "aws"},
 		{name: "go", raw: "go"},
 		{name: "dsa", raw: "dsa"},
+		{name: "ddia", raw: "ddia"},
 		{name: "empty", raw: "", wantErr: ErrInvalidTrack},
 		{name: "wrong case", raw: "DDD", wantErr: ErrInvalidTrack},
+		{name: "wrong case ddia", raw: "DDIA", wantErr: ErrInvalidTrack},
 		{name: "unknown track", raw: "kubernetes", wantErr: ErrInvalidTrack},
 		{name: "not trimmed", raw: " ddd", wantErr: ErrInvalidTrack},
 	}
@@ -52,7 +54,7 @@ func TestTrackZeroValue(t *testing.T) {
 
 func TestTracks(t *testing.T) {
 	got := Tracks()
-	want := []string{"ddd", "distsys", "aws", "go", "dsa"}
+	want := []string{"ddd", "distsys", "aws", "go", "dsa", "ddia"}
 	if len(got) != len(want) {
 		t.Fatalf("Tracks() returned %d tracks, want %d", len(got), len(want))
 	}
@@ -67,7 +69,7 @@ func TestTracks(t *testing.T) {
 		}
 		seen[tr.String()] = true
 	}
-	if len(seen) != 5 {
-		t.Fatalf("Tracks() contains %d distinct tracks, want exactly 5", len(seen))
+	if len(seen) != 6 {
+		t.Fatalf("Tracks() contains %d distinct tracks, want exactly 6", len(seen))
 	}
 }

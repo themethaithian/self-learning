@@ -42,7 +42,7 @@
   - `ErrInvalidTitle`/`ErrInvalidOutline` แยกตามแกน field แต่รวม empty กับ too-long ไว้ด้วยกัน — ถ้า UI อยากแยก "กรอกด้วย" กับ "สั้นลงหน่อย" ต้องกลับมาแตะ (ตัดสินใจก่อน copy pattern ไป context อื่น)
   - error message ซ้อน context ซ้ำ (`... title: empty: invalid title`) — ให้ `validateBounded` คืน sentinel ตรง ๆ แล้วให้ caller ใส่ context ชั้นเดียว
   - `Slug` เป็น type เดียวใช้ทั้ง 3 ชั้น — compiler จับไม่ได้ถ้า T6 ส่ง chapter slug ไปตำแหน่งที่ต้องการ concept slug
-  - `Track` hardcode 5 ค่าใน domain + ENUM ใน migration 001 ขัดกับ design §6 ที่บอกว่าเพิ่ม track ได้โดยไม่แก้โค้ด — ตัดสินใจว่ายอมรับ (เพิ่ม track = migration + แก้ 2 จุด) หรือเปลี่ยนเป็น lookup table
+  - `Track` hardcode ใน domain + ENUM ใน migration — ยอมรับแล้วว่า "เพิ่ม track = migration + แก้ domain array" (เพิ่ม `ddia` แบบนี้แล้ว 2026-07-23) แต่ยังไม่มี test กัน drift ระหว่าง SQL ENUM กับ `domain.Tracks()` → เพิ่ม test ที่อ่าน migration FS regex `ENUM(...)` ของ `topics.track` เทียบกับ `domain.Tracks()`; หรือเปลี่ยนเป็น lookup table ถ้าอยากเลิก hardcode
   - truncate ค่า raw ที่ echo ใน error message (`slug.go` ใส่ `%q` ของ input ดิบ — input 300 ตัวอักษรได้ error ยาว 333 ตัวอักษรไหลเข้า logging middleware)
 - **ค้างจาก T6** (code-reviewer, non-blocking):
   - `GET /curriculum` ดึง `co.outline` มาแล้วทิ้ง — วัดจริงบน tree 175 concepts (outline ไทย 400 runes) = ดึงจาก MySQL 222 KB ในนั้นเป็น outline 210 KB (94%) เพื่อตอบ 13 KB **ขยาย ~17 เท่า** สาเหตุคือ rehydrate ผ่าน `NewConcept` ที่บังคับ outline ไม่ว่าง → ตัดสินใจว่ายอมรับ (single user) หรือทำ read projection แยกจาก domain (CQRS-lite)
