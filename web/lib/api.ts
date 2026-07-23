@@ -19,6 +19,13 @@ export class UnauthorizedError extends ApiError {
   }
 }
 
+export class NotFoundError extends ApiError {
+  constructor() {
+    super(404, "not found");
+    this.name = "NotFoundError";
+  }
+}
+
 export interface Concept {
   slug: string;
   title: string;
@@ -48,6 +55,30 @@ export interface CurriculumResponse {
   tracks: Track[];
 }
 
+export interface Reference {
+  title: string;
+  source: string;
+  why: string;
+}
+
+export interface RecallCheck {
+  position: number;
+  type: "short_answer" | "mcq";
+  question: string;
+  expected_answer: string;
+  options?: string[];
+}
+
+export interface Lesson {
+  topic: string;
+  concept: string;
+  title_en: string;
+  est_minutes: number;
+  body_md: string;
+  references: Reference[];
+  recall_checks: RecallCheck[];
+}
+
 async function apiFetch<T>(path: string): Promise<T> {
   const token = getToken();
 
@@ -67,6 +98,9 @@ async function apiFetch<T>(path: string): Promise<T> {
     clearToken();
     throw new UnauthorizedError();
   }
+  if (res.status === 404) {
+    throw new NotFoundError();
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new ApiError(res.status, body || `request failed with status ${res.status}`);
@@ -76,4 +110,8 @@ async function apiFetch<T>(path: string): Promise<T> {
 
 export function getCurriculum(): Promise<CurriculumResponse> {
   return apiFetch<CurriculumResponse>("/api/v1/curriculum");
+}
+
+export function getLesson(topicSlug: string, conceptSlug: string): Promise<Lesson> {
+  return apiFetch<Lesson>(`/api/v1/lessons/${encodeURIComponent(topicSlug)}/${encodeURIComponent(conceptSlug)}`);
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/themethaithian/self-learning/internal/curriculum/domain"
@@ -11,10 +12,17 @@ import (
 type fakeRepository struct {
 	topics []domain.Topic
 	err    error
+
+	lesson    domain.Lesson
+	lessonErr error
 }
 
 func (f fakeRepository) Topics(context.Context) ([]domain.Topic, error) {
 	return f.topics, f.err
+}
+
+func (f fakeRepository) LessonByConcept(context.Context, string, string) (domain.Lesson, error) {
+	return f.lesson, f.lessonErr
 }
 
 func mustTopic(t *testing.T, slug string) domain.Topic {
@@ -52,6 +60,82 @@ func mustTopic(t *testing.T, slug string) domain.Topic {
 		t.Fatalf("NewTopic: %v", err)
 	}
 	return topic
+}
+
+func mustLesson(t *testing.T, slug string) domain.Lesson {
+	t.Helper()
+	s, err := domain.NewSlug(slug)
+	if err != nil {
+		t.Fatalf("NewSlug: %v", err)
+	}
+	est, err := domain.NewEstMinutes(7)
+	if err != nil {
+		t.Fatalf("NewEstMinutes: %v", err)
+	}
+	refA, err := domain.NewReference("Source A", "https://example.com/a", "why a")
+	if err != nil {
+		t.Fatalf("NewReference: %v", err)
+	}
+	refB, err := domain.NewReference("Source B", "https://example.com/b", "why b")
+	if err != nil {
+		t.Fatalf("NewReference: %v", err)
+	}
+	kind, err := domain.NewRecallKind("short_answer")
+	if err != nil {
+		t.Fatalf("NewRecallKind: %v", err)
+	}
+	checks := make([]domain.RecallCheck, 3)
+	for i := range checks {
+		pos, err := domain.NewPosition(i + 1)
+		if err != nil {
+			t.Fatalf("NewPosition: %v", err)
+		}
+		checks[i], err = domain.NewRecallCheck(pos, kind, "q", "a", nil)
+		if err != nil {
+			t.Fatalf("NewRecallCheck: %v", err)
+		}
+	}
+
+	l, err := domain.NewLesson(s, 1, "Title", est, "body", []domain.Reference{refA, refB}, checks)
+	if err != nil {
+		t.Fatalf("NewLesson: %v", err)
+	}
+	return l
+}
+
+func TestServiceLesson_Success(t *testing.T) {
+	want := mustLesson(t, "concept-a")
+	svc := NewService(fakeRepository{lesson: want})
+
+	got, err := svc.Lesson(context.Background(), "topic-a", "concept-a")
+	if err != nil {
+		t.Fatalf("Lesson() unexpected error: %v", err)
+	}
+	if got.Slug() != want.Slug() || got.TitleEn() != want.TitleEn() {
+		t.Fatalf("Lesson() = %v, want %v", got, want)
+	}
+}
+
+func TestServiceLesson_NotFound(t *testing.T) {
+	svc := NewService(fakeRepository{lessonErr: fmt.Errorf("infra: lesson not found: %w", ErrLessonNotFound)})
+
+	_, err := svc.Lesson(context.Background(), "topic-a", "concept-a")
+	if !errors.Is(err, ErrLessonNotFound) {
+		t.Fatalf("Lesson() error = %v, want it to wrap ErrLessonNotFound", err)
+	}
+}
+
+func TestServiceLesson_RepositoryError(t *testing.T) {
+	repoErr := errors.New("connection lost")
+	svc := NewService(fakeRepository{lessonErr: repoErr})
+
+	_, err := svc.Lesson(context.Background(), "topic-a", "concept-a")
+	if err == nil {
+		t.Fatal("Lesson() expected error, got nil")
+	}
+	if !errors.Is(err, repoErr) {
+		t.Fatalf("Lesson() error = %v, want it to wrap %v", err, repoErr)
+	}
 }
 
 func TestServiceTree_Success(t *testing.T) {

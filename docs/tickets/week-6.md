@@ -53,7 +53,9 @@
 - **ค้างจาก T9** (code-reviewer, non-blocking / watch-item):
   - `LessonProgress` ไม่ถือ `first_passed_at`/`last_read_at` — วันนี้ถูกต้อง (ไม่มี invariant ไหนอ่านมัน, repository stamp เอง) แต่**ถ้าวันหน้ามีกฎที่ใช้ "passed เมื่อไหร่" เป็น input ตัดสินใจ** (streak, "passed ใน session", retro delta) ต้องย้าย timestamp เข้า aggregate ไม่งั้น logic "first pass พิเศษ" จะรั่วไป app/infra
 - **ค้างจาก T10** (code-reviewer, non-blocking):
-  - `cmd/import-lessons` ไม่มี app-layer `ImportService` (orchestration load→save→summary อยู่ใน `run()`) → two-level walk / zero-files / first-failure / skip stray file ไม่มี unit test (verify live แล้วถูกทั้งหมด) — แยก service + test `lessonFiles` กับ `t.TempDir()` จะปิด gap (เหมือน import-curriculum)
+  - `cmd/import-lessons` ไม่มี app-layer `ImportService`
+- **ค้างจาก T-read** (code-reviewer, non-blocking):
+  - `GET /lessons/{topic}/{concept}` handler รับ slug จาก `PathValue` ตรง ๆ ไม่ผ่าน `NewSlug` (injection-safe เพราะ parameterized query + slug ผิดก็ 404) — ต่างจาก write path ที่ reject ตั้งแต่ต้น; ยอมรับได้สำหรับ endpoint single-user ที่มี auth (orchestration load→save→summary อยู่ใน `run()`) → two-level walk / zero-files / first-failure / skip stray file ไม่มี unit test (verify live แล้วถูกทั้งหมด) — แยก service + test `lessonFiles` กับ `t.TempDir()` จะปิด gap (เหมือน import-curriculum)
 - **Acceptance**: list ที่ตกลงกันไว้เคลียร์หมดหรือมีเหตุผลที่ข้าม
 - Status: `todo`
 

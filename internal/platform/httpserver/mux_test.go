@@ -44,6 +44,29 @@ func TestNewMux(t *testing.T) {
 	}
 }
 
+// TestNewMuxLessonRouteIsProtected exercises a path-parameterized route
+// pattern ("{topicSlug}/{conceptSlug}"), not just a literal path — proving
+// Go 1.22 ServeMux path patterns sit behind BearerAuth the same way a plain
+// path does.
+func TestNewMuxLessonRouteIsProtected(t *testing.T) {
+	mux := NewMux(fakePinger{}, "secret-token", fakeRegistrar{path: "/api/v1/lessons/{topicSlug}/{conceptSlug}"})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/lessons/domain-driven-design/aggregate", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d (no token)", rec.Code, http.StatusUnauthorized)
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/lessons/domain-driven-design/aggregate", nil)
+	req2.Header.Set("Authorization", "Bearer secret-token")
+	rec2 := httptest.NewRecorder()
+	mux.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (correct token reaches protectedMux)", rec2.Code, http.StatusOK)
+	}
+}
+
 type fakeRegistrar struct{ path string }
 
 func (f fakeRegistrar) Register(mux *http.ServeMux) {

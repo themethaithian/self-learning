@@ -1,6 +1,9 @@
 package domain
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 const minMCQOptions = 2
 
@@ -48,6 +51,13 @@ func NewRecallCheck(position Position, kind RecallKind, question, expectedAnswer
 			return RecallCheck{}, fmt.Errorf("curriculum: recall check %d: option %d: %w", position.Int(), i, err)
 		}
 		trimmedOptions[i] = trimmed
+	}
+
+	// An mcq's expectedAnswer must be one of its options: the client marks
+	// the correct option by exact string equality (self-grade reveal UI),
+	// so a mismatch here would silently render with no correct marker.
+	if kind.IsMCQ() && !slices.Contains(trimmedOptions, trimmedAnswer) {
+		return RecallCheck{}, fmt.Errorf("curriculum: recall check %d: expected answer %q not among mcq options: %w", position.Int(), trimmedAnswer, ErrInvalidRecallAnswer)
 	}
 
 	return RecallCheck{

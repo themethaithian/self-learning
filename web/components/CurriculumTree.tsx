@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { Chapter, Topic, Track } from "@/lib/api";
 import { ChevronIcon } from "@/components/icons";
@@ -12,7 +13,7 @@ const TRACK_LABELS: Record<string, string> = {
   dsa: "DSA",
 };
 
-function ChapterRow({ chapter }: { chapter: Chapter }) {
+function ChapterRow({ topicSlug, chapter }: { topicSlug: string; chapter: Chapter }) {
   const [open, setOpen] = useState(false);
   const conceptsId = `chapter-${chapter.slug}-concepts`;
 
@@ -35,14 +36,16 @@ function ChapterRow({ chapter }: { chapter: Chapter }) {
       {open && (
         <ul id={conceptsId} className="space-y-1 border-t border-subtle px-4 py-3 pl-9">
           {chapter.concepts.map((concept) => (
-            <li
-              key={concept.slug}
-              className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-1 text-sm"
-            >
-              <span className="min-w-0 break-words text-body">{concept.title}</span>
-              <span className="shrink-0 font-mono text-xs text-faint">
-                #{concept.position} · {concept.slug}
-              </span>
+            <li key={concept.slug}>
+              <Link
+                href={`/lesson?topic=${encodeURIComponent(topicSlug)}&concept=${encodeURIComponent(concept.slug)}`}
+                className="-mx-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg px-2 py-1 text-sm transition-colors duration-150 ease-out hover:bg-accent-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
+              >
+                <span className="min-w-0 break-words text-body">{concept.title}</span>
+                <span className="shrink-0 font-mono text-xs text-faint">
+                  #{concept.position} · {concept.slug}
+                </span>
+              </Link>
             </li>
           ))}
         </ul>
@@ -57,7 +60,7 @@ function TopicSection({ topic }: { topic: Topic }) {
       <h3 className="text-sm font-semibold text-heading">{topic.title}</h3>
       <div className="space-y-2">
         {topic.chapters.map((chapter) => (
-          <ChapterRow key={chapter.slug} chapter={chapter} />
+          <ChapterRow key={chapter.slug} topicSlug={topic.slug} chapter={chapter} />
         ))}
       </div>
     </div>
