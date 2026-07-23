@@ -1,0 +1,16 @@
+{
+  "track": "go",
+  "slug": "go-basics",
+  "title": "Go Basics",
+  "position": 0,
+  "chapters": [
+    {
+      "slug": "syntax",
+      "title": "Syntax",
+      "position": 1,
+      "concepts": [
+        { "slug": "variables", "title": "Variables", "outline": "ตัวแปรใน Go ประกาศแบบไหนได้บ้าง", "position": 1 }
+      ]
+    }
+  ]
+}

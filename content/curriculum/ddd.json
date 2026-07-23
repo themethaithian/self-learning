@@ -1,0 +1,241 @@
+{
+  "track": "ddd",
+  "slug": "domain-driven-design",
+  "title": "Domain-Driven Design",
+  "position": 1,
+  "chapters": [
+    {
+      "slug": "model-driven-foundations",
+      "title": "Model-Driven Foundations",
+      "position": 1,
+      "concepts": [
+        {
+          "slug": "ubiquitous-language",
+          "title": "Ubiquitous Language",
+          "outline": "อธิบายว่า Ubiquitous Language คือภาษากลางระหว่าง domain expert กับ developer\nยกตัวอย่างวิธีสร้างและรักษาคำศัพท์ให้ตรงกับโค้ดจริง\nเชื่อมโยงกับ bounded context ว่าทำไมคำเดียวกันมีความหมายต่างกันได้",
+          "position": 1
+        },
+        {
+          "slug": "model-driven-design",
+          "title": "Model-Driven Design",
+          "outline": "อธิบายว่าโมเดล domain ต้องสะท้อนอยู่ในโค้ดโดยตรง ไม่ใช่แค่ diagram\nเปรียบเทียบ model-driven design กับการเขียนโค้ดแบบ data-driven ทั่วไป\nยกตัวอย่างวงจร refine โมเดลร่วมกับ domain expert",
+          "position": 2
+        },
+        {
+          "slug": "knowledge-crunching",
+          "title": "Knowledge Crunching",
+          "outline": "อธิบาย process ของการ crunch knowledge จาก domain expert เข้าสู่โมเดล\nเน้นว่าเป็น iterative process ไม่ใช่ทำครั้งเดียวจบ\nยกตัวอย่างเทคนิค เช่น event storming หรือ workshop ร่วมกับ expert",
+          "position": 3
+        },
+        {
+          "slug": "hands-on-modelers",
+          "title": "Hands-On Modelers",
+          "outline": "อธิบายว่าทำไม developer ที่เขียนโค้ดต้องมีส่วนร่วมในการสร้างโมเดลด้วย\nเปรียบเทียบกับ anti-pattern ที่แยก analyst ออกจาก coder\nพูดถึงผลเสียเมื่อโมเดลกับโค้ด diverge กัน",
+          "position": 4
+        }
+      ]
+    },
+    {
+      "slug": "building-blocks",
+      "title": "Building Blocks",
+      "position": 2,
+      "concepts": [
+        {
+          "slug": "layered-architecture",
+          "title": "Layered Architecture",
+          "outline": "อธิบาย 4 layers หลัก: UI, Application, Domain, Infrastructure\nเน้นกฎ dependency direction ว่า domain ต้องไม่พึ่ง infrastructure\nเชื่อมโยงกับโครงสร้าง repo จริงของโปรเจกต์นี้ (domain/app/infra)",
+          "position": 1
+        },
+        {
+          "slug": "entities",
+          "title": "Entities",
+          "outline": "อธิบายว่า Entity คือ object ที่มี identity คงที่ตลอดวงจรชีวิต ไม่ใช่ค่าที่เทียบกันด้วย attribute\nยกตัวอย่างการออกแบบ identity field และ equality check\nเตือนข้อผิดพลาดที่มักสร้าง entity มากเกินจำเป็น",
+          "position": 2
+        },
+        {
+          "slug": "value-objects",
+          "title": "Value Objects",
+          "outline": "อธิบาย Value Object คือ object ที่เทียบเท่ากันด้วยค่า ไม่มี identity\nเน้นคุณสมบัติ immutability และ side-effect-free\nยกตัวอย่างเช่น Money, Slug, Position ในโค้ดโปรเจกต์นี้",
+          "position": 3
+        },
+        {
+          "slug": "domain-services",
+          "title": "Domain Services",
+          "outline": "อธิบายว่า Domain Service ใช้เมื่อ operation ไม่เข้ากับ Entity หรือ Value Object ตัวใดตัวหนึ่ง\nเตือนว่าอย่าใช้ domain service เป็นที่ทิ้ง logic แบบ anemic model\nยกตัวอย่าง operation ที่ involve หลาย aggregate",
+          "position": 4
+        },
+        {
+          "slug": "modules",
+          "title": "Modules",
+          "outline": "อธิบายว่า Module คือการจัดกลุ่มโค้ดตามความหมายของ domain ไม่ใช่ตาม technical layer\nเชื่อมโยงกับ Go package boundary ในโปรเจกต์\nเตือนเรื่อง low coupling high cohesion ระหว่าง module",
+          "position": 5
+        },
+        {
+          "slug": "aggregates",
+          "title": "Aggregates",
+          "outline": "อธิบายว่า Aggregate คือ cluster ของ object ที่ถูกปฏิบัติเป็นหนึ่งเดียวเพื่อ data change\nอธิบาย Aggregate Root และ transaction boundary\nยกตัวอย่าง Topic aggregate ในโปรเจกต์นี้เอง",
+          "position": 6
+        },
+        {
+          "slug": "aggregate-design-rules",
+          "title": "Aggregate Design Rules",
+          "outline": "สรุปกฎการออกแบบ aggregate ให้เล็ก อ้างอิงข้าม aggregate ด้วย id เท่านั้น\nอธิบายว่าทำไมควร modify aggregate เดียวต่อ transaction\nเชื่อมโยงกับ eventual consistency ระหว่าง aggregate",
+          "position": 7
+        },
+        {
+          "slug": "factories",
+          "title": "Factories",
+          "outline": "อธิบายว่า Factory ใช้ encapsulate ตรรกะการสร้าง object ที่ซับซ้อน\nเปรียบเทียบกับ constructor ธรรมดาเมื่อการสร้างต้องการ invariant หลายชั้น\nยกตัวอย่าง NewTopic ในโปรเจกต์นี้เป็น factory function",
+          "position": 8
+        },
+        {
+          "slug": "repositories",
+          "title": "Repositories",
+          "outline": "อธิบายว่า Repository คือ abstraction สำหรับดึงและเก็บ aggregate โดยซ่อนรายละเอียด storage\nเน้นว่า repository คืนค่าเป็น aggregate ที่สมบูรณ์ ไม่ใช่ partial data\nเชื่อมโยงกับ port/adapter pattern ที่ใช้ในโปรเจกต์",
+          "position": 9
+        },
+        {
+          "slug": "domain-events",
+          "title": "Domain Events",
+          "outline": "อธิบายว่า Domain Event คือสิ่งที่เกิดขึ้นแล้วในอดีตที่ domain expert สนใจ\nยกตัวอย่างการใช้ domain event สื่อสารระหว่าง aggregate หรือ bounded context\nพูดถึงความแตกต่างจาก event ระดับ infrastructure เช่น message queue",
+          "position": 10
+        }
+      ]
+    },
+    {
+      "slug": "supple-design-refactoring",
+      "title": "Supple Design & Refactoring",
+      "position": 3,
+      "concepts": [
+        {
+          "slug": "intention-revealing-interfaces",
+          "title": "Intention-Revealing Interfaces",
+          "outline": "อธิบายว่าชื่อ method/type ต้องสื่อ \"ทำอะไร\" ไม่ใช่ \"ทำอย่างไร\"\nยกตัวอย่างการตั้งชื่อที่ดีเทียบกับชื่อที่ generic เกินไป\nเชื่อมโยงกับกฎ minimal comments ของโปรเจกต์นี้",
+          "position": 1
+        },
+        {
+          "slug": "side-effect-free-functions",
+          "title": "Side-Effect-Free Functions",
+          "outline": "อธิบายว่าทำไมแยก query function (ไม่มี side effect) ออกจาก command function\nยกตัวอย่างฟังก์ชันคำนวณล้วน ๆ ที่ test ง่ายและ compose ได้\nเตือนอันตรายของฟังก์ชันที่ทั้งคืนค่าและแก้ state พร้อมกัน",
+          "position": 2
+        },
+        {
+          "slug": "assertions",
+          "title": "Assertions",
+          "outline": "อธิบายว่า assertion ใช้ระบุ invariant หรือ post-condition ของโค้ดอย่างชัดเจน\nเปรียบเทียบกับการเขียน comment อธิบาย invariant แบบ implicit\nยกตัวอย่างการ enforce invariant ผ่าน constructor แทนการปล่อยให้ caller ต้องจำเอง",
+          "position": 3
+        },
+        {
+          "slug": "specification-pattern",
+          "title": "Specification Pattern",
+          "outline": "อธิบาย Specification Pattern สำหรับห่อกฎ business logic ให้ reusable และ combine ได้\nยกตัวอย่างการใช้ specification ตรวจสอบเงื่อนไขหรือ query\nเปรียบเทียบกับการเขียน if-condition กระจายอยู่หลายที่",
+          "position": 4
+        },
+        {
+          "slug": "making-implicit-concepts-explicit",
+          "title": "Making Implicit Concepts Explicit",
+          "outline": "อธิบายว่าทำไมควรดึง concept ที่ซ่อนอยู่ใน logic ให้กลายเป็น type หรือ class จริง\nยกตัวอย่างการแปลง primitive (เช่น int, string) เป็น value object ที่มีความหมาย\nเชื่อมโยงกับ Slug, Position ในโปรเจกต์นี้ที่แปลงมาจาก primitive",
+          "position": 5
+        },
+        {
+          "slug": "refactoring-toward-deeper-insight",
+          "title": "Refactoring Toward Deeper Insight",
+          "outline": "อธิบายว่า refactoring ระดับนี้คือการปรับโมเดลให้สะท้อนความเข้าใจ domain ที่ลึกขึ้น ไม่ใช่แค่ clean code\nยกตัวอย่างสัญญาณที่บ่งบอกว่าโมเดลตื้นเกินไป\nเน้นว่าเป็น continuous process ที่ทำร่วมกับ domain expert",
+          "position": 6
+        }
+      ]
+    },
+    {
+      "slug": "strategic-design",
+      "title": "Strategic Design",
+      "position": 4,
+      "concepts": [
+        {
+          "slug": "bounded-context",
+          "title": "Bounded Context",
+          "outline": "อธิบายว่า Bounded Context คือขอบเขตที่โมเดลและภาษาใช้ความหมายเดียวกันอย่างสม่ำเสมอ\nยกตัวอย่างว่าคำเดียวกันมีความหมายต่างกันได้ในคนละ context\nเชื่อมโยงกับการแบ่ง bounded context ในโปรเจกต์นี้ เช่น curriculum",
+          "position": 1
+        },
+        {
+          "slug": "context-mapping",
+          "title": "Context Mapping",
+          "outline": "อธิบายว่า Context Map คือแผนที่แสดงความสัมพันธ์ระหว่าง bounded context ต่าง ๆ\nยกตัวอย่าง pattern ความสัมพันธ์ เช่น partnership, conformist\nเน้นว่า context map ช่วยสื่อสารทีมและวางแผน integration",
+          "position": 2
+        },
+        {
+          "slug": "shared-kernel",
+          "title": "Shared Kernel",
+          "outline": "อธิบาย Shared Kernel คือส่วนโมเดลที่สอง context ตกลงใช้ร่วมกัน\nเตือนความเสี่ยงเรื่อง coupling ที่สูงขึ้นเมื่อ share kernel\nยกตัวอย่างสถานการณ์ที่เหมาะสมกับ shared kernel",
+          "position": 3
+        },
+        {
+          "slug": "customer-supplier-conformist",
+          "title": "Customer-Supplier & Conformist",
+          "outline": "อธิบายความสัมพันธ์แบบ Customer-Supplier ที่ upstream ต้องรับ feedback จาก downstream\nเปรียบเทียบกับ Conformist ที่ downstream ยอมตามโมเดล upstream ทั้งหมด\nยกตัวอย่างสถานการณ์ที่ทีมควรเลือกแบบไหน",
+          "position": 4
+        },
+        {
+          "slug": "anticorruption-layer",
+          "title": "Anticorruption Layer",
+          "outline": "อธิบายว่า Anticorruption Layer ใช้ป้องกันโมเดลภายในจากการปนเปื้อนของ external system\nยกตัวอย่าง translation layer ระหว่าง legacy system กับโมเดลใหม่\nเชื่อมโยงกับ adapter pattern ในสถาปัตยกรรม",
+          "position": 5
+        },
+        {
+          "slug": "open-host-service-published-language",
+          "title": "Open Host Service & Published Language",
+          "outline": "อธิบาย Open Host Service คือการเปิด protocol กลางให้หลาย consumer เรียกใช้\nอธิบาย Published Language คือ format กลางที่ตกลงร่วมกัน เช่น JSON schema\nยกตัวอย่าง REST API ของโปรเจกต์นี้ที่ทำหน้าที่เป็น open host service",
+          "position": 6
+        },
+        {
+          "slug": "core-domain-distillation",
+          "title": "Core Domain Distillation",
+          "outline": "อธิบายว่า Core Domain คือส่วนที่สร้าง competitive advantage ต้องลงทุนมากที่สุด\nแนะนำเทคนิค distillation แยก core ออกจาก generic/supporting subdomain\nยกตัวอย่างการจัดลำดับความสำคัญของทรัพยากรทีม",
+          "position": 7
+        },
+        {
+          "slug": "generic-subdomains",
+          "title": "Generic Subdomains",
+          "outline": "อธิบายว่า Generic Subdomain คือส่วนที่ไม่ใช่จุดแข็งเฉพาะตัว ควร buy หรือใช้ของสำเร็จรูป\nเปรียบเทียบกับ Supporting Subdomain ที่จำเป็นแต่ไม่ core\nยกตัวอย่างการตัดสินใจ build vs buy",
+          "position": 8
+        },
+        {
+          "slug": "large-scale-structure",
+          "title": "Large-Scale Structure",
+          "outline": "อธิบาย Large-Scale Structure สำหรับจัดระเบียบระบบขนาดใหญ่ที่มีหลาย bounded context\nยกตัวอย่าง pattern เช่น layers, system metaphor\nเน้นว่าใช้เมื่อ context map เริ่มซับซ้อนเกินจะสื่อสารด้วยแผนภาพเดียว",
+          "position": 9
+        }
+      ]
+    },
+    {
+      "slug": "ddd-in-go",
+      "title": "DDD in Go",
+      "position": 5,
+      "concepts": [
+        {
+          "slug": "ddd-go-project-layout",
+          "title": "DDD Go Project Layout",
+          "outline": "อธิบายการจัดโครงสร้าง Go project ตาม DDD layering: domain, app, infra\nเน้นกฎ dependency direction ที่ domain ห้าม import vendor SDK\nเชื่อมโยงกับโครงสร้างจริงของ internal/curriculum ในโปรเจกต์นี้",
+          "position": 1
+        },
+        {
+          "slug": "persistence-without-orm",
+          "title": "Persistence Without ORM",
+          "outline": "อธิบายวิธี map aggregate ไปยัง SQL table โดยไม่ใช้ ORM\nยกตัวอย่าง repository pattern ที่แปลง row เป็น aggregate ผ่าน constructor\nเตือนข้อดีข้อเสียเทียบกับการใช้ ORM",
+          "position": 2
+        },
+        {
+          "slug": "in-process-domain-events",
+          "title": "In-Process Domain Events",
+          "outline": "อธิบายวิธี implement domain event แบบ in-process (ไม่ใช้ message broker)\nยกตัวอย่าง pattern เก็บ event ใน aggregate แล้ว dispatch หลัง commit สำเร็จ\nเตือนความแตกต่างจาก distributed event ที่ต้องพึ่ง message queue",
+          "position": 3
+        },
+        {
+          "slug": "testing-the-domain-layer",
+          "title": "Testing the Domain Layer",
+          "outline": "อธิบายว่าทำไม domain layer ควร test ด้วย table-driven test แบบ pure Go\nเน้นการ assert ผ่าน error sentinel ด้วย errors.Is\nยกตัวอย่างการ test invariant ของ aggregate โดยไม่ต้องพึ่ง database",
+          "position": 4
+        }
+      ]
+    }
+  ]
+}

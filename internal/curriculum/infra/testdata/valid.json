@@ -1,0 +1,17 @@
+{
+  "track": "go",
+  "slug": "go-basics",
+  "title": "Go Basics",
+  "position": 1,
+  "chapters": [
+    {
+      "slug": "syntax",
+      "title": "Syntax",
+      "position": 1,
+      "concepts": [
+        { "slug": "variables", "title": "Variables", "outline": "ตัวแปรใน Go ประกาศแบบไหนได้บ้าง", "position": 1 },
+        { "slug": "loops", "title": "Loops", "outline": "for loop รูปแบบต่าง ๆ ใน Go", "position": 2 }
+      ]
+    }
+  ]
+}
