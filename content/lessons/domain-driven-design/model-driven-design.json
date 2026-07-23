@@ -1,0 +1,67 @@
+{
+  "topic": "domain-driven-design",
+  "concept_id": "model-driven-design",
+  "version": 1,
+  "title_en": "Model-Driven Design",
+  "est_minutes": 8,
+  "body_md": "# Model-Driven Design\n\n## ทำไมเรื่องนี้สำคัญ\n\nDDD ยืนอยู่บนสมมติฐานเดียว: โมเดลของ domain กับโค้ดที่รันจริงต้องเป็นสิ่งเดียวกัน ไม่ใช่เอกสารสองชุดที่แยกกันอยู่ ถ้าโมเดลสวยแต่โค้ดทำอีกอย่าง โมเดลนั้นก็ไร้ค่าในฐานะเครื่องมือออกแบบ และความเข้าใจ domain ที่ทีมสะสมมาจะรั่วหายไปกับ implementation ที่ไม่มีใครอ่านออก Model-Driven Design คือวินัยที่บังคับให้โมเดลกับโค้ดผูกติดกันตลอดเวลา\n\n## แก่นของแนวคิด\n\nModel-Driven Design บอกว่า **โค้ดคือการแสดงออกของโมเดล** (the code is an expression of the model) แต่ละ concept ในโมเดลต้อง map ตรง ๆ ไปยัง artifact ในโค้ด — concept ชื่อ `Transfer` ในหัวของ domain expert ต้องมี type ชื่อ `Transfer` ในโค้ด และกฎ \"โอนข้ามสกุลเงินไม่ได้\" ต้องเป็น invariant ที่ enforce อยู่ใน type นั้น ไม่ใช่ if กระจายอยู่ที่ไหนสักแห่ง\n\nการ map แบบตรงตัวนี้ (literal correspondence) ให้ประโยชน์สองทาง: อ่านโค้ดแล้วเข้าใจ domain ได้ และเมื่อ domain expert อธิบายกฎใหม่ เรารู้ทันทีว่าต้องแก้ตรงไหน โมเดลกับโค้ดกลายเป็น feedback loop เดียวกัน ไม่ใช่สองโลกแยกกัน\n\nข้อสำคัญ: ไม่ใช่ทุกโมเดลจะเป็น design ที่ดี โมเดลที่ใช้ได้ต้องเป็นทั้ง abstraction ที่อธิบาย domain ได้คม และ implement ได้จริงพร้อมกัน สองข้อนี้ดึงกันไปมา — บ่อยครั้งเรา refine โมเดลเพราะพอเขียนโค้ดแล้วพบว่ามันงุ่มง่าม นั่นคือสัญญาณว่าโมเดลยังตื้น ไม่ใช่แค่ปัญหา coding\n\n### Model-driven เทียบกับ data-driven\n\nการเขียนโค้ดแบบ data-driven ทั่วไปเริ่มจาก schema ของฐานข้อมูล: ออกแบบตารางก่อน แล้วเขียน service เป็นชุดของ procedure ที่ CRUD row (รูปแบบ Transaction Script) \"โมเดล\" ในสายตาแบบนี้คือ ER diagram ส่วน business logic กระจายอยู่ใน service methods, stored procedures หรือ validation ที่ปะไว้ layer บนสุด นาม (noun) กลายเป็นตาราง กริยา (verb) กลายเป็น `UPDATE` — ความหมายของ domain หายไป อ่านโค้ดแล้วเห็นแต่การขยับ row (นี่คือรากของ anemic domain model)\n\n| แกนเปรียบเทียบ | Data-driven / Transaction Script | Model-Driven Design |\n|---|---|---|\n| เริ่มจาก | ตาราง / schema | concept ของ domain |\n| \"โมเดล\" อยู่ที่ | ER diagram | type + behavior ในโค้ด |\n| business logic | กระจายใน service / SQL | อยู่ใน domain type ที่มันสังกัด |\n| อ่านโค้ดแล้วเห็น | การขยับ row | concept และกฎของ domain |\n\n## ตัวอย่าง (fintech): \"โอนเงิน\"\n\n**แบบ data-driven** — service method เขียนประมาณนี้:\n\n```sql\nUPDATE accounts SET balance = balance - 100 WHERE id = 'A';\nUPDATE accounts SET balance = balance + 100 WHERE id = 'B';\n```\n\nคำถาม: concept ของ \"Transfer\" อยู่ไหน? — ไม่มี กฎอย่าง \"สกุลเงินต้องตรงกัน\", \"ยอดต้องพอ\", \"เกิน limit ต่อวันไม่ได้\", \"กันการโอนซ้ำ (idempotency) ยังไง\" อยู่ไหน? — กระจายอยู่ใน if หรือหายไปเลย ระบบรู้จักแค่ `balance` แต่ไม่รู้จัก \"การโอน\"\n\n**แบบ model-driven** — มี concept `Transfer` เป็นพลเมืองชั้นหนึ่งของ domain:\n\n- `Transfer` ถือ `Money amount`, `AccountId from`, `AccountId to`, `Status`\n- constructor / behavior enforce invariant: สกุลเงินตรงกัน, amount > 0, ผู้โอนมีสิทธิ์\n- `transfer.execute()` ตรวจยอดคงเหลือแล้ว debit/credit ผ่าน `Account` (aggregate) จากนั้นปล่อย domain event `MoneyTransferred`\n\nตอนนี้คำว่า \"Transfer\" ที่ domain expert พูด ปรากฏตรงตัวในโค้ด กฎอยู่ในที่เดียวที่มันควรอยู่ และเมื่อ compliance ขอเพิ่มกฎ \"บล็อกการโอนไปบัญชีใน sanction list\" เรารู้ทันทีว่าต้องใส่ที่ `Transfer` ไม่ใช่ไล่แก้ SQL หลายจุด\n\n## วงจร refine โมเดลร่วมกับ domain expert\n\nModel-Driven Design ไม่ใช่ทำครั้งเดียวจบ แต่เป็น loop ต่อเนื่อง: expert อธิบาย domain → dev เสนอโมเดลด้วย ubiquitous language → แสดงออกเป็นโค้ด → โค้ดที่รันจริงเผยจุดที่โมเดลตื้นหรือขัดกับความจริง → กลับไปถาม expert → refine ทั้งโมเดลและโค้ดพร้อมกัน insight ใหม่ที่ได้ตอน implement ต้องไหลย้อนกลับไปที่โมเดลเสมอ\n\n```mermaid\nflowchart LR\n  DE[Domain expert] -->|explains domain| DEV[Developer]\n  DEV -->|proposes model in ubiquitous language| M[Domain model]\n  M -->|expressed as| C[Code: types + behavior]\n  C -->|running code reveals gaps| DEV\n  DEV -->|questions and mismatches| DE\n```\n\n## ความเข้าใจผิดที่พบบ่อย\n\n**\"model ก็คือ ER diagram / UML class diagram นั่นแหละ\"** — ผิด diagram เป็นแค่ snapshot และเครื่องมือสื่อสาร ณ ช่วงเวลาหนึ่ง โมเดลที่แท้จริงอยู่ในโค้ดที่รันได้และในภาษา (ubiquitous language) ที่ทีมใช้ diagram ที่ไม่เคยสะท้อนกลับเข้าโค้ดคือ \"เอกสารที่โกหก\"\n\nอีกรูปหนึ่งของความเข้าใจผิดนี้คือการมี \"สองโมเดล\" — analyst วาด analysis model ส่งให้ coder แล้ว coder ไปสร้าง design ที่ต่างออกไป สองโมเดลนี้จะ diverge กันเสมอ ทำให้ analysis model ไร้ค่า และ insight ที่ได้ตอน implement ไม่ถูกป้อนกลับไปที่โมเดล นี่คือเหตุผลที่ DDD ยืนยันว่าคนที่สร้างโมเดลต้องเป็นคนที่แตะโค้ดด้วย (hands-on modelers)\n\n## มุมมองสัมภาษณ์\n\nคำถามที่มักเจอ:\n\n- \"อธิบายความต่างระหว่าง model-driven design กับ database-first / data-driven design\" — ผู้สัมภาษณ์อยากได้แกน: เริ่มจาก concept ไม่ใช่ตาราง, logic อยู่ใน type ไม่ใช่กระจายใน SQL\n- ให้โค้ดโอนเงินที่เป็น balance update สองบรรทัดมา แล้วถามว่า \"วิจารณ์หน่อย\" — คำตอบที่ดีคือชี้ว่า concept `Transfer` หายไปและกฎ domain ไม่มีที่อยู่ ไม่ใช่ไปตอบเรื่อง performance\n- \"anemic domain model คืออะไร ทำไมเป็น anti-pattern\" — เพราะมันคือ data-driven ที่ปลอมตัวเป็น OO: object มีแต่ getter/setter, logic ไปกองใน service ขัดหลัก model-driven\n- \"คุณกันไม่ให้ model กับ code diverge ยังไง\" — hands-on modelers, ใช้โมเดลเดียวผูกกับโค้ด, refactoring toward deeper insight\n",
+  "recall_checks": [
+    {
+      "q": "ใน model-driven design โมเดลที่แท้จริงอยู่ที่ไหน และทำไม diagram อย่างเดียวจึงไม่พอ?",
+      "expected_answer": "โมเดลที่แท้จริงอยู่ในโค้ดที่รันได้ (types + behavior) และในภาษา ubiquitous language ที่ทีมใช้; diagram เป็นแค่ snapshot/เครื่องมือสื่อสาร ถ้าไม่สะท้อนกลับเข้าโค้ดก็กลายเป็นเอกสารที่โกหกและใช้เป็น design ไม่ได้",
+      "type": "short_answer"
+    },
+    {
+      "q": "โค้ดโอนเงินที่เขียนเป็น UPDATE balance สองบรรทัดใน service method โดยไม่มี type Transfer เป็นตัวอย่างของอะไร?",
+      "expected_answer": "data-driven / transaction script ที่ concept ของ domain หายไป",
+      "type": "mcq",
+      "options": [
+        "data-driven / transaction script ที่ concept ของ domain หายไป",
+        "model-driven design เพราะมี business logic ครบแล้ว",
+        "aggregate root ที่ออกแบบถูกต้องตามหลัก DDD"
+      ]
+    },
+    {
+      "q": "ข้อใดคือ misconception เกี่ยวกับคำว่า 'model' ใน DDD?",
+      "expected_answer": "model ก็คือ ER diagram หรือ UML class diagram",
+      "type": "mcq",
+      "options": [
+        "model ก็คือ ER diagram หรือ UML class diagram",
+        "model สะท้อนอยู่ในโค้ดที่รันได้จริง",
+        "model ผูกกับ ubiquitous language ที่ทีมใช้"
+      ]
+    },
+    {
+      "q": "อธิบายวงจร refine โมเดลร่วมกับ domain expert สั้น ๆ",
+      "expected_answer": "expert อธิบาย domain → dev เสนอโมเดลด้วย ubiquitous language → แสดงออกเป็นโค้ด → โค้ดที่รันจริงเผยจุดที่โมเดลตื้นหรือผิด → กลับไปคุยกับ expert → refine ทั้งโมเดลและโค้ดพร้อมกัน วนซ้ำต่อเนื่องโดยให้ insight จากการ implement ไหลย้อนกลับไปที่โมเดล",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมการมี 'สองโมเดล' (analysis model แยกจาก design/code model) จึงเป็น anti-pattern?",
+      "expected_answer": "เพราะ model กับ code จะ diverge กันเสมอ ทำให้ analysis model ไร้ค่าในฐานะ design และ insight ที่ได้ตอน implement ไม่ถูกป้อนกลับไปที่โมเดล",
+      "type": "mcq",
+      "options": [
+        "เพราะ model กับ code จะ diverge กันเสมอ ทำให้ analysis model ไร้ค่าในฐานะ design และ insight ที่ได้ตอน implement ไม่ถูกป้อนกลับไปที่โมเดล",
+        "เพราะ analysis model ละเอียดกว่า design model เสมอ",
+        "เพราะ code ไม่ควรมี business logic เลย ต้องอยู่ใน diagram เท่านั้น"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Domain-Driven Design, ch. 3 'Binding Model and Implementation' (Model-Driven Design)",
+      "source": "Eric Evans, Domain-Driven Design (2003), บทที่ 3",
+      "why": "อ่านต้นฉบับแนวคิดว่าโมเดลกับ implementation ต้องผูกเป็นสิ่งเดียวกัน"
+    },
+    {
+      "title": "Domain-Driven Design, ch. 1 'Crunching Knowledge'",
+      "source": "Eric Evans, Domain-Driven Design (2003), บทที่ 1",
+      "why": "เข้าใจวงจร refine โมเดลแบบ iterative ร่วมกับ domain expert"
+    },
+    {
+      "title": "AnemicDomainModel",
+      "source": "https://martinfowler.com/bliki/AnemicDomainModel.html",
+      "why": "เข้าใจ anti-pattern ที่เป็นด้านตรงข้ามของ model-driven design"
+    }
+  ]
+}

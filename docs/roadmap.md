@@ -36,7 +36,7 @@ Phase 2 ค่อย publish โชว์เป็นผลงาน (ดู des
 ## Ticket index (ติ๊กเมื่อ merge แล้ว)
 
 - สัปดาห์ 1: [x] T1 [x] T2 [x] T3 [x] T4 [x] T35 [x] T5 [x] T6 [x] T7 [x] T7b [x] T8
-- สัปดาห์ 2 (reading-first): [x] T9 [ ] T10 [ ] C-content [ ] T-read → แล้วค่อย [ ] T28 [ ] T29 [ ] T30 (T11 เลื่อน)
+- สัปดาห์ 2 (reading-first): [x] T9 [x] T10 [~] C-content (batch 1: DDD บท 1 = 4 lessons, verifier PASS ครบ) [ ] T-read → แล้วค่อย [ ] T28 [ ] T29 [ ] T30 (T11 เลื่อน). content เดินต่อ batch ละ 1 บท ตาม cadence
 - สัปดาห์ 3: [ ] T12 [ ] T13 [ ] T14 [ ] T15 [ ] T33 [ ] C1
 - สัปดาห์ 4: [ ] T16 [ ] T17 [ ] T18 [ ] T19 [ ] T20 [ ] T21 [ ] C2
 - สัปดาห์ 5: [ ] T22 [ ] T23 [ ] T24 [ ] T25 [ ] C3 [ ] C4
