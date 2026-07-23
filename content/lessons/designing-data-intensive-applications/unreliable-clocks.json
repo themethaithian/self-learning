@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "unreliable-clocks",
+  "version": 1,
+  "title_en": "Unreliable Clocks",
+  "est_minutes": 8,
+  "body_md": "# Unreliable Clocks\n\n## ทำไมถึงสำคัญ\n\nในระบบกระจาย แต่ละ node มีนาฬิกาของตัวเองที่เดินไม่ตรงกันและ \"โกหก\" ได้ — กระโดดถอยหลัง กระโดดไปข้างหน้า หรือช้ากว่าเครื่องอื่นเป็นหลักสิบมิลลิวินาที. senior ที่ออกแบบระบบเงินต้องรู้ว่าการเอา timestamp จากนาฬิกามาตัดสินว่า event ไหนเกิดก่อน/หลัง *ข้าม node* เป็นการตัดสินใจที่ผิดเงียบ ๆ ได้ และความผิดนั้นแปลว่ายอดเงินหายโดยไม่มี error ให้เห็น. นาฬิกาทำงานอยู่บน network แบบ asynchronous เดียวกับที่ unreliable (ดู sibling `unreliable-networks`) จึงเชื่อไม่ได้เท่าที่โค้ดส่วนใหญ่แอบสมมติ.\n\n## แก่นของแนวคิด\n\nนาฬิกาในเครื่องมีสองแบบที่ต่างกันคนละเรื่อง อย่าสับสน:\n\n- **Time-of-day clock (wall-clock)** — ตอบ \"ตอนนี้กี่โมง\" ตามปฏิทิน (เช่น Unix timestamp วินาทีนับจาก epoch). sync กับโลกภายนอกผ่าน NTP. จุดตายคือมัน **กระโดดได้**: เมื่อ NTP พบว่าเครื่องเร็ว/ช้าเกินไป มันบังคับ reset นาฬิกา ทำให้เวลา \"ถอยหลัง\" หรือ \"กระโดดข้าม\" ได้ บวกกับ leap second. จึง **ห้ามใช้วัด duration** เพราะ `end - start` อาจติดลบหรือเพี้ยนเมื่อนาฬิกาถูก reset ระหว่างการวัด.\n- **Monotonic clock** — รับประกันว่า **เดินหน้าอย่างเดียว ไม่มีวันถอย** เหมาะกับวัดช่วงเวลา (timeout, response time, latency). แต่ **ค่าดิบไม่มีความหมายเชิงปฏิทิน** (อาจเป็น nanosecond นับจากเครื่องบูต) และ **เอาไปเทียบข้ามเครื่องไม่ได้เลย** เพราะจุดเริ่มของแต่ละเครื่องคนละจุด. NTP ปรับได้แค่ *อัตราเร็ว* (slew) แต่ทำให้มัน *กระโดด* ไม่ได้.\n\nกฎง่าย ๆ: วัด \"นานเท่าไร\" ใช้ monotonic; บอก \"กี่โมง\" ใช้ time-of-day; อย่าสลับกัน. (ภาษา Go เก็บทั้งสองค่าไว้ใน `time.Time` เดียว — `time.Since` ใช้ monotonic ส่วนการ format วันเวลาใช้ wall-clock.)\n\n**Clock skew** คือความต่างของ time-of-day clock ระหว่าง node. แม้เปิด NTP ครบ ความแม่นก็ถูกจำกัดด้วย round-trip ของ network — ในทางปฏิบัติเหลือระดับ *หลายสิบมิลลิวินาที* บนอินเทอร์เน็ตทั่วไป และแย่กว่านั้นได้เมื่อ network หน่วง; quartz ในเครื่องยังดริฟท์เองตามอุณหภูมิ. สรุป: นาฬิกาสอง node \"เท่ากันเป๊ะ\" ไม่มีจริง.\n\nจุดอันตรายที่สุดคือเอา timestamp มา **ตัดสิน ordering ของ event ข้าม node** ตัวอย่างคลาสสิกคือ **last-write-wins (LWW)** — กลยุทธ์ resolve conflict ที่ระบบ leaderless/multi-leader หลายตัวใช้: แต่ละ write ติด timestamp มา พอชนกันก็เก็บอันที่ timestamp ใหม่กว่า. ถ้านาฬิกาสอง node ไม่ตรง write ที่เกิด *ทีหลังจริง* แต่ออกจาก node ที่นาฬิกา *ช้ากว่า* จะมี timestamp น้อยกว่า และถูก **ทิ้งอย่างเงียบ ๆ** — ไม่มี error, ข้อมูลหายไปเฉย ๆ. LWW ยังแยก \"เขียนพร้อมกันจริง ๆ\" ออกจาก \"เขียนต่อกัน\" ไม่ได้ด้วย.\n\nทางแก้ที่ถูกไม่ใช่ LWW: ถ้าต้องการ order ที่สะท้อนเหตุ-ผลจริง ให้ใช้ **logical clock** (Lamport timestamp / version vector) ซึ่งไม่พึ่งนาฬิกาจริงเลย — นั่นเป็นเรื่องของ sibling `ordering-and-causality` (ch.9) ไม่เล่าซ้ำที่นี่.\n\nมุมมองที่ senior ควรถือ: **ค่าที่อ่านจากนาฬิกาไม่ใช่จุดเดียว แต่เป็น confidence interval** `[earliest, latest]` เพราะมี uncertainty ในตัว. ระบบส่วนใหญ่ไม่บอก interval นี้ แต่ Google **Spanner** ทำผ่าน API ชื่อ **TrueTime** ที่คืนช่วงเวลาแทนจุด แล้ว Spanner จงใจ **รอให้ช่วง uncertainty ผ่านไปก่อน (commit-wait)** ก่อนจะให้ transaction มองเห็นได้ เพื่อรับประกันว่าถ้า interval ของ txn หนึ่งอยู่ก่อนอีกอันทั้งช่วง ลำดับก็ถูกต้องแน่นอน. ราคาของมันคือต้องมี GPS + atomic clock ในทุก datacenter — hardware ที่ระบบทั่วไปไม่มี.\n\n## ตัวอย่าง (fintech: LWW ทำยอดเงินหาย)\n\nบัญชี wallet ถูก replicate แบบ leaderless และใช้ LWW:\n\n1. **Node A** (นาฬิกา *เร็วไป* ~40ms) รับคำสั่งตั้งยอด `balance=1000` ติด timestamp `ts=105`.\n2. เสี้ยววินาทีถัดมา **ในเวลาจริง** ลูกค้าเติมเงิน ยอดควรเป็น `balance=1200` แต่คำสั่งวิ่งผ่าน **Node B** (นาฬิกา *ช้าไป*) จึงติด `ts=100`.\n3. LWW เทียบ `105 > 100` จึงเก็บ `1000` และ **ทิ้ง `1200` เงียบ ๆ**. การเติมเงินที่ถูกต้องหายไป ไม่มี log error, งบดุลไม่ลง.\n\n```mermaid\nflowchart TD\n  A[\"Node A clock ahead: write balance=1000 ts=105\"] --> DB{\"LWW compare ts\"}\n  B[\"Node B clock behind, later in real time: write balance=1200 ts=100\"] --> DB\n  DB -->|\"105 gt 100, keep\"| K[\"Stored balance=1000\"]\n  DB -.->|\"drop 1200 silently\"| L[\"Lost write balance=1200\"]\n```\n\nปัญหาไม่ใช่ \"นาฬิกาตั้งผิด\" ที่แก้ครั้งเดียวจบ แต่คือ *สมมติฐานว่า timestamp = ลำดับจริง* ซึ่งผิดตั้งแต่ต้นเมื่อนาฬิกา skew.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"เปิด NTP แล้วนาฬิกาทุก node ตรงกัน เชื่อ timestamp ได้\"** ผิด. NTP sync ได้แค่ระดับหลายสิบ ms และยังกระโดดตอน re-sync; ความต่างระดับ ms ก็พอทำให้ LWW ตัดสินผิดแล้ว.\n- **\"monotonic clock แม่นกว่า เอาไปเทียบเวลา event ข้ามเครื่องได้\"** ผิด. ค่ามันเทียบข้ามเครื่องไม่ได้; ใช้ได้แค่วัด duration *ภายในเครื่องเดียว*.\n- **\"LWW ปลอดภัยเพราะเก็บอันใหม่สุดเสมอ\"** ผิด. \"ใหม่สุด\" วัดจากนาฬิกาที่โกหกได้ จึงทิ้ง write ที่ถูกต้องได้เงียบ ๆ.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรพึ่งนาฬิกา\n\nการใช้ physical timestamp มาจัดลำดับนั้น **ถูกและง่าย**: ไม่ต้องคุยกันระหว่าง node, ไม่มี round-trip เพิ่ม, ไม่ต้องเก็บ metadata เชิง causality. ราคาที่จ่ายคือ **มันผิดแบบเงียบ** เมื่อ clock skew — ไม่มี exception ให้จับ, ไปเจอทีหลังตอน reconcile แล้วยอดไม่ตรง.\n\n- **อย่าพึ่ง wall-clock ordering** กับการตัดสินใจที่ถูก-ผิดมีผลข้าม node: write ไหนชนะ, ใครเป็น leader, lease/lock หมดอายุเมื่อไร (เรื่อง lease + process pause อยู่ที่ sibling `process-pauses`).\n- **พึ่งได้** กับงานหยาบ ๆ ที่ผิดนิดหน่อยไม่เป็นไร: log timestamp สำหรับ debug, metric รายวินาที, และการวัด duration *ในเครื่องเดียว* (ใช้ monotonic).\n- ทางเลือกที่ปลอดภัยล้วนมีต้นทุน: **logical clock** (Lamport / version vector) ไม่พึ่งนาฬิกาจริงแต่เพิ่ม metadata ต่อ key และให้ total order ที่ตรงเวลาจริงไม่ได้; **uncertainty-aware clock** แบบ TrueTime ให้ ordering ที่ถูกต้องแต่ต้องลงทุน GPS/atomic clock + ยอมจ่าย latency จาก commit-wait. ไม่มีของฟรี — เลือกตามว่าความผิดพลาดของลำดับมีราคาแค่ไหนในโดเมนนั้น.\n\n## มุมสัมภาษณ์\n\n- **\"time-of-day กับ monotonic clock ต่างกันยังไง จะวัด latency ของ request ใช้ตัวไหน?\"** ตอบ monotonic (ไม่กระโดดถอยหลัง); wall-clock อาจถูก NTP reset กลางคัน.\n- **\"ทำไม last-write-wins ถึงอันตราย?\"** ตอบ พึ่ง wall-clock ที่ skew ได้ ทำให้ทิ้ง write ที่ใหม่กว่าจริงเงียบ ๆ และแยก concurrent ออกจาก sequential ไม่ได้ นำไปสู่ logical clock.\n- **\"Spanner จัดลำดับ transaction ข้าม datacenter ยังไง?\"** ตอบ TrueTime คืน confidence interval แล้ว commit-wait ให้ uncertainty ผ่านก่อน; ราคาคือ hardware พิเศษ + latency.\n- **\"node ใช้ timestamp ตัดสินว่าตัวเองยังเป็น leader อยู่ พังได้ยังไง?\"** ตอบ clock skew + process pause ทำให้ stale leader เขียนทับ ต้องใช้ fencing token (ดู `process-pauses`).\n",
+  "recall_checks": [
+    {
+      "q": "จะวัด elapsed time / duration ของ operation ควรใช้นาฬิกาแบบไหน?",
+      "expected_answer": "monotonic clock เพราะเดินหน้าอย่างเดียว ไม่ถอยหลัง",
+      "type": "mcq",
+      "options": [
+        "time-of-day clock เพราะ sync กับ NTP จึงบอกเวลาจริงตามปฏิทินได้แม่นที่สุด",
+        "monotonic clock เพราะเดินหน้าอย่างเดียว ไม่ถอยหลัง",
+        "แบบไหนก็ได้ เพราะ NTP ทำให้ทั้งสองนาฬิกาเดินตรงกันอยู่แล้ว"
+      ]
+    },
+    {
+      "q": "อธิบายว่าทำไม last-write-wins ที่ใช้ wall-clock timestamp ทำให้ write ที่ถูกต้องหายเงียบ ๆ ได้เมื่อเกิด clock skew",
+      "expected_answer": "เพราะ write ที่เกิดทีหลังจริงแต่ออกจาก node ที่นาฬิกาช้ากว่า จะมี timestamp น้อยกว่า LWW จึงมองว่าเก่ากว่าและทิ้งไปโดยไม่มี error",
+      "type": "short_answer"
+    },
+    {
+      "q": "ระบบ LWW เก็บ write ที่ timestamp มากสุด ถ้า write ที่ *ใหม่กว่าในเวลาจริง* มาจาก node ที่นาฬิกาช้ากว่า จะเกิดอะไร?",
+      "expected_answer": "write ที่ใหม่กว่าจริงถูกทิ้งเงียบ ๆ เพราะ timestamp น้อยกว่า",
+      "type": "mcq",
+      "options": [
+        "write ที่ใหม่กว่าจริงถูกทิ้งเงียบ ๆ เพราะ timestamp น้อยกว่า",
+        "ระบบตรวจพบ conflict จาก timestamp แล้ว throw error กลับไปให้ client retry ใหม่",
+        "ระบบเก็บทั้งสอง version ไว้แล้วให้ผู้ใช้เลือก merge เองด้วย version vector"
+      ]
+    },
+    {
+      "q": "DDIA แนะนำให้มองค่าที่อ่านจากนาฬิกาเป็นอะไร?",
+      "expected_answer": "confidence interval [earliest, latest]",
+      "type": "mcq",
+      "options": [
+        "จุดเวลาที่แม่นยำจุดเดียว หลังจาก sync กับ NTP server สำเร็จแล้ว",
+        "ตัวนับ monotonic ที่ไม่มีวันถอยหลังและเทียบข้ามเครื่องได้",
+        "confidence interval [earliest, latest]"
+      ]
+    },
+    {
+      "q": "Spanner ใช้ TrueTime จัดลำดับ transaction ให้ถูกต้องยังไง และต้นทุนหลักคืออะไร?",
+      "expected_answer": "TrueTime คืนเวลาเป็น confidence interval แล้ว Spanner รอให้ช่วง uncertainty ผ่านก่อน commit (commit-wait); ต้นทุนคือต้องมี GPS + atomic clock ในทุก datacenter และ latency ที่เพิ่มจากการรอ",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 8: The Trouble with Distributed Systems (Unreliable Clocks)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 8",
+      "why": "อ่านต้นฉบับเรื่อง time-of-day vs monotonic clock, clock skew, และอันตรายของ LWW"
+    },
+    {
+      "title": "Spanner: Google's Globally-Distributed Database",
+      "source": "Corbett et al., OSDI 2012 (Google Research)",
+      "why": "อ่านว่า TrueTime ใช้ confidence interval + commit-wait จัดลำดับ transaction ข้าม datacenter อย่างไร"
+    },
+    {
+      "title": "Proposal: Monotonic Elapsed Time Measurements in Go",
+      "source": "Russ Cox, Go design doc (golang.org/design/12914-monotonic)",
+      "why": "อ่านว่าทำไม time.Time ต้องพก wall-clock และ monotonic reading คู่กัน และผลต่อการวัด duration"
+    }
+  ]
+}

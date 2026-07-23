@@ -1,0 +1,72 @@
+{
+  "concept_id": "event-sourcing",
+  "version": 1,
+  "topic": "designing-data-intensive-applications",
+  "title_en": "Event Sourcing",
+  "est_minutes": 8,
+  "body_md": "# Event Sourcing\n\n## ทำไมถึงสำคัญ\n\nระบบส่วนใหญ่เก็บแค่ state ปัจจุบัน (เช่น `balance = 1500`) แล้วทับของเก่าทิ้งทุกครั้งที่อัปเดต — ประวัติว่ายอดนี้มาจากไหนหายไปหมด. Event sourcing กลับด้าน: เก็บ \"ทุกเหตุการณ์ที่เกิดขึ้น\" เป็น immutable append-only log แล้ว derive state ปัจจุบันจาก log นั้น. สำหรับระบบที่ audit trail, การย้อนดูประวัติ, และการสร้าง read view หลายมุมมีค่า (fintech เป็นตัวอย่างชัดที่สุด) นี่เปลี่ยนของที่เคยทำยากให้เป็น property ที่ได้จากโครงสร้างโดยตรง.\n\n## แก่นของแนวคิด\n\n- source of truth คือ event log ไม่ใช่ตาราง state. current state เป็นแค่ผลลัพธ์ที่ derive มา — คำนวณใหม่ได้เสมอด้วยการ fold (replay) event ทั้งหมดตามลำดับ.\n- event เป็น immutable fact ที่เกิดขึ้นแล้ว เขียนด้วย past tense และภาษาโดเมน: `OrderPlaced`, `PaymentCaptured`, `MoneyWithdrawn`. เมื่อบันทึกแล้วห้ามแก้ห้ามลบ เพราะมันคือ \"สิ่งที่เกิดขึ้นจริงไปแล้ว\". ถ้าผิด ให้ append event ชดเชย (compensating event เช่น `PaymentRefunded`) ไม่ใช่ย้อนไปลบ.\n- แยก command กับ event ให้ชัด: **command** = คำขอให้ทำบางอย่าง (`PlaceOrder`) อาจถูก validate แล้ว reject ได้; **event** = ผลที่ตัดสินแล้วว่าเกิดขึ้น (`OrderPlaced`) reject ไม่ได้เพราะเป็นอดีตไปแล้ว. command handler รับ command → ตรวจ invariant → ถ้าผ่านจึง emit event ลง log.\n- fold คือ `state = reduce(events, apply)`: เริ่มจาก state ว่างแล้ว apply ทีละ event. ยิ่ง log ยาว replay ยิ่งช้า จึงเก็บ **snapshot** (state ณ version N) เป็นระยะ แล้ว replay เฉพาะ event หลัง N.\n- read model / CQRS: log ไม่เหมาะกับ query แบบ \"ยอดคงเหลือตอนนี้เท่าไร\" ตรง ๆ เราจึง project log ออกเป็น read model หลายตัว (balance view, statement view, fraud view) แต่ละตัว optimize คนละ query — นี่คือ CQRS. read model เหล่านี้ update แบบ async จึง **eventually consistent** กับ log.\n\n```mermaid\nflowchart LR\n  CMD[\"Command: PlaceOrder\"] --> H[\"Command handler\"]\n  H -->|\"validate; may reject\"| E[\"Event: OrderPlaced\"]\n  E --> LOG[(\"Append-only event log\")]\n  SNAP[\"Snapshot at vN\"] --> FOLD[\"Fold / replay\"]\n  LOG --> FOLD\n  FOLD --> STATE[\"Current state\"]\n  LOG --> RM1[\"Read model: balance\"]\n  LOG --> RM2[\"Read model: audit\"]\n```\n\n## ตัวอย่าง (fintech: บัญชีเป็น event log)\n\ndouble-entry ledger เข้ากับ event sourcing แบบธรรมชาติ เพราะนักบัญชี \"ไม่ลบรายการ\" อยู่แล้ว — ผิดก็ลงรายการกลับ (reversing entry). แทนที่จะเก็บ `Account{balance: 1500}` เราเก็บ log ของสิ่งที่เกิดขึ้น:\n\n```\nAccountOpened{account: A-1}\nMoneyDeposited{account: A-1, amount: 2000}\nMoneyWithdrawn{account: A-1, amount: 700}\nFeeCharged{account: A-1, amount: 200}    # ผิด: คิดค่าธรรมเนียมซ้ำ\nFeeReversed{account: A-1, amount: 200}   # ไม่ลบของเดิม แต่ append ตัวกลับ\n```\n\nbalance = fold ทั้งหมด = 0 + 2000 - 700 - 200 + 200 = 1300. ประโยชน์ที่ได้ฟรี: audit ได้ว่าทุกบาทมาจาก event ไหน, ตอบ \"ยอด ณ สิ้นวันวานเท่าไร\" ด้วยการ replay ถึง event สุดท้ายของเมื่อวาน (time-travel), และถ้าพรุ่งนี้อยากได้ report มุมใหม่ก็ replay log สร้าง read model ใหม่ได้เลยโดยไม่แตะข้อมูลต้นทาง.\n\nเทียบกับ **CDC** (sibling `change-data-capture`): CDC ดัก row change ระดับ database (`UPDATE accounts SET balance=1300`) ที่เป็น low-level diff ไม่บอกความหมายเชิงธุรกิจว่า \"ทำไม\". ส่วน event sourcing ออกแบบ domain event (`FeeReversed`) ไว้ตั้งแต่ต้นในฐานะ source of truth — ไม่ใช่ของที่สกัดจาก state ทีหลัง. (ปรัชญา immutable log อันเดียวกันนี้คือแนวคิดเดียวกับ batch-output ที่มอง output เป็น derived data สร้างใหม่ได้เสมอ; และการตั้งชื่อ domain event ก็คือ ubiquitous language ของ DDD track.)\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"event sourcing = เก็บ audit log ไว้ข้าง ๆ ตาราง state ปกติ\"** ผิด. audit log แบบนั้นเป็น side-effect ที่ยอมให้ไม่ตรงกับ state ได้ ส่วน event sourcing ให้ log **เป็น** source of truth — state มาจาก log เสมอ ไม่ใช่ทางกลับกัน.\n- **\"replay = ต้องอ่านทั้ง log ทุกครั้งที่อยากรู้ยอด\"** ผิด. นั่นคือเหตุผลที่มี snapshot; production ไม่ replay จากศูนย์ทุก request.\n- **\"ถ้าพบว่าใส่ค่าผิด ก็แก้ event ทีหลังได้\"** ผิด. event immutable เสมอ; แก้ด้วยการ append compensating event เท่านั้น.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\nevent sourcing ไม่ฟรี และ overkill สำหรับงาน CRUD ที่ไม่ต้องการ audit หรือ temporal query. ต้นทุนจริงที่ senior ต้องพูดถึง:\n\n- **schema evolution ของ event**: event เก่าอยู่ตลอดไป — จะ ALTER แล้วทิ้ง event เวอร์ชันเก่าเหมือน migration ปกติไม่ได้. โค้ดใหม่ต้องอ่าน event เวอร์ชันเก่าได้เสมอ (upcasting / tolerant reader) ไม่งั้น replay พัง.\n- **query ยากขึ้น**: ไม่มี `SELECT balance` ตรง ๆ ต้องพึ่ง read model ที่ต้อง build และ maintain เอง.\n- **eventual consistency**: read model ตามหลัง log จึงมีหน้าต่างที่ read เห็นข้อมูลเก่า — flow/UX ต้องรับได้.\n- **snapshot + infra**: ต้องมี snapshot strategy, versioning, และ tooling ที่ทีมส่วนใหญ่ไม่คุ้นเคย.\n\nเลือกใช้เมื่อ history/audit/replay มีค่าจริง (ledger, order lifecycle, ระบบที่ regulator ตรวจ) ไม่ใช่ทาลงทุกตารางในระบบ.\n\n## มุมสัมภาษณ์\n\n- \"จะ undo event ที่ลงผิดยังไง?\" → append compensating event ไม่ลบ ไม่แก้ — ตอบผิดตรงนี้เท่ากับไม่เข้าใจ immutability.\n- \"อยากได้ยอดคงเหลือเร็ว ๆ ทำไง ในเมื่อต้อง replay?\" → snapshot + fold เฉพาะ event ใหม่ หรืออ่านจาก read model.\n- \"event sourcing ต่างกับ CDC ตรงไหน?\" → ES = domain event ที่ออกแบบไว้เป็น source of truth; CDC = สกัด row change จาก database. คำถามนี้แยกคนเข้าใจจริงกับคนท่องนิยาม.\n- \"event schema เปลี่ยนทำไง ในเมื่อ event เก่าลบไม่ได้?\" → versioning + upcasting + tolerant reader.\n- \"command กับ event ต่างกันยังไง?\" → command = คำขอ (reject ได้), event = fact ที่เกิดแล้ว (reject ไม่ได้).\n",
+  "recall_checks": [
+    {
+      "q": "current state ใน event sourcing ได้มาจากอะไร?",
+      "expected_answer": "จากการ fold/replay event ทั้งหมดใน log ตามลำดับ (หรือ fold จาก snapshot ล่าสุดแล้วต่อด้วย event หลังจากนั้น)",
+      "type": "short_answer"
+    },
+    {
+      "q": "event ใน event sourcing ต่างจาก change event ของ CDC อย่างไร?",
+      "expected_answer": "เป็น domain event ที่ออกแบบและตั้งชื่อไว้ตั้งแต่ต้น",
+      "type": "mcq",
+      "options": [
+        "เป็น row-level diff ที่ database generate ให้อัตโนมัติ",
+        "เป็น domain event ที่ออกแบบและตั้งชื่อไว้ตั้งแต่ต้น",
+        "เป็น snapshot ของ state ปัจจุบันในแต่ละช่วงเวลา"
+      ]
+    },
+    {
+      "q": "จะ \"ยกเลิก\" event ที่บันทึกลง event log ไปแล้วอย่างไร?",
+      "expected_answer": "append compensating event เข้าไปใหม่",
+      "type": "mcq",
+      "options": [
+        "ลบ event นั้นออกจาก log แล้ว rebuild ใหม่",
+        "แก้ payload ของ event เดิมให้ถูกต้อง",
+        "append compensating event เข้าไปใหม่"
+      ]
+    },
+    {
+      "q": "ข้อใดอธิบาย \"command\" ถูกต้องในบริบท event sourcing?",
+      "expected_answer": "คำขอให้ทำบางอย่าง อาจถูก reject ได้",
+      "type": "mcq",
+      "options": [
+        "คำขอให้ทำบางอย่าง อาจถูก reject ได้",
+        "ข้อเท็จจริงที่เกิดขึ้นแล้ว เปลี่ยนไม่ได้",
+        "snapshot ของ state ที่ fold เก็บไว้"
+      ]
+    },
+    {
+      "q": "ทำไม event sourcing ถึงต้องมี snapshot?",
+      "expected_answer": "เพราะการ replay event ตั้งแต่ต้น log ทุกครั้งช้าลงเมื่อ log ยาวขึ้น; snapshot เก็บ state ณ version หนึ่งเพื่อ replay เฉพาะ event หลังจากนั้น",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 11: Stream Processing (Databases and Streams / Event Sourcing)",
+      "source": "Martin Kleppmann, DDIA (O'Reilly, 2017), ch. 11",
+      "why": "อ่านต้นฉบับว่า event log เป็น source of truth และต่างจาก CDC อย่างไร"
+    },
+    {
+      "title": "Event Sourcing",
+      "source": "martinfowler.com/eaaDev/EventSourcing.html",
+      "why": "อ่านนิยาม event sourcing และแนวคิด rebuild state จาก event log จาก Martin Fowler"
+    },
+    {
+      "title": "CQRS",
+      "source": "martinfowler.com/bliki/CQRS.html",
+      "why": "อ่านต่อว่าทำไมแยก write model (event log) ออกจาก read model และผลเรื่อง eventual consistency"
+    },
+    {
+      "title": "CQRS Documents",
+      "source": "Greg Young, 'CQRS Documents' (2010)",
+      "why": "อ่านมุมผู้บุกเบิกเรื่อง command vs event, snapshot และการ derive state"
+    }
+  ]
+}

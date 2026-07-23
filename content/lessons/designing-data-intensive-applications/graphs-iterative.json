@@ -1,0 +1,72 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "graphs-iterative",
+  "version": 1,
+  "title_en": "Graphs and Iterative Processing",
+  "est_minutes": 8,
+  "body_md": "# Graphs and Iterative Processing\n\n## ทำไมถึงสำคัญ\n\nงาน batch จำนวนมากไม่ใช่ one-pass แต่เป็น iterative บน graph: คำนวณค่า, ส่งไปตาม edge, แล้วคำนวณซ้ำจนค่านิ่ง (converge) เช่น PageRank, shortest path, connected components. ถ้าเอา MapReduce ธรรมดามารันตรง ๆ ต้อง start job ใหม่ทั้ง job ทุก iteration แล้วอ่าน/เขียน dataset ทั้งก้อนลง distributed filesystem ทุกรอบ ซึ่งช้ามหาศาล. รู้ว่าโมเดล vertex-centric (Pregel/BSP) แก้ตรงนี้ยังไงและมันแลกอะไร คือสิ่งที่ senior interview เจาะ.\n\n## แก่นของแนวคิด\n\n- **iterative graph algorithm**: ค่าที่ vertex หนึ่งขึ้นกับค่าของ neighbor เช่น PageRank ของหน้าเว็บ = ผลรวมของ rank ที่ไหลเข้ามาจากหน้าที่ link มา ทำซ้ำจน rank แทบไม่ขยับ = converge.\n- **ทำไม MapReduce ตรง ๆ ไม่เหมาะ**: MapReduce ไม่มีแนวคิด iteration ในตัว ต้อง orchestrate loop จากภายนอก และทุกรอบคือ job ใหม่ที่อ่าน input ทั้งหมด (รวม graph structure ที่ไม่เปลี่ยน) แล้วเขียน output ทั้งหมดกลับ filesystem แม้ vertex ส่วนใหญ่จะนิ่งแล้วก็ยังถูก process และ shuffle ซ้ำทุกรอบ.\n- **Pregel / Bulk Synchronous Parallel (BSP) model** — มองแบบ \"think like a vertex\":\n  - **state อยู่บน vertex**: แต่ละ vertex เก็บค่าปัจจุบันของตัวเอง (เช่น rank/risk) framework จัดเก็บ graph structure ไว้กับที่ในเครื่อง ไม่ย้ายทุกรอบ.\n  - การประมวลผลเดินเป็นรอบ ๆ เรียก **superstep**. ในหนึ่ง superstep แต่ละ vertex ทำ 3 อย่าง: (1) อ่าน message ที่ neighbor ส่งมาจาก superstep ก่อน, (2) update state ตัวเอง, (3) ส่ง message ไปตาม outgoing edge ให้ไปถึงใน superstep ถัดไป.\n  - มี **synchronization barrier** คั่นระหว่าง superstep: framework รอจนทุก vertex ทำ superstep นี้เสร็จก่อน ค่อยเริ่มรอบถัดไป (จึงชื่อ bulk synchronous). message ที่ส่งในรอบ N จะถูก deliver ต้นรอบ N+1 เสมอ ไม่ใช่ทันที — จุดนี้ทำให้ผลลัพธ์ deterministic ไม่ขึ้นกับว่า vertex ไหนรันก่อน.\n  - vertex ที่ค่าไม่เปลี่ยนแล้วจะ **vote to halt** = พักตัวเอง; ถ้าถูกปลุกด้วย message ใหม่ก็กลับมาทำงาน. เมื่อทุก vertex halt และไม่มี message ค้าง = converge, job จบ.\n  - **fault tolerance ด้วย checkpoint**: framework บันทึก state ของทุก vertex เป็นระยะ (ปกติที่ barrier); ถ้า node ล่มก็ roll back ไป superstep ที่ checkpoint ล่าสุดแล้วรันต่อ ไม่ต้องเริ่มใหม่ทั้งงาน.\n  - vertex ไม่ต้องรู้ topology ทั้ง graph — มันเห็นแค่ message ที่เข้ามากับ edge ของตัวเอง; framework จัดการ route message ข้ามเครื่องให้เอง แม้ต้นทางกับปลายทางอยู่คนละ machine.\n\nเทียบ sibling สั้น ๆ: **dataflow engine** (เช่น Spark) เก็บ intermediate state ใน memory ข้าม stage ได้ ก็รัน iterative เร็วกว่า MapReduce เหมือนกัน แต่โมเดลการเขียนต่างกัน — รายละเอียดอยู่ใน sibling `dataflow-engines`. ส่วน graph *data model* / Cypher เป็นคนละเรื่อง อยู่ใน sibling `graph-data-models` (ch.2) — บทนี้พูดถึงการ *ประมวลผล* graph แบบ batch ไม่ใช่วิธี query/เก็บ.\n\n## ตัวอย่าง (fintech: propagate fraud risk ข้าม account graph)\n\nสร้าง graph ของการโอน: vertex = บัญชี, edge = การโอนเงิน (A → B แปลว่า A เคยโอนให้ B). เรารู้บัญชีที่ยืนยันว่าเป็น fraud แล้วบางใบ และอยากให้ \"คะแนนความเสี่ยง\" แพร่ไปตามเส้นเงิน — บัญชีที่รับเงินจากบัญชีเสี่ยงก็ควรเสี่ยงตาม (คล้าย PageRank แต่แพร่ risk แทน rank).\n\nรันด้วย Pregel:\n\n- **superstep 0**: vertex ที่เป็น known fraud ตั้ง `risk = 1.0` แล้วส่ง message ค่า `risk * decay` ไปตาม outgoing transfer edge; ที่เหลือ `risk = 0`.\n- **superstep ถัดไป**: แต่ละบัญชีรวม risk ที่ไหลเข้ามาจาก message, update ค่าตัวเอง, ถ้าเปลี่ยนเกิน threshold ก็ส่งต่อไป neighbor; ถ้าไม่เปลี่ยนก็ vote to halt.\n- ทำซ้ำจนค่านิ่ง (risk แทบไม่ขยับทั้ง graph) → ได้ risk score ของทุกบัญชีในเครือข่าย ใช้ feed rule ตรวจ mule/fraud ring.\n\nหัวใจคือ ไม่มีใครถือ graph ทั้งก้อนไว้ในหัว — แต่ละบัญชีแค่ \"รับ-รวม-ส่งต่อ\" ตาม edge ของตัวเอง แล้ว superstep กับ barrier ทำให้ทั้ง cluster เดินหน้าพร้อมกันจน converge.\n\n```mermaid\nflowchart TB\n  subgraph SN[\"Superstep N\"]\n    A[\"Vertex A: recv, update, send\"]\n    B[\"Vertex B: recv, update, send\"]\n    C[\"Vertex C: recv, update, send\"]\n  end\n  A -->|\"message to neighbor\"| BAR[\"Sync barrier\"]\n  B -->|\"message to neighbor\"| BAR\n  C -->|\"message to neighbor\"| BAR\n  BAR -->|\"deliver messages next round\"| SN1[\"Superstep N+1\"]\n  BAR -.->|\"all vertices halted\"| DONE[\"Converged: output result\"]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"message ที่ vertex ส่งจะถึง neighbor ทันทีในรอบเดียวกัน\"** ผิด — barrier คั่นอยู่; message ที่ส่งใน superstep N ถูก deliver ต้นรอบ N+1 เสมอ นี่คือเหตุผลที่ผลลัพธ์ deterministic.\n- **\"Pregel เร็วกว่าเพราะเก็บทุกอย่างใน memory เฉย ๆ\"** ผิด (บางส่วน) — จุดที่เร็วกว่า MapReduce คือ graph structure อยู่กับที่ในเครื่อง ไม่ต้อง shuffle/เขียนกลับทั้งก้อนทุก iteration และ vertex ที่ halt แล้วจะไม่ถูก process ซ้ำ; ไม่ใช่แค่คำว่า \"in-memory\".\n- **\"iterative graph ต้องใช้ Pregel เสมอ\"** ผิด — ถ้า graph เล็กพอใส่เครื่องเดียว single-machine library มักเร็วและง่ายกว่า (ดู trade-off).\n- **\"vertex ต้องรู้ topology ทั้ง graph ถึงจะคำนวณได้\"** ผิด — vertex เห็นแค่ message ที่เข้ามากับ edge ของตัวเอง framework route ที่เหลือให้.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรใช้ และจ่ายอะไร)\n\nBSP/vertex-centric แสดง iterative graph algorithm ได้สะอาดและ scale ข้ามหลายเครื่องได้ แต่แลกด้วยต้นทุนจริงที่ต้องพูดได้ในสัมภาษณ์:\n\n- **straggler จาก barrier**: ทุก superstep จบไม่ได้จนกว่า vertex/machine ที่ช้าที่สุดจะเสร็จ — ทั้ง cluster รอตัวช้าตัวเดียว. บาง algorithm ต้องใช้เป็นร้อย superstep ต้นทุน barrier ยิ่งสะสม.\n- **hot vertex / skew**: บัญชี hub ที่มี edge เข้ามหาศาล (เช่นบัญชีกลางของ payment gateway) จะได้ message กองใหญ่ในรอบเดียว ทำให้ machine ที่ถือ vertex นั้นเป็น bottleneck — load ไม่ balance ตามจำนวน vertex แต่ตาม degree/edge.\n- **communication overhead**: ถ้า algorithm ส่ง message เยอะทุกรอบ network จะ dominate; บาง framework มี combiner ยุบ message ที่ aggregate ได้ (เช่น sum) ก่อนส่งข้ามเครื่อง แต่ไม่ใช่ทุก algorithm ยุบได้.\n- **checkpoint cost**: fault tolerance ต้องเขียน state เป็นระยะ ยิ่ง state ใหญ่ยิ่งแพง.\n- **เมื่อไหร่ไม่ควรใช้**: ถ้า graph ใส่ memory เครื่องเดียวได้ single-machine graph library มักเร็วกว่าและ debug ง่ายกว่ามาก เพราะไม่มี overhead ของ barrier, message passing ข้ามเครื่อง, และ cluster orchestration. distributed graph processing คุ้มต่อเมื่อ graph ใหญ่เกินเครื่องเดียวจริง ๆ — งานของ senior คือประเมินขนาด graph กับ workload ก่อน ไม่ใช่กระโดดขึ้น cluster เป็น default.\n\n## มุมสัมภาษณ์\n\n- \"ทำไม PageRank บน MapReduce ตรง ๆ ถึงช้า?\" → ไม่มี native iteration; ทุกรอบเป็น job ใหม่ที่อ่าน/เขียน dataset ทั้งก้อน (รวม structure ที่ไม่เปลี่ยน) ลง filesystem.\n- \"อธิบาย superstep กับ barrier ใน Pregel\" → หนึ่งรอบ: รับ message รอบก่อน → update state → ส่ง message; barrier คั่นให้ทุก vertex เสร็จก่อนขึ้นรอบใหม่ และ message รอบ N ถึงต้นรอบ N+1.\n- \"อะไรทำให้ BSP ช้าลงในทางปฏิบัติ?\" → straggler ที่ barrier (รอตัวช้าสุด) และ hot/high-degree vertex ที่ทำ load ไม่ balance.\n- \"เมื่อไหร่ *ไม่* ควรใช้ distributed graph processing?\" → เมื่อ graph ใส่เครื่องเดียวได้ single-machine library เร็ว/ง่ายกว่า.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไมการรัน iterative graph algorithm อย่าง PageRank บน MapReduce ตรง ๆ ถึงช้า?",
+      "expected_answer": "เพราะ MapReduce ไม่มี native iteration ต้อง start job ใหม่ทุกรอบ แล้วอ่าน/เขียน dataset ทั้งก้อน (รวม graph structure ที่ไม่เปลี่ยน) ลง distributed filesystem ทุก iteration",
+      "type": "short_answer"
+    },
+    {
+      "q": "ใน Pregel/BSP, message ที่ vertex ส่งใน superstep N จะถูก deliver ให้ปลายทางเมื่อไหร่?",
+      "expected_answer": "ต้นของ superstep ถัดไป (N+1) หลังผ่าน sync barrier",
+      "type": "mcq",
+      "options": [
+        "ต้นของ superstep ถัดไป (N+1) หลังผ่าน sync barrier",
+        "ทันทีภายใน superstep N เดียวกันที่ถูกส่งออกไป",
+        "หลังจาก job ทั้งหมด converge เสร็จแล้วเท่านั้น"
+      ]
+    },
+    {
+      "q": "trade-off หลักของ sync barrier ในแต่ละ superstep คืออะไร?",
+      "expected_answer": "ทั้ง cluster ต้องรอ vertex ที่ช้าที่สุดเสร็จก่อน จึงจะขึ้น superstep ถัดไปได้",
+      "type": "mcq",
+      "options": [
+        "ทุก vertex ถูกบังคับให้ล็อกค่าเดียวกันตอนจบรอบ ทำให้ผลลัพธ์เพี้ยนไป",
+        "ทั้ง cluster ต้องรอ vertex ที่ช้าที่สุดเสร็จก่อน จึงจะขึ้น superstep ถัดไปได้",
+        "ทุก message ต้องเขียนลง disk ก่อนข้าม barrier ทำให้ใช้ RAM เพิ่มเป็นสองเท่า"
+      ]
+    },
+    {
+      "q": "ในโมเดล Pregel state ของการคำนวณถูกเก็บอยู่ที่ไหน?",
+      "expected_answer": "อยู่บน vertex แต่ละตัว โดยแต่ละ vertex เก็บค่าปัจจุบันของตัวเองไว้",
+      "type": "mcq",
+      "options": [
+        "อยู่บน edge แต่ละเส้น โดยแต่ละ edge เก็บค่าที่ไหลผ่านมันไว้",
+        "อยู่ที่ coordinator กลางจุดเดียว โดย vertex ไม่เก็บค่าใด ๆ เอง",
+        "อยู่บน vertex แต่ละตัว โดยแต่ละ vertex เก็บค่าปัจจุบันของตัวเองไว้"
+      ]
+    },
+    {
+      "q": "เมื่อไหร่ที่ *ไม่* ควรใช้ distributed graph processing (Pregel/BSP)?",
+      "expected_answer": "เมื่อ graph เล็กพอใส่ memory เครื่องเดียวได้ เพราะ single-machine library เร็วและง่ายกว่า",
+      "type": "mcq",
+      "options": [
+        "เมื่อ graph เล็กพอใส่ memory เครื่องเดียวได้ เพราะ single-machine library เร็วและง่ายกว่า",
+        "เมื่อ graph ใหญ่เกิน memory เครื่องเดียว เพราะ cluster ช่วยกระจายงานให้เร็วขึ้น",
+        "เมื่อ algorithm ต้อง iterate หลายรอบจน converge เพราะ barrier ช่วยให้ผลถูกต้อง"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 10: Batch Processing (Graphs and Iterative Processing)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 10",
+      "why": "อ่านต้นฉบับว่าทำไม MapReduce ทำ iterative graph ได้แย่ และโมเดล Pregel/BSP แก้อย่างไร"
+    },
+    {
+      "title": "Pregel: A System for Large-Scale Graph Processing",
+      "source": "Grzegorz Malewicz et al., ACM SIGMOD 2010",
+      "why": "อ่าน paper ต้นทางของ vertex-centric model, superstep, และ vote-to-halt โดยตรง"
+    },
+    {
+      "title": "A Bridging Model for Parallel Computation (Bulk Synchronous Parallel)",
+      "source": "Leslie G. Valiant, Communications of the ACM 33(8), 1990",
+      "why": "อ่านต้นกำเนิดของ BSP model และแนวคิด superstep + synchronization barrier"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "coping-with-load",
+  "version": 1,
+  "title_en": "Approaches for Coping with Load",
+  "est_minutes": 8,
+  "body_md": "# Approaches for Coping with Load\n\n## ทำไมถึงสำคัญ\n\nเมื่อ load โตขึ้น คำถามไม่ใช่ \"เพิ่มเครื่องยังไง\" แต่เป็น \"จะรับมือด้วยแนวทางไหน\" — และไม่มีสูตรสำเร็จตายตัว. สถาปัตยกรรมที่ scale ได้ดีถูกออกแบบรอบ ๆ ข้อสมมติว่า operation ไหนจะมาบ่อย (คือ load parameters — ดู sibling `scalability-load`) ดังนั้นถ้าเดา load parameters ผิด สถาปัตยกรรมที่ลงแรงไปก็แก้ปัญหาผิดจุด. Senior interview จะจี้ตรงนี้: ไม่ใช่ \"รู้จัก scale out ไหม\" แต่ \"รู้ไหมว่าเมื่อไหร่ควรใช้อะไร และแลกกับอะไร\".\n\n## แก่นของแนวคิด\n\nสองแกนหลักในการรับมือ load:\n\n- **Scaling up (vertical scaling)** — ย้ายไปเครื่องที่แรงกว่า (CPU / RAM / disk มากขึ้น). ง่ายที่สุดในเชิง operation เพราะระบบยังเป็นเครื่องเดียว ไม่ต้องคิดเรื่อง coordination ข้ามเครื่อง.\n- **Scaling out (horizontal scaling / shared-nothing)** — กระจาย load ไปหลายเครื่องเล็ก ๆ ที่ไม่แชร์ memory/disk กัน (แต่ละ node เป็นอิสระ). ไม่มีเพดานฮาร์ดแวร์แบบ scale up แต่แลกมาด้วยความซับซ้อนของ distributed system.\n\nอีกแกนที่ตัดขวาง:\n\n- **Elastic** — ระบบเพิ่ม/ลด resource อัตโนมัติเมื่อตรวจจับว่า load เปลี่ยน เหมาะกับ load ที่คาดเดายากหรือมาเป็น burst.\n- **Manually scaled** — คนวิเคราะห์แล้วสั่งเพิ่มเครื่องเอง เดาง่ายกว่าและมี surprise น้อยกว่า.\n\nข้อเท็จจริงสำคัญที่ต้องพูดได้ในสัมภาษณ์:\n\n1. **ระบบจริงผสมทั้งสองแบบ** — เครื่องแรงหลายตัวที่ผสม scale up กับ scale out มักได้ผลดีและถูกกว่าการใช้เครื่องเล็กจำนวนมหาศาล.\n2. **ไม่มี \"magic scaling sauce\"** — ไม่มีสถาปัตยกรรมแบบ one-size-fits-all. ระบบที่รับ payment authorization แบบ 50,000 request/s payload เล็ก ~400 bytes ต้องออกแบบต่างจากระบบที่ประมวลผล settlement batch ก้อนใหญ่ ~6 GB ทุก ๆ 5 นาที โดยสิ้นเชิง แม้ data throughput เฉลี่ยจะพอ ๆ กัน (~20 MB/s ทั้งคู่) เพราะ profile ของ request (จำนวน vs ขนาด) ตรงข้ามกันสุดขั้ว. ต้องออกแบบรอบ load parameters จริงของระบบคุณ (และวัดผลด้วย percentile ไม่ใช่ค่าเฉลี่ย — ดู sibling `latency-percentiles`).\n3. **Stateless ง่าย, stateful ยาก** — app tier ที่ไม่เก็บ state (แค่รับ request แล้วคำนวณ) scale out ได้ง่ายมากด้วยการเพิ่ม instance หลัง load balancer. แต่ data system ที่มี state (database) scale out ยากกว่ามาก เพราะต้องกระจายและ replicate ข้อมูลโดยยังรักษา consistency — คือหัวข้อ partitioning และ replication ในบทถัด ๆ ไป. ด้วยเหตุนี้จึงนิยมเก็บ database ไว้เครื่องเดียว (scale up) จนกว่าจะจำเป็นจริง ๆ.\n\n```mermaid\nflowchart TD\n  L[Growing load] --> A1{Direction axis}\n  A1 -->|Scale up vertical| U[One more powerful machine]\n  A1 -->|Scale out horizontal| O[Distribute across many machines]\n  U --> UT[\"Simple ops; hard ceiling; steep cost curve\"]\n  O --> OT[\"No ceiling; distributed-systems complexity\"]\n  L --> A2{Control axis}\n  A2 -->|Elastic| EL[\"Auto-add resources on load\"]\n  A2 -->|Manual| MA[Human provisions capacity]\n  O --> ST{Stateless or stateful}\n  ST -->|Stateless app tier| EZ[Scales out easily]\n  ST -->|Stateful data tier| HD[\"Hard: partition and replicate\"]\n```\n\n## ตัวอย่าง (payment gateway)\n\nระบบรับชำระเงินช่วงวันเงินเดือนออก (payday) เจอ traffic พุ่ง 10 เท่าใน 2 ชั่วโมง:\n\n- **API tier (stateless)** — service ที่รับ request `authorize` แล้วทำ validation/routing โดยไม่เก็บ state ในตัวเอง. รับมือด้วย scale out: เพิ่ม instance หลัง load balancer อัตโนมัติ (elastic) แล้วลดลงหลัง burst จบ. ตรงไปตรงมา.\n- **Ledger database (stateful)** — ตารางที่บันทึก journal entry / balance เป็น source of truth. scale out ไม่ได้ง่าย ๆ เพราะต้อง partition และ replicate โดยยังรักษา invariant ทางบัญชี. ทางที่คนส่วนใหญ่เลือกก่อนคือ scale up (เครื่อง DB แรงขึ้น) เพราะ operation ง่ายและยัง reasoning ถึง correctness ได้ง่าย จนกว่าเครื่องใหญ่สุดจะเอาไม่อยู่จริง ๆ ค่อยยอมจ่ายค่า complexity ของ distributed data.\n\nจุดสำคัญ: burst แบบ predictable (payday รู้ล่วงหน้า) อาจใช้ scheduled/manual scaling ก็พอ ไม่จำเป็นต้อง elastic เต็มรูปแบบ — เพราะ elastic เพิ่ม operational surface ที่ต้องดูแลตลอดเวลา.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"scale out ดีกว่า scale up เสมอ\"** ผิด. เครื่องเดียวที่แรงมักเรียบง่ายและถูกกว่าเมื่อ load ยังพอรับได้; scale out ดึง distributed-systems problem เข้ามาแลก จึงควรเลื่อนออกไปจนจำเป็น.\n- **\"แค่เพิ่มเครื่องก็ scale ได้เอง\"** ผิด — โดยเฉพาะกับ stateful system. ไม่มี magic sauce; ต้องออกแบบรอบ load parameters เฉพาะของระบบนั้น.\n- **\"elastic แปลว่าไม่ต้องคิดเรื่อง capacity แล้ว\"** ผิด. elastic ช่วยเรื่อง bursty load แต่เพิ่มความซับซ้อน และอาจ *ซ่อน* โค้ดที่ไม่มีประสิทธิภาพไว้ (auto-scale ขึ้นแทนที่จะแก้ต้นเหตุ) จนบิลบานปลายโดยไม่รู้ตัว.\n\n## ขีดจำกัด / เมื่อไหร่ควรเลือกอะไร แลกกับอะไร\n\n- **Scale up**: ง่ายที่สุดในเชิง operation แต่มี **เพดาน** (มีเครื่องใหญ่สุดเสมอ) และ **cost curve ที่ชันขึ้นเรื่อย ๆ** — ฮาร์ดแวร์ระดับบนสุดราคาแพงแบบไม่เชิงเส้น. อีกทั้งเป็น single point of failure.\n- **Scale out**: ทลายเพดานได้ แต่จ่ายด้วย **operational + distributed-systems complexity** — partitioning, replication, network ที่ไม่น่าเชื่อถือ, clock ที่เพี้ยน, consensus — คือปัญหาทั้งหมดในบทหลัง ๆ ของหนังสือเล่มนี้. อย่าเปิดกล่องนี้ก่อนเวลาอันควร.\n- **Elastic**: คุ้มกับ load ที่ unpredictable/bursty จริง ๆ; แต่ถ้า load คาดเดาได้ manual scaling มักเรียบง่ายและ surprise น้อยกว่า. Elastic มี operational complexity เพิ่ม และเสี่ยงซ่อน inefficiency ไว้ใต้ auto-scaling.\n\nหลักคิดของ senior: เริ่มจาก scale up ที่ data tier บวก stateless-scale-out ที่ app tier ให้นานที่สุด แล้วค่อยยอมรับ complexity ของ distributed data เมื่อ load parameters จริงบังคับ — ไม่ใช่เพราะ \"อยากได้สถาปัตยกรรมเท่ ๆ\".\n\n## มุมสัมภาษณ์\n\n- \"จะ scale ระบบนี้ยังไงถ้า traffic โต 100 เท่า?\" → อย่าเพิ่งตอบ \"เพิ่มเครื่อง\". ถาม load parameters ก่อน (read/write ratio, ขนาด payload, hot key), แยก stateless กับ stateful, แล้วค่อยเสนอ scale up ที่ data tier + scale out ที่ app tier.\n- \"ทำไมไม่ scale out database ตั้งแต่แรกเลย?\" → เพราะ stateful scale out ดึง partitioning/replication complexity เข้ามา; scale up ง่ายกว่าและ reasoning correctness ได้ง่ายกว่าจนกว่า load จะบังคับ.\n- \"elastic กับ manual ต่างกันยังไง เลือกอะไร?\" → elastic auto ตาม load เหมาะ bursty/unpredictable; manual เดาง่ายกว่าเมื่อ load คาดเดาได้; elastic แลกด้วย operational complexity ที่เพิ่มขึ้น.\n- คำถามนี้มักต่อยอดไปสู่ partitioning, replication และ CAP ในบทถัด ๆ ไป — เตรียมสะพานเชื่อมไว้ในหัว.\n",
+  "recall_checks": [
+    {
+      "q": "ความต่างหลักระหว่าง scaling up กับ scaling out คืออะไร?",
+      "expected_answer": "scaling up = ใช้เครื่องเดียวที่แรงกว่า (vertical); scaling out = กระจาย load ข้ามหลายเครื่องแบบ shared-nothing (horizontal)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมจึงไม่มี \"magic scaling sauce\" หรือสถาปัตยกรรม one-size-fits-all?",
+      "expected_answer": "เพราะสถาปัตยกรรมที่ scale ดีถูกออกแบบรอบ ๆ ข้อสมมติเรื่อง load parameters เฉพาะของระบบนั้น",
+      "type": "mcq",
+      "options": [
+        "เพราะสถาปัตยกรรมที่ scale ดีถูกออกแบบรอบ ๆ ข้อสมมติเรื่อง load parameters เฉพาะของระบบนั้น",
+        "เพราะฮาร์ดแวร์ปัจจุบันยังแรงไม่พอสำหรับทุก workload",
+        "เพราะแต่ละทีมเลือกใช้ database คนละยี่ห้อกัน"
+      ]
+    },
+    {
+      "q": "ส่วนไหนของระบบมักจะ scale out ได้ยากที่สุด?",
+      "expected_answer": "stateful data system (database)",
+      "type": "mcq",
+      "options": [
+        "stateless app tier ที่อยู่หลัง load balancer",
+        "stateful data system (database)",
+        "load balancer ที่กระจาย request"
+      ]
+    },
+    {
+      "q": "trade-off หลักของการ scale out เทียบกับ scale up คืออะไร?",
+      "expected_answer": "operational และ distributed-systems complexity ที่สูงขึ้นมาก",
+      "type": "mcq",
+      "options": [
+        "เขียนโค้ด application ได้ช้าลง",
+        "ต้นทุนฮาร์ดแวร์ต่อเครื่องแพงขึ้นแบบไม่เชิงเส้น",
+        "operational และ distributed-systems complexity ที่สูงขึ้นมาก"
+      ]
+    },
+    {
+      "q": "elastic system ต่างจาก manually scaled อย่างไร และแลกมาด้วยอะไร?",
+      "expected_answer": "elastic เพิ่ม/ลด resource อัตโนมัติเมื่อ load เปลี่ยน เหมาะกับ load ที่ unpredictable/bursty แต่แลกมาด้วย operational complexity ที่เพิ่มขึ้นและอาจซ่อน inefficiency ไว้",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 1: Reliable, Scalable, and Maintainable Applications (section: Approaches for Coping with Load)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 1",
+      "why": "อ่านต้นฉบับแนวคิด scaling up vs out, shared-nothing และ \"no magic scaling sauce\""
+    },
+    {
+      "title": "The Case for Shared Nothing",
+      "source": "Michael Stonebraker, IEEE Database Engineering Bulletin, 1986",
+      "why": "อ่านรากฐานของสถาปัตยกรรม shared-nothing ที่เป็นฐานของการ scale out"
+    },
+    {
+      "title": "The Art of Scalability (AKF Scale Cube)",
+      "source": "Martin L. Abbott & Michael T. Fisher, The Art of Scalability, 2nd ed. (Addison-Wesley, 2015)",
+      "why": "อ่านต่อว่าจะแยกแกนการ scale (เพิ่มเครื่อง / แยก service / แบ่งข้อมูล) อย่างเป็นระบบได้อย่างไร"
+    }
+  ]
+}

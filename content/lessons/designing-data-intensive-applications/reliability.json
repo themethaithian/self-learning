@@ -1,0 +1,67 @@
+{
+  "concept_id": "reliability",
+  "version": 1,
+  "topic": "designing-data-intensive-applications",
+  "title_en": "Reliability",
+  "est_minutes": 8,
+  "body_md": "# Reliability\n\n## ทำไมถึงสำคัญ\n\nReliability คือคุณสมบัติที่ระบบยัง \"ทำงานถูกต้องต่อไป\" แม้มีสิ่งผิดพลาดเกิดขึ้นข้างใน — ทำฟังก์ชันที่ควรทำ, ทน load/ข้อมูลที่คาดไว้, กัน unauthorized access, และให้ performance ที่ยอมรับได้. สำหรับระบบการเงิน ความผิดพลาดครั้งเดียวแปลว่ายอดผิด เงินค้าง หรือลูกค้าโอนไม่ได้ reliability จึงเป็นสัญญาพื้นฐาน ไม่ใช่ feature เสริม. แก่นที่ senior ต้องจับให้ได้คือ เราไม่ได้พยายามทำให้ความผิดพลาด *ไม่เกิด* (เป็นไปไม่ได้) แต่ทำให้มันไม่ลุกลามจนระบบล่ม.\n\n## แก่นของแนวคิด: fault ไม่ใช่ failure\n\nสองคำนี้ต่างกันและเป็นหัวใจของบทนี้:\n\n- **Fault** = component *ตัวเดียว* เบี่ยงจาก spec ของมัน เช่น disk พัง, node หนึ่งค้าง, dependency ตอบช้าเกิน timeout. fault เป็นเรื่องปกติที่ต้องเกิดแน่ ๆ ในระบบใหญ่.\n- **Failure** = ระบบ *ทั้งระบบ* หยุดให้บริการที่ผู้ใช้ต้องการ.\n\nเป้าหมายของ reliability คือ **fault-tolerance**: ออกแบบให้ fault ไม่กลายเป็น failure. สังเกตว่าเราตั้งใจ *tolerate* fault มากกว่าพยายาม *prevent* ให้ fault เป็นศูนย์ เพราะการกัน fault ทุกชนิดไม่ให้เกิดเลยนั้นเป็นไปไม่ได้และแพงเกินคุ้ม สิ่งที่ทำได้จริงคือจำกัดผลของมัน.\n\nประเภทของ fault ที่ต้องรับมือ (ตาม DDIA):\n\n- **Hardware fault** — disk เสีย, RAM error, ไฟดับ, สายหลุด. เกิดแบบสุ่มและค่อนข้าง independent จึงแก้ด้วย **redundancy** ได้ตรงไปตรงมา: RAID, dual power supply, หลาย node/หลาย availability zone ให้ตัวหนึ่งพังแล้วอีกตัวรับต่อ.\n- **Software fault** — bug ที่ *systematic*: เจอ input พิเศษแล้ว crash, memory leak, cascading failure ที่บริการหนึ่งช้าลากบริการอื่นล่มตาม. อันตรายกว่า hardware เพราะ **correlated** ทุก node รันโค้ดชุดเดียวกัน ดังนั้นมันพร้อมกันทั้งฝูง redundancy ช่วยไม่ได้. ต้องกันด้วยการ test หนัก, process isolation, การวัด/alert, และ assertion ที่ตรวจ invariant ระหว่างรัน.\n- **Human error** — สาเหตุของ outage ที่พบบ่อยที่สุด: config ผิด, deploy พลาด, ลบข้อมูลผิดตัว. กันด้วยการออกแบบ interface ที่ทำถูกง่ายทำผิดยาก, **sandbox** ให้ลองโดยไม่กระทบของจริง, automated test, และที่สำคัญที่สุดคือ **rollback เร็ว** เพื่อลดเวลาที่ error อยู่ใน production.\n\nวิธีพิสูจน์ว่า fault-tolerance ใช้ได้จริง คือ **จงใจ inject fault** เข้าไปเอง (chaos engineering) เช่นสุ่มฆ่า node ใน production เพื่อบังคับให้ path การกู้คืนถูกทดสอบสม่ำเสมอ — ไม่ใช่รอให้ fault จริงมาเจอตอนตี 3.\n\n> ขอบเขต: บทนี้ owns reliability + fault/failure + fault-tolerance เท่านั้น. \"รับมือ load ที่โตขึ้น\" เป็นเรื่องของ sibling `scalability-load`, ส่วน \"ระบบดูแล/แก้/ต่อยอดง่าย\" เป็นเรื่องของ sibling `maintainability`.\n\n## ตัวอย่าง (payment authorization)\n\nระบบรับชำระเงินมีหลาย payment node หลังตัว router และเรียก fraud-check service ก่อน authorize. เกิด fault สองอย่างพร้อมกัน: node B crash และ fraud service timeout. ระบบที่ fault-tolerant จะ *ไม่ล่ม*:\n\n```mermaid\nflowchart TD\n  C[Payment request] --> LB[Router]\n  LB --> N1[Node A healthy]\n  LB -.->|\"fault: node B crashes\"| N2[Node B down]\n  N1 --> P{Fraud service reachable}\n  P -->|\"no = timeout fault\"| D[\"Degrade: queue for later review\"]\n  P -->|yes| A[Authorize now]\n  D --> OK[\"Payment accepted, no failure\"]\n  A --> OK\n```\n\nfault ตัวแรก (node B ตาย) ถูก tolerate ด้วย redundancy: router ส่ง request ไป node A แทน ผู้ใช้ไม่รู้ตัว. fault ตัวที่สอง (fraud service ล่ม) ถูก tolerate ด้วยการ **degrade อย่างมีการควบคุม**: แทนที่จะปฏิเสธ transaction ทั้งหมด (ซึ่งจะกลายเป็น failure ทางธุรกิจ) ระบบรับ payment ไว้ก่อนแล้วคิว fraud check ไปทำทีหลัง — ยังคง \"ถูกต้อง\" ในเชิงธุรกิจเพราะ invariant สำคัญ (เงินไม่หาย, ทุกรายการถูกตรวจในที่สุด) ยังอยู่ครบ. การเลือกว่า degrade แบบไหนถือว่ายัง \"correct\" คือการตัดสินใจเชิง domain ไม่ใช่เชิงเทคนิคล้วน.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Reliable = ไม่มี fault เลย / uptime 100%\"** ผิด. ระบบ reliable คือระบบที่ fault เกิดตลอดเวลาแต่ผู้ใช้ไม่รู้สึก ไม่ใช่ระบบที่ไม่มี fault.\n- **\"Redundancy แก้ได้ทุก fault\"** ผิด. redundancy เก่งกับ hardware fault ที่ independent แต่ช่วยแทบไม่ได้กับ software bug ที่ correlated (พังพร้อมกันทุกก็อปปี้) และไม่ได้กับ human error ที่สั่งลบข้อมูลผิดเหมือนกันทุก replica.\n- **\"Chaos engineering คือความเสี่ยงที่ไม่จำเป็น\"** ผิด. การไม่เคยทดสอบ failover ต่างหากคือความเสี่ยง เพราะจะได้รู้ว่ามันพังตอน fault จริงมาเอง.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรลงทุนหนัก\n\nFault-tolerance ไม่ฟรี ต้นทุนคือ **redundancy** (จ่ายค่า hardware/instance ซ้ำซ้อนที่ปกติไม่ได้ใช้) บวก **complexity** (failover logic, health check, การ degrade, การทดสอบ path กู้คืน — ซึ่งเองก็เป็นแหล่ง bug ใหม่). ดังนั้นไม่ใช่ทุกระบบควรลงทุนระดับเดียวกัน: ระบบ prototype, งาน internal ที่ downtime ไม่กระทบใคร, หรือ batch job ที่ retry ได้สบาย ๆ การไล่ทำ five-nines คือการเผาเวลาและเงินโดยใช่เหตุ. บางครั้ง senior ตัดสินใจ *จงใจไม่ tolerate* fault บางชนิดด้วยซ้ำ (เช่นยอมให้ระบบ analytics ภายในล่มได้ชั่วคราว) เพื่อเอา budget ไปทุ่มกับ path ที่แพงถ้าล่ม เช่น payment authorization. โจทย์จริงคือจับคู่ระดับ reliability กับ *ต้นทุนของ failure ในแต่ละ path* ไม่ใช่ทาสูตรเดียวทั้งระบบ.\n\n## มุมสัมภาษณ์\n\n- \"fault กับ failure ต่างกันยังไง?\" → fault = component เดียวเบี่ยงจาก spec; failure = ทั้งระบบหยุดบริการ; เป้าหมายคือ fault-tolerance กัน fault ไม่ให้กลายเป็น failure.\n- \"สาเหตุ outage ที่พบบ่อยที่สุดคืออะไร และกันยังไง?\" → human/operator error; กันด้วย good design, sandbox, automated test, และ rollback เร็ว ไม่ใช่แค่ hardware redundancy.\n- \"ทำไม redundancy กัน software fault ไม่ได้ดีเท่า hardware fault?\" → software bug correlated ทุก replica รันโค้ดเดียวกันจึงพังพร้อมกัน ต่างจาก hardware fault ที่ independent.\n- \"จะพิสูจน์ว่าระบบทน fault ได้ยังไง?\" → chaos engineering: จงใจ inject fault ใน production เพื่อบังคับทดสอบ path กู้คืน.\n- \"ควรทำให้ทุกอย่าง reliable สูงสุดไหม?\" → ไม่; fault-tolerance แลกด้วย redundancy + complexity จับระดับให้ตรงกับต้นทุนของ failure ในแต่ละ path (คำถามนี้มักต่อไปเรื่อง trade-off กับ scalability/maintainability).\n",
+  "recall_checks": [
+    {
+      "q": "แยกความต่างระหว่าง fault กับ failure และบอกว่าเป้าหมายของ reliability คืออะไร",
+      "expected_answer": "fault คือ component ตัวเดียวเบี่ยงจาก spec ของมัน; failure คือทั้งระบบหยุดให้บริการ; เป้าหมายคือ fault-tolerance คือกันไม่ให้ fault ลุกลามกลายเป็น failure",
+      "type": "short_answer"
+    },
+    {
+      "q": "ตาม DDIA สาเหตุของ outage ที่พบบ่อยที่สุดคืออะไร?",
+      "expected_answer": "human error ในการ config/operate ระบบ",
+      "type": "mcq",
+      "options": [
+        "human error ในการ config/operate ระบบ",
+        "hardware fault ของ disk ที่พังพร้อมกัน",
+        "software bug ที่ correlated ทุก node"
+      ]
+    },
+    {
+      "q": "เทคนิคหลักที่ reliability ใช้จัดการ fault คืออะไร?",
+      "expected_answer": "tolerate fault ด้วย redundancy/การออกแบบ ไม่ให้ fault กลายเป็น failure",
+      "type": "mcq",
+      "options": [
+        "พยายาม prevent ทุก fault ให้เกิด 0 ครั้ง",
+        "restart ทั้งระบบทุกครั้งที่เจอ fault",
+        "tolerate fault ด้วย redundancy/การออกแบบ ไม่ให้ fault กลายเป็น failure"
+      ]
+    },
+    {
+      "q": "ทำไมทีมถึงจงใจ inject fault เข้าระบบ (chaos engineering)?",
+      "expected_answer": "เพื่อบังคับให้ path การกู้คืน/failover ถูกทดสอบสม่ำเสมอและพิสูจน์ว่า fault ไม่กลายเป็น failure ก่อนที่ fault จริงจะมาเจอเองตอนไม่พร้อม",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคือ trade-off ที่แท้จริงของการลงทุน fault-tolerance?",
+      "expected_answer": "ต้องแลกด้วย redundancy และ complexity ที่เพิ่มขึ้น จึงไม่ควรลงทุนระดับเท่ากันทุก path",
+      "type": "mcq",
+      "options": [
+        "ทำให้โค้ดเขียนง่ายขึ้นและลด latency ของทุก request เสมอ",
+        "ต้องแลกด้วย redundancy และ complexity ที่เพิ่มขึ้น จึงไม่ควรลงทุนระดับเท่ากันทุก path",
+        "ทำให้ software bug ที่ correlated หายไปด้วย redundancy"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 1: Reliable, Scalable, and Maintainable Applications (section \"Reliability\")",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 1",
+      "why": "อ่านต้นฉบับนิยาม fault vs failure และ fault ทั้งสามประเภท (hardware/software/human)"
+    },
+    {
+      "title": "Principles of Chaos Engineering",
+      "source": "principlesofchaos.org",
+      "why": "อ่านต่อว่าทำไมการจงใจ inject fault ใน production ถึงเป็นวิธีพิสูจน์ fault-tolerance"
+    },
+    {
+      "title": "Site Reliability Engineering, Chapter 3: Embracing Risk",
+      "source": "Google, Site Reliability Engineering (O'Reilly, 2016), ch. 3",
+      "why": "อ่านว่าทำไมจึงจับระดับ reliability ให้ตรงกับต้นทุนของ failure แทนที่จะไล่ 100% ทุก path"
+    }
+  ]
+}

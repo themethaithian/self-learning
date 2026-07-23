@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "unreliable-networks",
+  "version": 1,
+  "title_en": "Unreliable Networks",
+  "est_minutes": 8,
+  "body_md": "# Unreliable Networks\n\n## ทำไมถึงสำคัญ\n\nในระบบกระจายแบบ shared-nothing แต่ละ node คุยกันได้ทางเดียวคือส่ง packet ผ่าน **asynchronous packet network** เท่านั้น และเครือข่ายนี้ไม่รับประกันอะไรเลย: message อาจ **หาย (lost), ล่าช้า (delayed), ซ้ำ (duplicated), หรือสลับลำดับ (reordered)** ได้ทั้งนั้น. ปัญหาแกนกลางที่ทำให้ระบบกระจายยากคือ เมื่อคุณส่ง request ออกไปแล้ว **ไม่ได้ reply กลับมา คุณแยกไม่ออก** ว่าเกิดอะไรขึ้น — request หายระหว่างทาง, node ปลายทางล่ม, reply หายขากลับ, หรือทุกอย่างแค่ช้า. ทุก algorithm ในระบบกระจายต้องถูกออกแบบบนความไม่แน่นอนข้อนี้.\n\n## แก่นของแนวคิด\n\n- **asynchronous** แปลว่าเครือข่ายไม่มี upper bound ของ latency: packet จะถึงเมื่อไหร่ก็ได้ หรือไม่ถึงเลยก็ได้ ไม่มีการรับประกันเวลา. (ต่างจาก synchronous network ในทฤษฎีที่มี bound ตายตัว ซึ่งของจริงอย่าง Ethernet/IP ไม่มีให้)\n- สิ่งที่เกิดกับ request/reply หนึ่งคู่ได้: หาย, ค้างใน queue นานแล้วค่อยมา, มาถึงซ้ำ, หรือมาสลับลำดับกับ message อื่น.\n- **หัวใจ: \"ไม่มี reply\" ไม่ได้แปลว่า node ตาย.** จาก node ที่ส่ง request มอง มันแยกไม่ออกเลยระหว่าง (ก) request ไปไม่ถึง, (ข) ปลายทางประมวลผลแล้วแต่ reply หาย, (ค) ปลายทาง crash, (ง) ปลายทางแค่ช้า/overload. ทั้งสี่กรณี \"เงียบ\" เหมือนกันหมด.\n- ในเครือข่าย asynchronous **ไม่มี perfect failure detector** — ไม่มีทางรู้แน่ ๆ ว่า node อีกฝั่งตายหรือยัง. เครื่องมือเดียวที่มีคือ **timeout**: รอถึงเวลาหนึ่งแล้วไม่มี reply ก็ \"สมมติ\" ว่าล้มเหลว. แต่ timeout เป็นการเดา ไม่ใช่ความรู้.\n- ตัวการหลักที่ทำให้ delay แปรปรวนคือ **network congestion และ queueing**: packet เข้าคิวที่ switch เมื่อ link เต็ม, เข้าคิวที่ OS ปลายทางเมื่อ CPU ยุ่ง, หรือรอที่ application เมื่อ node กำลัง overload. คิวเหล่านี้ทำให้เวลาตอบกลับกระจายตัวกว้างและคาดเดายาก. (อีกสาเหตุที่ node ดู \"ตาย\" ทั้งที่ยังไม่ตายคือ process pause เช่น GC — เป็นคนละเรื่อง ดู sibling `process-pauses`.)\n\n## ตัวอย่าง (fintech: payment RPC ที่ timeout)\n\nPayment service เรียก RPC `captureFunds` ไปที่ downstream แล้วรอ. Timeout ยิงตัดก่อน โดยไม่มี reply กลับมาเลย. คำถามล้านบาท: **เงินถูก capture ไปแล้วหรือยัง?**\n\n```mermaid\nflowchart TD\n  C[\"Caller: send captureFunds RPC\"] --> W{\"Reply within timeout?\"}\n  W -->|\"yes\"| K[\"Known outcome: captured or declined\"]\n  W -->|\"no\"| A[\"No reply: request lost | reply lost | node down | just slow?\"]\n  A --> R1[\"request lost -> NOT captured\"]\n  A --> R2[\"processed; reply lost -> captured\"]\n  A --> R3[\"node crashed -> NOT captured\"]\n  A --> R4[\"overloaded/slow -> captured LATER\"]\n  R1 --> D{\"Retry? only safe with idempotency key\"}\n  R2 --> D\n  R3 --> D\n  R4 --> D\n```\n\n- ถ้า **retry แบบดื้อ ๆ** ในกรณี (ข) หรือ (ง) → capture ซ้ำ = **หักเงินลูกค้าสองรอบ**.\n- ถ้าตีว่า \"ล้มเหลว\" แล้วยกเลิก/คืนเงินทันที ในกรณี (ข) → ยกเลิกรายการที่จริง ๆ สำเร็จไปแล้ว.\n- ทางออกจริงของ fintech คือทำให้ operation เป็น **idempotent** ด้วย idempotency key: retry หลัง timeout ที่กำกวมจึงปลอดภัยเพราะปลายทาง dedupe ให้ — เพราะ network รับประกันไม่ได้ว่า request มาถึงกี่ครั้ง.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"timeout หมายความว่า node ตายแล้ว\"** ผิด. มันแปลแค่ว่า \"ไม่มี reply ภายในเวลาที่กำหนด\" — node อาจยังมีชีวิตและแค่ช้าอยู่ก็ได้ นี่คือ ambiguity หลักของทั้งบท.\n- **\"ใช้ TCP แล้วเชื่อถือได้ ไม่ต้องห่วง\"** ผิด. TCP รับประกัน order และ retransmit *ภายใน connection ที่ยังอยู่* แต่ไม่ได้บอกว่า application ปลายทางประมวลผล request จริงหรือยัง และ retransmit ของ TCP เองก็เพิ่ม delay แบบแปรปรวน; timeout ระดับ application ยังกำกวมเหมือนเดิม.\n- **\"ไม่ตอบก็ retry สิ\"** ผิดถ้า operation ไม่ idempotent — retry จะสร้าง duplicate (หักเงินซ้ำ).\n\n## ขีดจำกัด / trade-off (การตั้ง timeout — ส่วนที่ interview เจาะ)\n\ntimeout คือการเดา และไม่มีค่าที่ \"ถูก\" สากล — เลือกยาวหรือสั้นก็มีราคาทั้งคู่:\n\n- **timeout สั้น**: ตรวจจับ failure ได้ไว ระบบ failover เร็ว. แต่ตอน network congestion หรือ node แค่ช้าชั่วคราว จะประกาศว่า node ที่ยังมีชีวิต \"ตาย\" = **false positive**. ผลคือ request ถูกส่งไป node อื่นซ้ำ (งานซ้ำ / action ซ้ำ) และถ้า node เดิมช้าเพราะ overload อยู่แล้ว การโยน load ไป node ถัดไปจะทำให้ node นั้น overload ต่อ → เกิด **cascading failure** ลามทั้งระบบ.\n- **timeout ยาว**: false positive น้อยลง แต่เมื่อ node ตายจริง ระบบต้อง **ค้างรอนานกว่าจะรู้ตัว** — ผู้ใช้รอ, resource ถูกถือค้าง, failover ช้า.\n- ไม่มีค่ากลางที่ชนะทุกกรณี. failure detector ที่ดี (เช่น phi accrual ที่วัดการกระจายของ round-trip แล้วปรับตัว) ช่วยได้ แต่เพราะเครือข่าย asynchronous **ไม่มี upper bound** ของ delay จริง ๆ จึงพิสูจน์ไม่ได้ว่า timeout ค่าใด \"ถูกต้อง\" เสมอ.\n- **เมื่อไหร่ไม่ควรใช้ timeout สั้นแบบ aggressive**: operation ที่ไม่ idempotent และย้อนกลับแพง (เช่น capture เงิน) ควรเน้น idempotency key + timeout ที่ระมัดระวัง มากกว่าไล่ failover เร็ว ๆ ที่เสี่ยงทำ action ซ้ำ.\n\n(หมายเหตุ scope: การใช้ timestamp เทียบเวลาข้าม node เพื่อช่วยตัดสินใจก็เชื่อไม่ได้เช่นกัน เพราะ clock เอง unreliable → sibling `unreliable-clocks`; และการตัดสินว่า node ไหน \"ตายอย่างเป็นทางการ\" ไม่ควรให้ node เดียวชี้ขาด ต้องอาศัยการตกลงร่วมแบบ quorum → sibling `knowledge-truth-lies`.)\n\n## มุมสัมภาษณ์\n\n- \"ส่ง RPC ออกไปแล้วไม่ได้ response — จริง ๆ คุณรู้อะไรบ้าง?\" → แทบไม่รู้อะไรเลยเกี่ยวกับว่ามันทำงานสำเร็จไหม รู้แค่ว่า \"ไม่มี reply ภายในเวลาที่รอ\" แยก dead กับ slow ไม่ออก.\n- \"ตั้งค่า timeout ยังไง?\" → เป็น trade-off ไม่มีค่าที่ถูกสากล; สั้นเสี่ยง false positive + cascade, ยาวเสี่ยงค้างนาน; async ⇒ unbounded พิสูจน์ความถูกต้องไม่ได้.\n- \"payment RPC timeout จะทำยังไง?\" → idempotency key + safe retry ห้าม retry แบบดื้อ ๆ.\n- \"timeout สั้นเกินทำให้เกิด cascading failure ได้ยังไง?\" → false-positive failover โยน load ไป node ที่ยัง healthy → มัน overload ตาม → timeout เพิ่มขึ้นลาม.\n",
+  "recall_checks": [
+    {
+      "q": "เมื่อ timeout ยิงเพราะไม่ได้ reply node ที่ส่ง request สรุปได้แน่ ๆ ว่าอะไร?",
+      "expected_answer": "สรุปได้แค่ว่าไม่มี reply มาถึงในเวลาที่รอ ยังแยก dead กับ slow ไม่ออก",
+      "type": "mcq",
+      "options": [
+        "node ปลายทางตายแน่นอน จึงควร failover ไป node อื่นทันทีโดยไม่ต้องเช็คอะไรเพิ่ม",
+        "request ไปไม่ถึงปลายทางแน่นอน เพราะถ้าไปถึงแล้วต้องมี reply กลับมาเสมอ",
+        "สรุปได้แค่ว่าไม่มี reply มาถึงในเวลาที่รอ ยังแยก dead กับ slow ไม่ออก"
+      ]
+    },
+    {
+      "q": "asynchronous packet network ไม่รับประกันอะไรบ้าง (ตอบอย่างน้อย 3 อย่าง)?",
+      "expected_answer": "ไม่รับประกันว่า message จะถึง (อาจ lost), ไม่รับประกันลำดับ (อาจ reordered), ไม่มี upper bound ของ latency (อาจ delayed) และอาจ duplicated ได้ด้วย",
+      "type": "short_answer"
+    },
+    {
+      "q": "ตั้ง timeout สั้นเกินไปมีความเสี่ยงหลักคืออะไร?",
+      "expected_answer": "false positive — ประกาศว่า node ที่แค่ช้าว่าตาย ทำให้ failover ซ้ำและเสี่ยง cascading failure",
+      "type": "mcq",
+      "options": [
+        "false positive — ประกาศว่า node ที่แค่ช้าว่าตาย ทำให้ failover ซ้ำและเสี่ยง cascading failure",
+        "ตรวจจับ failure ช้าเกินไปจนระบบต้องค้างรอ node ที่ตายจริงนานเกินจำเป็นก่อนจะ failover ไปที่อื่น",
+        "ใช้ bandwidth มากขึ้นจากการ retry ซ้ำ ๆ จนเครือข่ายเต็มและ throughput โดยรวมของระบบตกลง"
+      ]
+    },
+    {
+      "q": "payment RPC ที่ทำ capture timeout ไปโดยไม่รู้ผล ควรออกแบบอย่างไรให้ retry ปลอดภัย?",
+      "expected_answer": "ทำ operation ให้ idempotent ด้วย idempotency key เพื่อให้ retry ไม่ capture ซ้ำ",
+      "type": "mcq",
+      "options": [
+        "retry ทันทีทุกครั้งที่ไม่ได้ reply โดยไม่ต้องเช็คว่า capture สำเร็จไปแล้วหรือยัง",
+        "ทำ operation ให้ idempotent ด้วย idempotency key เพื่อให้ retry ไม่ capture ซ้ำ",
+        "ยกเลิกรายการแล้วให้ลูกค้าเริ่มทำใหม่เสมอ แม้จะเสี่ยงยกเลิกรายการที่สำเร็จไปแล้ว"
+      ]
+    },
+    {
+      "q": "ทำไม timeout ที่ยาวขึ้นถึงมีข้อเสีย?",
+      "expected_answer": "เมื่อ node ตายจริง ระบบต้องค้างรอนานกว่าจะรู้ว่าล้มเหลว ผู้ใช้รอนาน resource ถูกถือค้าง และ failover ช้าลง",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 8: The Trouble with Distributed Systems (Unreliable Networks)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 8",
+      "why": "อ่านต้นฉบับเรื่อง network fault, ความกำกวมของ no-reply และการใช้ timeout เป็น failure detector"
+    },
+    {
+      "title": "The Eight Fallacies of Distributed Computing",
+      "source": "L. Peter Deutsch (Sun Microsystems), เผยแพร่วงกว้างในชุมชนวิศวกรรม",
+      "why": "อ่านสมมติผิด ๆ ที่วิศวกรมักตั้งเกี่ยวกับเครือข่าย เช่น 'the network is reliable' และ 'latency is zero'"
+    },
+    {
+      "title": "The Phi Accrual Failure Detector",
+      "source": "Hayashibara, Defago, Yared, Katayama (IEEE SRDS, 2004)",
+      "why": "อ่านวิธีทำ failure detector ที่ปรับ suspicion ตามการกระจายของ round-trip แทนการตั้ง timeout เป็นค่าคงที่"
+    }
+  ]
+}

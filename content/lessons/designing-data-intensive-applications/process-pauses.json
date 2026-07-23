@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "process-pauses",
+  "version": 1,
+  "title_en": "Process Pauses",
+  "est_minutes": 8,
+  "body_md": "# Process Pauses\n\n## ทำไมถึงสำคัญ\n\nprocess หรือ thread หนึ่งอาจถูก \"หยุด\" (pause) เป็นเวลานานเท่าไหร่ก็ได้แบบไม่มีขอบเขต ณ จุดใดก็ได้ในโค้ด โดยตัวมันเองไม่รู้ตัว. อันตรายที่ตามมาคือ node ที่ถือ lease/lock อาจ pause จน lease หมดอายุ แล้วตื่นขึ้นมาเดินโค้ดต่อโดยเชื่อว่าตัวเองยังถือ lease อยู่ ทั้งที่ node อื่นเข้ามา take over ไปแล้ว → split-brain / double-write. ในระบบ backend ทั่วไปคุณจึงสมมติว่า \"โค้ดจะรันจบภายในเวลา X\" ไม่ได้เลย.\n\n## แก่นของแนวคิด\n\n- สาเหตุที่ทำให้ process pause แบบ unbounded มีหลายชั้น ไม่ใช่แค่ตัวเดียว: **GC stop-the-world** (JVM full GC, และแม้แต่ Go runtime ที่ pause สั้นกว่า), **VM live migration / suspend** (hypervisor freeze ทั้ง guest), **OS context switch + paging/swapping** (หน่วยความจำถูก swap ไป disk แล้วต้องอ่านกลับ), **laptop lid close / sleep**, `SIGSTOP`, และ disk/network I/O ที่ block นานผิดปกติ.\n- key insight: pause แทรกได้ \"ระหว่างสองบรรทัดใดก็ได้\" โดย thread ไม่รู้ตัว. เมื่อ resume มันเดินต่อจากบรรทัดถัดไปเหมือนไม่มีอะไรเกิดขึ้น — แต่โลกภายนอกเดินหน้าไปหลายสิบวินาทีแล้ว.\n- ทำไมมันพัง lease/lock: lease คือ lock ที่มี expiry (TTL). โมเดลนี้ถูกต้อง *ก็ต่อเมื่อ* node เช็คเวลา แล้วหยุดใช้สิทธิ์ก่อนถึง expiry. แต่ถ้า pause แทรกเข้ามา *หลัง* จากเช็คว่า lease ยังไม่หมด แต่ *ก่อน* จะลงมือ action จริง → node จะทำ action ด้วยสิทธิ์ที่หมดอายุไปแล้ว. หัวใจคือ \"decision-then-act\" ไม่ได้เป็น atomic.\n- นี่เป็นคนละแกนกับปัญหา clock (clock skew → sibling `unreliable-clocks`): ต่อให้ clock ทุก node ตรงเป๊ะ pause ก็ยังทำให้ช่วงระหว่าง \"ตัดสินใจ\" กับ \"ลงมือ\" ยืดออกได้แบบไม่คาดคิดอยู่ดี.\n- ระบบ hard real-time (ระบบควบคุมเครื่องบิน, ถุงลมนิรภัย) การันตี bounded response time ได้จริง แต่จ่ายด้วยราคาแพงมหาศาล: RTOS, ห้าม dynamic allocation ตอนรัน, GC พิเศษหรือไม่มี GC, และการทดสอบหนัก. ระบบ backend ทั่วไปไม่ได้จ่ายราคานั้น จึงต้องถือเป็นกฎว่า pause เกิดขึ้นได้เสมอ.\n\n## ตัวอย่าง (payment worker)\n\nfintech: มี worker คอยดึงงานจาก queue มาตัดเงินลูกค้า. ใช้ distributed lock (lease TTL 30s) เพื่อกันไม่ให้ worker สองตัวจับ payment เดียวกันพร้อมกัน.\n\n- Worker A ได้ lease ของ payment `#P` แล้วเริ่มตัดเงิน\n- ระหว่างนั้น runtime เกิด GC stop-the-world (หรือ VM ถูก live-migrate) นาน 40 วินาที\n- lease หมดอายุที่วินาทีที่ 30 → lock service ปล่อย lease → Worker B คว้า lease ของ `#P` แล้วตัดเงินสำเร็จ (ลูกค้าถูก charge จริง)\n- Worker A ตื่นจาก pause ที่วินาทีที่ 40 เดินโค้ดต่อจากบรรทัดเดิม เชื่อว่าตัวเองยังถือ lease → ตัดเงิน `#P` ซ้ำอีกครั้ง → **double charge**\n\nจุดตายคือ Worker A เช็ค lease \"ก่อน\" pause แต่ลงมือ act \"หลัง\" pause. ทางแก้ที่ถูกต้องไม่ใช่ \"ทำให้ pause ไม่เกิด\" แต่คือให้ตัว resource (payment processor / storage) เป็นฝ่ายปฏิเสธ writer ที่ถือสิทธิ์เก่า — ทำได้ด้วย **fencing token** (เลขที่เพิ่มขึ้นแบบ monotonic ที่ resource คอยตรวจ). กลไกของ fencing token และเหตุผลว่าทำไม quorum เป็นตัวตัดสินความจริง อยู่ที่ sibling `knowledge-truth-lies`.\n\n```mermaid\nsequenceDiagram\n    participant A as Node A\n    participant L as Lease service\n    participant B as Node B\n    participant S as Storage\n    A->>L: acquire lease TTL 30s\n    L-->>A: lease granted\n    Note over A: GC stop-the-world pause 40s\n    Note over L: lease expires at 30s\n    B->>L: acquire lease\n    L-->>B: granted, Node A presumed dead\n    B->>S: write payment P (valid lease)\n    Note over A: pause ends, resume\n    A->>S: write payment P (believes lease held)\n    Note over S: split-brain, double write\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"lease/lock ที่มี TTL แก้ปัญหา node ตายได้แล้ว จบ\"** — TTL แก้เคส node ตายจริง แต่ไม่แก้เคส node ที่ \"ดูเหมือนตาย\" (pause อยู่) แล้วฟื้นกลับมา. การที่ lease หมดอายุ *ไม่ได้* บังคับให้ paused node หยุดทำงาน มันแค่ทำให้ node อื่นคิดว่าปลอดภัยที่จะเข้ามาแทน.\n- **\"GC ในภาษาที่เราใช้ pause แค่ไม่กี่ ms\"** — ค่าเฉลี่ยที่สั้นไม่ได้แปลว่า tail ไม่ยาว: full GC, heap ใหญ่, หรือ memory pressure ทำให้ pause กระโดดเป็นหลักวินาทีได้ และ paging/VM suspend ไม่เกี่ยวกับ GC เลยแม้แต่น้อย.\n- **\"เพิ่ม timeout หรือ sleep เผื่อ ๆ ไว้ก็พอ\"** — pause เป็น unbounded ตามนิยาม ไม่ว่าจะเลือกตัวเลขไหน worst case ก็ทะลุได้เสมอ. การป้องกันต้องอยู่ที่ resource ไม่ใช่ที่การเดา duration.\n\n## ขีดจำกัด / trade-off\n\n- **ลด pause ได้ แต่กำจัดไม่ได้:** tune GC (Go: ปรับ `GOGC` / soft memory limit; JVM: เลือก low-pause collector อย่าง G1 / ZGC / Shenandoah), ลดขนาด heap, ให้ RAM พอจนไม่ swap, ปิด live migration บน critical node — ทุกทางมีราคา (throughput ตก, RAM แพงขึ้น, ops ซับซ้อนขึ้น) และยังเหลือ tail pause อยู่ดี.\n- **Real-time GC / RTOS การันตี bound ได้จริง** แต่ต้นทุนสูงมากและ throughput ต่ำ — คุ้มเฉพาะ domain ที่พลาดแล้วมีคนบาดเจ็บหรือเสียชีวิต ไม่ใช่ backend ทั่วไป.\n- **เพราะกำจัด pause ไม่ได้ การป้องกันจึงย้ายไปที่ resource คือ fencing token** — แต่ fencing เองก็มีราคา: *ทุก* resource ที่ writer แตะต้องรู้จักและเช็ค token, ต้องมีแหล่งออก token ที่ monotonic (เพิ่ม dependency และต้อง strongly consistent), และ resource ที่เช็ค token ไม่ได้ (เช่น third-party API ที่ไม่มี idempotency key) ก็ป้องกันด้วยวิธีนี้ตรง ๆ ไม่ได้เลย. รายละเอียดกลไกอยู่ที่ sibling `knowledge-truth-lies`.\n- **เมื่อไหร่ไม่ต้องแคร์:** งาน single-node ที่ไม่มี distributed lock, operation ที่ idempotent อยู่แล้ว (เขียนซ้ำได้ผลเท่าเดิม), หรือ operation ที่ commutative — การทุ่มออกแบบ fencing ทั้งระบบในกรณีพวกนี้คือ over-engineering.\n\n## มุมสัมภาษณ์\n\n- \"GC pause 30 วินาที ทำให้ระบบ distributed lock พังได้ยังไง?\" → node ที่ถือ lease pause เกิน TTL, node อื่น take over, node เดิมฟื้นมาเขียนทับด้วยสิทธิ์เก่า → split-brain / double-write.\n- \"แล้วป้องกันยังไง?\" → ไม่ใช่ทำให้ pause หายไป แต่ให้ resource ตรวจ fencing token (โยงไป `knowledge-truth-lies`).\n- \"ต่างจากปัญหา clock ยังไง?\" → clock skew เป็นคนละแกน; pause ทำให้ decision-then-act ไม่ atomic ต่อให้ clock ตรง (โยง `unreliable-clocks`).\n- มักตามด้วย \"ยกตัวอย่าง pause ที่ไม่ใช่ GC\" → VM live migration/suspend, paging/swap, `SIGSTOP`, laptop sleep, disk I/O ที่ block นาน.\n",
+  "recall_checks": [
+    {
+      "q": "นอกจาก GC stop-the-world แล้ว ยกตัวอย่างสาเหตุอื่นอย่างน้อย 2 อย่างที่ทำให้ process หยุด (pause) แบบ unbounded",
+      "expected_answer": "เช่น VM live migration/suspend, OS paging/swapping (memory swap ไป disk), laptop sleep, SIGSTOP, หรือ disk/network I/O ที่ block นาน (ตอบ 2 อย่างขึ้นไป)",
+      "type": "short_answer"
+    },
+    {
+      "q": "อันตรายหลักของ node ที่ pause นานเกิน lease TTL แล้วฟื้นกลับขึ้นมาคืออะไร?",
+      "expected_answer": "มันเชื่อว่าตัวเองยังถือ lease อยู่และเขียนข้อมูลทับ ทั้งที่ node อื่น take over ไปแล้ว → split-brain / double-write",
+      "type": "mcq",
+      "options": [
+        "lease service จะตรวจพบว่ามี lease ของ payment เดียวกันสองใบพร้อมกัน แล้ว crash หรือ reject ทั้งคู่จน worker ทุกตัวค้าง",
+        "มันเชื่อว่าตัวเองยังถือ lease อยู่และเขียนข้อมูลทับ ทั้งที่ node อื่น take over ไปแล้ว → split-brain / double-write",
+        "node ที่ฟื้นจะตรวจเจอเองว่า lease หมดอายุระหว่าง pause แล้ว restart process ของตัวเองใหม่ทั้งหมดโดยอัตโนมัติก่อนเขียน"
+      ]
+    },
+    {
+      "q": "ทำไม lease ที่มี TTL ถึงยังไม่ป้องกัน node ที่ pause แล้วฟื้น?",
+      "expected_answer": "เพราะ lease หมดอายุไม่ได้บังคับให้ paused node หยุดทำงาน มันแค่บอก node อื่นว่าปลอดภัยที่จะเข้ามาแทน",
+      "type": "mcq",
+      "options": [
+        "เพราะ lease หมดอายุไม่ได้บังคับให้ paused node หยุดทำงาน มันแค่บอก node อื่นว่าปลอดภัยที่จะเข้ามาแทน",
+        "เพราะ TTL ถูกตั้งไว้สั้นเกินไปเสมอ ทางแก้คือตั้ง TTL ให้ยาวกว่าค่า pause ที่แย่ที่สุดที่ระบบเคยเจอ",
+        "เพราะ TTL มีผลเฉพาะกับ node ที่ยังส่ง heartbeat อยู่ ส่วน node ที่ pause ระบบจะกันให้เองโดยอัตโนมัติ"
+      ]
+    },
+    {
+      "q": "เพราะกำจัด process pause ไม่ได้ การป้องกัน stale writer ที่ถูกต้องควรอยู่ที่ไหน?",
+      "expected_answer": "ที่ตัว resource ให้ปฏิเสธสิทธิ์เก่า ด้วย fencing token",
+      "type": "mcq",
+      "options": [
+        "ตั้ง timeout เผื่อให้ยาวกว่าค่า pause ที่เคยเจอ",
+        "ทำให้ GC ไม่เกิด pause เลยตั้งแต่แรก",
+        "ที่ตัว resource ให้ปฏิเสธสิทธิ์เก่า ด้วย fencing token"
+      ]
+    },
+    {
+      "q": "การป้องกันด้วย fencing token มีต้นทุน/ข้อจำกัดอะไรต่อระบบ?",
+      "expected_answer": "ทุก resource ที่ writer แตะต้องรู้จักและเช็ค token, ต้องมีแหล่งออก token ที่ monotonic และ consistent, และ resource ที่เช็ค token ไม่ได้ (เช่น third-party API ที่ไม่มี idempotency key) ก็ป้องกันด้วยวิธีนี้ไม่ได้",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 8: The Trouble with Distributed Systems (Process Pauses)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 8",
+      "why": "อ่านต้นฉบับเรื่อง process pause, unbounded delay และ fencing token"
+    },
+    {
+      "title": "How to do distributed locking",
+      "source": "martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html",
+      "why": "อ่าน fencing token เชิงลึก + การวิจารณ์ว่าทำไม lock/lease อย่างเดียวไม่พอกัน pause"
+    },
+    {
+      "title": "A Guide to the Go Garbage Collector",
+      "source": "go.dev/doc/gc-guide",
+      "why": "อ่านว่า GC ของ Go pause จากอะไร และ tune อย่างไรเพื่อ 'ลด' (ไม่ใช่กำจัด) pause"
+    }
+  ]
+}

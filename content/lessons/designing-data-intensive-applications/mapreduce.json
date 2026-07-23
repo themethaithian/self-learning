@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "mapreduce",
+  "version": 1,
+  "title_en": "MapReduce and Distributed Filesystems",
+  "est_minutes": 8,
+  "body_md": "# MapReduce and Distributed Filesystems\n\n## ทำไมถึงสำคัญ\n\nMapReduce คือโมเดลการเขียนโปรแกรมแบบ batch ที่ประมวลผลข้อมูลปริมาณมหาศาลบนเครื่องธรรมดาหลายพันเครื่องได้ โดย programmer ไม่ต้องเขียนโค้ด distributed เอง. มันเป็นต้นแบบทางความคิดที่เครื่องมือ batch รุ่นหลัง (Spark, Flink, Hive) ต่อยอดมา — เข้าใจ MapReduce แล้วจะมองออกว่าเครื่องมือรุ่นใหม่แก้จุดอ่อนอะไรของมัน. คำถามสัมภาษณ์เรื่อง big data มักเริ่มที่ \"อธิบาย MapReduce\" แล้วไล่ไปที่ trade-off.\n\n## แก่นของแนวคิด\n\nMapReduce ทำงานคู่กับ **distributed filesystem** (GFS ของ Google, หรือ HDFS ของ Hadoop) เสมอ. distributed FS แตกไฟล์ใหญ่เป็น block กระจายและ replicate ไว้หลายเครื่อง. หนึ่ง job มีสามช่วง:\n\n- **map**: framework เรียก map function ทีละ record ของ input. map ดึง (extract) ออกมาเป็นคู่ **key-value**. map เห็นทีละ record ไม่รู้จัก record อื่น จึงขนานกันได้เต็มที่ — 1 map task ต่อ 1 block ของข้อมูล.\n- **shuffle & sort**: งานที่ framework จัดการให้เอง. มัน **จัดกลุ่มและเรียงทุก value ตาม key** — ดึง value ทั้งหมดที่มี key เดียวกันจาก map task ทุกตัวมารวมไว้ที่ reduce task เดียวกัน.\n- **reduce**: framework เรียก reduce function ทีละ key พร้อม value ทั้งหมดของ key นั้น (เป็น iterator). reduce ยุบ (aggregate) ค่าเหล่านั้นเป็นผลลัพธ์ แล้วเขียนกลับลง distributed FS.\n\nจุดออกแบบสำคัญคือ **ย้าย computation ไปหาข้อมูล** ไม่ใช่ย้ายข้อมูลมาหา computation: scheduler พยายามรัน map task บนเครื่องที่ถือ block นั้นอยู่แล้ว เพื่อลด network traffic.\n\nMapReduce ยืมปรัชญามาจาก **Unix philosophy** ตรง ๆ: input เป็นไฟล์ **immutable** (job ไม่แก้ input เดิม แต่เขียนผลเป็นไฟล์ชุดใหม่เสมอ), output เป็น **deterministic** (input เดิม + โค้ดเดิม → ผลเดิม), และ job **composable** — output ของ job หนึ่งเป็น input ของอีก job เหมือนต่อ Unix pipe เพียงแต่ \"ท่อ\" คือ distributed FS.\n\nคุณสมบัติสามข้อนี้เองที่ทำให้ **fault-tolerant** ได้ถูก ๆ: ถ้าเครื่องที่รัน map หรือ reduce task ตายกลางคัน framework แค่ **re-run เฉพาะ task ที่ fail** บนเครื่องอื่น — เพราะ input ของ task นั้นเป็นไฟล์ immutable ที่ยังอยู่ครบบน FS และฟังก์ชัน deterministic รันซ้ำได้ผลเดิม ไม่ต้องเริ่ม job ใหม่ทั้งหมด. นี่คือเหตุผลที่ MapReduce รันบน cluster หมื่นเครื่องที่ \"ต้องมีเครื่องตายระหว่างงานแน่ ๆ\" ได้จริง.\n\n```mermaid\nflowchart LR\n  subgraph IN[\"Distributed FS: input log\"]\n    B1[block 1]\n    B2[block 2]\n    B3[block 3]\n  end\n  B1 --> M1[map task 1]\n  B2 --> M2[map task 2]\n  B3 --> M3[map task 3]\n  M1 --> SH[\"shuffle: sort by key\"]\n  M2 --> SH\n  M3 --> SH\n  SH --> R1[reduce: account A]\n  SH --> R2[reduce: account B]\n  R1 --> OUT[\"Distributed FS: output\"]\n  R2 --> OUT\n```\n\n## ตัวอย่าง (รวมยอด transaction ต่อบัญชี)\n\nสมมติมี transaction log ทั้งวันของระบบ payments เก็บเป็นไฟล์ยักษ์หลาย terabyte บน HDFS แต่ละบรรทัดคือ 1 รายการ: `account_id, merchant_id, amount, ...`. ต้องการยอดใช้จ่ายรวมต่อบัญชี:\n\n- **map**(1 บรรทัด) → emit `(account_id, amount)` — ดึง key = account, value = จำนวนเงิน\n- **shuffle & sort**: framework ดึงทุก `amount` ของ `account_id = A` จาก map task ทุกตัวมารวมที่ reduce เดียว\n- **reduce**(`account_id`, [amount, amount, ...]) → `sum(amounts)` เขียนออกเป็น `(account_id, total)`\n\nอยากได้ยอดต่อ **merchant** แทน? เปลี่ยน map ให้ emit `(merchant_id, amount)` โครงที่เหลือเหมือนเดิมทั้งหมด. ถ้าต้องรวม log กับตาราง master ของ merchant (คนละไฟล์) การ **join ข้อมูลสองชุดใน MapReduce** มีกลยุทธ์เฉพาะ (reduce-side / map-side join) ซึ่งเป็นเรื่องของ sibling `batch-joins` — ไม่ขอลงรายละเอียดที่นี่.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"reduce แปลว่าย่อให้เหลือค่าเดียว\"** — ไม่จำเป็น. reduce รับ value ทั้งหมดของ 1 key แล้ว emit ได้กี่ record ก็ได้ (0, 1, หรือหลายอัน). \"reduce\" หมายถึงประมวลผลต่อกลุ่ม-key ไม่ใช่บังคับให้เหลือค่าเดียว.\n- **\"shuffle/sort เป็นสิ่งที่เราเขียนเอง\"** — ไม่. การจัดกลุ่ม-เรียงตาม key เป็นงานที่ framework ทำให้ นี่คือมูลค่าหลักของ MapReduce; เราเขียนแค่ map กับ reduce.\n- **\"MapReduce = Hadoop\"** — MapReduce คือ *โมเดล* (Google เสนอปี 2004); Hadoop เป็น open-source implementation ตัวหนึ่ง และ distributed FS ก็เป็นคนละชิ้น (GFS เทียบกับ HDFS).\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\ntrade-off ที่ต้องพูดได้ในสัมภาษณ์:\n\n- **materialize ทุกขั้น**: MapReduce เขียน output ของทุก job ลง distributed FS (replicate หลาย copy) ก่อนที่ job ถัดไปจะเริ่มอ่าน. workflow จริงมักต้องต่อกันหลาย job — ทุกรอยต่อจึงจ่ายค่าเขียน + อ่าน + replicate ลงดิสก์ และ job ถัดไปต้อง \"รอทั้งขั้นก่อนหน้าเสร็จหมด\" ก่อนเริ่ม. นี่คือจุดที่ **dataflow engines** (sibling `dataflow-engines`) อย่าง Spark/Flink เข้ามาแก้ ด้วยการ pipeline intermediate state ในหน่วยความจำ ไม่ materialize ทุกขั้น.\n- **แพงสำหรับงานวนซ้ำ (iterative)**: อัลกอริทึมกราฟ / machine learning ที่วน 100 รอบ = 100 job materialize = ช้ามาก — เรื่องนี้อยู่ที่ sibling `graphs-iterative`.\n- **latency สูง เป็น batch ไม่ใช่ interactive**: มี overhead ต่อ job (จัด task, เขียน FS); ไม่เหมาะกับ query ที่ต้องการคำตอบภายในวินาที.\n- **overhead ไม่คุ้มกับงานเล็ก**: ถ้าข้อมูลพอดีในเครื่องเดียว/หน่วยความจำเดียว การประมวลผลแบบ in-memory (หรือแม้แต่ script ธรรมดา) เร็วกว่ามาก. MapReduce ออกแบบมาเพื่อ **fault tolerance บน cluster ใหญ่** — การรับมือเครื่องตายกลางงานได้แบบอัตโนมัติคือสิ่งที่คุณจ่าย overhead แลกมา ซึ่งไม่มีความหมายเมื่องานเล็กจนรันเสร็จก่อนเครื่องจะตาย.\n\nสรุป: เลือก MapReduce เมื่อข้อมูลใหญ่เกินเครื่องเดียว, งานเป็น batch ที่รับ latency สูงได้, และต้องทน fault บน cluster ใหญ่. อย่าเลือกเมื่อต้องการ interactive latency, งานวนซ้ำหลายรอบ, หรือข้อมูลเล็กพอสำหรับ in-memory processing.\n\n## มุมสัมภาษณ์\n\n- **\"อธิบาย MapReduce\"** → map ดึง key-value ต่อ record → framework shuffle/sort ตาม key → reduce aggregate ต่อ key แล้วเขียนลง distributed FS.\n- **\"เครื่องตายกลาง job แล้วยังไง?\"** → re-run เฉพาะ task ที่ fail ได้ เพราะ input เป็นไฟล์ immutable บน FS + ฟังก์ชัน deterministic; ไม่ต้อง restart ทั้ง job.\n- **\"ทำไม MapReduce ถึงถูกแทนที่ด้วย Spark?\"** → เพราะมัน materialize ระหว่างทุก job ทำให้ multi-stage / iterative ช้า; dataflow engine pipeline intermediate ในหน่วยความจำ — คำถามนี้มักเป็นสะพานไป `dataflow-engines`.\n- **\"MapReduce เกี่ยวกับ Unix philosophy อย่างไร?\"** → input immutable, output deterministic, job composable ต่อกันผ่าน FS เหมือน pipe.\n",
+  "recall_checks": [
+    {
+      "q": "ในระหว่างช่วง map กับ reduce framework ทำอะไรให้เราโดยอัตโนมัติ?",
+      "expected_answer": "จัดกลุ่มและเรียง value ทั้งหมดตาม key (shuffle & sort)",
+      "type": "mcq",
+      "options": [
+        "จัดกลุ่มและเรียง value ทั้งหมดตาม key (shuffle & sort)",
+        "รวมทุก value ให้เหลือค่าเดียวต่อไฟล์ทันที",
+        "replicate input block ไปให้ครบทุกเครื่องใน cluster"
+      ]
+    },
+    {
+      "q": "ทำไม MapReduce จึง re-run เฉพาะ task ที่ fail ได้ โดยไม่ต้องเริ่ม job ใหม่ทั้งหมด?",
+      "expected_answer": "เพราะ input ของ task เป็นไฟล์ immutable ที่ยังอยู่บน distributed FS และฟังก์ชัน deterministic รันซ้ำได้ผลลัพธ์เดิม",
+      "type": "short_answer"
+    },
+    {
+      "q": "trade-off ข้อใดที่ทำให้ workflow แบบ multi-stage บน MapReduce ช้า?",
+      "expected_answer": "มัน materialize output ของทุก job ลง distributed FS ก่อน job ถัดไปจะเริ่ม",
+      "type": "mcq",
+      "options": [
+        "map function ทำงานทีละ record จึงต้องรอ record ก่อนหน้าเสร็จก่อนเริ่มตัวถัดไปเสมอ",
+        "มัน materialize output ของทุก job ลง distributed FS ก่อน job ถัดไปจะเริ่ม",
+        "reduce ต้องโหลดข้อมูลทั้งหมดของทุก key มาไว้ในหน่วยความจำเครื่องเดียวก่อนเริ่มคำนวณ"
+      ]
+    },
+    {
+      "q": "ในตัวอย่างรวมยอด transaction ต่อบัญชี map emit อะไร และ reduce คำนวณอะไร?",
+      "expected_answer": "map emit (account_id, amount); reduce รับ amount ทั้งหมดของแต่ละ account_id แล้วคำนวณ sum เป็น (account_id, total)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคือสถานการณ์ที่ MapReduce เป็นตัวเลือกที่ 'ไม่เหมาะ'?",
+      "expected_answer": "query ที่ต้องการคำตอบภายในวินาทีบนข้อมูลที่พอดีในหน่วยความจำเดียว",
+      "type": "mcq",
+      "options": [
+        "ประมวลผล log หลาย terabyte บน cluster ใหญ่ที่เครื่องอาจตายระหว่างงาน",
+        "งาน batch ที่รับ latency สูงได้และข้อมูลใหญ่เกินเครื่องเดียว",
+        "query ที่ต้องการคำตอบภายในวินาทีบนข้อมูลที่พอดีในหน่วยความจำเดียว"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 10: Batch Processing",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 10",
+      "why": "อ่านต้นฉบับที่วาง MapReduce, distributed FS และ Unix-philosophy framing รวมถึง trade-off เรื่อง materialization"
+    },
+    {
+      "title": "MapReduce: Simplified Data Processing on Large Clusters",
+      "source": "Jeffrey Dean & Sanjay Ghemawat, OSDI 2004 (Google)",
+      "why": "อ่านเปเปอร์ต้นตำรับของโมเดล map/shuffle/reduce และกลไก re-run task ที่ fail"
+    },
+    {
+      "title": "The Google File System",
+      "source": "Sanjay Ghemawat, Howard Gobioff & Shun-Tak Leung, SOSP 2003 (Google)",
+      "why": "อ่านว่า distributed filesystem ที่ MapReduce พึ่งพา ทำ block, replication และ fault tolerance อย่างไร"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "designing-for-correctness",
+  "version": 1,
+  "title_en": "Designing for Correctness",
+  "est_minutes": 9,
+  "body_md": "# Designing for Correctness\n\n## ทำไมถึงสำคัญ\n\nระบบกระจายประกอบขึ้นจากชิ้นส่วนที่ไม่น่าเชื่อถือ — network ตัดหาย, node ล้ม, message ถูกส่งซ้ำ. ถ้าคุณหวังพึ่ง transaction ของ storage ตัวเดียวเพื่อรับประกัน correctness คุณจะพลาด เพราะ retry ที่เกิด *นอก* transaction boundary (client ยิงซ้ำเพราะ timeout ทั้งที่ server ทำสำเร็จไปแล้ว) สร้าง duplicate ที่ DB มองไม่ออกว่าเป็นตัวซ้ำ. แนวคิดหลักคือออกแบบให้ operation \"ทำซ้ำได้อย่างปลอดภัย\" ด้วย idempotence + end-to-end operation ID แทนการไล่บล็อก duplicate ทีละจุดของ pipeline.\n\n## แก่นของแนวคิด\n\n- **exactly-once เป็นภาพลวง; ที่ทำได้จริงคือ effectively-once** — operation อาจถูกส่งหรือประมวลผลหลายครั้ง แต่ *ผลลัพธ์ที่มองเห็น* เท่ากับทำครั้งเดียว. กลไก: ให้ทุก request พก unique operation ID (idempotency key) แล้ว dedupe ด้วย ID นั้น.\n- **end-to-end argument (Saltzer, Reed, Clark)**: property อย่าง \"ไม่เกิด duplicate\" หรือ \"ข้อมูลไม่เพี้ยน\" ต้องถูกบังคับที่ปลายทางระดับ application ที่เห็นความหมายของ operation — ไม่ใช่หวังว่า layer ล่างจะจัดการให้. TCP กัน packet ซ้ำได้เฉพาะภายในหนึ่ง connection; พอ connection หลุดแล้ว client เปิดใหม่ยิงซ้ำ TCP ช่วยไม่ได้. DB unique constraint กันซ้ำได้เฉพาะเมื่อทั้งสอง request ไปถึง DB เดียวกันจริง ๆ. correctness จึงต้องบังคับ end-to-end.\n- **operation ID ต้องถูกร้อยไปทุก hop** — client เป็นคนสร้าง ID, แล้วส่งต่อผ่าน API → queue → worker → storage. จุดที่ตัดสินว่า \"เคยเห็น ID นี้หรือยัง\" คือจุด dedupe ที่เหลือแค่ pass-through. ถ้าลืมร้อย ID ที่ hop ใด hop นั้นกลายเป็นรูรั่ว duplicate ทันที.\n- **บังคับ constraint แบบ async ด้วย log** — constraint ที่กระจาย เช่น \"account number ห้ามซ้ำ\" ทำได้โดย route ทุก operation ที่ *ชนกันได้* (สมัคร number เดียวกัน) เข้า log partition เดียวกัน (partition by account number). consumer ตัวเดียวอ่าน partition นั้นตามลำดับแล้วตัดสิน accept/reject — เปลี่ยน distributed constraint ให้เป็น per-partition sequential decision โดยไม่ต้องใช้ distributed transaction. ราคาคือ decision เป็น async: ผู้ใช้รู้ผลหลัง consumer ประมวลผลเสร็จ.\n- **integrity vs timeliness** — แยกสองอย่างนี้ให้ขาด. *integrity* = ข้อมูลไม่หาย ไม่เพี้ยน ไม่ขัดกันเอง (เงินไม่หาย, ยอด ledger ตรง). *timeliness* = ผู้ใช้เห็นค่าล่าสุดทันที. ระบบ log-based/async รักษา integrity ได้เต็มที่ (ทุก event ถูก apply แน่นอน ในลำดับเดียว) แต่ยอม relax timeliness (อาจ lag ไม่กี่วินาที). งานส่วนใหญ่ integrity สำคัญกว่ามาก และ perfect timeliness มักไม่จำเป็น.\n\n## ตัวอย่าง (payments): กัน double charge แบบ end-to-end\n\nผู้ใช้กด \"จ่าย 500 บาท\". client สร้าง idempotency key `K` (UUID) ผูกกับ *เจตนา* จ่ายครั้งนี้ครั้งเดียว แล้วแนบ `K` ไปกับ request. request แรก timeout ที่ network — แต่จริง ๆ server ประมวลผล charge สำเร็จไปแล้ว. client retry ด้วย `K` เดิม. server เช็ค dedup store: เคยเห็น `K` → คืนผลเดิม ไม่ charge ซ้ำ.\n\nจุดสำคัญ: `K` ถูกสร้างที่ client *ก่อน* hop แรก. ถ้าให้ server เป็นคนสร้าง ID หลังรับ request แต่ละ retry จะได้คนละ ID จึง dedupe ไม่ได้เลย — นี่คือแก่นของ end-to-end argument.\n\n```mermaid\nflowchart TD\n  C[Client sends charge with op-id K] --> R{op-id K seen before}\n  R -->|first time| P[Process charge once]\n  P --> S[(Store op-id K and result)]\n  S --> OK[Return result to client]\n  R -->|retry same K| OK\n  C -. timeout then retry same K .-> R\n```\n\nเรื่องเดียวกันใช้กับ constraint: ถ้าต้องการ \"account number ห้ามซ้ำ\" ในระบบ log-based ให้ partition log ด้วย account number แล้วส่งทุกใบสมัครของ number เดียวกันเข้า partition เดียว. consumer ตัวเดียวเห็นใบสมัครเรียงตามลำดับ อนุมัติใบแรก ปฏิเสธที่เหลือ — ได้ uniqueness โดยไม่ต้อง lock ข้าม node.\n\n## เชื่อมกับ concept อื่น\n\n- กลไก exactly-once *ภายใน* stream processing engine (checkpoint, atomic commit ของ offset + output) → sibling `exactly-once-fault-tolerance` (ch.11) ลงรายละเอียดกลไกนั้น.\n- 2PC / distributed transaction / linearizability เป็นอีกทางที่ให้ correctness แบบ synchronous แต่แลกด้วย coordination และ availability → ch.9.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"TCP หรือ DB transaction รับประกัน exactly-once ให้อยู่แล้ว\"** ผิด. ทั้งคู่กันซ้ำได้เฉพาะภายใน scope เดียว (connection เดียว / DB เดียว); retry ที่เกิดนอก scope นั้นหลุดหมด. correctness ต้องบังคับ end-to-end.\n- **\"idempotent = แค่ใส่ UNIQUE index ที่ DB\"** ผิด. UNIQUE ที่ปลายทางกันได้เฉพาะเมื่อ request ไปถึงจริง และมันคืน *error* ให้ retry ไม่ใช่คืนผลเดิม. effectively-once ต้องมี operation ID จาก client + dedup store ที่คืนผลเดิมของ ID นั้น.\n- **\"exactly-once delivery มีจริงในระบบ messaging\"** ผิด/คลาดเคลื่อน. messaging ส่วนใหญ่เป็น at-least-once; สิ่งที่เรียกว่า exactly-once จริง ๆ คือ effectively-once ที่ได้จาก processing แบบ idempotent ปลายทาง.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรใช้ และราคาที่จ่าย)\n\n- **ต้นทุนตอนออกแบบสูงและกระจายทั่ว** — ต้องร้อย operation ID ผ่านทุก hop, ออกแบบทุก operation ให้ idempotent, และมี dedup store ที่ต้องเก็บ ID พร้อม retention/GC (เก็บตลอดกาลไม่ได้). ลืมที่จุดเดียว = รูรั่ว.\n- **ยอมรับ eventual consistency** — constraint แบบ log-serialized ตอบ *async*: ผู้ใช้ไม่ได้คำตอบทันที. ถ้าธุรกิจต้อง synchronous reject (บอกผู้ใช้เดี๋ยวนั้นว่า account number ซ้ำ) UX จะแย่ — เคสแบบนี้อาจต้องใช้ synchronous uniqueness check / transaction แทน แลกด้วย coupling และ availability ที่ลดลง.\n- **integrity ได้ async แต่ timeliness ต้องแลก** — ถ้า use case ต้อง read-your-writes ทันทีทุกครั้ง async model ไม่พอ ต้องเสริม read path หรือยอมจ่ายค่า coordination.\n- **dedup store กลายเป็น stateful component ที่ต้องดูแล** — มันต้อง scale และทน fault เอง; ถ้ามันพัง คุณแค่ย้ายปัญหา correctness ไปกองไว้ที่มันแทน.\n- **สรุปการแลก**: idempotence + log-serialized constraint ให้ correctness ที่แข็งแรงโดยไม่ต้อง 2PC หรือ lock ข้าม node — แต่ย้ายภาระความซับซ้อนมาไว้ที่ application (thread ID, ออกแบบ idempotent, ยอม async). คุ้มเมื่อ integrity สำคัญและ latency ของ decision ผ่อนได้; ไม่คุ้มเมื่อ business ต้องการคำตอบ synchronous ทันที.\n\n## มุมสัมภาษณ์\n\n- **\"retry แล้วจะไม่ double charge ได้อย่างไร?\"** → idempotency key สร้างที่ client + dedup ปลายทางที่คืนผลเดิม; ไม่พึ่ง TCP/DB transaction อย่างเดียว.\n- **\"ทำไม operation ID ต้องสร้างที่ client ไม่ใช่ server?\"** → end-to-end argument: retry ต้องพก ID เดิม; ถ้า server สร้าง แต่ละ retry จะได้คนละ ID จึง dedupe ไม่ได้.\n- **\"บังคับ uniqueness ข้าม node โดยไม่ใช้ distributed transaction ยังไง?\"** → partition by key, route เข้า log partition เดียว, consumer ตัวเดียวตัดสินตามลำดับ.\n- **\"integrity กับ timeliness ต่างกันยังไง อันไหนสำคัญกว่า?\"** → integrity (ไม่หาย/ไม่เพี้ยน) สำคัญกว่าและทำ async ได้; timeliness (เห็นค่าล่าสุดทันที) มักยอม relax.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม operation ID (idempotency key) ควรถูกสร้างที่ client ไม่ใช่ที่ server?",
+      "expected_answer": "เพราะ retry ต้องพก ID เดิมมาด้วย ถ้า server เป็นคนสร้าง แต่ละ retry จะได้คนละ ID จึง dedupe ไม่ได้ (end-to-end argument)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ในระบบ async/log-based property ใดรักษาได้เต็มที่ และ property ใดมักต้องยอม relax?",
+      "expected_answer": "integrity รักษาได้; timeliness ยอม relax",
+      "type": "mcq",
+      "options": [
+        "timeliness รักษาได้; integrity ยอม relax",
+        "integrity รักษาได้; timeliness ยอม relax",
+        "รักษาได้ทั้งคู่โดยไม่ต้องออกแบบเพิ่ม"
+      ]
+    },
+    {
+      "q": "จะบังคับ 'account number ห้ามซ้ำ' ในระบบ log-based โดยไม่ใช้ distributed transaction ได้อย่างไร?",
+      "expected_answer": "route request ของ number เข้า partition เดียว ให้ consumer ตัวเดียวตัดสิน",
+      "type": "mcq",
+      "options": [
+        "route request ของ number เข้า partition เดียว ให้ consumer ตัวเดียวตัดสิน",
+        "ให้ทุก node ล็อกตาราง account พร้อมกันก่อนจะ insert ทุกครั้งที่มี request",
+        "สุ่มกระจาย request ของ number ไปทั่วทุก partition เพื่อ balance โหลด"
+      ]
+    },
+    {
+      "q": "ข้อใดคือความเข้าใจผิดเกี่ยวกับ exactly-once?",
+      "expected_answer": "TCP หรือ DB transaction รับประกัน exactly-once ให้อยู่แล้ว",
+      "type": "mcq",
+      "options": [
+        "ส่วนใหญ่ messaging เป็น at-least-once จึงต้อง dedupe เองที่ปลายทาง",
+        "effectively-once ต้องอาศัย operation ID ที่ต้องร้อยตลอดทาง",
+        "TCP หรือ DB transaction รับประกัน exactly-once ให้อยู่แล้ว"
+      ]
+    },
+    {
+      "q": "ต้นทุนหลักของการออกแบบด้วย idempotence + end-to-end operation ID มีอะไรบ้าง?",
+      "expected_answer": "ต้องร้อย operation ID ทุก hop, ออกแบบทุก operation ให้ idempotent, มี dedup store ที่ต้องเก็บ/GC ID, และยอมรับ async (integrity คงอยู่แต่ timeliness ถูก relax)",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 12: The Future of Data Systems (Aiming for Correctness)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 12",
+      "why": "อ่านต้นฉบับเรื่อง exactly-once/idempotence, enforcing constraints, และ timeliness vs integrity"
+    },
+    {
+      "title": "End-to-End Arguments in System Design",
+      "source": "J. Saltzer, D. Reed, D. Clark, ACM Transactions on Computer Systems, 1984",
+      "why": "อ่านที่มาของหลักว่า correctness ต้องบังคับที่ปลายทางระดับ application ไม่ใช่ layer ล่าง"
+    },
+    {
+      "title": "Idempotence Is Not a Medical Condition",
+      "source": "Pat Helland, ACM Queue, 2012",
+      "why": "อ่านมุมปฏิบัติเรื่องออกแบบ operation ให้ idempotent และ dedupe ด้วย operation ID"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "change-data-capture",
+  "version": 1,
+  "title_en": "Change Data Capture (CDC)",
+  "est_minutes": 8,
+  "body_md": "# Change Data Capture (CDC)\n\n## ทำไมถึงสำคัญ\n\nในระบบจริง data ก้อนเดียวมักต้องอยู่หลายที่พร้อมกัน: database หลักถือ source of truth, search index ไว้ค้นหา, cache ไว้ตอบเร็ว, data warehouse ไว้ทำ analytics. ปัญหาคือจะทำให้ทุกที่ \"ตรงกัน\" ได้อย่างไรโดยไม่พัง. Change Data Capture (CDC) ตอบคำถามนี้ด้วยการให้ database เป็น source of truth เดียว แล้ว export ทุกการเปลี่ยนแปลงออกมาเป็น ordered stream of change events ให้ระบบปลายทาง (derived systems) ตาม sync — แทนที่จะให้ application เขียนทุกที่เอง ซึ่งจะแข่งกันจน inconsistent.\n\n## แก่นของแนวคิด\n\n- CDC คือการ observe ทุก write ที่ลง database (system of record) แล้วดึงออกมาในรูป stream of change events ที่มีลำดับแน่นอน เพื่อ replicate ไปยัง derived systems (search index, cache, warehouse, read replica).\n- วิธี implement ที่ถูกต้องคืออ่าน **replication log / WAL** ของ database เอง ไม่ใช่ query polling: Debezium อ่าน MySQL binlog หรือ Postgres WAL แล้วแปลง row change (insert/update/delete) เป็น event. Log-based CDC เป็น asynchronous.\n- ทำไมไม่ใช้ **dual-writes** (application เขียนลง DB และ search index เองทั้งคู่): การเขียนสองที่ไม่มี ordering ร่วมและ fail แยกกันได้ → เกิด race, บางครั้งเขียนสำเร็จแค่ที่เดียว → สองระบบ diverge อย่างถาวรโดยไม่มีทางรู้ว่าอันไหนถูก. CDC ตัดปัญหานี้ด้วยการมี source of truth เดียว แล้วให้ทุกอย่าง derive จาก log เส้นเดียว.\n- change events วิ่งผ่าน **log-based broker** (เช่น Kafka) ที่เก็บลำดับด้วย offset ต่อ partition — กลไก offset/partition อยู่ใน sibling `partitioned-logs`.\n- **Initial snapshot**: log ไม่ได้ย้อนไปถึงจุดเริ่มต้นของ database เสมอ. consumer ใหม่ต้องได้ consistent snapshot ของ DB ที่ผูกกับตำแหน่ง log จุดหนึ่งก่อน แล้วค่อยตาม log ต่อจากตำแหน่งนั้น.\n- **Log compaction**: broker เก็บเฉพาะค่าล่าสุดต่อ key แล้วทิ้งค่าเก่า (delete = tombstone). ผลคือ consumer ใหม่สร้าง full state ขึ้นมาใหม่ได้จาก compacted log ล้วน ๆ โดยไม่ต้องทำ snapshot แยก.\n\n## ตัวอย่าง (fintech: ledger → fraud index + cache)\n\nสมมติ ledger database คือ source of truth ของทุก transaction. เราต้องการ (1) fraud search index ที่ค้นหา pattern การโอนน่าสงสัยแบบ near real-time และ (2) balance cache ที่ตอบยอดคงเหลือเร็ว ๆ.\n\nแทนที่จะให้ service เขียนลง ledger, index, และ cache เองสามที่ (dual/triple-writes ที่จะ diverge เมื่อ write ที่สองล้ม), เราตั้ง CDC:\n\n```mermaid\nflowchart LR\n  APP[App writes] --> DB[(Ledger DB)]\n  DB --> WAL[\"Replication log / WAL (binlog)\"]\n  WAL --> CDC[CDC connector Debezium]\n  CDC --> LOG[Log-based broker Kafka]\n  LOG --> IDX[Fraud search index]\n  LOG --> CACHE[Balance cache]\n  LOG --> DW[Data warehouse]\n  LOG -. \"log compaction: latest per key\" .-> NEW[New consumer rebuilds state]\n```\n\nทุกครั้งที่มี `INSERT` เข้า ledger, Debezium อ่าน binlog แปลงเป็น change event ส่งเข้า Kafka. fraud index กับ balance cache เป็น consumer ที่ apply event ตามลำดับ. ผลลัพธ์: ทั้งสองระบบ sync กับ ledger เสมอ (near real-time, eventual consistency) และเมื่อเราเพิ่ม consumer ใหม่ (เช่น warehouse) มัน replay จาก log/compacted log เพื่อ build state ตั้งแต่ต้นได้เอง โดย ledger ยังเป็น source of truth เดียวที่ไม่ต้องแก้.\n\n## เชื่อมกับ event sourcing\n\nอย่าสับสน CDC กับ **event sourcing** (sibling `event-sourcing`). ต่างกันที่ \"ระดับ\" และ \"ใครออกแบบ event\":\n\n- **CDC = database-level, extracted**: event ถูกดึงออกมาจาก low-level row mutations *หลัง* เกิดขึ้นแล้ว. event บอกว่า \"row นี้เปลี่ยนจากค่า A เป็น B\" — เป็น byproduct ของการเขียน DB. application ไม่รู้ตัวว่ามี CDC.\n- **Event sourcing = application-level, designed-in**: application ตั้งใจบันทึก immutable domain event (`MoneyTransferred`, `AccountFrozen`) เป็น source of truth ตั้งแต่แรก แล้ว derive current state จาก event เหล่านั้น. event มี domain intent ไม่ใช่แค่ row diff.\n\nพูดสั้น ๆ: CDC สกัด event จาก database ที่มีอยู่แล้ว; event sourcing ออกแบบ event เป็นความจริงหลักตั้งแต่ต้น.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"CDC ก็คือการ poll database ทุก ๆ กี่วินาทีแล้วดู row ที่เปลี่ยน\"** ผิดสำหรับ log-based CDC. หัวใจคืออ่าน replication log/WAL ซึ่งได้ทุก change ตามลำดับจริงและไม่พลาด intermediate state (polling พลาด update ที่เกิดถี่กว่ารอบ poll).\n- **\"dual-writes เขียนใน transaction เดียวก็ปลอดภัย\"** ผิด. DB กับ search index เป็นคนละระบบ ไม่มี distributed transaction ราคาถูกที่ครอบทั้งคู่ได้จริง — สุดท้ายก็ race/partial failure. CDC เลี่ยงปัญหาโดยมี source of truth เดียว.\n- **\"CDC = event sourcing\"** ผิด. คนละระดับ (ดูหัวข้อบน): CDC สกัดจาก DB, event sourcing ออกแบบที่ application.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ (trade-off)\n\nCDC เก่งเรื่องทำให้ derived systems หลากหลายชนิด sync จาก source of truth เดียวโดยไม่ต้องพึ่ง dual-writes ที่เปราะ — แต่มีราคาที่ senior ต้องตอบให้ได้:\n\n- **ผูกกับ replication log format ของ database**: binlog/WAL คือ implementation detail ที่กลายเป็น operational dependency. เวอร์ชัน DB, failover, การตั้งค่า log retention, และ schema/DDL changes ล้วนกระทบ pipeline. schema evolution ต้องจัดการฝั่ง consumer อย่างระมัดระวัง.\n- **Eventual consistency**: derived systems ตามหลัง DB เสมอ (async). ถ้า business ต้องการ read-your-writes ข้ามระบบ หรือ strong cross-system consistency แบบ synchronous — CDC ให้ไม่ได้.\n- **Operational complexity**: ต้องรัน + monitor connector (Debezium) + broker (Kafka) + จัดการ initial snapshot ของตารางใหญ่ ซึ่งแพงและใช้เวลา.\n- **เมื่อไหร่ไม่ควรใช้**: ถ้าคุม application เองและอยากได้ event ที่มี domain meaning → event sourcing สะอาดกว่า (CDC ให้แค่ row diff ไม่ใช่ intent). ถ้ามี datastore เดียวและไม่มี derived system → CDC เพิ่ม infra โดยเปล่าประโยชน์. ถ้า source DB ไม่ expose replication log ที่ใช้ได้ → log-based CDC ทำไม่ได้ (trigger-based CDC มีอยู่แต่เพิ่ม write overhead บน DB ต้นทาง).\n\n## มุมสัมภาษณ์\n\n- \"จะ keep search index ให้ sync กับ primary DB ยังไง?\" → CDC จาก DB log ไม่ใช่ dual-writes; อธิบายให้ได้ว่าทำไม dual-writes race.\n- \"CDC ต่างจาก event sourcing ยังไง?\" → ระดับ (database vs application), extracted vs designed-in, row-diff vs domain-intent.\n- \"consumer ใหม่เข้ามา จะได้ full state ยังไง?\" → initial snapshot ที่ผูกกับตำแหน่ง log, หรือ log compaction ที่เก็บค่าล่าสุดต่อ key แล้ว replay.\n- \"CDC ทำให้คุณ coupling กับอะไร?\" → replication log format ของ DB = operational dependency ที่ต้องดูแล.\n",
+  "recall_checks": [
+    {
+      "q": "log-based CDC ดักอ่านอะไรจาก database เพื่อสร้าง stream ของ change event?",
+      "expected_answer": "replication log / WAL ของ database (เช่น MySQL binlog, Postgres WAL)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม dual-writes ถึง sync สองระบบได้ไม่น่าเชื่อถือ?",
+      "expected_answer": "การเขียนสองที่แข่งกัน ไม่มี ordering ร่วม",
+      "type": "mcq",
+      "options": [
+        "เพราะ database ไม่เปิด replication log ให้อ่าน",
+        "การเขียนสองที่แข่งกัน ไม่มี ordering ร่วม",
+        "เพราะ search index เขียนช้ากว่า database"
+      ]
+    },
+    {
+      "q": "CDC ต่างจาก event sourcing ตรงไหน?",
+      "expected_answer": "CDC ดึง event จากระดับ database ที่เกิดขึ้นแล้ว",
+      "type": "mcq",
+      "options": [
+        "CDC ดึง event จากระดับ database ที่เกิดขึ้นแล้ว",
+        "CDC ออกแบบ domain event ในระดับ application เอง",
+        "CDC ต้องมี event store แยกจาก database เสมอ"
+      ]
+    },
+    {
+      "q": "log compaction ช่วยให้ consumer ใหม่ทำอะไรได้โดยไม่ต้อง snapshot แยก?",
+      "expected_answer": "rebuild full state ได้จาก log ที่เก็บค่าล่าสุดต่อ key",
+      "type": "short_answer"
+    },
+    {
+      "q": "operational dependency หลักที่ CDC เพิ่มเข้ามาคืออะไร?",
+      "expected_answer": "ผูกกับ replication log format ของ database ต้นทาง",
+      "type": "mcq",
+      "options": [
+        "ต้องเขียนลง search index พร้อมกับ database ทุกครั้ง",
+        "ต้องล็อกตาราง database ทุกครั้งที่มี write",
+        "ผูกกับ replication log format ของ database ต้นทาง"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 11: Stream Processing (Change Data Capture)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 11",
+      "why": "อ่านต้นฉบับแนวคิด CDC, log-based derivation, และ log compaction"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 11: Event Sourcing",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 11",
+      "why": "อ่านต่อเพื่อเทียบ CDC (database-level) กับ event sourcing (application-level)"
+    },
+    {
+      "title": "Debezium Documentation — Connectors",
+      "source": "debezium.io/documentation",
+      "why": "อ่านวิธี CDC จริงที่อ่าน MySQL binlog / Postgres WAL และทำ initial snapshot"
+    }
+  ]
+}

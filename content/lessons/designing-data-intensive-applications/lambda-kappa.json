@@ -1,0 +1,67 @@
+{
+  "concept_id": "lambda-kappa",
+  "version": 1,
+  "topic": "designing-data-intensive-applications",
+  "title_en": "Lambda and Kappa Architecture",
+  "est_minutes": 8,
+  "body_md": "# Lambda and Kappa Architecture\n\n## ทำไมถึงสำคัญ\n\nระบบ analytics/metrics ต้องการสองอย่างที่ขัดกัน: ผลลัพธ์ที่ \"แม่นยำและ reprocess ได้\" แบบ batch กับผลลัพธ์ที่ \"มาไวระดับวินาที\" แบบ stream. Lambda กับ Kappa คือสองแบบแผนที่ตอบว่าจะได้ทั้งสองอย่างพร้อมกันได้ยังไง — และ senior interview มักถามว่าทำไม Kappa ถึงเกิดมาเพื่อ \"ลบ\" ความซับซ้อนของ Lambda ทิ้ง.\n\n## แก่นของแนวคิด\n\n**Lambda architecture** (Nathan Marz) รันสอง layer คู่ขนานบน immutable event log เดียวกัน:\n\n- **Batch layer**: reprocess ข้อมูล *ทั้งหมด* เป็นรอบ ๆ ได้ผลแม่นยำและ recomputable แต่ช้า — view ล่าช้าเป็นชั่วโมง\n- **Speed layer (streaming)**: process เฉพาะ event ที่เพิ่งเข้ามา ได้ผล low-latency แต่ approximate (อาจนับซ้ำ/พลาด late event, ใช้ algorithm ที่ยอมคลาดเคลื่อนเพื่อความเร็ว)\n- **Query time**: merge สอง view — เอา batch view เป็นฐานความจริง แล้วเติมด้วย speed view สำหรับช่วงที่ batch ยังตามไม่ทัน\n\nจุดสำคัญคือทั้งสอง layer เป็น *pure function* จาก log เดียวกัน: batch view สร้างใหม่ได้เสมอ (logic ผิดก็ recompute) ส่วน speed view เป็นแค่ของชั่วคราวรอ batch มาทับ. (รายละเอียด engine: batch → ch.10 batch-processing, stream → ch.11 stream-processing.)\n\n**Kappa architecture** (Jay Kreps) ตัด batch layer ทิ้ง ใช้ **stream-processing pipeline ชุดเดียว** อ่านจาก log ที่ retain ไว้. \"ความแม่นแบบ batch\" และ backfill ได้มาจากการ **replay log** ทั้งหมดผ่านโค้ด stream เดิม — reprocessing กลายเป็นแค่กรณีพิเศษของ streaming (อ่าน log ตั้งแต่ offset 0 แทนที่จะอ่านแต่ของใหม่). มี codebase เดียว ไม่ต้อง reconcile สองระบบ.\n\nแนวคิดว่า \"ทุก view คือ derived data จาก log\" เป็นเรื่องกว้างกว่านั้น อยู่ที่ sibling `data-integration`.\n\n```mermaid\nflowchart TD\n  subgraph Lambda\n    L0[Immutable event log] --> LB[Batch layer]\n    L0 --> LS[Speed layer]\n    LB --> LBV[\"Batch view: accurate\"]\n    LS --> LSV[\"Realtime view: approximate\"]\n    LBV --> LQ[Merge at query]\n    LSV --> LQ\n  end\n  subgraph Kappa\n    K0[Retained log] --> KS[Stream processor]\n    KS --> KV[Serving view]\n    K0 -. replay history .-> KS\n  end\n```\n\n## ตัวอย่าง (fraud metrics)\n\nสมมติต้องโชว์ dashboard \"จำนวน transaction ที่โดน flag ว่าเสี่ยง fraud ต่อ merchant ใน 30 วัน\":\n\n**แบบ Lambda:**\n\n- Batch layer: job ตอนกลางคืน scan ledger ทั้งเดือน คำนวณ count ที่ถูกต้องเป๊ะ — แต่ข้อมูลหยุดที่ \"เมื่อคืน\"\n- Speed layer: อ่าน transaction stream สด นับ approximate ของ \"วันนี้\" ด้วย running counter (คลาดได้ถ้ามี event มาช้า)\n- Dashboard = batch view (จนถึงเมื่อคืน) + speed view (ของวันนี้)\n\nปัญหา: logic การนิยาม \"เสี่ยง fraud\" ต้องเขียน **สองรอบ** — ครั้งหนึ่งใน batch framework, อีกครั้งใน stream framework — และถ้าตัวเลขสองฝั่งไม่ตรงกัน ต้องไล่ debug ว่า engine ไหนผิด.\n\n**แบบ Kappa:**\n\n- เก็บ transaction ทั้งหมดใน retained log (เช่น Kafka topic ที่ retention ยาวพอ)\n- Job เดียวคำนวณ fraud count แบบ incremental\n- วันหนึ่งแก้นิยาม fraud rule → แก้โค้ดที่เดียว, reset offset ไป 0, replay log ทั้งหมดผ่านโค้ดใหม่ ได้ view ที่ถูกต้องทั้งชุด แล้ว swap ไปใช้ view ใหม่\n\nlogic มีชุดเดียว ไม่มีการ reconcile.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Kappa = เลิกทำ batch/reprocessing ไปเลย\"** ผิด. Kappa ยัง reprocess/backfill เหมือนเดิม แต่ทำผ่าน stream engine เดิมด้วยการ replay log ไม่ใช่มี pipeline แยกอีกชุด — batch กลายเป็น \"bounded stream\".\n- **\"Batch layer กับ speed layer ของ Lambda ใช้โค้ดเดียวกัน\"** ผิด — ตรงกันข้ามเลย: มันคือสอง implementation คนละ framework นี่แหละคือต้นตอความซับซ้อนของ Lambda.\n- **\"Speed layer ให้คำตอบสุดท้ายที่เชื่อถือได้\"** ผิด. Speed view เป็น approximate ชั่วคราว ความจริงสุดท้ายมาจาก batch view ที่ recompute ได้.\n\n## ขีดจำกัด / trade-off\n\n**Lambda** ซื้อ accuracy + low latency ด้วยราคาของ **dual-code complexity**: business logic เดียวกันถูก maintain สองที่ (batch + stream), ทุกการเปลี่ยน rule ต้องแก้สองรอบให้ตรงกัน, และต้อง merge/reconcile ผลสองฝั่งตอน query. bug ที่เจอบ่อยคือผลสองฝั่งเพี้ยนกันเล็กน้อยแล้วหาไม่เจอว่าใครถูก.\n\n**Kappa** ง่ายกว่า (codebase เดียว) แต่ตั้งอยู่บนเงื่อนไขที่ไม่ฟรี:\n\n- ต้องมี **log retention** นานพอที่จะ replay จากจุดที่ต้องการ — retain นาน = ต้นทุน storage, และ backfill ได้ไม่ไกลกว่าที่เก็บไว้\n- ต้องมี **stream engine ที่ reprocess history จำนวนมากได้** ด้วย throughput ที่ยอมรับได้; replay log ขนาดใหญ่มากอาจช้า/แพง และมักต้องรัน job เก่ากับใหม่คู่กันชั่วคราวระหว่าง reprocess\n\n**เมื่อไหร่ไม่ควรใช้:** ถ้า batch กับ stream logic *ต่างกันจริง ๆ* โดยธรรมชาติ (เช่น ML training รอบใหญ่ vs serving) การบังคับให้เป็น codebase เดียวแบบ Kappa ก็ฝืน; ถ้าไม่ต้องการ low-latency เลย batch ล้วน ๆ ง่ายกว่าทั้งคู่; ถ้าปริมาณ history มหาศาลจน retention แพงเกิน สมมติฐาน replay ของ Kappa ก็พัง.\n\n## มุมสัมภาษณ์\n\n- \"Lambda กับ Kappa ต่างกันยังไง ทำไม Kappa ถึงเกิดมาแก้ Lambda?\" → Kappa ลบ batch layer เพื่อกำจัด dual-code complexity ของ Lambda\n- \"ถ้าเจอ bug ใน aggregation logic ระบบ Kappa แก้ให้ view ถูกทั้งหมดยังไง?\" → แก้โค้ดที่เดียว, replay log ตั้งแต่ต้น, swap view — คำถามนี้มักต่อไปเรื่อง event-sourcing / deriving views from a log\n- \"Kappa ต้องการอะไรจาก infra?\" → replayable retained log + stream engine ที่ reprocess history ได้\n- \"ทำไมบางองค์กรยังใช้ Lambda อยู่?\" → เมื่อ stream engine ยัง reprocess ปริมาณมากได้ไม่ดีพอ หรือ batch/stream logic ต่างกันโดยธรรมชาติ\n",
+  "recall_checks": [
+    {
+      "q": "Lambda architecture มีสอง layer อะไรบ้าง และรวมผลลัพธ์ตอนไหน?",
+      "expected_answer": "batch layer (แม่นแต่ช้า) กับ speed/streaming layer (เร็วแต่ approximate) แล้ว merge สองผลลัพธ์ตอน query time",
+      "type": "short_answer"
+    },
+    {
+      "q": "จุดอ่อนหลักของ Lambda architecture คืออะไร?",
+      "expected_answer": "ต้องดูแล logic เดียวกันสองชุดขนานกัน",
+      "type": "mcq",
+      "options": [
+        "speed layer คำนวณ approximate ไม่ได้เลย",
+        "ต้องดูแล logic เดียวกันสองชุดขนานกัน",
+        "เก็บ log ย้อนหลังไว้ replay ไม่ได้"
+      ]
+    },
+    {
+      "q": "Kappa architecture ทำ backfill / ความแม่นแบบ batch ได้อย่างไร?",
+      "expected_answer": "replay log ทั้งหมดผ่าน stream code เดิม",
+      "type": "mcq",
+      "options": [
+        "replay log ทั้งหมดผ่าน stream code เดิม",
+        "รัน batch job แยกอีกชุดขนานเหมือน Lambda",
+        "คัดลอกผลจาก speed layer มาแก้มือ"
+      ]
+    },
+    {
+      "q": "Kappa architecture ต้องการอะไรจาก infrastructure ถึงจะแทน batch layer ได้?",
+      "expected_answer": "log ที่ retain นานพอให้ replay ย้อนหลัง + stream engine ที่ reprocess history จำนวนมากได้ด้วย throughput ที่พอ",
+      "type": "short_answer"
+    },
+    {
+      "q": "เมื่อไหร่ที่ Kappa เริ่มมีปัญหาเรื่องต้นทุน?",
+      "expected_answer": "เมื่อต้อง replay history ขนาดใหญ่มาก",
+      "type": "mcq",
+      "options": [
+        "เมื่อ business logic ทั้งระบบง่ายมาก",
+        "เมื่อ speed layer แม่นกว่า batch layer",
+        "เมื่อต้อง replay history ขนาดใหญ่มาก"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 12: The Future of Data Systems",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 12",
+      "why": "อ่านต้นฉบับที่วาง Lambda/Kappa ในบริบท deriving views จาก log และ reprocessing"
+    },
+    {
+      "title": "Questioning the Lambda Architecture",
+      "source": "Jay Kreps, O'Reilly Radar (2014)",
+      "why": "อ่านข้อโต้แย้งต้นทางว่าทำไม dual-code ของ Lambda ควรถูกแทนด้วย stream เดียว (Kappa)"
+    },
+    {
+      "title": "Big Data: Principles and best practices of scalable realtime data systems",
+      "source": "Nathan Marz & James Warren (Manning, 2015)",
+      "why": "อ่านนิยาม Lambda architecture จากผู้ริเริ่ม: batch layer + speed layer + serving layer"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "concept_id": "partitioned-logs",
+  "version": 1,
+  "topic": "designing-data-intensive-applications",
+  "title_en": "Partitioned Logs",
+  "est_minutes": 8,
+  "body_md": "# Partitioned Logs\n\n## ทำไมถึงสำคัญ\n\nMessage broker แบบดั้งเดิม (JMS/AMQP) ลบ message ทิ้งทันทีที่ consumer ack ทำให้ event ที่ประมวลผลไปแล้วหายถาวร — ถ้าอยากเพิ่มระบบใหม่ที่ต้องอ่าน event เก่า หรือ replay หลังแก้ bug ก็ทำไม่ได้. log-based message broker (Kafka, Kinesis, Pulsar) พลิกโมเดลนี้: broker คือ append-only log บน disk ที่ \"เก็บ event ไว้\" ไม่ลบตอน consume. แนวคิดเดียวนี้คือรากฐานของ stream processing, event sourcing, และ Kappa architecture.\n\n## แก่นของแนวคิด\n\n- **Log = append-only sequence บน disk.** producer เขียน event ต่อท้าย log อย่างเดียว (sequential write เร็วมาก). broker ไม่มีแนวคิด \"ลบตอนอ่าน\" — message อยู่จนกว่าจะพ้น retention policy (ตามเวลา เช่น 7 วัน หรือตามขนาด disk).\n- **Offset.** ทุก message ใน partition ได้ offset เป็นเลขจำนวนเต็มที่เพิ่มขึ้นเรื่อย ๆ (monotonically increasing) ไม่ซ้ำภายใน partition นั้น. offset คือตำแหน่งของ message ใน log.\n- **Consumer จำ position เอง.** ต่างจาก transient broker ที่ broker เป็นคนจำว่าใครอ่านถึงไหน — ที่นี่ consumer แค่เก็บ \"committed offset\" ของตัวเองว่าอ่านถึงไหนแล้ว. broker เป็น dumb storage; อยากอ่านซ้ำก็แค่ตั้ง offset ย้อนกลับ.\n- **Partitioned.** topic หนึ่งถูกแบ่งเป็นหลาย partition เพื่อ scale throughput (partitioning พื้นฐาน — key range vs hash — อยู่ใน ch.6). **ordering รับประกันเฉพาะภายใน partition เดียว** ไม่ใช่ข้าม partition; ถ้าต้องการลำดับของ event ที่เกี่ยวกัน ต้องส่งเข้า partition เดียวกัน (มัก key ด้วย entity id เช่น account_id).\n- **Consumer group.** partition ถูก map ให้ consumer ในกลุ่มแบบ 1 partition ต่อ 1 consumer ในกลุ่มนั้น → parallelism สูงสุดของกลุ่ม = จำนวน partition. หลาย consumer group อ่าน log เดียวกันได้อิสระ ต่างคนต่างถือ offset ของตัวเอง (ledger อ่านช้า ไม่กระทบ fraud ที่อ่านเร็ว).\n- ความต่างจาก transient broker (JMS/AMQP) เก็บไว้ที่ sibling `event-streams-and-brokers`; ที่นี่โฟกัสว่า \"log ที่เก็บถาวร + offset\" ให้อะไร.\n\n## ตัวอย่าง (payment / ledger event log)\n\npayment-service publish event `PaymentCaptured` เข้า topic `payments` ที่ key ด้วย `account_id` → event ของ account เดียวกันตกลง partition เดียวกันเสมอ จึงรักษาลำดับ authorize → capture ของ account นั้นไว้ได้.\n\n- `ledger-service` (consumer group A) อ่านทีละ event มา post journal entry — ตอนนี้ committed offset = 4\n- `fraud-service` (consumer group B) อ่าน log เดียวกันอิสระ — อยู่ที่ offset 2\n- ทีม analytics เพิ่งต่อ consumer group ใหม่วันนี้ ตั้ง offset = 0 เพื่อ **replay** ประวัติทั้งหมดสร้าง report ย้อนหลัง — ทำได้เพราะ event ยังอยู่ใน log\n\nถ้าเจอ bug ใน ledger ที่คำนวณ fee ผิดตั้งแต่วันจันทร์: แก้โค้ด แล้วตั้ง offset กลับไปจุดก่อน bug แล้ว replay — สร้าง state ที่ถูกต้องขึ้นใหม่ได้ โดย producer ไม่ต้องส่งอะไรซ้ำ. (การใช้ log เป็น source of truth เต็มตัวคือ event sourcing — sibling ถัดไป; การดัก change ของ database มาเป็น log คือ CDC — อีก sibling.)\n\n```mermaid\nflowchart LR\n  P[\"payment-service (producer)\"] -->|\"append at tail\"| E4\n  subgraph PART[\"Partition 0: append-only, key=account_id\"]\n    E0[\"offset 0\"] --> E1[\"offset 1\"] --> E2[\"offset 2\"] --> E3[\"offset 3\"] --> E4[\"offset 4\"]\n  end\n  E4 -->|\"ledger at offset 4\"| LG[\"ledger-service (group A)\"]\n  E2 -->|\"fraud at offset 2\"| FR[\"fraud-service (group B)\"]\n  E0 -->|\"replay from 0\"| AN[\"analytics (new group)\"]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"log-based broker รับประกัน total ordering ของ event ทั้ง topic\"** ผิด. รับประกันเฉพาะ **ภายใน partition**; event ต่าง partition ไม่มีลำดับสัมพันธ์กัน. อยากได้ลำดับต่อ entity ต้อง key ให้ลง partition เดียวกัน.\n- **\"consume แล้ว message หายไปเหมือน queue\"** ผิด. consume แค่ขยับ offset ของ consumer; message ยังอยู่จน retention หมดอายุ. consumer อื่นและการ replay ยังอ่านได้.\n- **\"เพิ่ม consumer ในกลุ่มเยอะ ๆ แล้วจะเร็วขึ้นเรื่อย ๆ\"** ผิด. consumer ที่เกินจำนวน partition จะ idle เพราะ 1 partition จ่ายให้ consumer ได้ทีละตัวในกลุ่ม — parallelism เพดานคือจำนวน partition.\n\n## ขีดจำกัด / trade-off\n\nการเก็บ log ถาวรไม่ฟรี และ log ก็ไม่ใช่คำตอบของทุก workload:\n\n- **ต้นทุน storage.** เก็บทุก event ตาม retention กินพื้นที่มากกว่า queue แบบลบทิ้ง — จ่ายค่า disk แลกกับความสามารถ replay.\n- **Head-of-line blocking ภายใน partition.** message ถูกอ่านตามลำดับ offset; ถ้า event หนึ่งประมวลผลช้าหรือ error ค้าง จะ **ข้ามไปทำตัวถัดไปใน partition เดียวกันได้ยาก** — ทั้ง partition ติดตามหลังมันไป. ต่างจาก task queue ที่หยิบ message ไหนก่อนก็ได้ และโยน message มีปัญหาเข้า dead-letter แล้วเดินหน้าต่อ.\n- **เสีย per-message ack / redelivery.** log ไม่มี semantics \"ack ทีละ message แล้ว broker redeliver อันที่ fail\" แบบ AMQP; มีแค่ offset เดียวต่อ partition. งานแบบ RPC/task queue ที่แต่ละ job อิสระ ต้อง retry รายตัว และ fan-out ให้ worker คนไหนว่างก็หยิบได้ → **task queue เหมาะกว่า log**.\n- **สรุปการเลือก:** log เหมาะกับ **event stream** (ลำดับสำคัญ, ต้อง replay, consumer หลายระบบ, throughput สูง); transient/task queue เหมาะกับ **งานแบบ RPC** ที่แต่ละ message เป็นงานอิสระ ต้อง ack/retry/skip รายตัว. งานของ senior คือเลือกถูกฝั่ง ไม่ใช่ยัด Kafka ให้ทุกอย่าง.\n\n## มุมสัมภาษณ์\n\n- \"Kafka ต่างจาก RabbitMQ ยังไง?\" → log ที่ retain + offset ที่ consumer ถือเอง + replay ได้ + ordering ต่อ partition, เทียบกับ transient broker ที่ลบตอน ack และ redeliver รายตัว.\n- \"ordering ใน Kafka รับประกันแค่ไหน?\" → ภายใน partition เท่านั้น; มักตามด้วย \"แล้วจะรับประกันลำดับต่อ user ยังไง\" → key ด้วย user id.\n- \"จะ scale consumer ยังไง / ทำไมเพิ่ม consumer แล้วไม่เร็วขึ้น?\" → parallelism เพดาน = จำนวน partition.\n- \"อยากเพิ่มระบบใหม่ให้ประมวลผล event ย้อนหลังทั้งหมด ทำยังไง?\" → consumer group ใหม่ตั้ง offset = 0 แล้ว replay (สะพานไป CDC / event sourcing / Kappa).\n- คำถามดักคือ trade-off: \"เมื่อไหร่ *ไม่* ควรใช้ log-based broker?\" → งาน task queue ที่ต้อง ack/skip รายตัว.\n",
+  "recall_checks": [
+    {
+      "q": "consumer ของ log-based broker จำว่าตัวเองอ่านถึงไหนด้วยอะไร และ broker ลบ message ตอน consume หรือไม่?",
+      "expected_answer": "จำด้วย committed offset ของตัวเอง; broker ไม่ลบตอน consume — message อยู่จนพ้น retention policy",
+      "type": "short_answer"
+    },
+    {
+      "q": "log-based broker รับประกัน ordering ของ message ในขอบเขตไหน?",
+      "expected_answer": "ภายใน partition เดียวเท่านั้น",
+      "type": "mcq",
+      "options": [
+        "ข้ามทุก partition ของ topic นั้น",
+        "ภายใน partition เดียวเท่านั้น",
+        "ทุก consumer ที่อ่าน topic นั้น"
+      ]
+    },
+    {
+      "q": "parallelism สูงสุดของ consumer group หนึ่งถูกจำกัดด้วยอะไร?",
+      "expected_answer": "จำนวน partition ของ topic",
+      "type": "mcq",
+      "options": [
+        "จำนวน consumer group ทั้งหมด",
+        "จำนวน message ใน log ปัจจุบัน",
+        "จำนวน partition ของ topic"
+      ]
+    },
+    {
+      "q": "ทำไม log-based broker จึงเพิ่ม consumer group ใหม่ให้อ่าน event ย้อนหลังทั้งหมดได้ ต่างจาก transient broker?",
+      "expected_answer": "เพราะ message ถูกเก็บถาวรตาม retention (ไม่ลบตอน consume) consumer ใหม่จึงตั้ง offset = 0 แล้ว replay ทั้ง log ได้",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อจำกัดสำคัญของ log-based broker เทียบกับ task queue แบบ JMS/AMQP คืออะไร?",
+      "expected_answer": "ข้าม message ช้าทีละอันได้ยาก",
+      "type": "mcq",
+      "options": [
+        "ข้าม message ช้าทีละอันได้ยาก",
+        "ไม่รองรับหลาย consumer group",
+        "order ภายใน partition ไม่คงที่"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 11: Stream Processing (Partitioned Logs)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 11",
+      "why": "อ่านต้นฉบับเรื่อง log-based message broker, offset, retention และการเทียบกับ AMQP/JMS"
+    },
+    {
+      "title": "The Log: What every software engineer should know about real-time data's unifying abstraction",
+      "source": "Jay Kreps, engineering.linkedin.com (2013)",
+      "why": "อ่านว่าทำไม append-only log เป็น abstraction กลางที่รวม messaging, replication และ stream processing"
+    },
+    {
+      "title": "Kafka: a Distributed Messaging System for Log Processing",
+      "source": "Kreps, Narkhede, Rao — NetDB 2011 (Kafka paper)",
+      "why": "อ่าน design ดั้งเดิมของ partitioned log, consumer ที่ถือ offset เอง และเป้าหมาย throughput สูง"
+    }
+  ]
+}

@@ -54,5 +54,12 @@ lesson-writer → lesson-verifier ทีละ concept. ทุก lesson มี 
   Evolution. verifier PASS ครบ 25 (แก้ระหว่างทาง: partitioning-secondary-indexes ตัด
   graded DynamoDB claim, json-xml-binary แก้เลข IEEE-754 ที่คำนวณผิด, + warn ย่อยหลายจุด).
   → **branch `content/ddia-interview-critical`, PR รอ merge.**
-- ที่เหลือ 5 บท (ch.1 Reliable/Scalable, ch.8 Trouble w/ Distributed Systems, ch.10 Batch,
-  ch.11 Stream, ch.12 Future) ตาม tree ใน `content/curriculum/ddia.json`.
+- **batch 4 — remaining 5 บท (26 lessons):** ch.1 Reliable/Scalable/Maintainable,
+  ch.8 Trouble w/ Distributed Systems, ch.10 Batch Processing, ch.11 Stream Processing (6),
+  ch.12 Future of Data Systems. verifier PASS ครบ 26 (แก้ระหว่างทาง: มี FAIL หลายจุด —
+  missing version, Kreps misattribution, และ **"length tell" เชิงระบบ** (mcq เฉลยยาวกว่า
+  distractor เดาได้) ที่ verifier จับทุกไฟล์ → แก้หมด). → **branch `content/ddia-remaining`, PR รอ merge.**
+
+**→ DDIA track lessons ครบ 12/12 บท / 61 บทเรียน.** Study Reader (HTML, diagram อ่านง่าย/เลื่อนได้,
+recall เฉลยพับ, ครบ 61 บท): https://claude.ai/code/artifact/b67a1cad-4b9e-4b2e-9cf1-755128e1ebb5
+(rebuild: `scratchpad/build_reader.py` → publish ทับ URL เดิม)

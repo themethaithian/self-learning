@@ -1,0 +1,67 @@
+{
+  "concept_id": "batch-joins",
+  "version": 1,
+  "topic": "designing-data-intensive-applications",
+  "title_en": "Joins in Batch Processing",
+  "est_minutes": 8,
+  "body_md": "# Joins in Batch Processing\n\n## ทำไมถึงสำคัญ\n\nใน batch job งานส่วนใหญ่คือการ join dataset ขนาดใหญ่สองก้อนเข้าด้วยกัน — เช่นเอา transaction log ทั้งหมดไปแนบข้อมูล account/customer. หัวใจคือ **ห้าม** query DB ทีละ record เพราะ network round-trip ต่อ record นับพันล้านครั้งจะทำ throughput พังและผลไม่ deterministic. แทนที่จะดึงข้อมูลมาทีละแถว batch job จะ \"นำสำเนา dataset ทั้งสองเข้ามาในงาน\" แล้ว join ด้วย sequential I/O — และเทคนิคที่เลือกขึ้นกับ *ขนาดของแต่ละฝั่ง*.\n\n## แก่นของแนวคิด\n\nโมเดล MapReduce/dataflow ถือว่ารู้แล้ว (ดู sibling concept `mapreduce`) — ตรงนี้เราสนใจเฉพาะ *กลยุทธ์ join*.\n\n- **Sort-merge join (reducer-side join):** map ทั้งสอง input โดย emit `(join key, row)` เหมือนกัน. framework sort + group ทุก record ตาม join key ให้อัตโนมัติ (นี่คือ shuffle). reducer จึงเห็น record ของทั้งสองฝั่งที่มี key เดียวกัน *มาติดกัน* แล้ว merge ออกเป็นผลลัพธ์. ข้อดี: รองรับ dataset ขนาดใดก็ได้เพราะไม่ต้องเก็บฝั่งไหนไว้ใน memory ทั้งก้อน.\n\n- **Broadcast hash join (map-side join):** ใช้ได้เมื่อฝั่งหนึ่ง *เล็กพอใส่ memory ได้*. โหลดฝั่งเล็กทั้งก้อนเป็น hash table เข้าไปใน memory ของ **ทุก mapper**, แล้ว stream ฝั่งใหญ่ผ่าน mapper ทีละ record — แต่ละ record lookup key ใน hash table แล้ว join ทันทีบน map side. ผลคือ **ฝั่งใหญ่ไม่ต้อง shuffle เลย** ประหยัด network มหาศาล.\n\n- **Partitioned hash join (bucketed map-side join):** ใช้ได้เมื่อ *ทั้งสองฝั่ง* ถูก partition ด้วย join key เดียวกันและจำนวน partition เท่ากันอยู่แล้ว. mapper ตัวที่ i อ่านเฉพาะ partition i ของทั้งสองฝั่ง — key ที่ตรงกันย่อมอยู่ partition เดียวกันแน่นอน — แล้ว build hash table จาก partition ฝั่งเล็กกว่า join กันในเครื่องต่อ partition. ไม่ต้อง shuffle ทั้งก้อน แต่ต้องจ่ายค่า pre-partition มาก่อน.\n\n```mermaid\nflowchart LR\n  subgraph SM[\"Sort-merge join (reducer-side)\"]\n    direction TB\n    T1[\"Transactions (huge)\"] --> M1[\"Map: emit (account_id, row)\"]\n    A1[\"Accounts (huge)\"] --> M2[\"Map: emit (account_id, row)\"]\n    M1 --> SH{{\"Shuffle + sort by account_id\"}}\n    M2 --> SH\n    SH --> R1[\"Reducer: sides adjacent, merge\"]\n  end\n  subgraph BH[\"Broadcast hash join (map-side)\"]\n    direction TB\n    A2[\"Accounts (small, fits memory)\"] --> H[\"Load as hash table in every mapper\"]\n    T2[\"Transactions (huge)\"] --> MM[\"Map: lookup account_id, join\"]\n    H -.-> MM\n    MM --> O[\"Output: no big-side shuffle\"]\n  end\n```\n\n## ตัวอย่าง (fintech: transactions × accounts)\n\nสมมติมี `transactions` หลายพันล้านแถว key ด้วย `account_id` และตาราง dimension `accounts` ที่มี tier/region ของแต่ละบัญชี. เราอยาก enrich ทุก transaction ด้วยข้อมูล account:\n\n- **ถ้า `accounts` เล็ก** (เช่น 500 MB ใส่ RAM ได้) → **broadcast hash join**: โหลด `accounts` เป็น hash table เข้า mapper ทุกตัว, stream `transactions` ผ่านแล้ว lookup `account_id` join ทันที. transactions ก้อนใหญ่ไม่ต้องวิ่งข้าม network เลย — เร็วที่สุด.\n- **ถ้า `accounts` ก็ใหญ่มากด้วย** (เช่น join กับ `transactions` อีกงวดหนึ่งที่ระดับ TB) → **sort-merge join**: map ทั้งสองด้วย `account_id`, ให้ framework sort, reducer merge สองฝั่งที่ key ตรงกัน.\n- **ถ้าทั้งสองถูก bucket ด้วย `account_id` จำนวน bucket เท่ากันไว้แล้ว** → **partitioned hash join**: join แยกต่อ bucket โดยไม่ shuffle ทั้งก้อน.\n\n**Hot key / skew:** ในโลกจริงบางบัญชีคือ merchant settlement account ที่มี transaction เป็นพันล้านแถว ขณะที่บัญชีทั่วไปมีไม่กี่แถว. reducer ที่รับ key ยอดฮิตนั้นจะกลายเป็น straggler ทำงานนานกว่าเพื่อนหลายเท่าและคาทั้ง job. เทคนิคแก้คือ *skewed/sharded join* — ตรวจจับ hot key, กระจาย record ของ hot key ไปหลาย reducer แล้ว replicate ฝั่งเล็กตามไปให้ครบ. รากของปัญหา (การกระจายโหลดไม่สม่ำเสมอตาม key) เป็นเรื่องเดียวกับ `hot-spots-skew` ในบท partitioning — ที่นี่แค่โผล่มาในบริบท join.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"broadcast hash join เร็วกว่าเสมอ เลยควรใช้ตลอด\"** ผิด. มันใช้ได้ *ก็ต่อเมื่อ* ฝั่งเล็กใส่ memory ของแต่ละ mapper ได้. ถ้าฝั่งเล็กโตขึ้นจนเกิน RAM มันจะ spill หรือ OOM — โมเดลพังทันที ไม่ใช่แค่ช้าลง.\n- **\"join ใน batch ก็เหมือน query DB ทีละแถวแต่ทำเป็นชุด\"** ผิด. batch join *หลีกเลี่ยง* remote lookup ต่อ record; มันนำสำเนา dataset เข้ามาในงานแล้วใช้ sort/hash + sequential scan — คนละ performance profile กับ random access ข้าม network.\n- **\"sort-merge join ช้าเพราะ merge\"** ผิดจุด. ต้นทุนหลักไม่ใช่ merge (นั่นคือ linear scan) แต่คือ **shuffle + sort ของทั้งสองฝั่ง** ที่วิ่งข้าม network.\n\n## ขีดจำกัด / trade-off (senior ถามตรงนี้)\n\n- **Broadcast hash join:** เร็วเพราะไม่ shuffle ฝั่งใหญ่ **แต่** บังคับให้ฝั่งเล็กต้อง fit memory ของ *ทุก* mapper; ต้นทุนคือ replicate ฝั่งเล็กไปทุก node และเพดานคือขนาด RAM — พอ dimension โตข้ามเพดานก็ใช้ไม่ได้อีก.\n- **Sort-merge join:** รองรับขนาดใดก็ได้ **แต่** จ่ายค่า shuffle + sort ของ *ทั้งสองฝั่ง* เต็ม ๆ ข้าม network — แพงที่สุดเมื่อข้อมูลใหญ่ทั้งคู่ และกินเวลา sort/disk I/O.\n- **Partitioned hash join:** ถูกและไม่ shuffle ทั้งก้อน **แต่** มีเงื่อนไขตายตัวว่าทั้งสองฝั่งต้อง pre-partition ด้วย key เดียวกัน + จำนวน partition เท่ากันมาก่อน; ถ้ายังไม่ได้ partition ก็ต้องจ่ายค่า partition ก่อน กลบข้อได้เปรียบ.\n- **Hot key ครอบทุกวิธี:** ต่อให้เลือกกลยุทธ์ถูก ถ้าไม่กี่ key กินสัดส่วน record มหาศาล reducer/partition เดียวก็ยังเป็นคอขวด (straggler) — และการแก้ skew ก็เพิ่มความซับซ้อนของ job เอง.\n\nสรุปหลักการเลือก: ดู *ขนาดของฝั่งที่เล็กกว่า* ก่อน — เล็กพอใส่ memory → broadcast; ทั้งคู่ใหญ่ → sort-merge; pre-partitioned ตรงกันอยู่แล้ว → partitioned hash join.\n\n## มุมสัมภาษณ์\n\n- \"มี transactions 10 TB ต้อง join กับตาราง accounts 200 MB — เลือก join แบบไหน?\" → broadcast hash join (ฝั่งเล็กใส่ memory ได้ ฝั่งใหญ่ไม่ต้อง shuffle).\n- \"ถ้าทั้งสองฝั่งระดับ TB เท่ากัน?\" → sort-merge (reducer-side) เพราะไม่มีฝั่งไหนใส่ memory ได้.\n- \"reducer ตัวเดียวรันนานกว่าเพื่อน 10 เท่า เพราะอะไรและแก้ยังไง?\" → hot key/skew; ใช้ skewed/sharded join กระจาย hot key + replicate ฝั่งเล็ก (โยงไป `hot-spots-skew`).\n- \"ทำไมไม่ query accounts DB ทีละ transaction ไปเลย?\" → network round-trip ต่อ record จำนวนมหาศาลทำ throughput พังและผลไม่ deterministic; batch job ต้องนำข้อมูลเข้ามา join ด้วย sequential I/O.\n",
+  "recall_checks": [
+    {
+      "q": "Broadcast hash join ใช้ได้เมื่อไหร่?",
+      "expected_answer": "เมื่อ dataset ฝั่งหนึ่งเล็กพอจะโหลดเป็น hash table เข้า memory ของทุก mapper ได้",
+      "type": "mcq",
+      "options": [
+        "เมื่อทั้งสอง dataset ถูก partition ด้วย key เดียวกันจำนวน partition เท่ากันมาก่อน",
+        "เมื่อทั้งสอง dataset ใหญ่เกินกว่าจะใส่ memory ของ node เดียวได้ทั้งคู่",
+        "เมื่อ dataset ฝั่งหนึ่งเล็กพอจะโหลดเป็น hash table เข้า memory ของทุก mapper ได้"
+      ]
+    },
+    {
+      "q": "อธิบายว่า sort-merge join (reducer-side) ทำงานยังไงตั้งแต่ map ถึง reducer",
+      "expected_answer": "map ทั้งสอง input โดย emit (join key, row) เหมือนกัน, framework sort + group ทุก record ตาม join key (shuffle), reducer จึงเห็นทั้งสองฝั่งที่ key ตรงกันมาติดกันแล้ว merge ออกเป็นผลลัพธ์",
+      "type": "short_answer"
+    },
+    {
+      "q": "trade-off หลักของ sort-merge join คืออะไร?",
+      "expected_answer": "รองรับ dataset ขนาดใดก็ได้ แต่จ่ายค่า shuffle + sort ของทั้งสองฝั่งเต็ม ๆ ข้าม network",
+      "type": "mcq",
+      "options": [
+        "รองรับ dataset ขนาดใดก็ได้ แต่จ่ายค่า shuffle + sort ของทั้งสองฝั่งเต็ม ๆ ข้าม network",
+        "เร็วที่สุดเสมอเพราะไม่ต้อง shuffle หรือ sort ฝั่งไหนข้าม network เลยแม้ข้อมูลจะใหญ่แค่ไหน",
+        "ใช้ได้เฉพาะเมื่อฝั่งที่เล็กกว่าเล็กพอจะใส่ memory ของทุก mapper ได้ครบทั้งก้อนเท่านั้น"
+      ]
+    },
+    {
+      "q": "ทำไม hot key ถึงทำให้ reducer ตัวเดียวกลายเป็นคอขวดใน join?",
+      "expected_answer": "มีไม่กี่ key ที่มีปริมาณ record มหาศาล ทำให้ reducer ที่รับ key นั้นทำงานนานกว่าเพื่อนจนคาทั้ง job",
+      "type": "mcq",
+      "options": [
+        "reducer ทุกตัวได้รับจำนวน key เท่ากันแต่ตัวหนึ่งบังเอิญรันบนเครื่องที่ CPU และ disk ช้ากว่าเพื่อน",
+        "มีไม่กี่ key ที่มีปริมาณ record มหาศาล ทำให้ reducer ที่รับ key นั้นทำงานนานกว่าเพื่อนจนคาทั้ง job",
+        "framework สุ่มส่ง key ไป reducer ผิดตัวบ่อยครั้ง ทำให้ต้องคำนวณ join เดิมซ้ำหลายรอบจนช้าลงมาก"
+      ]
+    },
+    {
+      "q": "ทำไมการ query DB ทีละ record จึงเป็นวิธี join ที่ผิดสำหรับ batch job และควรทำอะไรแทน?",
+      "expected_answer": "เพราะเกิด network round-trip ต่อ record จำนวนมหาศาล ทำให้ throughput พังและผลไม่ deterministic; ควรนำสำเนา dataset ทั้งสองเข้ามาในงานแล้ว join ด้วย sequential I/O (sort-merge/hash)",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 10: Batch Processing",
+      "source": "Martin Kleppmann, DDIA (O'Reilly, 2017), ch. 10 — sections on Reduce-Side Joins/Grouping and Map-Side Joins",
+      "why": "อ่านต้นฉบับ sort-merge, broadcast hash, partitioned hash join และการจัดการ skewed join"
+    },
+    {
+      "title": "MapReduce: Simplified Data Processing on Large Clusters",
+      "source": "Jeffrey Dean & Sanjay Ghemawat, OSDI 2004",
+      "why": "อ่านโมเดล sort/shuffle ที่ reducer-side join พึ่งพา เพื่อเข้าใจว่าทำไม record ถึงมาเรียงติดกันที่ reducer"
+    },
+    {
+      "title": "Apache Hive — Join Optimization (Map Join / Bucket Map Join)",
+      "source": "Apache Hive LanguageManual JoinOptimization (cwiki.apache.org, Apache Hive wiki)",
+      "why": "อ่าน implementation จริงของ broadcast hash join และ partitioned/bucketed join ในเครื่องมือที่ใช้งานจริง"
+    }
+  ]
+}

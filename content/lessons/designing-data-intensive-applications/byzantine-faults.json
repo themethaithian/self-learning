@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "byzantine-faults",
+  "version": 1,
+  "title_en": "Byzantine Faults",
+  "est_minutes": 8,
+  "body_md": "# Byzantine Faults\n\n## ทำไมถึงสำคัญ\n\nByzantine fault คือกรณีที่ node ไม่ได้แค่ crash เงียบ ๆ แต่ทำงานผิดแบบ arbitrary — ตอบผิด, โกหก, ส่ง message ขัดแย้งกันให้ peer คนละตัว, หรือประสงค์ร้ายจริง ๆ. ระบบส่วนใหญ่ตั้งสมมติฐานว่า node ที่ยังมีชีวิตจะ \"บอกความจริง\"; สมมติฐานนี้พังทันทีเมื่ออยู่ใน environment ที่ไว้ใจกันไม่ได้. งานของ senior คือรู้ว่า *เมื่อไหร่* trust model บังคับให้ต้องจ่ายค่า Byzantine fault tolerance (BFT) และเมื่อไหร่มันคือ over-engineering.\n\n## แก่นของแนวคิด\n\n- **นิยามเทียบกับ crash fault.** Crash fault (fail-stop) = node หยุดตอบไปเฉย ๆ ตรงไปตรงมา และมักตรวจจับได้ด้วย timeout. Byzantine fault = node ยัง \"ทำงาน\" อยู่แต่ผลลัพธ์เชื่อไม่ได้ — ตอบผิด, ส่งค่าคนละอย่างให้ peer คนละตัว, หรือปลอม message. crash คือ subset ที่ง่ายกว่ามากของ Byzantine.\n- **ที่มาของชื่อ.** \"Byzantine Generals Problem\" (Lamport, Shostak, Pease): แม่ทัพหลายกองต้องตกลงพร้อมกันว่าจะบุกหรือถอย โดยสื่อสารผ่าน messenger เท่านั้น แต่มีแม่ทัพ *ทรยศ* ที่จงใจส่งคำสั่งขัดกันให้ฝ่ายซื่อสัตย์แตกคอ. คำถามคือฝ่ายซื่อสัตย์จะตกลงกันได้ไหมทั้งที่มีคนโกหกปนอยู่.\n- **BFT คืออะไร.** ระบบที่ยัง reach consensus ที่ถูกต้องได้แม้ node บางส่วนโกหกหรือทำตัว arbitrary.\n- **ขีดจำกัดเชิงทฤษฎี (3f + 1).** เพื่อ tolerate node โกหกได้ `f` ตัว ระบบต้องมี node รวมอย่างน้อย **3f + 1** ตัว (tolerate 1 ตัวโกหก ต้องมี 4 node, tolerate 2 ต้องมี 7). สัญชาตญาณ: ต้องมี honest supermajority ที่มากพอจะ outvote node โกหก แม้ในขณะที่บาง honest node ช้าหรือยังไม่ตอบก็ยังตัดสินได้ถูก. เทียบกับ crash-fault-tolerant (CFT) consensus ที่ต้องการแค่ 2f + 1.\n- **ต้นทุนกลไก.** BFT ต้องแลก message หลายรอบเพื่อให้ peer cross-check กันเอง และมักต้องใช้ cryptographic signature กันการปลอม message — ทั้งหมดนี้ทำให้ throughput ต่ำและ latency สูงกว่า CFT มาก.\n\n> การจัดการ node ที่แค่ crash หรือให้ quorum ตัดสิน \"ความจริง\" แบบ majority vote (ไม่ใช่ node โกหก) เป็นคนละเรื่อง อยู่ใน sibling `knowledge-truth-lies`. ส่วน consensus algorithm อย่าง Raft/Paxos นั้น **ไม่** ทน Byzantine fault (สมมติว่า node ไม่โกหก) — อยู่ใน ch.9 `consensus-and-zookeeper`.\n\n## ตัวอย่าง (blockchain vs. datacenter ธนาคาร)\n\n**กรณีที่ต้อง BFT จริง — blockchain / cryptocurrency.** ผู้เข้าร่วม (node/validator) เป็นคนแปลกหน้าทั่วโลกที่ไม่มีใครไว้ใจใคร และมีแรงจูงใจเป็น *เงินจริง* ที่จะโกง เช่นพยายาม double-spend หรือรายงาน ledger ปลอม. ระบบต้องตกลงกันเรื่อง ledger ที่ถูกต้องทั้งที่ผู้เข้าร่วมบางส่วนตั้งใจโกหก — นี่คือ Byzantine environment ของแท้. Bitcoin แก้ด้วย proof-of-work (ทำให้การโกหกแพงเกินคุ้ม) ส่วนระบบ permissioned/consortium บางตัวใช้ BFT algorithm ตรง ๆ เช่น PBFT (Practical Byzantine Fault Tolerance ของ Castro–Liskov).\n\n**กรณีที่ BFT เกินจำเป็น — service ภายใน datacenter ของธนาคาร.** node ทุกตัวเป็นเครื่องที่ธนาคารเป็นเจ้าของเอง deploy เอง patch เอง. ภัยจริงคือ crash, software bug, disk พัง, network partition — ไม่ใช่ node แอบส่งค่าปลอมให้ peer เพื่อล้มระบบ. ที่นี่ CFT consensus (เช่น Raft) + input validation + checksum เพียงพอ; การยัด full BFT เข้าไปคือจ่ายค่า overhead มหาศาลเพื่อกันภัยที่ trust model ไม่ได้มีอยู่จริง. หมายเหตุ: การใส่ safeguard ราคาถูกอย่าง checksum (กัน bit พังบน network/disk) หรือ sanitize input ยังคุ้มเสมอ — นั่นคือ Byzantine protection ระดับ *ข้อมูล* ที่ต่างจากการทำ full BFT ระดับ *consensus*.\n\n```mermaid\nflowchart TD\n  L[\"Byzantine node: lies\"]\n  P1[Honest peer 1]\n  P2[Honest peer 2]\n  P3[Honest peer 3]\n  L -->|\"says value A\"| P1\n  L -->|\"says value B\"| P2\n  L -.->|\"stays silent\"| P3\n  P1 --> V[\"Quorum vote\"]\n  P2 --> V\n  P3 --> V\n  V -->|\"honest supermajority 3f+1 outvotes the liar\"| OK[\"Correct consensus\"]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"BFT ก็คือการจัดการ node ที่ crash\"** ผิด. crash เป็นเคสง่ายที่ CFT จัดการอยู่แล้ว. BFT แก้เคสที่ยากกว่ามาก: node ที่ยัง active แต่โกหก/ส่งค่าขัดกัน. ระบบ CFT อย่าง Raft สมมติว่า node ไม่โกหก จึง **ไม่** Byzantine-tolerant.\n- **\"blockchain ใช้ BFT แล้วปลอดภัย งั้นเอามาใส่ระบบ internal ด้วยดีกว่า\"** ผิด. trust model ต่างกันคนละโลก; ในองค์กรที่คุม node เองทั้งหมด BFT overhead ไม่คุ้ม.\n- **\"3f + 1 แปลว่าต้องใช้ traffic 3 เท่า\"** ผิด. 3f + 1 คือ *จำนวน node* ที่ต้องมีเพื่อ tolerate node โกหก f ตัว; ตัวที่พุ่งจริงคือ message complexity (หลายรอบ + signature) ไม่ใช่ค่าคงที่ 3 เท่า.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ BFT\n\nBFT ซื้อความทนทานต่อ node ที่โกหก/ประสงค์ร้าย แต่จ่ายแพงมากในสามทาง: (1) **node count** — ต้อง 3f + 1 แทน 2f + 1 ของ CFT; (2) **message complexity** — หลายรอบของการ cross-check กันระหว่าง peer บวก signature verification ทำให้ throughput ต่ำและ latency สูง; (3) **ความซับซ้อนของ implementation** ที่พิสูจน์ความถูกต้องยากและมีจุดพลาดเยอะ.\n\n**เมื่อไม่ควรใช้:** single-org datacenter ที่คุม node เองทั้งหมด — ภัยจริงคือ crash/bug/network ไม่ใช่การโกหก. ที่นั่น CFT consensus + input validation + checksum พอแล้ว และ full BFT มักไม่คุ้มค่า.\n\nจุดที่ senior ต้องแม่น: อย่าเหมารวมว่า \"ระบบต้องปลอดภัย = ต้อง BFT\". ภัยหลายอย่าง BFT ก็ช่วยไม่ได้ — เช่น software bug เดียวกันที่ deploy พร้อมกันทุก replica (ทุก node เจอ bug เดียวกัน BFT จึงไม่มีเสียงข้างมากที่ถูก), หรือ malicious admin ที่มีสิทธิ์เต็มทั้งระบบ. BFT ครอบคลุมเฉพาะกรณี node *ส่วนน้อย* (< 1/3) ทำตัว arbitrary เท่านั้น. ทางที่คุ้มกว่ามากในระบบทั่วไปคือเติม safeguard ราคาถูก (checksum, input sanitization, authentication ที่ boundary) แทนการเปลี่ยนไปใช้ full BFT ทั้งระบบ.\n\n## มุมสัมภาษณ์\n\n- **\"Byzantine fault ต่างจาก crash fault ยังไง?\"** → crash = fail-stop หยุดตอบ ตรวจด้วย timeout ได้; Byzantine = arbitrary/lying ส่งค่าขัดกันให้ peer คนละตัว ยากกว่ามาก.\n- **\"ทำไม BFT ต้องใช้ 3f + 1 node?\"** → ต้องมี honest supermajority มากพอจะ outvote node โกหก แม้บาง honest node ช้า/ยังไม่ตอบก็ยังตัดสินถูก.\n- **\"ระบบ payments ภายในธนาคารควรใช้ BFT ไหม?\"** → ปกติไม่; trust model เป็น single-org ที่คุม node เอง ใช้ CFT + validation + checksum พอ. คำถามนี้วัดว่าคุณอ่าน trust model เป็น ไม่ใช่ท่อง algorithm.\n- **\"Raft/Paxos ทน Byzantine fault ไหม?\"** → ไม่; มันเป็น CFT ที่สมมติว่า node ไม่โกหก (รายละเอียด algorithm อยู่ ch.9 `consensus-and-zookeeper`).\n",
+  "recall_checks": [
+    {
+      "q": "Byzantine fault ต่างจาก crash fault อย่างไร?",
+      "expected_answer": "crash fault คือ node หยุดตอบ (fail-stop) ตรวจจับด้วย timeout ได้; Byzantine fault คือ node ยังทำงานอยู่แต่ทำตัว arbitrary/โกหก เช่นส่งค่าขัดแย้งกันให้ peer คนละตัว",
+      "type": "short_answer"
+    },
+    {
+      "q": "เพื่อ tolerate Byzantine node ได้ f ตัว ระบบต้องมี node รวมอย่างน้อยเท่าไร?",
+      "expected_answer": "3f + 1",
+      "type": "mcq",
+      "options": [
+        "2f + 1",
+        "3f + 1",
+        "f + 1"
+      ]
+    },
+    {
+      "q": "ข้อใดคือ environment ที่ full BFT คุ้มค่าที่สุด?",
+      "expected_answer": "blockchain / cryptocurrency ที่ผู้เข้าร่วมไม่ไว้ใจกันและมีแรงจูงใจโกง",
+      "type": "mcq",
+      "options": [
+        "service ภายใน datacenter ขององค์กรเดียวที่คุม node เองทั้งหมด",
+        "แอปมือถือที่เรียก REST API ตัวเดียว",
+        "blockchain / cryptocurrency ที่ผู้เข้าร่วมไม่ไว้ใจกันและมีแรงจูงใจโกง"
+      ]
+    },
+    {
+      "q": "ระบบ payments ภายในธนาคารที่คุม node เองทั้งหมด ปกติควรใช้อะไรแทน full BFT?",
+      "expected_answer": "crash-fault-tolerant consensus + input validation + checksum",
+      "type": "mcq",
+      "options": [
+        "crash-fault-tolerant consensus + input validation + checksum",
+        "full BFT ด้วย 3f + 1 node พร้อม signature verification ทุก request เสมอ",
+        "ไม่ต้องมี consensus เลย เพราะ node ภายในองค์กรไว้ใจกันได้อยู่แล้ว"
+      ]
+    },
+    {
+      "q": "ทำไม full BFT ถึงแพง? (ระบุต้นทุนหลัก)",
+      "expected_answer": "ต้องใช้ node มากขึ้น (3f + 1 แทน 2f + 1), message complexity สูงจากการ cross-check หลายรอบ + signature verification ทำให้ throughput ต่ำ latency สูง, และ implementation ซับซ้อนพิสูจน์ถูกต้องยาก",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 8: The Trouble with Distributed Systems (Byzantine Faults)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 8",
+      "why": "อ่านต้นฉบับว่า Byzantine fault คืออะไร และทำไมระบบส่วนใหญ่ในองค์กรเดียวไม่จำเป็นต้อง tolerate มัน"
+    },
+    {
+      "title": "The Byzantine Generals Problem",
+      "source": "Lamport, Shostak, Pease, ACM TOPLAS 4(3), 1982",
+      "why": "อ่านที่มาของปัญหาและผลลัพธ์ว่าต้องมี 3f + 1 node จึง tolerate f ตัวโกหกได้"
+    },
+    {
+      "title": "Practical Byzantine Fault Tolerance (PBFT)",
+      "source": "Castro & Liskov, OSDI 1999",
+      "why": "อ่านว่า BFT ทำงานจริงได้อย่างไรในระบบ replicated และต้นทุน message ที่ต้องแลก"
+    }
+  ]
+}
