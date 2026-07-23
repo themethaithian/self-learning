@@ -1,0 +1,57 @@
+{
+  "topic": "domain-driven-design",
+  "concept_id": "knowledge-crunching",
+  "version": 1,
+  "title_en": "Knowledge Crunching",
+  "est_minutes": 8,
+  "body_md": "# Knowledge Crunching\n\n**ทำไมต้องรู้เรื่องนี้** — โมเดลที่ดีไม่ได้เกิดจากการนั่งฟัง requirement แล้วเขียนโค้ดตาม แต่เกิดจากการ \"บด\" (crunch) ความรู้ดิบ ๆ ที่กระจัดกระจายอยู่ในหัว domain expert ให้ตกผลึกเป็น model ที่คมและใช้งานได้จริง ในงาน fintech ที่กฎเยอะและ edge case เยอะ ทีมที่ crunch เก่งจะจับ business rule ที่ซ่อนอยู่ได้ก่อนมันกลายเป็นบั๊กราคาแพง\n\n## Crunching คืออะไร\n\nKnowledge crunching คือกระบวนการที่ developer กับ domain expert ทำงานร่วมกันเพื่อกลั่นความรู้เรื่อง domain ที่ยุ่งเหยิงให้ตกผลึกออกมาเป็น model ที่ชัดเจน หัวใจของมันมีไม่กี่ข้อ:\n\n- ความรู้ domain ตอนเริ่มมักกระจัดกระจาย ขัดแย้งกันเอง อยู่ในหัวคนหลายคน ในเอกสารเก่า และในโค้ด legacy\n- **crunch = คัดกรอง** เลือกสิ่งที่เกี่ยวกับปัญหาจริง ทิ้งส่วนที่ไม่เกี่ยว แล้วจัดเป็น concept ที่มีชื่อ มีความสัมพันธ์ชัดเจน\n- model ที่ได้ไม่ใช่ diagram สวย ๆ แต่คือ \"ความรู้ที่ถูกจัดระเบียบ\" ซึ่งสะท้อนตรงลงในโค้ดและในภาษากลาง (ubiquitous language)\n- มันเป็น **iterative** และต่อเนื่อง: ทุกครั้งที่คุยแล้วเจอความขัดแย้ง → ปรับ model → เข้าใจ domain ลึกขึ้น → เจอคำถามใหม่ วนซ้ำ ไม่ใช่ phase ที่ทำครั้งเดียวจบตอนต้นโปรเจกต์\n- ทั้งสองฝ่ายเรียนรู้พร้อมกัน: developer เข้าใจ business ลึกขึ้น ส่วน expert เองก็มักเห็นว่ากฎที่ตัวเองคิดว่าชัด จริง ๆ มีช่องโหว่ เมื่อถูกบังคับให้อธิบายจนละเอียดพอจะเขียนเป็นโค้ดได้\n- เทคนิคที่ช่วยเร่ง crunch: workshop ร่วมกับ expert, การถามด้วยตัวอย่างจริงและ edge case, และ **event storming** (Alberto Brandolini) ที่เอา domain event มาเรียงบน timeline เพื่อค้นหา process และ aggregate\n\n```mermaid\nflowchart TD\n    A[Talk with domain expert] --> B[Propose / refine model]\n    B --> C[Express model in code + language]\n    C --> D{Edge case or contradiction?}\n    D -- Yes --> E[Surface hidden concept]\n    E --> A\n    D -- No --> F[Deeper shared understanding]\n    F --> A\n```\n\n## ตัวอย่าง: crunch กฎ \"overdraft\" กับผู้เชี่ยวชาญธนาคาร\n\n**รอบที่ 1** — expert บอก \"ถ้าเงินในบัญชีไม่พอ ก็ปฏิเสธการถอน\" dev ร่าง model แรก: `Account` มี `balance`, ถ้า `amount > balance` → reject\n\n**รอบที่ 2** — dev ถามด้วย edge case \"แล้วลูกค้าที่มีวงเงิน overdraft ล่ะ?\" expert \"อ๋อ บัญชีธุรกิจมี overdraft limit ถอนเกิน balance ได้ถึง -50,000 โดยคิดดอกเบี้ย\" model เดิมผิดทันที ต้องเพิ่ม concept `OverdraftLimit` และ *available funds = balance + overdraftLimit* จุดนี้เพิ่งค้นพบว่า \"ยอดที่ถอนได้จริง\" เป็น concept ที่ไม่เคยมีชื่อมาก่อน\n\n**รอบที่ 3** — dev \"ถ้าถอนจนติดลบ ดอกเบี้ยคิดตอนไหน settlement เกิดเมื่อไหร่\" คราวนี้ expert อีกคนแย้งว่า \"บางบัญชีไม่คิดดอกถ้าคืนภายในวันเดียวกัน\" ความขัดแย้งนี้บังคับให้ model แยก `posted` กับ `pending transaction` และทำให้ concept ของ **end-of-day settlement** โผล่ขึ้นมา\n\nจุดสำคัญคือ แต่ละรอบไม่ใช่แค่ \"เก็บ requirement เพิ่ม\" แต่ model เปลี่ยนรูป คำใหม่ (available funds, overdraft limit, settlement) กลายเป็นภาษากลางที่ทีมและ expert ใช้ตรงกัน และสะท้อนลงในโค้ดโดยตรง ความขัดแย้งระหว่าง expert สองคนไม่ใช่ปัญหา แต่เป็น \"เหมือง\" ที่ขุดเจอ concept ที่ซ่อนอยู่\n\n## ความเข้าใจผิดที่พบบ่อย\n\n**\"เก็บ requirement รอบเดียวตอนต้น แล้วส่งเอกสารให้ dev ไปสร้าง\"** — นี่คือรูปแบบ analyst-แล้ว-โยนให้-coder ที่ DDD ปฏิเสธ เพราะ (1) ความรู้ domain ที่ลึกจริงมักไม่โผล่ในรอบแรก มันโผล่ตอนชนกับ edge case ระหว่างสร้าง (2) เอกสารที่แช่แข็งไว้จะล้าสมัยทันทีที่ทีมเข้าใจ domain ลึกขึ้น (3) dev ที่ไม่ได้คุยกับ expert เองจะฝัง business logic ที่เข้าใจผิดลงโค้ดโดยไม่รู้ตัว Crunching จึงต้องเกิดต่อเนื่องตลอดอายุโปรเจกต์\n\nอีกความเข้าใจผิด: คิดว่า model เท่ากับ ER diagram หรือ database schema จริง ๆ แล้ว model ใน DDD คือชุด concept ที่ตกผลึกจากความรู้ ซึ่งอาจไม่ map 1-1 กับตารางในฐานข้อมูลเลย\n\n## มุมสัมภาษณ์ (interview angle)\n\n- \"โมเดล domain ที่ดีมาจากไหน / ทำยังไงให้ได้โมเดลที่ถูก\" → ตอบด้วย knowledge crunching: การ collaborate แบบ iterative กับ expert ไม่ใช่ requirement gathering ครั้งเดียวจบ\n- \"ถ้า domain expert พูดขัดแย้งกันเอง จะทำยังไง\" → นั่นคือสัญญาณว่ากำลัง crunch เจอ hidden concept ต้องขุดต่อจน model อธิบายได้ทั้งสองกรณี ไม่ใช่เลือกข้างมั่ว\n- \"event storming คืออะไร ใช้ทำไม\" → workshop เทคนิคหนึ่งที่เร่ง crunching โดยเรียง domain event บน timeline เพื่อหา process boundary และ aggregate\n- Follow-up ที่ลึกกว่า: เชื่อมกับ ubiquitous language และ model-driven design — crunching เป็นตัวผลิต language ส่วน language คือสิ่งที่ผูก model เข้ากับ code\n",
+  "recall_checks": [
+    {
+      "q": "อธิบายสั้น ๆ ว่า knowledge crunching คืออะไร และทำไมจึงต้องทำต่อเนื่อง ไม่ใช่ครั้งเดียวจบ",
+      "expected_answer": "เป็นกระบวนการที่ developer กับ domain expert ร่วมกันกลั่นความรู้ domain ที่ยุ่งเหยิงให้ตกผลึกเป็น model ที่ชัดเจน ต้องทำต่อเนื่องเพราะความรู้ที่ลึกจริงมักโผล่ตอนชนกับ edge case ระหว่างสร้าง แต่ละรอบทำให้เข้าใจ domain ลึกขึ้นและ model เปลี่ยนรูป",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดอธิบาย knowledge crunching ได้ถูกต้องที่สุด",
+      "expected_answer": "กระบวนการ iterative ที่ dev กับ domain expert ร่วมกันกลั่นความรู้ให้เป็น model ตลอดโปรเจกต์",
+      "type": "mcq",
+      "options": [
+        "การเก็บ requirement ครั้งเดียวตอนต้นโปรเจกต์แล้วส่งเอกสารให้ dev ไปสร้าง",
+        "กระบวนการ iterative ที่ dev กับ domain expert ร่วมกันกลั่นความรู้ให้เป็น model ตลอดโปรเจกต์",
+        "การออกแบบ ER diagram และ database schema ให้ครบทุกตารางก่อนเริ่มเขียนโค้ด"
+      ]
+    },
+    {
+      "q": "ระหว่าง crunch ถ้า domain expert สองคนให้กฎที่ขัดแย้งกัน ควรทำอย่างไร",
+      "expected_answer": "ถือเป็นสัญญาณว่ามี hidden concept ที่ต้องขุดต่อจน model อธิบายได้ทั้งสองกรณี",
+      "type": "mcq",
+      "options": [
+        "เลือกกฎของ expert ที่อาวุโสกว่าเสมอเพื่อจบข้อขัดแย้งเร็ว ๆ",
+        "บันทึกทั้งสองกฎไว้แล้วปล่อยให้ dev ตัดสินใจเองตอนเขียนโค้ด",
+        "ถือเป็นสัญญาณว่ามี hidden concept ที่ต้องขุดต่อจน model อธิบายได้ทั้งสองกรณี"
+      ]
+    },
+    {
+      "q": "event storming ช่วยงาน knowledge crunching อย่างไร",
+      "expected_answer": "เป็น workshop ที่เอา domain event มาเรียงบน timeline ร่วมกับ expert เพื่อค้นหา process boundary และ aggregate ช่วยเร่งการ crunch",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Domain-Driven Design, Chapter 1: Crunching Knowledge",
+      "source": "Eric Evans, Domain-Driven Design, ch. 1",
+      "why": "อ่านต้นฉบับแนวคิด knowledge crunching และตัวอย่างการกลั่น model ร่วมกับ expert"
+    },
+    {
+      "title": "Domain-Driven Design, Chapter 2: Communication and the Use of Language",
+      "source": "Eric Evans, Domain-Driven Design, ch. 2",
+      "why": "อ่านต่อว่า crunching ผลิต ubiquitous language ที่ผูก model กับ code อย่างไร"
+    },
+    {
+      "title": "EventStorming",
+      "source": "Alberto Brandolini, EventStorming",
+      "why": "อ่านเทคนิค workshop ที่เร่ง knowledge crunching ด้วยการเรียง domain event บน timeline"
+    }
+  ]
+}

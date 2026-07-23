@@ -1,0 +1,67 @@
+{
+  "topic": "domain-driven-design",
+  "concept_id": "hands-on-modelers",
+  "version": 1,
+  "title_en": "Hands-On Modelers",
+  "est_minutes": 7,
+  "body_md": "# Hands-On Modelers\n\n## ทำไมเรื่องนี้ถึงสำคัญ\n\nโมเดลจะมีค่าก็ต่อเมื่อมัน \"มีชีวิต\" อยู่ในโค้ดที่รันจริง ไม่ใช่แค่ใน UML ที่แขวนไว้บนผนัง DDD ยืนยันว่าคนที่ปั้น domain model ควรเป็นคนเดียวกับที่ลงมือเขียนโค้ด เพราะทุกครั้งที่ต้อง implement โมเดลลงเป็นคลาส/ฟังก์ชันจริง เราจะเจอจุดที่โมเดลไม่ลงตัว และ feedback นั้นแหละคือสิ่งที่ทำให้โมเดลคมขึ้น ถ้าคนออกแบบไม่แตะโค้ดเลย เขาจะไม่มีวันรู้ว่าโมเดลของตัวเองใช้จริงไม่ได้ตรงไหน\n\n## แก่นของแนวคิด\n\n**Hands-on modeler** = คนที่กำหนดทิศทางของ domain model ต้องมีส่วนร่วมกับโค้ดที่ implement โมเดลนั้นด้วยมือตัวเอง หลักการมีสองด้านที่ต้องมาคู่กัน:\n\n1. คนที่แตะโค้ดต้อง **เข้าใจโมเดล** และรู้สึกรับผิดชอบต่อความถูกต้องของมันในโค้ด\n2. คนที่ **กำหนดทิศทางโมเดล** ต้องสัมผัสโค้ด ไม่ว่าจะมีตำแหน่งอะไรในทีม\n\nหัวใจอยู่ที่ feedback loop: modeling กับ implementation เป็นกิจกรรมเดียวกันที่วนซ้ำ ไม่ใช่สอง phase ที่แยกขาดจากกัน เมื่อลงมือ code แล้วพบว่าโมเดลอธิบายเคสจริงไม่ได้ (เช่น มี edge case ที่ concept ในโมเดลไม่ครอบคลุม) นั่นคือสัญญาณให้กลับไปปรับโมเดล และ ubiquitous language ก็ไหลไปมาระหว่างสองฝั่งนี้อยู่ตลอด\n\nanti-pattern ที่ DDD เตือนคือ **การแยก analyst/architect ออกจาก coder แบบเด็ดขาด** คนกลุ่มหนึ่ง \"คิดโมเดล\" แล้วโยนเอกสารให้อีกกลุ่ม \"แปลงเป็นโค้ด\" ปัญหาคือความรู้เชิงลึกเรื่อง domain ไปกองอยู่กับคนที่ไม่ได้เขียนโค้ด ส่วนคนเขียนโค้ดที่เจอความจริงของ implementation กลับไม่มีอำนาจแก้โมเดล ผลที่ตามมาคือ **model–code divergence**: โมเดลบนกระดาษพูดอย่าง โค้ดที่รันจริงทำอีกอย่าง เอกสารกลายเป็นของหลอก ทีมใหม่ที่อ่านเอกสารจะเข้าใจผิด และ design ที่ตั้งใจไว้จะสลายไปทีละนิด\n\n```mermaid\nflowchart TD\n  subgraph Healthy[\"Hands-on modeler (healthy loop)\"]\n    M1[Shape the model] --> M2[Write the code]\n    M2 --> M3[Hit reality / edge cases]\n    M3 --> M4[Refine the model]\n    M4 --> M1\n  end\n  subgraph Broken[\"Separated analyst / coder (broken handoff)\"]\n    B1[Analyst designs model] --> B2[Spec document]\n    B2 --> B3[Coder reshapes it silently]\n    B3 --> B4[Model-code divergence]\n    B4 -. no feedback .-> B1\n  end\n```\n\n## ตัวอย่าง (fintech): fee-calculation model\n\nทีมชำระเงินมี business analyst ออกแบบโมเดลการคิดค่าธรรมเนียมโอนเงิน เขาวาด concept ไว้สวยงาม: `FeeSchedule` มี tier ตามยอดเงิน และมี `PromotionWaiver` สำหรับยกเว้นค่าธรรมเนียมช่วงโปรโมชัน แล้วส่งเอกสารสเปกให้ทีม coder ไป implement\n\nพอ coder ลงมือทำจริง เจอความจริงที่สเปกไม่ครอบคลุม:\n\n- ยอดโอนบางรายการเป็นสกุลเงินต่างประเทศ ต้องแปลงค่าเงินก่อนเทียบ tier แต่โมเดลไม่มี concept นี้\n- `PromotionWaiver` ซ้อนทับกับส่วนลด VIP ได้ ต้องมีลำดับการ apply ที่ชัดเจน แต่สเปกไม่ได้พูดถึง\n\ncoder เลยตัดสินใจ \"เงียบ ๆ\" แก้เอง: ยัด logic แปลงค่าเงินไว้ในเมธอด `calculate()` ก้อนเดียว และเขียน if-else ลำดับ waiver แบบ hard-code ตามที่เดาเอา โค้ดรันได้ ผ่าน demo test แต่ตอนนี้ **โมเดลจริงไปอยู่ในหัว coder และในก้อน if-else** ไม่ตรงกับเอกสารของ analyst อีกต่อไป\n\nหกเดือนต่อมา ธนาคารออกโปรฯ ซ้อนโปรฯ analyst เปิดเอกสารเดิมมาวางแผน ประเมินว่า \"ง่าย แค่เพิ่ม waiver อีกตัว\" แต่ในโค้ดจริง ลำดับ if-else นั้นเปราะจนไม่มีใครกล้าแตะ ผลคือประเมินงานผิด บั๊กคิดค่าธรรมเนียมหลุดขึ้น production และ reconciliation ไม่ตรง ต้นตอไม่ใช่ \"coder ขี้เกียจ\" แต่คือ **ไม่มี feedback loop กลับไปหา modeler** ถ้า analyst นั่ง pair กับ coder ตอนเจอเคสค่าเงิน โมเดลจะได้ concept `Money` / `CurrencyConversion` และ `WaiverPolicy` ที่ชัดตั้งแต่แรก แทนที่จะกลายเป็นหนี้ที่ซ่อนอยู่\n\n## Common misconception\n\n> \"Modeling คือ phase แรกที่ architect/analyst ทำครั้งเดียวให้จบ แล้วค่อยส่งต่อให้ dev ไป implement\"\n\nผิด DDD มองว่า modeling เป็นกิจกรรม **ต่อเนื่อง** ที่ฝังอยู่ในการเขียนโค้ดทุกวัน โมเดลจะดีขึ้นก็ต่อเมื่อมันถูก implement แล้วเจอแรงต้านจากความจริง การแยก \"คนคิด\" ออกจาก \"คนทำ\" คือการทำลาย feedback loop นี้ทิ้ง\n\nอีกความเข้าใจผิดที่เจอบ่อย: \"hands-on modeler แปลว่า senior/architect ต้องมานั่งเขียนโค้ดเองทุกบรรทัด\" จริง ๆ แล้วหมายถึงคนกำหนดทิศทางโมเดลต้อง **สัมผัส** โค้ดอย่างสม่ำเสมอ (อ่าน, pair, review, prototype) มากพอที่ feedback จะไหลกลับมาหาโมเดลได้ ประเด็นคือ \"อย่าตัดขาดจากโค้ด\" ไม่ใช่ \"ต้องพิมพ์ทุกบรรทัด\"\n\n## Interview angle\n\n- **\"ทำไม DDD ถึงยืนยันว่าคนออกแบบโมเดลต้องเขียนโค้ดด้วย?\"** คำตอบที่ดีต้องพูดถึง feedback loop และ model–code divergence ไม่ใช่แค่ \"จะได้เข้าใจงานมากขึ้น\"\n- **\"เคยเจอ design document ที่ไม่ตรงกับโค้ดจริงไหม แก้อย่างไร?\"** เชื่อมกับแนวคิดนี้: root cause มักคือ handoff ที่ไม่มี loop กลับ ไม่ใช่แค่ \"เอกสารไม่ได้อัปเดต\"\n- **คำถามเชิงองค์กร: \"การมี analyst team แยกจาก dev team มีข้อเสียอะไร?\"** ตอบด้วย knowledge silo + โมเดลที่ implement จริงไม่ได้ + design เสื่อมสภาพ\n- **กับดักที่ต้องระวัง:** อย่าตอบเกินจริงว่า DDD ห้ามมี architect หรือห้ามเขียน design doc DDD ไม่ได้ห้าม แค่บอกว่าคนเหล่านั้นต้องไม่หลุดจากโค้ด\n",
+  "recall_checks": [
+    {
+      "q": "ตามหลัก hands-on modeler ทำไมคนที่กำหนดทิศทางโมเดลถึงต้องสัมผัสโค้ดด้วยตัวเอง?",
+      "expected_answer": "เพราะการ implement โมเดลจะเผยจุดที่โมเดลใช้จริงไม่ได้ และ feedback นั้นถูกใช้ปรับโมเดลให้คมขึ้น ถ้าไม่แตะโค้ดก็จะไม่มี feedback loop นี้ โมเดลกับโค้ดจะค่อย ๆ diverge กัน",
+      "type": "short_answer"
+    },
+    {
+      "q": "ในตัวอย่าง fee-calculation ต้นตอจริงของบั๊กและการประเมินงานผิดคืออะไร (ไม่ใช่ 'coder ขี้เกียจ')?",
+      "expected_answer": "ไม่มี feedback loop กลับไปหา modeler เมื่อ coder เจอเคสจริง (ค่าเงิน, ลำดับ waiver) โมเดลจริงจึงไปกองอยู่ในโค้ด/หัว coder ไม่ตรงกับเอกสารของ analyst",
+      "type": "short_answer"
+    },
+    {
+      "q": "อะไรคือผลเสียหลักเมื่อแยก analyst ที่คิดโมเดลออกจาก coder แบบเด็ดขาด?",
+      "expected_answer": "โมเดลกับโค้ดค่อย ๆ diverge จนเอกสารกลายเป็นของหลอกและ design สลายไปทีละนิด",
+      "type": "mcq",
+      "options": [
+        "โมเดลกับโค้ดค่อย ๆ diverge จนเอกสารกลายเป็นของหลอกและ design สลายไปทีละนิด",
+        "coder จะเขียนโค้ดช้าลงเพราะต้องรอเอกสารสเปกจาก analyst เสมอ",
+        "analyst จะออกแบบโมเดลที่ซับซ้อนเกินความจำเป็นทุกครั้ง"
+      ]
+    },
+    {
+      "q": "ข้อใดตรงกับมุมมองของ DDD เรื่อง modeling มากที่สุด?",
+      "expected_answer": "modeling เป็นกิจกรรมต่อเนื่องที่ฝังอยู่ในการเขียนโค้ด และปรับตัวตาม feedback จาก implementation",
+      "type": "mcq",
+      "options": [
+        "modeling เป็น phase แรกที่ architect ทำครั้งเดียวจบก่อนเริ่ม coding",
+        "modeling เป็นกิจกรรมต่อเนื่องที่ฝังอยู่ในการเขียนโค้ด และปรับตัวตาม feedback จาก implementation",
+        "modeling เป็นหน้าที่ของ architect เท่านั้น dev ไม่ควรเข้ามายุ่ง"
+      ]
+    },
+    {
+      "q": "ข้อความใดอธิบาย 'hands-on modeler' ได้ถูกต้อง?",
+      "expected_answer": "คนที่กำหนดทิศทางโมเดลต้องสัมผัสโค้ดอย่างสม่ำเสมอ (อ่าน/pair/review/prototype) เพื่อให้ feedback ไหลกลับมาหาโมเดลได้",
+      "type": "mcq",
+      "options": [
+        "architect ต้องเขียนโค้ดเองทุกบรรทัดของทั้งระบบ",
+        "คนที่กำหนดทิศทางโมเดลต้องสัมผัสโค้ดอย่างสม่ำเสมอ (อ่าน/pair/review/prototype) เพื่อให้ feedback ไหลกลับมาหาโมเดลได้",
+        "ทีมต้องไม่มี architect และห้ามเขียน design document โดยเด็ดขาด"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Domain-Driven Design, ch. 3 \"Binding Model and Implementation\" — \"Hands-On Modelers\" section",
+      "source": "Eric Evans, Domain-Driven Design (Addison-Wesley, 2003), ch. 3 \"Binding Model and Implementation\"",
+      "why": "อ่านต้นฉบับของหลักการนี้โดยตรง: ทำไม modeler กับ coder ต้องเป็นคนเดียวกัน และโมเดลต้องผูกกับ implementation"
+    },
+    {
+      "title": "Domain-Driven Design, ch. 1 \"Crunching Knowledge\"",
+      "source": "Eric Evans, Domain-Driven Design (Addison-Wesley, 2003), ch. 1 \"Crunching Knowledge\"",
+      "why": "อ่านฉากหลังเรื่อง continuous learning และ feedback loop ระหว่างโมเดลกับโค้ดที่หล่อเลี้ยง hands-on modeling"
+    },
+    {
+      "title": "Domain Driven Design (bliki)",
+      "source": "https://martinfowler.com/bliki/DomainDrivenDesign.html",
+      "why": "ภาพรวมสั้น ๆ ของ DDD จากมุม Martin Fowler เพื่อวางแนวคิดนี้ในบริบทใหญ่"
+    }
+  ]
+}

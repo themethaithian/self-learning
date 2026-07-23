@@ -1,0 +1,67 @@
+{
+  "topic": "domain-driven-design",
+  "concept_id": "ubiquitous-language",
+  "version": 1,
+  "title_en": "Ubiquitous Language",
+  "est_minutes": 7,
+  "body_md": "# Ubiquitous Language\n\n## ทำไมถึงสำคัญ\n\nUbiquitous Language คือภาษากลางชุดเดียวที่ domain expert และ developer ใช้ร่วมกัน — พูดในที่ประชุม, เขียนใน model, และตั้งชื่อในโค้ดด้วยคำเดียวกันเป๊ะ. เมื่อคนธุรกิจพูดคำหนึ่งแต่โค้ดใช้อีกคำ ทุกบทสนทนาต้องมี \"การแปล\" ในหัว และ bug จำนวนมากเกิดในช่องว่างของการแปลนั้น. ภาษาที่ตรงกันทำให้ requirement, การออกแบบ, และโค้ด อ้างถึงสิ่งเดียวกันโดยไม่ต้องตีความซ้ำ.\n\n## แก่นของแนวคิด\n\n- ภาษานี้ไม่ใช่แค่ glossary ที่แขวนไว้บนผนัง แต่คือภาษาที่ \"ใช้จริง\" ในสามที่พร้อมกัน: (1) บทสนทนากับ domain expert, (2) model / diagram, (3) source code (ชื่อ class, method, event). ทั้งสามผูกกันเป็นก้อนเดียว — เปลี่ยนคำในภาษา ต้อง refactor โค้ดตาม.\n- ภาษาต้องคม: คำกำกวมอย่าง \"process\", \"handle\", \"manage\", \"data\" แทบไม่มีความหมายในโดเมน ต้องแทนด้วยคำที่ domain expert ใช้จริง.\n- ภาษาเป็น living artifact. เมื่อ domain expert พูดอ้อม พูดยาก หรือต้องอธิบายยาว ๆ นั่นคือสัญญาณว่า model ยังจับแนวคิดผิด → ปรับทั้งภาษาและ model พร้อมกัน (นี่คือหัวใจของ model-driven design).\n- ระวัง \"dev dialect\": เมื่อทีมเริ่มมีศัพท์ภายในของ developer ที่ business ไม่รู้จัก (เช่น `flag`, `status_code`, `sync job`) ภาษาเริ่มแตกออกเป็นสองชุด ต้องดึงกลับมารวมกัน.\n- วิธีรักษาให้ตรง: พูดคำนั้นออกเสียงในทุกการประชุม, code review ตรวจว่าชื่อในโค้ดตรงกับภาษา, และ rename ทันทีเมื่อภาษาเปลี่ยน — naming ในโค้ดคือ ubiquitous language ที่ compile ได้.\n\n## ตัวอย่าง (payments / ledger)\n\nในทีม payments นักธุรกิจแยกชัดระหว่าง **Authorization** (กันวงเงิน), **Capture** (เรียกเก็บจริง), และ **Settlement** (เงินเข้าบัญชีร้านค้าจริง). ถ้าโค้ดเขียนเป็น `transaction.process()` กับ `transaction.finalize()` — คำพวกนี้ไม่มีในภาษาของ domain expert เลย ทำให้คุยกันคนละเรื่อง.\n\nภาษาที่ตรงกันจะสะท้อนในโค้ดตรง ๆ:\n\n- `Payment.authorize()`, `Payment.capture()`\n- `Settlement.reconcile()`\n- ฝั่ง ledger: `JournalEntry` ที่มี `debit` / `credit` / `posting` — คำที่นักบัญชีใช้ ไม่ใช่ `addMoney()` หรือ `updateBalance()`\n\nพอ domain expert ถามว่า \"ทำไม authorization นี้ยังไม่ capture\" ทีม dev เปิดโค้ดเจอ `authorize` / `capture` ทันที ไม่ต้องแปล.\n\n## เชื่อมกับ bounded context\n\nคำเดียวกันมีความหมายต่างกันได้ — และนั่นไม่ใช่ปัญหา ตราบใดที่แต่ละความหมายอยู่คนละ bounded context. Ubiquitous Language เป็น \"ubiquitous\" เฉพาะ *ภายใน* context เดียว ไม่ใช่ทั้งบริษัท.\n\nตัวอย่างคำว่า **Account**:\n\n- ใน **Identity context**: Account = ชุด login credentials (email, password, MFA)\n- ใน **Ledger context**: Account = บัญชีที่มียอด debit/credit เคลื่อนไหว\n\nถ้าพยายามบังคับให้ \"Account\" มีความหมายเดียวทั่วองค์กร คุณจะได้ model ที่บวมและผิดทั้งสองฝั่ง. ทางที่ถูกคือยอมรับสองความหมาย แยกด้วย context boundary และ map ให้ชัดเมื่อข้ามเขต.\n\n```mermaid\nflowchart TD\n  DE[Domain expert speech] --> UL[Ubiquitous Language]\n  UL --> M[Model]\n  M --> C[Code: class and method names]\n  C -. names feed back .-> UL\n  subgraph Identity context\n    A1[Account = login credentials]\n  end\n  subgraph Ledger context\n    A2[Account = debit/credit balance]\n  end\n  UL --> A1\n  UL --> A2\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Ubiquitous Language = glossary ขององค์กรที่ทุกคนต้องใช้คำเดียวกัน\"** ผิด. ภาษาผูกกับ bounded context เดียว; บังคับคำเดียวข้ามทุกทีมทำให้ model บิดเบี้ยว.\n- **\"เขียน glossary ครั้งเดียวจบ\"** ผิด. ภาษาเปลี่ยนตาม model ตลอด; ถ้าเอกสารกับโค้ดไม่ตรงกัน เอกสารคือสิ่งที่ตายแล้ว.\n- **\"ให้ dev แปลจากภาษา business เป็นศัพท์เทคนิค\"** ผิด. เป้าหมายคือ *กำจัด* ชั้นแปล ไม่ใช่สร้างมันขึ้นมา — โค้ดควรพูดภาษาเดียวกับ business.\n\n## มุมสัมภาษณ์\n\n- \"ถ้า domain expert เรียกสิ่งหนึ่งว่า X แต่ทีม dev เรียกว่า Y จะจัดการยังไง?\" → เลือกคำเดียว, ใส่ลงโค้ดจริง, ลบชั้นแปลทิ้ง.\n- \"glossary กับ ubiquitous language ต่างกันตรงไหน?\" → ubiquitous language ถูกใช้จริงในโค้ด/model และเปลี่ยนพร้อมกัน ไม่ใช่แค่เอกสารอ้างอิงที่นิ่งอยู่กับที่.\n- \"คำเดียวกันมีสองความหมายในระบบเดียวได้ไหม?\" → ได้ ถ้าอยู่คนละ bounded context; คำถามนี้มักเป็นสะพานไปเรื่อง bounded context / context map ต่อ.\n- \"รักษาให้โค้ดกับภาษาตรงกันยังไงเมื่อเวลาผ่านไป?\" → rename/refactor เมื่อภาษาเปลี่ยน, code review เช็คชื่อ, ถือว่า naming ในโค้ดคือ ubiquitous language ที่ตรวจสอบได้.\n",
+  "recall_checks": [
+    {
+      "q": "Ubiquitous Language ต้องถูกใช้จริงในสามที่พร้อมกันคืออะไรบ้าง?",
+      "expected_answer": "บทสนทนากับ domain expert, model/diagram, และ source code (ชื่อ class/method/event)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมคำว่า Account จึงมีความหมายต่างกันได้ในระบบเดียว?",
+      "expected_answer": "เพราะแต่ละความหมายอยู่คนละ bounded context",
+      "type": "mcq",
+      "options": [
+        "เพราะแต่ละความหมายอยู่คนละ bounded context",
+        "เพราะ developer ตั้งชื่อผิด",
+        "เพราะ database มีหลาย table"
+      ]
+    },
+    {
+      "q": "ข้อใดคือความเข้าใจผิดเกี่ยวกับ Ubiquitous Language?",
+      "expected_answer": "มันคือ glossary ขององค์กรที่ทุกทีมต้องใช้คำเดียวกันทั้งบริษัท",
+      "type": "mcq",
+      "options": [
+        "มันคือ glossary ขององค์กรที่ทุกทีมต้องใช้คำเดียวกันทั้งบริษัท",
+        "มันต้องปรากฏในชื่อ class และ method จริงในโค้ด",
+        "มันเปลี่ยนแปลงพร้อมกับ model เสมอ"
+      ]
+    },
+    {
+      "q": "เมื่อ domain expert อธิบายบางอย่างได้ลำบากหรือพูดอ้อม สัญญาณนี้บอกอะไร?",
+      "expected_answer": "model ยังจับแนวคิดผิด ควรปรับทั้งภาษาและ model พร้อมกัน (model-driven design)",
+      "type": "short_answer"
+    },
+    {
+      "q": "เป้าหมายของ Ubiquitous Language ต่อชั้นการแปล (translation) ระหว่าง business กับ code คืออะไร?",
+      "expected_answer": "กำจัดชั้นแปลออก ให้โค้ดพูดภาษาเดียวกับ business",
+      "type": "mcq",
+      "options": [
+        "กำจัดชั้นแปลออก ให้โค้ดพูดภาษาเดียวกับ business",
+        "สร้างชั้นแปลที่ dev คอยดูแลระหว่างสองฝั่ง",
+        "ให้ business ไปเรียนศัพท์เทคนิคของ dev"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Domain-Driven Design, Chapter 2: Communication and the Use of Language",
+      "source": "Eric Evans, Domain-Driven Design (Addison-Wesley, 2003), ch. 2",
+      "why": "อ่านต้นฉบับแนวคิด ubiquitous language และ model-driven design"
+    },
+    {
+      "title": "UbiquitousLanguage",
+      "source": "martinfowler.com/bliki/UbiquitousLanguage.html",
+      "why": "อ่านนิยามสั้น ๆ ของ Ubiquitous Language จาก Martin Fowler และความสัมพันธ์กับ domain model"
+    },
+    {
+      "title": "Domain-Driven Design, Chapter 14: Maintaining Model Integrity (Bounded Context)",
+      "source": "Eric Evans, Domain-Driven Design (Addison-Wesley, 2003), ch. 14",
+      "why": "อ่านต่อว่าทำไมคำเดียวกันมีความหมายต่างกันข้าม context ได้"
+    }
+  ]
+}
