@@ -1,0 +1,38 @@
+{
+	admin off
+	# ACME_EMAIL always resolves to a non-empty string (compose's ${ACME_EMAIL:-...}
+	# default) even if unset — Caddy's own {$VAR:default} won't cover an
+	# env var that's present-but-empty, only one that's fully unset. Ignored
+	# entirely on the internal-CA path (DOMAIN=localhost/non-public host).
+	email {$ACME_EMAIL}
+}
+
+# {$DOMAIN} keeps this file domain-agnostic. Local test without a real
+# domain or certs: DOMAIN=localhost (Caddy serves plain HTTP on :80 for a
+# non-public hostname). Real deploy: DOMAIN=your-real-domain (Caddy issues a
+# Let's Encrypt cert automatically).
+{$DOMAIN} {
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	handle /healthz {
+		reverse_proxy api:8080
+	}
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		root * /srv
+		try_files {path} {path}.html {path}/index.html /index.html
+		file_server
+	}
+}

@@ -27,3 +27,13 @@ npm run build
 ```
 
 Produces the static export in `out/`.
+
+### Prod build (same-origin through Caddy)
+
+`web/Dockerfile` builds with `NEXT_PUBLIC_API_BASE=""`, so `lib/api.ts` calls
+relative `/api/v1/...` paths and Caddy reverse-proxies them to the Go API —
+no CORS involved. To reproduce that build manually:
+
+```bash
+NEXT_PUBLIC_API_BASE= npm run build
+```

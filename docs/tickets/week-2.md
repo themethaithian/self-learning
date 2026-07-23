@@ -12,7 +12,7 @@ recall แบบ **self-grade**). **T11 (LLM client) เลื่อนออก
 - **Scope**: `Dockerfile` (multi-stage: build Go + build Next export → runtime image เล็ก), `deploy/docker-compose.prod.yml` (mysql + api + caddy, MySQL ไม่ expose port), `deploy/Caddyfile` (domain → static files + reverse proxy `/api` → api:8080)
 - **Acceptance**: รัน prod compose บนเครื่อง local แล้วใช้งานผ่าน Caddy ได้ครบ
 - **Review focus**: image ไม่มี source/secret ค้าง, MySQL volume + healthcheck, Caddy security headers
-- Status: `todo`
+- Status: `PR open` — Dockerfile (Go API, alpine 74MB, non-root) + web/Dockerfile (Next export→caddy:2) + deploy/{docker-compose.prod.yml, Caddyfile} + .dockerignore + .env.example. verify ผ่าน Caddy จริง (healthz/curriculum/lesson 200), least-privilege: caddy/mysql ไม่ได้ secret เกินจำเป็น. code-reviewer APPROVE
 
 ## T29 — VPS setup script + runbook `[go-implementer]` ~45 นาที
 - **Scope**: `deploy/setup-vps.sh` (สร้าง user non-root, SSH hardening: key-only + no root login, UFW 22/80/443, fail2ban, ติดตั้ง Docker, วาง `.env` chmod 600), `docs/runbook.md` (ขั้นตอน manual: สร้าง droplet SGP $6, ชี้ DNS, รัน script, first deploy, วิธี restore)
