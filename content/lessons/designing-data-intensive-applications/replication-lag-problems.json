@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "replication-lag-problems",
+  "version": 1,
+  "title_en": "Problems with Replication Lag",
+  "est_minutes": 8,
+  "body_md": "# Problems with Replication Lag\n\n## ทำไมถึงสำคัญ\n\nเราตั้ง read replica ขึ้นมาเพื่อกระจาย read load ออกจาก leader — แต่ asynchronous replication แปลว่า replica ตามหลัง leader เสมอ (replication lag). ปกติ lag แค่เสี้ยววินาที แต่ตอนโหลดหนักหรือ failover อาจโตเป็นวินาทีถึงนาที และไม่มี upper bound รับประกัน. ในช่วงที่ replica ยังตามไม่ทัน user อ่านข้อมูลเก่า เห็นสิ่งที่ย้อนแย้งกับความจริง — สำหรับ fintech นี่คือ bug ที่มีราคาเป็นเงินจริง (user คิดว่าโอนไม่ผ่านแล้วกดซ้ำ). สมมติว่าคุณรู้ single-leader async setup แล้ว (ดู sibling `single-leader`) — บทนี้ OWN เฉพาะ read anomaly ที่ lag ก่อให้เกิด และวิธีแก้แต่ละอย่าง.\n\nKleppmann ชี้ว่า “eventual consistency” เป็นคำที่ฟังดูใจดี แต่ไม่บอกว่า “eventual” นานแค่ไหน — งานของ senior คือรู้ว่า anomaly ไหนที่ user จะสังเกตเห็น และ read path ไหนที่ทนต่อ lag ไม่ได้.\n\n## แก่น: สาม anomaly + วิธีแก้แต่ละอย่าง\n\n**1. Read-your-writes (read-after-write) consistency**\n\nการันตีว่า user เห็น write ของ *ตัวเอง* ทันทีหลังเขียน (ไม่ได้การันตีเห็น write ของคนอื่น). ปัญหา: เขียนไป leader สำเร็จ แต่ read ถัดมาโดน replica ที่ยัง lag → เหมือนของที่เพิ่งเขียนหายไป. วิธีแก้:\n\n- อ่านสิ่งที่ user แก้ไขได้เอง (own profile, own balance) จาก leader เสมอ; ส่วนอื่นอ่านจาก replica ได้\n- จำ timestamp / log position ของ write ล่าสุดของ user แล้วบังคับให้ read เลือก replica ที่ replicate ถึงจุดนั้นแล้ว (ไม่งั้นรอ หรืออ่านจาก leader)\n- cross-device: เขียนจากมือถือแล้วอ่านจาก laptop ต้อง centralize metadata นี้ — client-side timestamp อย่างเดียวไม่พอ\n\n**2. Monotonic reads**\n\nการันตีว่าถ้า user อ่านซ้ำหลายครั้ง จะไม่เห็น “เวลาถอยหลัง” — ไม่เห็นสิ่งที่เคยเห็นแล้วหายไป. ปัญหา: query แรกโดน replica ที่ fresh, query ที่สองโดน replica ที่ lag มากกว่า → ข้อมูลดูเหมือนย้อนอดีต. เป็น guarantee ที่แข็งกว่า eventual แต่อ่อนกว่า strong consistency. วิธีแก้: route ให้ user คนเดิมอ่านจาก replica ตัวเดิมเสมอ (เช่น hash ของ user id เลือก replica).\n\n**3. Consistent prefix reads**\n\nการันตีว่าถ้า writes เกิดตามลำดับเชิงเหตุ (causal order) reader จะเห็นตามลำดับนั้น ไม่สลับหน้าหลัง. ปัญหานี้เด่นในระบบ partitioned / sharded ที่แต่ละ partition replicate อิสระด้วย lag ต่างกัน → observer เห็นผลลัพธ์มาก่อนสาเหตุ (เห็นคำตอบก่อนคำถาม). วิธีแก้: เขียน writes ที่มีความสัมพันธ์เชิงเหตุให้อยู่ partition เดียวกัน หรือ track causal dependency ให้ชัด (นำไปสู่ causal consistency).\n\n## ตัวอย่าง (fintech / โอนเงิน)\n\nuser โอนออก 5,000 บาท → เขียนไป leader สำเร็จ ยอดใหม่ = 15,000. user refresh หน้า balance ทันที request นี้ถูก route ไป read replica ที่ยัง lag → เห็นยอดเก่า 20,000 หรือ transaction history ไม่มีรายการโอนเลย. user สรุปว่า “โอนไม่สำเร็จ” แล้วกดโอนซ้ำ → เกิดโอนซ้อน. นี่คือ read-your-writes ที่พัง. วิธีแก้ตรงจุด: อ่าน balance / history ของ user เจ้าของบัญชีจาก leader (หรือจาก replica ที่ replicate ถึง write ล่าสุดแล้ว) เฉพาะช่วงสั้น ๆ หลังเขียน.\n\n```mermaid\nsequenceDiagram\n  participant U as User\n  participant L as Leader\n  participant R as Lagging replica\n  U->>L: write transfer 5000 (balance now 15000)\n  L-->>U: ack ok\n  U->>R: read balance (refresh)\n  Note over R: replication not caught up yet\n  R-->>U: stale balance 20000\n  U->>U: thinks transfer failed, retries\n```\n\nConsistent prefix ในบริบท ledger: หนึ่งรายการเกิดจาก authorization → capture → posting ตามลำดับ causal. ถ้า reader (เช่น statement service) เห็น `posting -5000` มาก่อน `authorization` ที่ทำให้เกิด จะดู inconsistent — แม้ทุก event จะมาถึงในที่สุดก็ตาม.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **“eventual consistency = inconsistent แค่แป๊บเดียว ไม่ต้องแคร์”** ผิด — lag ไม่มี upper bound รับประกัน; ตอน failover หรือโหลดหนักอาจเป็นนาที และ anomaly ที่ user เห็นมีราคา\n- **“read-your-writes = strong consistency”** ผิด — มันการันตีแค่ว่า user เห็น write ของ *ตัวเอง* ไม่ได้การันตีเห็น write ล่าสุดของคนอื่น\n- **“อ่านจาก replica คือได้ข้อมูลผิด”** ไม่เชิง — ข้อมูลจาก replica เป็น valid past state ไม่ใช่ corrupt แต่ก็ไม่ใช่ปัจจุบัน; ปัญหาอยู่ที่ user *สังเกตเห็นความไม่ต่อเนื่อง*\n- **“monotonic reads กับ read-your-writes คืออันเดียวกัน”** ผิด — RYW เกี่ยวกับ write ของตัวเอง; monotonic เกี่ยวกับความต่อเนื่องของ read ซ้ำ (แม้อ่าน write ของคนอื่น)\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ (trade-off)\n\nวิธีแก้ทุกอันข้างบนสวนทางกับเหตุผลที่เรามี replica ตั้งแต่แรก — กระจาย read load:\n\n- **Read-your-writes ด้วยการ pin อ่านที่ leader** → read ไหลกลับไปกอง leader ลบ read scalability ที่เพิ่งได้มา; ถ้า pin ทุก read ของทุก user replica แทบไร้ประโยชน์. จึง pin เฉพาะ read path ที่ผูกกับ write ของ user และเฉพาะช่วงสั้น ๆ\n- **Monotonic reads ด้วยการ pin user → replica ตัวเดิม** → เมื่อ replica นั้นตายต้อง re-route, และ hot user ทำให้ load ไม่บาลานซ์\n- **Consistent prefix ด้วยการบังคับ causally-related writes อยู่ partition เดียว** → ลดความยืดหยุ่นของ sharding และอาจสร้าง hot partition\n- **ต้นทุนแฝง:** track timestamp / version ต่อ user (บางทีต่อ device) ดัน complexity ไปที่ application layer และต้องมี centralized store ของ metadata\n- **เมื่อไหร่ยอมรับ lag ได้เลย:** analytics dashboard, activity feed, รายงานที่ stale ได้, read ที่ไม่ผูก causal กับ write ที่ user เพิ่งทำ — อย่าเหมาจ่าย consistency ให้ทุก read, เลือกเฉพาะจุดที่ anomaly มีราคา\n- **ถ้าต้องการการันตีแข็งกว่านี้จริง** ต้นทุนกระโดดอีกชั้น: synchronous replication หรือ linearizability = latency สูงขึ้นและ availability ต่ำลง (ต้องรอ replica ack). นั่นเป็น trade-off คนละระดับ และมักไปต่อที่ quorum / leaderless (sibling `leaderless-dynamo-style`) หรือ linearizability / consensus\n\n## มุมสัมภาษณ์\n\n- “user โอนเงินแล้ว refresh เห็นยอดเก่า เกิดจากอะไร แก้ยังไง?” → replication lag ทำ read-your-writes พัง; อ่านข้อมูลของ user เองจาก leader หรือจาก replica ที่ catch up ถึง write ล่าสุด\n- “eventual consistency สร้างปัญหา UX อะไรบ้าง?” → เล่าสาม anomaly พร้อมวิธีแก้และราคาของแต่ละวิธี\n- “monotonic reads ต่างจาก read-your-writes ยังไง?” → RYW = เห็น write ตัวเอง; monotonic = อ่านซ้ำแล้วไม่เห็นเวลาถอยหลัง\n- “ทำไมการแก้ replication lag ถึงกัด scalability?” → เพราะวิธีแก้ส่วนใหญ่คือลดการกระจาย read (pin ที่ leader หรือ replica ตัวเดิม)\n- คำถามชุดนี้มักต่อยอดไป quorum / leaderless หรือ linearizability — เตรียมเชื่อมต่อไว้\n",
+  "recall_checks": [
+    {
+      "q": "สาม read anomaly หลักที่เกิดจาก replication lag คืออะไรบ้าง?",
+      "expected_answer": "read-your-writes (read-after-write), monotonic reads, และ consistent prefix reads",
+      "type": "short_answer"
+    },
+    {
+      "q": "user โอนเงินสำเร็จแล้ว refresh ทันทีเห็นยอดเก่าเพราะ read โดน replica ที่ lag — นี่คือ anomaly ประเภทใด และแก้เบื้องต้นยังไง?",
+      "expected_answer": "read-your-writes; อ่านข้อมูลที่ user แก้ไขเอง (เช่น balance ตัวเอง) จาก leader จนกว่า replica จะ catch up",
+      "type": "mcq",
+      "options": [
+        "read-your-writes; อ่านข้อมูลที่ user แก้ไขเอง (เช่น balance ตัวเอง) จาก leader จนกว่า replica จะ catch up",
+        "consistent prefix reads; บังคับให้ทุก write อยู่ partition เดียวกัน",
+        "monotonic reads; ให้ user อ่านจาก replica คนละตัวทุกครั้ง"
+      ]
+    },
+    {
+      "q": "monotonic reads การันตีอะไร?",
+      "expected_answer": "อ่านซ้ำแล้วจะไม่เห็นข้อมูลย้อนเวลาถอยหลัง (สิ่งที่เคยเห็นแล้วจะไม่หายไป)",
+      "type": "mcq",
+      "options": [
+        "อ่านซ้ำแล้วจะไม่เห็นข้อมูลย้อนเวลาถอยหลัง (สิ่งที่เคยเห็นแล้วจะไม่หายไป)",
+        "user เห็น write ล่าสุดของทุกคนเสมอ (strong consistency)",
+        "writes ที่มีความสัมพันธ์เชิงเหตุจะถูกอ่านตามลำดับที่ถูกต้อง"
+      ]
+    },
+    {
+      "q": "ทำไมการ pin ให้ user อ่านจาก leader เพื่อแก้ read-your-writes จึงเป็น trade-off?",
+      "expected_answer": "เพราะมันดึง read กลับไปกอง leader ลด read scalability ที่ได้จากการกระจาย load ไป replica",
+      "type": "short_answer"
+    },
+    {
+      "q": "consistent prefix reads แก้ปัญหาอะไร และมักโผล่ในระบบแบบไหน?",
+      "expected_answer": "reader เห็น writes ผิดลำดับ causal (เห็นคำตอบก่อนคำถาม); มักโผล่ในระบบ partitioned/sharded ที่แต่ละ partition replicate อิสระด้วย lag ต่างกัน",
+      "type": "mcq",
+      "options": [
+        "reader เห็น writes ผิดลำดับ causal (เห็นคำตอบก่อนคำถาม); มักโผล่ในระบบ partitioned/sharded ที่แต่ละ partition replicate อิสระด้วย lag ต่างกัน",
+        "user เห็น write ของตัวเองช้าไป; มักโผล่เมื่อ replica เดียวตาย",
+        "read มี latency สูง; มักโผล่เมื่อ leader โหลดหนัก"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 5: Replication — section \"Problems with Replication Lag\"",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 5",
+      "why": "อ่านต้นฉบับสาม anomaly (read-your-writes, monotonic reads, consistent prefix reads) และวิธีแก้แต่ละอย่าง"
+    },
+    {
+      "title": "Eventually Consistent — Revisited",
+      "source": "Werner Vogels, Communications of the ACM / All Things Distributed (2008)",
+      "why": "อ่านมุมมองต้นทางว่า eventual consistency คืออะไรและ client-centric guarantee (RYW/monotonic) หมายถึงอะไร"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 5: Replication — section \"Leaders and Followers\"",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 5",
+      "why": "ทบทวน single-leader async setup ที่เป็นต้นเหตุของ replication lag ก่อนอ่านบทนี้"
+    }
+  ]
+}

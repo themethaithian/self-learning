@@ -1,0 +1,63 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "quorum-consistency",
+  "version": 1,
+  "title_en": "Quorums for Reading and Writing",
+  "est_minutes": 8,
+  "body_md": "# Quorums for Reading and Writing\n\n## ทำไมถึงสำคัญ\n\nใน leaderless replication ไม่มี leader มาบอกว่าค่าไหน \"ถูก\" — client เขียนไปหลาย replica พร้อมกันและอ่านจากหลาย replica แล้วต้องตัดสินเองว่าเห็นค่าล่าสุดหรือยัง. quorum คือกฎตัวเลขที่ทำให้ read กับ write \"การันตีว่าทับกัน\" อย่างน้อยหนึ่ง node จึงมีโอกาสเห็น write ล่าสุด. senior ต้องอ่าน knob `w` และ `r` ออกว่าปรับแล้วแลกอะไร และรู้ว่ากฎนี้ให้อะไร *ไม่ให้* อะไร — เพราะจุดที่คนพลาดคือคิดว่า quorum เท่ากับ strong consistency.\n\n(กลไก read repair / anti-entropy ที่ทำให้ replica ตามทันกัน เป็นของ leaderless architecture — ดู sibling `leaderless-dynamo-style`; บทนี้โฟกัสเฉพาะ *คณิตของ quorum* และเหตุผลที่มันไม่พอสำหรับ linearizability.)\n\n## แก่นของแนวคิด: `w + r > n`\n\nนิยามตัวแปร:\n\n- `n` = จำนวน replica ที่เก็บข้อมูลของแต่ละ key\n- ทุก write ถูกส่งไปยัง **ทุก** `n` replica แต่ถือว่า \"สำเร็จ\" เมื่อได้ ack กลับจากอย่างน้อย `w` node\n- ทุก read ยิง query ไปอย่างน้อย `r` node แล้วเลือก version ใหม่สุด (ตัดสินด้วย version number / timestamp)\n\nถ้า `w + r > n` แล้ว read set (`r` node) กับ write set (`w` node) ต้องทับกันอย่างน้อย 1 node เสมอ (pigeonhole) — node ที่ทับนั้นถือ copy ล่าสุด ดังนั้น read จึงเห็น write ล่าสุด **ในทางทฤษฎี**.\n\n```mermaid\nflowchart LR\n  W[\"write ack w=2\"] --> A[Replica A]\n  W --> B[Replica B]\n  R[\"read r=2\"] --> B\n  R --> C[Replica C]\n  B -->|overlap: ถือ write ล่าสุด| OK[\"read เห็นค่าใหม่\"]\n```\n\nในภาพ `n=3, w=2, r=2` → `w+r = 4 > 3` → write set {A,B} กับ read set {B,C} ทับที่ B เสมอ.\n\n**ค่าที่นิยม:** ตั้ง `n` เป็นเลขคี่และ `w = r = (n+1)/2` (majority) เช่น `n=3 → w=r=2`, `n=5 → w=r=3` ทำให้ทน node ล่มได้ `floor((n-1)/2)` ตัวโดยยัง quorum ได้ทั้ง read และ write.\n\n**การ tune `w`, `r`** — ไม่จำเป็นต้อง majority ทั้งคู่ ขอแค่ผลรวม `> n`:\n\n- `w = n, r = 1` → อ่าน node เดียว: read latency ต่ำสุด; แต่ write ต้องได้ ack ครบทุก node → node เดียว unavailable ก็ **เขียนไม่ได้เลย** และ write latency ขึ้นกับ node ที่ช้าที่สุด (write เปราะ)\n- `w = 1, r = n` → write เร็ว/ทน แต่ read ต้องอ่านทุก node → read เปราะ\n- `w = r = majority` → สมดุล ทน node ล่มได้ทั้งสองฝั่ง\n\nนี่คือหัวใจของ trade-off: `w` สูงทำให้ read สด/durable แต่ write เปราะ; `r` สูงทำให้ read สดแต่ read เปราะ — เป็น knob เดียวที่ปรับ read latency แลกกับ write latency/availability ได้ต่อ workload.\n\n## ตัวอย่าง (Cassandra / account ledger)\n\nCassandra ตั้ง replication factor `RF = n` (เช่น 3) และเลือก consistency level ต่อ query: `ONE`, `QUORUM` (= `floor(n/2)+1` = 2 เมื่อ RF=3), `ALL`, `LOCAL_QUORUM`.\n\n- เขียนด้วย `QUORUM` (w=2) + อ่านด้วย `QUORUM` (r=2) → `w+r = 4 > 3` → ในทางทฤษฎี read เห็น write ล่าสุด และยังทน 1 node ล่มได้ทั้งอ่านและเขียน.\n\n**fintech twist:** ledger เก็บ balance ด้วย RF=3 อ่าน/เขียน `QUORUM`. แต่การ \"อ่านยอด → หักเงิน → เขียนยอดใหม่\" (read-modify-write) quorum เพียว ๆ **ไม่พอ** — สองการถอนพร้อมกันอ่าน balance เดียวกันแล้วเขียนทับกัน = lost update. ต้องใช้ compare-and-set / Cassandra LWT (lightweight transaction บน Paxos) ซึ่งแพงกว่ามากในแง่ latency. นี่คือเหตุผลที่ path ซึ่งแตะยอดเงินจริงมักไม่ฝากไว้กับ quorum อย่างเดียว.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"`w+r>n` = strong consistency / linearizability\"** ผิด — เป็นแก่นของ section ถัดไป.\n- **\"quorum ต้องเป็น majority เสมอ\"** ผิด — ขอแค่ `w+r>n`; `w=n, r=1` ก็เป็น valid quorum config.\n- **\"write ถูกส่งไปแค่ `w` node\"** ผิด — write ถูกส่งไป *ทุก* `n` node เสมอ, `w` คือแค่จำนวน ack ที่รอ *ก่อนตอบ* client. (สำคัญ เพราะกลไกซ่อม replica อาศัยว่า write พยายามไปครบทุก node.)\n- **\"อ่านเจอสองค่าต่างกัน ระบบเลือกให้อัตโนมัติเสมอ\"** ครึ่งเดียว — เลือก version ใหม่สุดได้เมื่อมี happens-before; แต่ concurrent write ที่ไม่มีลำดับ → เป็น sibling ที่ต้อง resolve เอง (LWW/version vector).\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรพึ่ง quorum\n\nนี่คือแก่นที่สัมภาษณ์เจาะ: `w+r>n` การันตีแค่ว่า read *เห็น* ค่าที่ write set ถืออยู่ — **ไม่** การันตี linearizability. เหตุผลที่มันหลุด:\n\n1. **Concurrent writes** — overlap รับประกันว่า read เห็นค่า แต่ไม่ได้ *order* write ที่เกิดพร้อมกัน. เขียนสองครั้งพร้อมกันไป replica คนละชุด → แต่ละ node อาจมีค่าต่างลำดับกัน ต้อง resolve ด้วย LWW (ทิ้ง write ไปเลย) หรือ version vector — ทั้งคู่ไม่ใช่ linearizability.\n2. **Read คาบเกี่ยวกับ write** — writer กำลังเขียนอยู่ (write ไม่ atomic ข้าม replica) reader ที่รันคาบเกี่ยวอาจเห็นค่าใหม่หรือเก่าก็ได้ ไม่มี \"จุดเดียว\" ที่ค่าพลิกพร้อมกันทุก node → ผิดนิยาม linearizability.\n3. **Write สำเร็จไม่ถึง `w`** — ถ้า write ได้ ack < `w` ระบบรายงาน fail แต่ **ไม่ rollback** node ที่รับไปแล้ว → read ครั้งถัดไปอาจคืนค่านั้นหรือไม่ก็ได้ ค้างแบบ undefined.\n4. **Sloppy quorum + hinted handoff** — เมื่อ node บ้านของ key ล่มหลายตัว write ถูกรับไว้ที่ node สำรอง (นอกกลุ่ม home `n` ตัว) เพื่อคง write availability → read quorum ที่อ่านจากกลุ่ม home อาจไม่ทับกับ node ที่รับ write เลย. **`w+r>n` เลิกการันตี overlap** จนกว่า hinted handoff จะส่งค่ากลับบ้าน.\n5. **วัด staleness ยาก** — `w`, `r` ปรับแค่ *ความน่าจะเป็น* ที่จะอ่านเจอค่าเก่า ไม่ใช่ absolute bound; ไม่มีตัวเลขว่า stale ได้นานสุดกี่วินาที.\n\n**สรุปเชิงตัดสินใจ:** quorum ให้ *tunable freshness/durability* ไม่ใช่ linearizability. ถ้าต้องการ linearizable read — uniqueness constraint, lock, หรือเช็ค balance ก่อนถอน — ต้องใช้ consensus จริง (Paxos/Raft, Cassandra LWT, หรือ single-leader + sync replication) ซึ่งแลกด้วย latency และ availability. **เมื่อไหร่ไม่ควรใช้ quorum เพียว ๆ:** งานที่ต้อง strict correctness ต่อ object เดียว เช่น counter, balance, unique username — อย่าฝากไว้กับ Dynamo-style quorum อย่างเดียว.\n\n## มุมสัมภาษณ์\n\n- \"`w+r>n` การันตีอะไร ไม่การันตีอะไร?\" → การันตี overlap ≥ 1 node (เห็นค่าที่ ack แล้ว) แต่ไม่การันตี linearizability หรือ ordering ของ concurrent write.\n- \"RF=3 อยากให้ read เห็น write ล่าสุด ตั้ง `r`,`w` เท่าไหร่?\" → ให้ `w+r>3` เช่น QUORUM/QUORUM (2/2).\n- \"อยาก optimize read latency สุด ๆ ตั้งยังไง แลกอะไร?\" → `r=1, w=n`; แลกด้วย write availability/latency (node เดียวล่มเขียนไม่ได้).\n- \"quorum พอสำหรับ bank balance ไหม?\" → ไม่ สำหรับ read-modify-write ต้อง CAS/LWT/transaction — คำถามนี้มักเป็นสะพานไปเรื่อง consensus และ linearizability ต่อ.\n",
+  "recall_checks": [
+    {
+      "q": "สูตร quorum ที่รับประกันว่า read set กับ write set ทับกันอย่างน้อย 1 node คืออะไร?",
+      "expected_answer": "w + r > n",
+      "type": "short_answer"
+    },
+    {
+      "q": "ระบบมี n=5 replica ตั้ง w=3 ถ้าต้องการให้ read set ทับกับ write set เสมอ r ต้องอย่างน้อยเท่าไหร่?",
+      "expected_answer": "3",
+      "type": "mcq",
+      "options": ["3", "2", "1"]
+    },
+    {
+      "q": "ข้อใดถูกต้องเกี่ยวกับสิ่งที่ w + r > n รับประกัน?",
+      "expected_answer": "รับประกันว่า read เห็นค่าที่ write set ถืออยู่ แต่ไม่รับประกัน linearizability เมื่อมี concurrent write หรือ sloppy quorum",
+      "type": "mcq",
+      "options": [
+        "รับประกันว่า read เห็นค่าที่ write set ถืออยู่ แต่ไม่รับประกัน linearizability เมื่อมี concurrent write หรือ sloppy quorum",
+        "รับประกัน linearizability ในทุกกรณี",
+        "ทำให้ concurrent write ถูก order โดยอัตโนมัติ"
+      ]
+    },
+    {
+      "q": "การตั้ง w = n, r = 1 ให้ผลอะไรและมีข้อเสียอะไร?",
+      "expected_answer": "read เร็ว (อ่าน node เดียว) แต่ write เปราะ — node เดียว unavailable ก็เขียนไม่ได้เลย และ write latency ขึ้นกับ node ที่ช้าที่สุด",
+      "type": "short_answer"
+    },
+    {
+      "q": "sloppy quorum ทำลายการรับประกัน w + r > n อย่างไร?",
+      "expected_answer": "write อาจถูกรับไว้ที่ node นอกกลุ่ม home ของ key ทำให้ read quorum อาจไม่ทับกับ node ที่รับ write",
+      "type": "mcq",
+      "options": [
+        "write อาจถูกรับไว้ที่ node นอกกลุ่ม home ของ key ทำให้ read quorum อาจไม่ทับกับ node ที่รับ write",
+        "มันเพิ่มจำนวน replica n โดยอัตโนมัติ",
+        "มันบังคับให้ r ต้องเท่ากับ n เสมอ"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 5: Replication (Quorums for reading and writing / Limitations of Quorum Consistency)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 5",
+      "why": "อ่านต้นฉบับสูตร w+r>n และรายการ edge case ที่ทำให้ quorum ไม่ใช่ strong consistency"
+    },
+    {
+      "title": "Dynamo: Amazon's Highly Available Key-value Store",
+      "source": "DeCandia et al., SOSP 2007",
+      "why": "อ่านที่มาของ N/R/W notation และ sloppy quorum + hinted handoff โดยตรงจาก paper ต้นทาง"
+    },
+    {
+      "title": "Apache Cassandra Documentation: Consistency levels (QUORUM / LOCAL_QUORUM) และ Dynamo architecture",
+      "source": "Apache Cassandra official docs — Architecture: Dynamo / Configuring consistency",
+      "why": "อ่านว่า production database map w, r, n ลง consistency level จริงอย่างไร และ LWT ต่างจาก quorum ตรงไหน"
+    }
+  ]
+}

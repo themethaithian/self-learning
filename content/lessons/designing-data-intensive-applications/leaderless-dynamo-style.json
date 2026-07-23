@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "leaderless-dynamo-style",
+  "version": 1,
+  "title_en": "Leaderless Replication (Dynamo-Style)",
+  "est_minutes": 8,
+  "body_md": "# Leaderless Replication (Dynamo-Style)\n\n## ทำไมถึงสำคัญ\n\nLeaderless replication ตัด \"leader\" ทิ้ง: client (หรือ coordinator node ที่ไม่ได้บังคับลำดับเหมือน leader) เขียนไปหลาย replica พร้อมกัน และอ่านจากหลาย replica พร้อมกัน. โมเดลนี้ (ทำให้ดังโดย Amazon Dynamo) แลก strong consistency เพื่อ availability สูงสุด — ระบบยังรับ read/write ได้แม้ node ล้มหรือเจอ network partition. ราคาที่จ่ายคือภาระ conflict detection และ consistency ถูกผลักไปที่ read path และตัวแอปเอง.\n\n## แก่นของแนวคิด\n\nต่างจาก single-leader (write ผ่าน leader ที่เดียว) และ multi-leader (leader หลายตัว sync กัน) — leaderless ไม่มี node ไหนพิเศษ. ทุก write ยิงตรงไปหลาย replica; write ถือว่าสำเร็จเมื่อได้ ack จากจำนวนที่กำหนด (w), read สำเร็จเมื่อได้คำตอบจาก r replica แล้วเลือกค่าที่ version ใหม่สุด. (การตั้ง w, r ให้ overlap กัน — สูตร w + r > n — ดูใน quorum-consistency; ตรงนี้เราสนใจ *กลไก* ไม่ใช่คณิตศาสตร์.)\n\nปัญหาที่ตามมา: node ที่ล่มชั่วคราวจะ \"พลาด\" write บางตัว พอกลับมาออนไลน์มันจะ stale. leaderless มีสองกลไกดึง replica ที่ล้าหลังให้ตามทัน:\n\n- **Read repair (แก้ตอนอ่าน):** เมื่อ client อ่านจากหลาย replica พร้อมกันแล้วเห็นว่าบางตัวส่งค่า version เก่ากว่า มันจะเขียนค่าใหม่กลับไปทับ replica ที่ stale ทันที. เหมาะกับข้อมูลที่ถูกอ่านบ่อย — เพราะ key ที่ไม่มีใครอ่านจะไม่มีวันถูกซ่อม.\n- **Anti-entropy process (background):** process เบื้องหลังที่เดินเทียบข้อมูลระหว่าง replica ตลอดเวลา แล้ว copy ส่วนที่ขาดไป. ต่างจาก replication log ของ leader-based ตรงที่มัน *ไม่* copy ตามลำดับ write และอาจมี delay นานพอสมควร. สองกลไกนี้เสริมกัน: read repair จัดการ hot key, anti-entropy กวาด cold key ที่ไม่มีใครอ่าน.\n\n### Sloppy quorum + hinted handoff (เกริ่น)\n\nใน cluster ใหญ่ (มี node มากกว่า n) เวลาเกิด network partition client อาจติดต่อ \"home node\" ทั้ง n ตัวของ key นั้นไม่ครบ. **Sloppy quorum:** ยังต้องได้ w/r ตอบ แต่ยอมนับ node ที่ *ไม่ใช่* home node ของ key นั้น (node ข้างเคียงที่ยังเข้าถึงได้) → write ไม่ fail. **Hinted handoff:** พอ network กลับมาปกติ node ที่รับ write ไว้ชั่วคราวจะส่งต่อ (\"hand off\") ให้ home node จริง. ผลคือ availability ของ write สูงขึ้นมาก แต่ระหว่างนั้นค่าล่าสุดอาจไปนั่งอยู่บน node นอกกลุ่ม จึง *ไม่* การันตีว่าอ่านเจอค่าล่าสุดแม้ตั้ง w + r > n (รายละเอียดว่าทำไม อยู่ใน quorum-consistency).\n\n```mermaid\nsequenceDiagram\n  participant C as Client\n  participant R1 as Replica 1\n  participant R2 as Replica 2\n  participant R3 as Replica 3 (was down)\n  Note over C,R3: Write v2 with n=3, w=2\n  C->>R1: write v2\n  C->>R2: write v2\n  C--xR3: write v2 (unreachable)\n  Note over R3: still stale at v1\n  Note over C,R3: Later read with r=2\n  C->>R1: read\n  C->>R3: read\n  R1-->>C: return v2\n  R3-->>C: return v1 (stale)\n  C->>R3: read repair - write v2 back\n```\n\n## ตัวอย่าง (Dynamo shopping cart / high availability)\n\nAmazon Dynamo เลือก leaderless ให้ shopping cart เพราะกฎธุรกิจคือ \"ปุ่ม add to cart ต้องไม่มีวันพัง\" — ยอมให้ข้อมูลเพี้ยนชั่วคราวดีกว่าปฏิเสธการเขียน. ผลข้างเคียงคลาสสิก: ถ้า user แก้ cart จากสองที่พร้อมกัน (หรือระหว่าง partition) จะเกิด concurrent write หลาย version (siblings) ที่ระบบต้อง merge ตอนอ่าน. การ merge แบบ union ทำให้ **ของที่ลบไปแล้วโผล่กลับมาใน cart ได้** — เพราะการลบหายไปในตอนรวม version. นี่คือหน้าตาจริงของประโยค \"conflict ถูกผลักไป read path\".\n\nเทียบกับ fintech: **account ledger ห้ามใช้โมเดลนี้ตรง ๆ**. ถ้าสอง debit เขียนพร้อมกันแล้วใช้ last-write-wins ตัวหนึ่งจะหายเงียบ — ยอดเงินผิดโดยไม่มี error โผล่ให้เห็น. งานเงินที่ต้องการ correctness ใช้ single-leader + transaction. แต่ high-availability workload ที่ conflict ไม่ร้ายแรง — session store, \"recently viewed\", user preference / feature flag, device shadow — เป็นที่ที่ leaderless ส่องแสง.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ตั้ง w + r > n แล้วจะอ่านเจอค่าล่าสุดเสมอ = strong consistency\"** ผิด. sloppy quorum, concurrent write, และ write ที่สำเร็จแค่บางส่วน ทำให้ quorum ไม่การันตี linearizability (math อยู่ใน quorum-consistency).\n- **\"มี read repair อย่างเดียวก็พอให้ replica ตามทัน\"** ผิด. key ที่ไม่มีใครอ่านจะไม่ถูกซ่อม จึงต้องมี anti-entropy คอยกวาดด้วย.\n- **\"leaderless แปลว่าไม่มี coordinator เลย\"** ไม่จำเป็น. บางระบบมี coordinator node ยิง request แทน client แต่มันไม่ได้บังคับ order ของ write เหมือน leader — จึงยังเป็น leaderless อยู่.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\nจุดแข็งชัดเจน: ไม่มี single point of failure ที่ leader, ทน node ล้ม / partition ได้ดี, write latency ไม่ผูกกับ node ที่ช้าที่สุดแบบ synchronous single-leader, และไม่ต้อง promote leader ใหม่ตอน failover.\n\nราคาที่ต้องจ่าย:\n\n- **Conflict detection ตกไปที่ read path + ตัวแอป.** concurrent write สร้าง siblings ที่แอปต้อง resolve เอง (LWW = เสี่ยงข้อมูลหาย, merge = ต้องเขียน logic เอง เช่น version vector). ความซับซ้อนตรงนี้ single-leader ไม่มี.\n- **ไม่มี guarantee ง่าย ๆ เรื่อง read-your-writes, monotonic reads, ordering** และไม่มี transaction ข้าม key.\n- **Operational overhead:** read repair เพิ่มงานฝั่งอ่าน, anti-entropy กิน background bandwidth, และแอปต้องแบก logic conflict resolution เอง.\n\nเมื่อไหร่ *ไม่* ควรใช้: เมื่อโดเมนต้องการ strong consistency / linearizability หรือทน data loss จาก LWW ไม่ได้ (ยอดเงิน, inventory ที่ oversell ไม่ได้, uniqueness constraint). กรณีพวกนี้ single-leader + transaction เหมาะกว่า. leaderless จะคุ้มก็ต่อเมื่อ availability สำคัญกว่า consistency และ conflict แก้ได้แบบ commutative / merge (เช่น cart, counter แบบ CRDT, preference).\n\n## มุมสัมภาษณ์\n\n- \"ใน leaderless replica ที่ล่มแล้วกลับมา ตามข้อมูลให้ทันได้ยังไง?\" → read repair (ตอนอ่าน, hot key) + anti-entropy (background, cold key); อธิบายว่าทำไมต้องมีทั้งคู่.\n- \"sloppy quorum ต่างจาก quorum ปกติยังไง แล้วเสียอะไรไป?\" → ยอมนับ node นอก home set เพื่อ availability, แลกกับการที่ w + r > n ไม่การันตีอ่านเจอค่าล่าสุด.\n- \"ทำไม Dynamo cart ลบของแล้วของกลับมาโผล่ได้?\" → concurrent write → siblings → merge แบบ union กลืนการลบทิ้ง; เป็นสะพานไปเรื่อง conflict resolution / version vector.\n- \"เมื่อไหร่เลือก leaderless แทน single-leader?\" → เมื่อ availability > consistency และ conflict merge ได้; ห้ามใช้กับ money / ledger. มักต่อด้วยคำถาม quorum math ใน quorum-consistency.\n",
+  "recall_checks": [
+    {
+      "q": "Read repair ทำงานตอนไหน และทำอะไร?",
+      "expected_answer": "ตอน client อ่านจากหลาย replica พร้อมกันแล้วเจอว่าบางตัวส่งค่า version เก่า (stale) มันจะเขียนค่าใหม่กลับไปทับ replica ที่ล้าหลังนั้นทันที",
+      "type": "short_answer"
+    },
+    {
+      "q": "ความต่างสำคัญระหว่าง read repair กับ anti-entropy process คืออะไร?",
+      "expected_answer": "read repair ซ่อม replica เฉพาะตอนมี client มาอ่าน (จึงพลาด key ที่ไม่มีใครอ่าน) ส่วน anti-entropy เป็น background process ที่กวาดเทียบข้อมูลตลอดเวลารวมถึง cold key",
+      "type": "mcq",
+      "options": [
+        "read repair ซ่อม replica เฉพาะตอนมี client มาอ่าน (จึงพลาด key ที่ไม่มีใครอ่าน) ส่วน anti-entropy เป็น background process ที่กวาดเทียบข้อมูลตลอดเวลารวมถึง cold key",
+        "read repair ทำงานที่ leader ส่วน anti-entropy ทำงานที่ follower",
+        "read repair copy ข้อมูลตามลำดับ write เป๊ะ ส่วน anti-entropy การันตี linearizability"
+      ]
+    },
+    {
+      "q": "sloppy quorum + hinted handoff มีไว้เพื่ออะไร และมีผลข้างเคียงอะไร?",
+      "expected_answer": "เพิ่ม write availability โดยยอมรับ write บน node นอก home set แล้วค่อยส่งต่อภายหลัง แต่ทำให้แม้ตั้ง w + r > n ก็ไม่การันตีว่าจะอ่านเจอค่าล่าสุด",
+      "type": "mcq",
+      "options": [
+        "เพิ่ม write availability โดยยอมรับ write บน node นอก home set แล้วค่อยส่งต่อภายหลัง แต่ทำให้แม้ตั้ง w + r > n ก็ไม่การันตีว่าจะอ่านเจอค่าล่าสุด",
+        "บังคับให้ทุก write ต้องผ่าน leader เพื่อรับประกัน ordering",
+        "ลด storage โดยเก็บข้อมูลแค่ replica เดียว"
+      ]
+    },
+    {
+      "q": "ทำไมใน Dynamo-style shopping cart ของที่ลบไปแล้วถึงกลับมาโผล่ในตะกร้าได้?",
+      "expected_answer": "concurrent write ทำให้เกิดหลาย version (siblings) แล้วการ merge แบบ union ตอนอ่านกลืนการลบทิ้งไป ทำให้ item ที่ถูกลบกลับมา",
+      "type": "mcq",
+      "options": [
+        "concurrent write ทำให้เกิดหลาย version (siblings) แล้วการ merge แบบ union ตอนอ่านกลืนการลบทิ้งไป ทำให้ item ที่ถูกลบกลับมา",
+        "เพราะ leader ส่ง replication log ผิดลำดับ",
+        "เพราะ read repair ลบข้อมูลใหม่ทิ้งโดยไม่ตั้งใจ"
+      ]
+    },
+    {
+      "q": "งานประเภทใดที่ไม่ควรใช้ leaderless replication และควรใช้อะไรแทน?",
+      "expected_answer": "งานที่ต้องการ strong consistency หรือทน data loss จาก last-write-wins ไม่ได้ เช่น account balance / ledger ควรใช้ single-leader + transaction แทน",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 5: Replication (section: Leaderless Replication)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 5",
+      "why": "อ่านต้นฉบับกลไก leaderless: quorum reads/writes, read repair, anti-entropy, sloppy quorum"
+    },
+    {
+      "title": "Dynamo: Amazon's Highly Available Key-value Store",
+      "source": "DeCandia et al., Proceedings of SOSP 2007 (Amazon)",
+      "why": "อ่าน paper ต้นทางแนวคิด Dynamo-style: hinted handoff, sloppy quorum, และ shopping cart conflict"
+    },
+    {
+      "title": "Eventually Consistent",
+      "source": "Werner Vogels, Communications of the ACM (2009)",
+      "why": "อ่านมุมมองผู้ออกแบบ Dynamo ว่าทำไมยอมแลก consistency เพื่อ availability ในงานจริง"
+    }
+  ]
+}
