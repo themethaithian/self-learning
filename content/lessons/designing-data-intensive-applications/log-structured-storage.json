@@ -1,0 +1,67 @@
+{
+  "concept_id": "log-structured-storage",
+  "topic": "designing-data-intensive-applications",
+  "version": 1,
+  "title_en": "Log-Structured Storage",
+  "est_minutes": 8,
+  "body_md": "# Log-Structured Storage\n\n## ทำไมถึงสำคัญ\n\nคำถาม system design สาย storage มักเริ่มจาก \"ถ้าให้ออกแบบ key-value store ที่เขียนเร็ว จะวางข้อมูลลง disk ยังไง\" และคำตอบพื้นฐานที่สุดคือ log-structured storage. แก่นคือแทนที่จะไล่หาตำแหน่งเดิมแล้วเขียนทับ (random write) เรา **append** record ต่อท้าย log เสมอ ทำให้ได้ **sequential write** ที่เร็วกว่ามากทั้งบน HDD และ SSD. เข้าใจ approach นี้และ trade-off ของมันคือประตูเข้าสู่ทั้ง LSM-tree และ event sourcing ที่ตามมา.\n\n## แก่นของแนวคิด\n\n- **append-only log**: ไฟล์ที่รองรับการเขียนแบบเดียวคือ \"ต่อท้าย\". ทุก write (`set key = value`) กลายเป็น record ใหม่ที่ append ไปท้ายไฟล์ ไม่แตะ record เดิม. การ update key เดิม = append record ใหม่ที่มี key เดิมแต่ค่าใหม่; การลบ = append record พิเศษที่เรียกว่า tombstone.\n- **ทำไม sequential write เร็วกว่า random write**: บน HDD หัวอ่านไม่ต้อง seek ไปมา (ประหยัด seek time + rotational latency); บน SSD การเขียนต่อเนื่องเป็นก้อนเข้ากับ flash erase-block ได้ดีกว่า จึงลด write amplification ที่เกิดจาก random small write. append ยังทำให้ crash recovery ง่ายเพราะ record เก่าไม่เคยถูกแก้ระหว่างทาง.\n- **hash index (Bitcask style)**: เก็บ in-memory hash map ที่ map ทุก key → byte offset ของ record **ล่าสุด** ของ key นั้นใน log file. write = append ลง log แล้ว update offset ใน map. read = lookup map ได้ offset → seek ไปอ่านค่าตรงจุดนั้นครั้งเดียว ไม่ต้อง scan ทั้งไฟล์. ทั้ง read และ write เป็น O(1) โดยเฉลี่ย.\n- **compaction / merge**: เพราะ append ทำให้ค่าเก่าของ key ยังกินที่บน disk อยู่ ต้องมี background process ที่ \"compact\" — อ่าน segment เก่า เก็บเฉพาะค่าล่าสุดของแต่ละ key ทิ้งค่าที่ถูกเขียนทับและ tombstone แล้วเขียนออกเป็น segment ใหม่ที่เล็กลง. โดยทั่วไป split log เป็น segment ขนาดคงที่ แล้ว merge หลาย segment เข้าด้วยกัน; segment ที่ปิดแล้วเป็น immutable จึง compact ไปพร้อมกับรับ write ใหม่ที่ segment ปัจจุบันได้.\n\n```mermaid\nflowchart TD\n  W[Write key=A val=100] --> L[Append to end of log file]\n  L --> H[Hash index in memory: key to byte offset]\n  R[Read key=A] --> H\n  H -.->|offset 4821| SEEK[Seek to offset and read value]\n  SEEK --> V[Return latest value]\n  L --> C[Compaction: keep latest discard overwritten]\n```\n\n## ตัวอย่าง (fintech: append-only ledger / balance log)\n\nระบบ wallet ที่เก็บ balance ล่าสุดต่อ wallet เป็น key-value เหมาะกับ log-structured โดยธรรมชาติ เพราะ write หนักและ read เป็น point lookup:\n\n- append: `wallet:8841 -> 15000` (offset 0), ต่อมา top-up `wallet:8841 -> 15200` (offset 512), แล้ว `wallet:9002 -> 300` (offset 1080)\n- hash index ใน memory ชี้ record ล่าสุดเสมอ: `wallet:8841 -> 512`, `wallet:9002 -> 1080`\n- อ่าน balance ของ `wallet:8841` → map บอก offset 512 → seek อ่านได้ `15200` ทันที ไม่ต้องแตะ record offset 0\n- compaction ภายหลังทิ้ง record offset 0 (ค่าเก่า 15000) เพราะถูกเขียนทับแล้ว disk usage จึงผูกกับจำนวน wallet ที่ยัง live ไม่ใช่จำนวน write ทั้งหมด\n\nหมายเหตุ: การเก็บ **ทุก event** ของ ledger ไว้เป็น source of truth (แทนที่จะ overwrite balance) คือแนวคิด event sourcing ซึ่งเป็นคนละมุมกับ storage-engine log ตรงนี้ และมี concept แยกใน track stream-processing (`event-sourcing`) — อย่าเหมารวมว่าเป็นเรื่องเดียวกัน.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"append-only แปลว่าไฟล์โตไม่จำกัด disk ต้องเต็มแน่ ๆ\"** ผิด — compaction/merge เรียก space คืนต่อเนื่องโดย keep เฉพาะค่าล่าสุด. disk usage สัมพันธ์กับจำนวน distinct key ที่ยัง live ไม่ใช่จำนวน write สะสม.\n- **\"read ช้าเพราะต้องอ่านทั้ง log\"** ผิด — read ไม่ scan log เลย; ใช้ offset จาก hash index กระโดดตรงจุดแล้วอ่านครั้งเดียว.\n- **\"hash index เก็บบน disk\"** Bitcask-style เก็บ index **ทั้งหมดใน memory**; read เร็วเพราะ index อยู่ใน RAM ไม่ใช่เพราะ log ถูก sort (log ไม่ได้ sort). และข้อเท็จจริงนี้เองคือที่มาของข้อจำกัดหลักด้านล่าง.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\nLog-structured hash index ไม่ใช่คำตอบสำหรับทุก workload:\n\n- **index ต้อง fit ใน memory (hard limit)**: ทุก key ต้องมี entry ใน in-memory hash map. ถ้ามี distinct key จำนวนมหาศาล (เช่น key เป็น id ระดับพันล้าน แต่ละ value เล็ก) RAM จะไม่พอ. นี่คือเหตุผลที่ Bitcask ไม่เหมาะกับ dataset ที่ key เยอะมาก — ทางแก้เชิงโครงสร้างคือย้าย index ไปอยู่บน disk แบบ B-tree (sibling concept `b-trees`).\n- **range query แพงมาก**: hash index ไม่มี order — คำถามแบบ \"ขอทุก key ระหว่าง `wallet:8000` ถึง `wallet:9000`\" ต้องไล่ทุก key ทีละตัว ทำไม่ได้อย่างมีประสิทธิภาพ. ถ้า workload มี range scan เป็นเรื่องปกติ ต้องใช้โครงสร้างที่เก็บ key แบบเรียงลำดับ — นี่คือแรงจูงใจตรง ๆ ที่ทำให้เกิด SSTable/LSM-tree (sibling concept `sstables-lsm-trees`).\n- **ต้นทุน compaction**: compaction กิน disk I/O และ CPU พื้นหลังอย่างต่อเนื่อง; ต้อง tune ให้มันไม่ไปแย่ง I/O จนกระทบ tail latency ของ request จริง.\n- **ไม่เหมาะกับ analytic scan**: ถ้า read pattern เป็นการ scan ข้อมูลจำนวนมากเพื่อ aggregate (OLAP) log-structured row store ก็ไม่ใช่คำตอบ — เรื่องนั้นเป็น column-oriented storage (sibling ท้าย chapter).\n\nสรุปเลือกใช้เมื่อ: จำนวน distinct key พอดีกับ RAM, workload เป็น point lookup + write หนัก, ไม่ต้อง range scan. เลี่ยงเมื่อ key เยอะเกิน RAM หรือ range query เป็น first-class requirement.\n\n## มุมสัมภาษณ์\n\n- \"ทำไม append-only ถึงเขียนเร็วกว่า update in place?\" → sequential vs random write; อธิบาย seek time / rotational latency บน HDD และ write amplification บน SSD.\n- \"แล้ว disk ไม่เต็มเหรอถ้า append อย่างเดียว?\" → compaction/merge keep latest แล้ว discard ค่าที่ถูกเขียนทับ + tombstone.\n- \"read หา value เจอได้ยังไงถ้า log ไม่ sort?\" → in-memory hash index map key → byte offset แล้ว seek ตรงจุด อ่าน O(1).\n- \"ข้อจำกัดของ approach นี้คืออะไร?\" → index ต้อง fit memory + ทำ range query ไม่ได้ — เกือบทุกครั้ง interviewer จะถามต่อทันทีว่า \"แล้วแก้ยังไง\" ซึ่งเป็นสะพานไป SSTable/LSM-tree และ B-tree.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม sequential write (append) ถึงเร็วกว่า random write บน disk?",
+      "expected_answer": "sequential write ไม่ต้อง seek หัวอ่านไปมา (ประหยัด seek time/rotational latency บน HDD) และลด write amplification บน SSD เพราะเขียนต่อเนื่องเป็นก้อน",
+      "type": "short_answer"
+    },
+    {
+      "q": "ใน Bitcask-style storage hash index เก็บอะไรและอยู่ที่ไหน?",
+      "expected_answer": "map จาก key ไปยัง byte offset ของ record ล่าสุดใน log และเก็บทั้งหมดใน memory",
+      "type": "mcq",
+      "options": [
+        "map จาก key ไปยัง value ทั้งก้อน เก็บบน disk",
+        "map จาก key ไปยัง byte offset ของ record ล่าสุดใน log และเก็บทั้งหมดใน memory",
+        "sorted index ของทุก key เก็บบน disk แบบ B-tree"
+      ]
+    },
+    {
+      "q": "อะไรทำให้ append-only log ไม่ทำให้ disk เต็มไปเรื่อย ๆ?",
+      "expected_answer": "compaction/merge ที่เก็บเฉพาะค่าล่าสุดของแต่ละ key แล้วทิ้งค่าที่ถูกเขียนทับและ tombstone",
+      "type": "mcq",
+      "options": [
+        "ระบบเขียนทับ record เดิมเมื่อ key ซ้ำ",
+        "log ถูกบีบอัดด้วย gzip ทุกครั้งที่เขียน",
+        "compaction/merge ที่เก็บเฉพาะค่าล่าสุดของแต่ละ key แล้วทิ้งค่าที่ถูกเขียนทับและ tombstone"
+      ]
+    },
+    {
+      "q": "ทำไม log-structured hash index ถึงทำ range query ได้ไม่ดี?",
+      "expected_answer": "เพราะ hash index ไม่มี order ของ key จึงต้องไล่ทุก key ทีละตัว ทำ range scan อย่างมีประสิทธิภาพไม่ได้",
+      "type": "mcq",
+      "options": [
+        "เพราะ hash index ไม่มี order ของ key จึงต้องไล่ทุก key ทีละตัว ทำ range scan อย่างมีประสิทธิภาพไม่ได้",
+        "เพราะ log อยู่บน disk ที่ช้า",
+        "เพราะ compaction ลบ key ที่อยู่ในช่วง range ทิ้ง"
+      ]
+    },
+    {
+      "q": "ข้อจำกัดหลักสองข้อของ log-structured storage แบบ in-memory hash index คืออะไร?",
+      "expected_answer": "index ทั้งหมดต้อง fit ใน memory (key เยอะเกินไปไม่ได้) และทำ range query อย่างมีประสิทธิภาพไม่ได้เพราะ key ไม่เรียงลำดับ",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 3: Storage and Retrieval (sections 'Hash Indexes' and 'SSTables')",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 3",
+      "why": "อ่านต้นฉบับแนวคิด append-only log, hash index และเหตุผลที่ต้อง compaction"
+    },
+    {
+      "title": "Bitcask: A Log-Structured Hash Table for Fast Key/Value Data",
+      "source": "Justin Sheehy, David Smith (Basho Technologies, 2010) — เอกสารออกแบบ Bitcask",
+      "why": "อ่าน implementation จริงของ in-memory hash index ที่ชี้ offset ใน log ที่ DDIA อ้างถึง"
+    },
+    {
+      "title": "The Design and Implementation of a Log-Structured File System",
+      "source": "Mendel Rosenblum, John K. Ousterhout (ACM TOCS, 1992) — เปเปอร์ต้นกำเนิด log-structured storage",
+      "why": "อ่านที่มาเชิงลึกว่าทำไม sequential write บน disk ถึงเป็นข้อได้เปรียบหลัก"
+    }
+  ]
+}

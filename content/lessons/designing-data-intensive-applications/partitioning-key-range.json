@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "partitioning-key-range",
+  "version": 1,
+  "title_en": "Partitioning by Key Range",
+  "est_minutes": 7,
+  "body_md": "# Partitioning by Key Range\n\n## ทำไมถึงสำคัญ\n\nเมื่อข้อมูลใหญ่เกินหนึ่งเครื่อง เราต้องแบ่งเป็นหลาย partition (shard) และ \"วิธีลากเส้นแบ่ง\" นั้นตัดสินสองอย่างพร้อมกัน: range query จะเร็วไหม และ load จะกระจายสมดุลไหม. Partitioning by key range คือหนึ่งในสองสคีมหลัก (อีกอันคือ hash — ดู sibling `partitioning-by-hash`) มันเก่งเรื่อง range scan แต่มีกับดัก hot spot ที่ senior interview ชอบจี้ถามเป็นพิเศษ.\n\n## แก่นของแนวคิด\n\n- แบ่ง key space เป็นช่วงต่อเนื่อง แต่ละ partition รับผิดชอบหนึ่งช่วง เหมือนสารานุกรมเล่ม A–C, D–F, ... โดยภายในแต่ละ partition เก็บ key แบบ **เรียงลำดับ** (SSTable / B-tree).\n- boundary ระหว่าง partition **ไม่จำเป็นต้องเว้นระยะเท่ากัน** เพราะข้อมูลจริงกระจายไม่สม่ำเสมอ — เลือกเส้นแบ่งตาม distribution ของข้อมูลเพื่อให้แต่ละ partition รับ load ใกล้เคียงกัน. เลือกได้ทั้งแบบ manual (admin กำหนดเอง) หรือให้ระบบปรับอัตโนมัติ (เช่น HBase, BigTable, RethinkDB).\n- ผลตอบแทนหลักคือ **range scan ที่มีประสิทธิภาพ**: query ที่ขอช่วง key ต่อเนื่อง (เช่น \"ทุกรายการเวลา 09:00–10:00\") อ่านจาก partition เดียวหรือไม่กี่ partition ที่อยู่ติดกัน แทนที่จะต้องถามทุก node.\n- routing: หา partition ของ key หนึ่งด้วยการดูว่ามันตกในช่วงของ partition ไหน.\n\n## ตัวอย่าง (payment gateway / reconciliation)\n\npayment gateway เก็บ transaction event โดยใช้ **created_at timestamp เป็น partition key** เพราะทีม reconciliation ต้อง query เป็นช่วงเวลาบ่อย เช่น \"ทุก transaction ระหว่าง 09:00–10:00 เอามา reconcile กับ statement ของธนาคาร\". range scan แบบนี้เร็วมาก เพราะข้อมูลของช่วงเวลานั้นเรียงอยู่ติดกันใน partition เดียว.\n\nแต่กับดักมาทันที: timestamp เป็น key ที่ **เพิ่มขึ้นต่อเนื่อง (sequential / monotonically increasing)**. ณ ชั่วโมงพีค write ทุกตัวที่เข้ามาตกลงที่ partition ของ \"ชั่วโมงปัจจุบัน\" เพียง partition เดียว — node นั้นร้อนจัดจนเป็นคอขวด ขณะที่ partition ของเมื่อวานนั่งว่าง. นี่คือ hot spot: เราจ่ายค่า partitioning ไปเพื่อกระจาย write แต่กลับได้ write ที่กระจุกอยู่ที่เดียว.\n\n```mermaid\nflowchart LR\n  W[Writes at peak hour] --> R{Route by key range}\n  R -->|before 03:00| P1[(P1 idle)]\n  R -->|03:00-06:00| P2[(P2 idle)]\n  R -->|06:00-09:00| P3[(P3 idle)]\n  R -->|09:00-12:00 = now| P4[(P4 HOT)]\n  Q[Range scan 09:00-10:00] --> P4\n```\n\nทางแก้ตรงจุดนี้ (ตาม DDIA) คือ **เอา field อื่นขึ้นนำหน้าเป็น compound key** เช่น `(account_id, created_at)` — write ของหลาย account จะกระจายไปหลาย partition. แต่มีราคา: range query ตามช่วงเวลาอย่างเดียวโดยไม่เจาะจง account จะไม่อยู่ติดกันอีกต่อไป ต้อง scatter-gather ถามหลาย partition แล้วรวมผล. (การจัดการ hot key เดี่ยวที่ดังผิดปกติ เช่น celebrity account หรือ merchant รายใหญ่ เป็นคนละปัญหา — ดู sibling `hot-spots-skew`.)\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"key-range partitioning กระจาย load สม่ำเสมอ\"** — ผิด. มันแบ่ง *key space* ตามเส้นที่เราลาก แต่ load เดินตาม access pattern. boundary เว้นเท่ากันไม่ได้แปลว่า load เท่ากัน โดยเฉพาะเมื่อ key เป็น sequential.\n- **\"key เรียงในแต่ละ partition แปลว่า range query ข้ามช่วงก็ได้ฟรี\"** — ผิด. range ที่คร่อมหลาย partition ก็ยังต้องแตะหลาย partition อยู่ดี เรียงลำดับช่วยแค่ *ภายใน* partition.\n- **\"เลือก boundary ให้แต่ละ partition ถือจำนวน key เท่ากันคือดีที่สุด\"** — ผิด. เป้าคือ balance *load* ไม่ใช่จำนวน key; partition ที่ถูกอ่าน/เขียนหนักต่างหากที่เป็นปัญหา.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\n- เหมาะเมื่อ workload ทำ range scan จริง (ช่วงเวลา, ช่วง ID, เรียงตามตัวอักษร) **และ** key กระจายเองตามธรรมชาติ.\n- **ไม่ควรใช้เมื่อ write key เป็น monotonically increasing** (timestamp, auto-increment ID) — จะได้ hot spot ที่ partition ล่าสุดเสมอ และเสีย write parallelism ที่เป็นเหตุผลของการ partition ตั้งแต่แรก. ต้นทุนคือ: ยอมรับ hot spot, หรือปรับเป็น compound key ซึ่งแลกด้วยการเสีย single-partition range scan.\n- เทียบกับ hash partitioning (sibling `partitioning-by-hash`): hash กระจาย write สม่ำเสมอกว่ามาก แต่ทำลาย locality ของ range scan — การเลือกจึงเป็น trade-off ระหว่าง **range-scan efficiency ↔ write distribution** โดยตรง.\n- ช่วง (range) อาจไม่สมดุลเมื่อข้อมูลโตไม่เท่ากัน ต้อง split/merge range เป็นระยะ (dynamic partitioning) — กลไก rebalance อยู่ใน sibling `rebalancing-and-routing`.\n\n## มุมสัมภาษณ์\n\n- \"เก็บ time-series / event data บน partitioned store โดย key ด้วย timestamp — อะไรจะพัง?\" → hot spot ที่ partition ล่าสุด, write parallelism หายไป.\n- \"จะให้ range query ยังเร็วแต่เลี่ยง write hot spot ได้ยังไง?\" → compound key นำหน้าด้วย field ที่กระจาย (เช่น account_id) แล้วยอม scatter-gather ตอน query ช่วงเวลา — ตอบให้เห็น trade-off ไม่ใช่แค่ทางแก้.\n- \"key-range vs hash เลือกอันไหนเมื่อไหร่?\" → มี range scan เป็นหัวใจ → range; ต้องการ write กระจายสม่ำเสมอ/ไม่มี range query → hash.\n- มักต่อด้วย \"แล้ว boundary เลือกยังไง\" → ตาม data distribution เพื่อ balance load ไม่ใช่แบ่งเท่า ๆ กันแบบตายตัว.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม key-range partitioning ถึงทำ range scan ได้มีประสิทธิภาพ?",
+      "expected_answer": "เพราะภายในแต่ละ partition เก็บ key แบบเรียงลำดับ ทำให้ดึงช่วง key ที่ต่อเนื่องได้จาก partition เดียวหรือไม่กี่ partition ที่อยู่ติดกัน",
+      "type": "short_answer"
+    },
+    {
+      "q": "ถ้าใช้ timestamp เป็น partition key และมี write ต่อเนื่องเข้ามาตลอด จะเกิดอะไรขึ้น?",
+      "expected_answer": "write ทั้งหมดกระจุกอยู่ที่ partition ของช่วงเวลาปัจจุบัน เกิด hot spot",
+      "type": "mcq",
+      "options": [
+        "write ทั้งหมดกระจุกอยู่ที่ partition ของช่วงเวลาปัจจุบัน เกิด hot spot",
+        "load ถูกกระจายไปทุก partition อย่างสม่ำเสมอ",
+        "range query ตามช่วงเวลาจะช้าลงกว่าเดิม"
+      ]
+    },
+    {
+      "q": "boundary ระหว่าง partition ควรถูกเลือกอย่างไร?",
+      "expected_answer": "ตาม distribution ของข้อมูลเพื่อ balance load โดยไม่จำเป็นต้องเว้นระยะเท่ากัน",
+      "type": "mcq",
+      "options": [
+        "ตาม distribution ของข้อมูลเพื่อ balance load โดยไม่จำเป็นต้องเว้นระยะเท่ากัน",
+        "เว้นระยะช่วง key ให้เท่ากันเสมอเพื่อความง่าย",
+        "ให้แต่ละ partition ถือจำนวน key เท่ากันเสมอ"
+      ]
+    },
+    {
+      "q": "วิธีลด write hot spot จาก timestamp key โดยยังทำ range query ได้ พร้อมต้นทุนของมันคืออะไร?",
+      "expected_answer": "ใช้ compound key ที่นำหน้าด้วย field อื่น เช่น account_id แล้วให้ timestamp เป็นส่วนที่สอง เพื่อกระจาย write; ต้นทุนคือ range query ตามช่วงเวลาอย่างเดียวต้อง scatter-gather ถามหลาย partition แล้วรวมผล",
+      "type": "short_answer"
+    },
+    {
+      "q": "เทียบ key-range กับ hash partitioning — hash แลกอะไรไปเพื่อให้ load กระจายสม่ำเสมอ?",
+      "expected_answer": "เสียความสามารถทำ efficient range query ข้าม partition",
+      "type": "mcq",
+      "options": [
+        "เสียความสามารถทำ efficient range query ข้าม partition",
+        "เสีย durability ของข้อมูล",
+        "เสียความสามารถกระจาย write ออกหลาย partition"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 6: Partitioning — Partitioning by Key Range",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 6",
+      "why": "อ่านต้นฉบับแนวคิด key-range partitioning และตัวอย่าง hot spot จาก timestamp key"
+    },
+    {
+      "title": "Bigtable: A Distributed Storage System for Structured Data",
+      "source": "Chang et al., OSDI 2006 (Google Research paper)",
+      "why": "อ่านว่าระบบจริงแบ่ง tablet ตาม row-key range และเลือกจุด split อย่างไร"
+    },
+    {
+      "title": "Apache HBase Reference Guide — Rowkey Design and Hotspotting",
+      "source": "hbase.apache.org/book.html (section: Rowkey Design)",
+      "why": "อ่านคำเตือน production จริงว่า monotonically increasing rowkey ทำให้เกิด region hotspotting และวิธีเลี่ยง"
+    }
+  ]
+}

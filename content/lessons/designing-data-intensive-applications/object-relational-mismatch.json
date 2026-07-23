@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "object-relational-mismatch",
+  "version": 1,
+  "title_en": "The Object-Relational Mismatch",
+  "est_minutes": 8,
+  "body_md": "# The Object-Relational Mismatch\n\n## ทำไมถึงสำคัญ\n\nโค้ด application ทำงานกับ object ที่เป็น graph — object หนึ่งถือ nested collection และ reference ไป object อื่น — แต่ relational database เก็บข้อมูลเป็น flat rows กระจายในหลาย normalized table. สองโครงสร้างนี้ไม่ตรงกันโดยธรรมชาติ เรียกว่า **impedance mismatch** และบังคับให้มี translation layer คั่นกลางเสมอ. ชั้นแปลนี้เองคือที่ที่ ORM เข้ามาช่วย และก็เป็นที่ที่ performance surprise ซ่อนตัวอยู่ — senior interview เจาะตรงจุดนี้.\n\n## แก่นของแนวคิด\n\n- **object graph กับ normalized table คนละรูปทรง**: object มี nested list (Order ถือ OrderLine หลายอัน), มี reference ไป object อื่น (Order อ้าง Customer), และมี identity ในหน่วยความจำ. relational เก็บสิ่งเหล่านี้เป็นหลายตารางเชื่อมด้วย foreign key และ join. การย้ายข้อมูลข้ามสองโลกนี้คือ \"การแปล\" ที่ต้องเขียนไม่ทางใดก็ทางหนึ่ง.\n- **translation layer มีอยู่เสมอ** ไม่ว่าจะเขียน SQL เอง (map row เป็น struct ด้วยมือ) หรือใช้ **ORM** (object-relational mapper เช่น Hibernate, ActiveRecord, GORM) ที่ generate SQL ให้. ORM ไม่ได้ *ลบ* mismatch — มันแค่ *ซ่อน* ชั้นแปลไว้ใต้ API ที่ดูเหมือนเรียก object ธรรมดา.\n- **ORM ลด boilerplate จริง**: ไม่ต้องเขียน INSERT/UPDATE/SELECT ซ้ำ ๆ, ไม่ต้อง map column เป็น field เอง, จัดการ dirty tracking และ relationship ให้อัตโนมัติ. นี่คือคุณค่าที่แท้ในงาน day-to-day.\n- **แต่ ORM ซ่อน query cost**: บรรทัดที่ดูเหมือนเข้าถึง field ในหน่วยความจำ (`order.customer.name`) อาจกลายเป็น SQL query จริงที่วิ่งไป database — และคุณมองไม่เห็นจาก call site. ยิ่ง abstraction เนียนเท่าไร ยิ่งเดา cost ยากเท่านั้น.\n- relational vs document เป็นคนละแกนของเรื่องนี้ (ดู sibling `relational-vs-document`); ที่นี่โฟกัสที่ mismatch ระหว่าง *object* กับ *table* และต้นทุนของ ORM.\n\n## ตัวอย่าง (fintech: Order aggregate)\n\nสมมติ **Order aggregate** ในโค้ด: หนึ่ง `Order` ถือ list ของ `OrderLine` และ reference ไป `Customer`. ฝั่ง relational ถูก normalize เป็นสามตาราง:\n\n- `orders` (order_id, customer_id, status, ...)\n- `order_lines` (line_id, order_id FK, sku, amount, ...)\n- `customers` (customer_id, name, ...)\n\nORM รับหน้าที่ประกอบ object graph กลับจากสามตารางนี้ — นั่นคือ translation layer.\n\n```mermaid\nflowchart TD\n  subgraph Application object graph\n    O[Order] --> L1[OrderLine 1]\n    O --> L2[OrderLine 2]\n    O --> Cust[Customer ref]\n  end\n  subgraph Relational normalized tables\n    T1[orders row]\n    T2[order_lines rows]\n    T3[customers row]\n  end\n  O -. ORM maps .-> T1\n  L1 -. ORM maps .-> T2\n  L2 -. ORM maps .-> T2\n  Cust -. FK join .-> T3\n```\n\n**N+1 query problem** — performance surprise คลาสสิกของ ORM: หน้า dashboard ต้อง list 100 orders ล่าสุดพร้อมชื่อลูกค้า.\n\n1. ORM ยิง 1 query ดึง 100 orders\n2. โค้ด loop อ่าน `order.customer.name` ของแต่ละ order\n3. เพราะ `customer` เป็น lazy association ORM ยิงเพิ่ม **อีก 1 query ต่อ order** เพื่อโหลด Customer จึงรวม 1 + 100 = **101 queries**\n\nโค้ดที่เขียนดูไร้เดียงสามาก (`for order in orders: print(order.customer.name)`) แต่ database โดนถล่ม 101 รอบ. ทางแก้คือบอก ORM ให้ eager load / JOIN ล่วงหน้า (เช่น `JOIN FETCH`, `Include`, `Preload`) — แต่คุณต้อง *รู้ก่อน* ว่ามันเกิด ซึ่งมักเห็นตอน production ช้าไปแล้ว. ในระบบ fintech ที่ query cost ผูกกับ latency ของหน้า statement / transaction list ตรง ๆ นี่คือ bug ที่แพงจริง.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ORM กำจัด impedance mismatch\"** ผิด. ORM แค่ย้ายชั้นแปลไปอยู่ใต้ฝา; mismatch ยังอยู่ครบ คุณแค่ไม่เห็นมันจนกว่ามันจะกัด.\n- **\"lazy loading = optimization เสมอ\"** ผิด. lazy ช่วยเมื่อไม่ได้ใช้ association นั้น แต่กลายเป็น N+1 ทันทีเมื่อวน loop เข้าถึงมันทุกตัว.\n- **\"ใช้ ORM แล้วไม่ต้องเข้าใจ SQL\"** ผิด — กลับกัน: ยิ่งใช้ ORM ยิ่งต้องอ่าน SQL ที่มัน generate ออกให้เป็น ไม่งั้น debug performance ไม่ได้.\n\n## ขีดจำกัด / trade-off\n\nORM คุ้มในงาน CRUD และ mapping ซ้ำ ๆ ที่ปริมาณโค้ดเยอะแต่ logic ตื้น — มันตัด boilerplate ได้จริงและเร่ง development. **ต้นทุนที่แลกมา**: abstraction ที่ซ่อน mismatch ทำให้ query cost มองไม่เห็นจาก call site จึงเกิด N+1, over-fetching (ดึง column ที่ไม่ใช้), lazy-loading ที่ยิง SQL นอกความคาดหมาย, และ generated SQL ที่ optimize ยากกว่า hand-written. **เมื่อไม่ควรพึ่ง ORM**: hot path ที่ต้องการ query cost แบบ predictable, รายงาน / analytical query ที่ join ซับซ้อนหรือ aggregate หนัก, และ bulk operation — กรณีเหล่านี้ hand-written SQL (หรือ query builder บาง ๆ) ให้ control ที่คุ้มกว่า; หลายทีมจึงใช้ ORM สำหรับ write / CRUD path แต่เขียน SQL ตรงสำหรับ read / report path.\n\ndocument model ช่วยลด mismatch ได้ *บางส่วน*: ถ้า aggregate เป็น tree-shaped และถูกดึงมาพร้อมกันเสมอ (เช่น Order + OrderLine ใน document เดียว) การ map แทบหายไป. แต่มัน *ไม่* กำจัด mismatch สำหรับ many-to-many (เช่น product ที่ถูกอ้างจากหลาย order, หรือ customer ที่มีหลาย order) — ตรงนั้น mismatch กลับมาในรูปการ denormalize หรือ join ฝั่ง application แทน (รายละเอียด relational vs document อยู่ใน sibling `relational-vs-document`).\n\n## มุมสัมภาษณ์\n\n- \"อธิบาย impedance mismatch หน่อย\" → object graph (nested, reference, in-memory identity) ไม่ตรงกับ normalized flat rows จึงต้องมี translation layer เสมอ.\n- \"N+1 query problem คืออะไร เกิดจากอะไร แก้ยังไง?\" → 1 query ดึง list + N query โหลด association ต่อ record; เกิดจาก lazy loading ใน loop; แก้ด้วย eager load / JOIN FETCH / preload. คำถามนี้เกือบเป็น standard.\n- \"ORM มีข้อเสียอะไร ทำไมบางทีมถึงเขียน SQL เอง?\" → ซ่อน query cost, เสี่ยง N+1, generated SQL optimize ยาก; hot / analytical path อยากได้ cost ที่ predictable.\n- \"document model แก้ mismatch ได้ไหม?\" → ลดได้สำหรับ tree-shaped aggregate แต่ไม่แก้ many-to-many — เป็นสะพานไปเรื่อง relational vs document.\n",
+  "recall_checks": [
+    {
+      "q": "impedance mismatch (object-relational mismatch) คืออะไร และทำไมจึงต้องมี translation layer?",
+      "expected_answer": "object ในโค้ดเป็น graph ที่มี nested collection และ reference ไป object อื่น แต่ relational เก็บเป็น flat rows หลาย normalized table เชื่อมด้วย foreign key จึงต้องมีชั้นแปลระหว่างสองโครงสร้างเสมอ",
+      "type": "short_answer"
+    },
+    {
+      "q": "N+1 query problem คืออะไร?",
+      "expected_answer": "1 query ดึง list แล้วยิงอีก N query แยก ต่อ 1 record เพื่อโหลด association",
+      "type": "mcq",
+      "options": [
+        "query เดียวที่ join N ตารางพร้อมกันในครั้งเดียว",
+        "1 query ดึง list แล้วยิงอีก N query แยก ต่อ 1 record เพื่อโหลด association",
+        "การ retry query เดิม N+1 ครั้งเมื่อ connection fail"
+      ]
+    },
+    {
+      "q": "ทำไม lazy loading จึงทำให้เกิด performance surprise ได้?",
+      "expected_answer": "collection ดูเหมือน in-memory list แต่การ touch มันยิง SQL เพิ่มโดยไม่ปรากฏชัดจาก call site",
+      "type": "mcq",
+      "options": [
+        "ORM เก็บ cache ข้อมูลไว้นานเกินไปจน stale",
+        "database ล็อกแถวไว้จนกว่าจะโหลด association เสร็จ",
+        "collection ดูเหมือน in-memory list แต่การ touch มันยิง SQL เพิ่มโดยไม่ปรากฏชัดจาก call site"
+      ]
+    },
+    {
+      "q": "trade-off หลักของ ORM ที่ senior ต้องรู้คืออะไร?",
+      "expected_answer": "ลด boilerplate การ map object เป็น table แต่ซ่อน query cost ทำให้เกิด performance surprise ตอน production",
+      "type": "mcq",
+      "options": [
+        "ลด boilerplate การ map object เป็น table แต่ซ่อน query cost ทำให้เกิด performance surprise ตอน production",
+        "ทำให้ query เร็วขึ้นเสมอเพราะ ORM optimize ให้อัตโนมัติ",
+        "กำจัด impedance mismatch ได้หมดจึงไม่ต้องเขียน SQL อีกเลย"
+      ]
+    },
+    {
+      "q": "document model ช่วยลด object-relational mismatch ได้ในกรณีไหน และยังเหลือปัญหาที่จุดใด?",
+      "expected_answer": "ช่วยลดได้เมื่อข้อมูลเป็น tree-shaped aggregate ที่ดึงมาพร้อมกันเสมอ (เช่น Order + OrderLine ใน document เดียว) แต่ยังไม่แก้ mismatch สำหรับ many-to-many ที่กลับมาในรูป denormalize หรือ join ฝั่ง application",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 2: Data Models and Query Languages",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 2",
+      "why": "อ่านต้นฉบับเรื่อง impedance mismatch และการ map object เข้ากับ relational model"
+    },
+    {
+      "title": "OrmHate",
+      "source": "martinfowler.com/bliki/OrmHate.html",
+      "why": "อ่านว่าทำไม ORM ถึงถูกด่าบ่อย และ mismatch ที่มันซ่อนอยู่จริง ๆ คืออะไร"
+    },
+    {
+      "title": "Patterns of Enterprise Application Architecture: Data Mapper / Object-Relational Structural Patterns",
+      "source": "Martin Fowler, Patterns of Enterprise Application Architecture (Addison-Wesley, 2002)",
+      "why": "อ่าน pattern ที่ใช้เขียน translation layer ระหว่าง object กับ table อย่างเป็นระบบ"
+    }
+  ]
+}

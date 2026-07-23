@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "rebalancing-and-routing",
+  "version": 1,
+  "title_en": "Rebalancing Partitions and Request Routing",
+  "est_minutes": 8,
+  "body_md": "# Rebalancing Partitions and Request Routing\n\n## ทำไมถึงสำคัญ\n\nเมื่อ query throughput โต, dataset โตขึ้น, หรือ node ล่ม คุณต้องเพิ่ม/ย้าย node แล้วกระจายข้อมูลกับ request ให้ node ชุดใหม่ — กระบวนการนี้เรียก **rebalancing**. ทำผิดวิธีจะย้ายข้อมูลเกือบทั้ง cluster โดยไม่จำเป็น กิน network/disk จน service สะดุดกลางการขยาย. คำถามสัมภาษณ์ระดับ senior ไม่ได้ถามว่า partition คืออะไร แต่จี้ว่า \"ตอนเพิ่ม node หนึ่งเครื่อง ข้อมูลต้องย้ายเท่าไหร่ และหลังย้ายแล้ว client รู้ได้ยังไงว่า key ไปอยู่ node ไหน\" (สมมติว่ารู้ hash / key-range partitioning แล้ว — ดู sibling `partitioning-by-hash`, `partitioning-key-range`).\n\n## แก่นของแนวคิด: rebalance โดยย้ายให้น้อยที่สุด\n\nเป้าหมายของ rebalancing มีสามข้อพร้อมกัน: (1) หลังเสร็จ load ต้องกระจายแฟร์ระหว่าง node, (2) ระหว่างทำ ระบบต้องยัง read/write ได้ต่อเนื่อง, (3) ย้ายข้อมูลเท่าที่จำเป็นเท่านั้น เพื่อประหยัด network และ disk I/O.\n\n**ทำไม hash mod N ถึงแย่:** ถ้า assign key ด้วย `hash(key) mod N` โดยให้ N = จำนวน node ตรง ๆ พอ N เปลี่ยน เกือบทุก key จะได้ผล mod ใหม่และต้องย้ายที่. เช่น key ที่ `hash = 123456`: บน 10 node ได้ `mod 10 = 6`, เพิ่มเป็น 11 node ได้ `mod 11 = 3`, เพิ่มเป็น 12 node ได้ `mod 12 = 0` — ย้ายแทบทุกครั้งที่เพิ่มเครื่อง. การย้ายเกือบทั้ง dataset เพียงเพราะเพิ่ม node หนึ่งเครื่อง คือสิ่งที่ต้องหลีกเลี่ยงเด็ดขาด.\n\n**Fixed number of partitions:** สร้าง partition ไว้ *มากกว่า* จำนวน node เยอะ ๆ ตั้งแต่แรกแล้วตรึงจำนวนไว้ เช่น 256 partition บน 4 node = node ละ 64. การ map `key -> partition` คงที่ตลอด. เวลาเพิ่ม node ที่ 5 node ใหม่แค่ \"ขโมย\" partition ทั้งก้อนมาจาก node เดิมแต่ละตัวจนกว่าจะสมดุล — ย้าย *ทั้ง partition* ไม่ใช่ราย key และย้ายเพียงส่วนน้อยของทั้งหมด. สาระสำคัญคือ: จำนวน partition ไม่เปลี่ยน, `key -> partition` ไม่เปลี่ยน, เปลี่ยนแค่ *partition ไหนอยู่ node ไหน* (Riak, Elasticsearch, Couchbase, Voldemort ใช้แนวนี้).\n\nข้อจำกัดของ fixed partitions: ต้องเดาจำนวน partition ให้ดีตั้งแต่ต้นเพราะเปลี่ยนภายหลังยาก — ตั้งน้อยไป แต่ละ partition จะโตจนย้ายแพง; ตั้งมากไป ก็มี overhead ต่อ partition. (อีกทางเลือกคือ dynamic partitioning ที่ split/merge partition ตามขนาดข้อมูลคล้าย B-tree เช่นใน HBase/RethinkDB — ไม่ลงลึกที่นี่).\n\n## Request routing: client หา node ที่ถือ key ได้ยังไง\n\nหลัง rebalance partition ย้าย node ไปแล้ว client ที่อยากอ่าน/เขียน key หนึ่งจะรู้ได้ยังไงว่าต้องต่อไป IP ไหน? นี่คือปัญหา **service discovery** ซึ่งมีสามแบบ:\n\n1. Client ต่อ node ไหนก็ได้ (เช่นผ่าน round-robin LB); ถ้า node นั้นถือ partition ก็ตอบเลย ไม่งั้น forward ต่อให้ node ที่ถูกต้อง รับคำตอบแล้วส่งกลับ client.\n2. Client ยิงเข้า **routing tier** ก่อนเสมอ — ตัวนี้ทำหน้าที่เป็น partition-aware load balancer รู้ว่า key ไหนอยู่ node ไหนแล้ว forward ให้.\n3. Client รู้ partitioning เอง ต่อตรงไป node ที่ถูกต้องได้เลย.\n\nทั้งสามแบบเจอปัญหาแกนเดียวกัน: ใครก็ตามที่ตัดสิน routing ต้อง *เห็น mapping ของ partition -> node ที่เป็นปัจจุบัน* ทั้งที่ assignment เปลี่ยนได้ตลอดจาก rebalancing. หลายระบบแก้ด้วย coordination service กลางอย่าง **ZooKeeper**: ทุก node ลงทะเบียนตัวเองไว้, ZooKeeper ถือ authoritative map ของ partition -> node, แล้ว routing tier หรือ client subscribe เพื่อรับแจ้งเมื่อ assignment ขยับ (HBase, SolrCloud, Kafka รุ่นเก่าใช้แนวนี้). อีกค่ายเลี่ยง dependency นี้ด้วย **gossip protocol** ให้ node เล่าสถานะ cluster ต่อ ๆ กันเอง (Cassandra, Riak) — ยิงเข้า node ไหนก็ได้แล้วให้มัน forward ต่อ. (ZooKeeper ทำ consensus ได้ยังไงเป็นเรื่องของบท consistency-and-consensus ดู `consensus-and-zookeeper`; ที่นี่มองมันเป็นแค่ metadata store).\n\n```mermaid\nflowchart LR\n  C[Client] --> R[Routing tier]\n  R -->|lookup key to node| ZK[(ZooKeeper: partition to node map)]\n  R --> N1[Node 1: partitions p0-p85]\n  R --> N2[Node 2: partitions p86-p170]\n  R --> N3[Node 3: partitions p171-p255]\n  N1 -. register .-> ZK\n  N2 -. register .-> ZK\n  N3 -. register .-> ZK\n  ZK -. notify on change .-> R\n```\n\n## ตัวอย่าง (payments ledger)\n\nสมมติ ledger service shard บัญชีด้วย `hash(account_id)` ลงใน 256 partition ที่ตรึงไว้ กระจายบน 4 node (node ละ 64 partition). ช่วง year-end volume พุ่ง ต้องเพิ่ม node ที่ 5:\n\n- ถ้าใช้ `hash(account_id) mod 5` (mod จำนวน node) -> บัญชีเกือบทั้งหมดถูก map ไปที่ใหม่ ต้องย้าย ledger เกือบทั้งก้อนพร้อม ๆ กับ traffic ช่วง peak — หายนะ.\n- ด้วย fixed 256 partition -> node ใหม่ดึงมาจาก node เดิมแต่ละตัว node ละ ~13 partition (รวม ~51), จบที่ node ละ ~51 partition. ย้ายเพียง ~20% ของข้อมูล และ `key -> partition` เดิมไม่ถูกแตะ. ระหว่างย้าย ZooKeeper อัปเดต map, routing tier เห็นว่า partition 200 ย้ายจาก node 3 ไป node 5 แล้ว จึง route request ของบัญชีในนั้นไปถูกที่โดยอัตโนมัติ.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"consistent hashing / fixed partitions ทำให้ไม่ต้องย้ายข้อมูลเลยตอนเพิ่ม node\"** ผิด — ยังต้องย้าย แต่ย้าย *น้อยที่สุด* (ราว 1/N ของข้อมูล) ไม่ใช่ทั้งหมด.\n- **\"จำนวน partition ควรเท่ากับจำนวน node\"** ผิด — fixed-partition strategy จงใจให้ partition มากกว่า node มาก เพื่อให้ย้ายเป็นก้อนละเอียดพอที่จะบาลานซ์ได้.\n- **\"routing tier ก็แค่ load balancer ธรรมดา\"** ผิด — มันต้อง partition-aware และต้อง sync mapping ที่เปลี่ยนตลอดเวลา ไม่ใช่แค่กระจาย request แบบสุ่ม.\n\n## ขีดจำกัด / trade-off (automatic vs manual rebalancing)\n\nAutomatic rebalancing สะดวก — ระบบเพิ่ม/ลด node แล้วจัดสมดุลเองโดยไม่ต้องรอคน. แต่มันอันตรายเมื่อจับคู่กับ automatic failure detection: ถ้า node แค่ช้าหรือ overload ชั่วคราว (เช่น GC pause, network สะดุดเสี้ยววินาที) แล้วถูกตัดสินว่า \"ตาย\" ระบบจะสั่ง rebalance ย้าย load ของมันไปกองที่ node อื่นซึ่ง *โหลดสูงอยู่แล้ว* บวกกับ traffic ย้ายข้อมูลที่กิน network เพิ่ม -> node ถัดไปช้าลง ถูกตัดสินว่าตายอีก -> เกิด **cascading failure / rebalancing storm** ซ้ำเติมตอนระบบกำลังลำบากอยู่แล้ว. เพราะเหตุนี้หลายระบบจึงคง human-in-the-loop ไว้: คำนวณ rebalancing plan อัตโนมัติได้ แต่รอคน approve ก่อน execute. ต้นทุนอีกด้านคือ rebalancing ทุกแบบใช้ network/disk I/O จริงและแย่ง IOPS กับ production traffic — การเลือกจังหวะ (ทำตอน off-peak) และ throttle อัตราการย้าย สำคัญพอ ๆ กับตัวกลยุทธ์เอง. สรุป: อย่าเปิด full-auto rebalance บนระบบที่ load แกว่งแรงและ failure detector ไวเกิน; คุมด้วยมือหรือ throttle มักคุ้มกว่า.\n\n## มุมสัมภาษณ์\n\n- \"เพิ่ม node หนึ่งเครื่องเข้า cluster ที่ shard ด้วย hash — ข้อมูลย้ายเท่าไหร่ เพราะอะไร?\" -> ถ้า `mod N` ย้ายเกือบทั้งหมด; ถ้า fixed partitions / consistent hashing ย้ายราว 1/N. ต้องอธิบาย *เหตุผล* ได้ ไม่ใช่จำตัวเลข.\n- \"หลังย้าย partition แล้ว client รู้ได้ยังไงว่า key ไปอยู่ node ไหน?\" -> routing tier / gossip / coordination service (ZooKeeper) ถือ mapping และแจ้งเมื่อมีการเปลี่ยน.\n- \"automatic rebalancing มีข้อเสียยังไง?\" -> rebalancing storm ตอน load สูง + failure detector ไว; ป้องกันด้วย human-in-the-loop หรือ throttle.\n- \"ทำไมไม่ตั้งจำนวน partition ให้เท่ากับจำนวน node?\" -> จะ rebalance ไม่ละเอียดพอ และผูกจำนวน partition ติดกับ topology; fixed strategy จงใจแยกสองสิ่งนี้ออกจากกัน.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม hash mod N (โดย N = จำนวน node) ถึงเป็นวิธี rebalance ที่แย่?",
+      "expected_answer": "เพราะเมื่อ N เปลี่ยน key เกือบทั้งหมดถูก map ใหม่ ทำให้ต้องย้ายข้อมูลเกือบทั้งระบบ",
+      "type": "mcq",
+      "options": [
+        "เพราะ hash function ช้าเกินไปเมื่อมี key จำนวนมาก",
+        "เพราะเมื่อ N เปลี่ยน key เกือบทั้งหมดถูก map ใหม่ ทำให้ต้องย้ายข้อมูลเกือบทั้งระบบ",
+        "เพราะ mod ทำให้ load กระจายไม่สม่ำเสมอระหว่าง node"
+      ]
+    },
+    {
+      "q": "ในกลยุทธ์ fixed number of partitions เมื่อเพิ่ม node ใหม่เข้ามา อะไรเปลี่ยนและอะไรไม่เปลี่ยน?",
+      "expected_answer": "จำนวน partition และการ map key->partition ไม่เปลี่ยน เปลี่ยนแค่ว่า partition ไหนอยู่บน node ไหน โดยย้ายทั้ง partition เป็นก้อน ไม่ใช่ราย key",
+      "type": "short_answer"
+    },
+    {
+      "q": "request routing / service discovery แก้ปัญหาอะไรเป็นหลัก?",
+      "expected_answer": "client จะรู้ได้ยังไงว่า key ที่ต้องการอยู่บน node ไหน หลัง partition ถูกย้าย",
+      "type": "mcq",
+      "options": [
+        "จะ hash key ด้วยวิธีไหนให้ load กระจายสม่ำเสมอ",
+        "จะเก็บ row หลาย version พร้อมกันได้ยังไง",
+        "client จะรู้ได้ยังไงว่า key ที่ต้องการอยู่บน node ไหน หลัง partition ถูกย้าย"
+      ]
+    },
+    {
+      "q": "ทำไม automatic rebalancing เมื่อรวมกับ automatic failure detection ถึงอันตราย?",
+      "expected_answer": "ถ้า node แค่ช้า/overload ชั่วคราวแล้วถูกตัดสินว่าตาย ระบบจะ auto-rebalance ย้าย load ไป node อื่นที่โหลดสูงอยู่แล้วบวกกิน network เพิ่ม ทำให้ node ถัดไปช้าและถูกตัดสินว่าตายต่อ เกิด cascading failure / rebalancing storm ซ้ำเติมตอน load สูง",
+      "type": "short_answer"
+    },
+    {
+      "q": "บทบาทของ ZooKeeper ในเรื่อง request routing คืออะไร?",
+      "expected_answer": "เก็บ mapping partition->node ที่เชื่อถือได้ แล้วแจ้ง routing tier เมื่อ assignment เปลี่ยน",
+      "type": "mcq",
+      "options": [
+        "เก็บข้อมูลจริงของทุก partition แทนตัว node",
+        "เก็บ mapping partition->node ที่เชื่อถือได้ แล้วแจ้ง routing tier เมื่อ assignment เปลี่ยน",
+        "ทำหน้าที่ hash key เพื่อเลือกว่า key ไปอยู่ partition ไหน"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 6: Partitioning — Rebalancing Partitions & Request Routing",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 6",
+      "why": "อ่านต้นฉบับว่าทำไม hash mod N แย่, fixed-partition strategy, และ 3 แบบของ request routing"
+    },
+    {
+      "title": "Dynamo: Amazon's Highly Available Key-value Store",
+      "source": "DeCandia et al., SOSP 2007 (Amazon research paper)",
+      "why": "อ่านระบบจริงที่ใช้ consistent hashing + gossip-based membership เพื่อ rebalance และ route request แบบ leaderless"
+    },
+    {
+      "title": "Apache ZooKeeper — ZooKeeper Overview",
+      "source": "zookeeper.apache.org (official docs, ZooKeeper Overview)",
+      "why": "อ่านว่า coordination service เก็บ cluster metadata (partition->node) และ notify การเปลี่ยนแปลงได้อย่างไร"
+    }
+  ]
+}

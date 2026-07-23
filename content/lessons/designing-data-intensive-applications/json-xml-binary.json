@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "json-xml-binary",
+  "version": 1,
+  "title_en": "JSON, XML, and Binary Variants",
+  "est_minutes": 8,
+  "body_md": "# JSON, XML, and Binary Variants\n\n## ทำไมถึงสำคัญ\n\nJSON, XML, และ CSV คือภาษากลางของ API ส่วนใหญ่บนโลก — human-readable, มี tooling ทุกภาษา, และไม่ผูกกับ runtime ภาษาใดภาษาหนึ่ง (ต่างจาก built-in serialization ของแต่ละภาษาใน sibling `language-specific-formats-pitfalls`). แต่ความสะดวกนี้มาพร้อม ambiguity ที่กัดเงียบ ๆ ตอน production: JSON ไม่แยก integer กับ float, เลขจำนวนเต็มขนาดใหญ่เสีย precision, และไม่มี type ของ binary. senior interview ไม่ถามว่า JSON ดีไหม แต่ถามว่าคุณรู้ *ขอบของมัน* ไหม.\n\n## แก่นของแนวคิด\n\n**Textual formats (JSON / XML / CSV)** ได้เปรียบสามอย่าง: อ่านด้วยตาได้ (debug ด้วย `curl` + ตาเปล่า), interoperable ข้ามภาษา/ข้ามองค์กร, และมี parser พร้อมใช้ทุกที่. แต่มี weakness ที่ต้องรู้:\n\n- **Number ambiguity:** JSON ไม่แยก integer กับ floating-point และไม่กำหนด precision. ตัวเลขที่เกิน 2^53 เสีย precision เมื่อถูก parse เป็น IEEE 754 double (ซึ่ง JavaScript ใช้กับทุกตัวเลข). กรณีคลาสสิก: Twitter ต้องเพิ่ม field `id_str` (string) คู่กับ `id` (number) เพราะ tweet ID แบบ int64 ถูกปัดเมื่อ client อ่านเป็น JS number.\n- **ไม่มี binary type:** JSON/XML ส่ง raw bytes ไม่ได้ ต้อง base64 ก่อน — ขนาดพองขึ้น ~33% และเป็น convention ไม่ใช่ feature ของ format.\n- **CSV คลุมเครือ:** ไม่มี type, กฎ escaping/quoting ไม่นิ่งข้าม tool, และตีความไม่ได้ว่า `0123` เป็นเลขหรือ string; ต้องพึ่งข้อตกลงนอกไฟล์.\n- **schema เป็น optional:** XML มี XSD, JSON มี JSON Schema แต่ส่วนใหญ่ไม่บังคับใช้ — พอไม่มี schema enforce ก็ไม่มีอะไรการันตี type/required field ให้ ambiguity จึงเป็นค่า default.\n\n**Binary JSON variants (MessagePack, BSON, CBOR, ...)** เอา *data model เดียวกับ JSON* (schema-less) มา encode เป็น binary เพื่อลดขนาดและ parse เร็วขึ้น. จุดที่คนพลาดบ่อย: มันยัง **schemaless** — เพราะไม่มี schema ให้อ้าง field ด้วยหมายเลข มันจึงต้อง **ฝังชื่อ field ลงไปในทุก record เหมือนเดิม**. ผลคือมันเล็กกว่า JSON แค่เล็กน้อย ไม่ใช่ระดับที่ schema-based format ทำได้.\n\n> เทียบขั้ว: schema-based binary (Protobuf/Thrift/Avro) อ้าง field ด้วย tag number จาก schema จึงไม่ต้องส่งชื่อ field เลย ทำให้กระชับกว่ามาก — รายละเอียดอยู่ sibling `protobuf-thrift-avro`.\n\n```mermaid\nflowchart TD\n  D[Record to send] --> T[Textual: JSON / XML / CSV]\n  D --> B[Binary JSON: MessagePack / BSON / CBOR]\n  D --> S[Schema-based binary: Protobuf / Avro]\n  T --> TP[\"Human-readable and interoperable, ambiguous types, largest bytes\"]\n  B --> BP[\"Denser bytes and fast parse, still schemaless, field names in every record\"]\n  S --> SP[\"Smallest and typed, needs schema file plus code-gen - sibling concept\"]\n```\n\n## ตัวอย่าง (fintech: amount และ transaction id ใน JSON API)\n\nทีม payments ส่ง event ผ่าน JSON:\n\n```json\n{ \"txn_id\": 9007199254740993, \"amount\": 19.99, \"currency\": \"THB\" }\n```\n\nปัญหาสองจุดที่ JSON เปิดช่องไว้:\n\n- **`txn_id` เสีย precision:** JavaScript เก็บทุกตัวเลขเป็น IEEE 754 double จึงมี safe-integer limit ที่ 2^53 = 9007199254740992 (`Number.MAX_SAFE_INTEGER` = 2^53 − 1 = 9007199254740991). ค่าที่เกินขึ้นไปเช่น `9007199254740993` (= 2^53 + 1) แทนตรง ๆ ไม่ได้ จึงถูกปัดเงียบ ๆ กลับเป็น `9007199254740992` — client อ่านผิดตัว ทำให้ reconcile พลาด. หลักคือ: integer ที่เกิน 2^53 เสีย precision (ไม่ใช่แค่ \"เพี้ยนไปหนึ่ง\" สำหรับเลขสุ่ม แต่เกินช่วงแล้วปัดได้หลายหน่วย). ทางแก้: ส่ง ID เป็น **string** (`\"txn_id\": \"9007199254740993\"`) — เหตุผลเดียวกับที่ Twitter ทำ.\n- **`amount` เป็น float อันตราย:** `19.99` เก็บใน IEEE 754 ได้ไม่ตรงเป๊ะ และ `0.1 + 0.2 != 0.3`. เงินห้ามพึ่ง float. แนวปฏิบัติ fintech: ส่งเป็น **integer ของหน่วยย่อย** (สตางค์: `\"amount_minor\": 1999`) หรือเป็น **decimal string** (`\"amount\": \"19.99\"`) แล้ว parse เข้า decimal type ฝั่งรับ.\n\nจะสลับไป MessagePack ก็ *ไม่ได้แก้* สองปัญหานี้ — data model เดียวกัน ambiguity เดียวกัน; ได้แค่ byte เล็กลงเล็กน้อย. การแก้จริงคือ *convention* (ID เป็น string, เงินเป็น minor units) หรือขยับไป schema-based format ที่มี type int64/decimal ชัดเจน.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"MessagePack เล็กกว่า JSON มาก ก็เหมือน Protobuf นั่นแหละ\"** ผิด. binary JSON ยัง schemaless และฝังชื่อ field ทุก record; ส่วนที่ Protobuf/Avro ประหยัดได้เยอะคือการ *ตัดชื่อ field ทิ้ง* ด้วย schema. หลายกรณี **gzip บน JSON อาจเล็กกว่า MessagePack ดิบ** ด้วยซ้ำ เพราะ gzip บีบชื่อ field ที่ซ้ำ ๆ ได้ดี.\n- **\"ตัวเลขใน JSON เป็น integer ปลอดภัยเสมอ\"** ผิด. spec ไม่กำหนด precision; ค่าที่เกิน 2^53 ไม่ปลอดภัยเมื่อผ่าน parser ที่ใช้ double (เช่น JavaScript).\n- **\"JSON ส่ง binary ได้ถ้าใส่ bytes ลงไปตรง ๆ\"** ผิด. ต้อง base64 เป็น text ก่อนเสมอ แลกกับขนาด +33%.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรใช้ และแลกด้วยอะไร)\n\n**Textual formats คุ้มเมื่อไร:** public/partner API, ปริมาณไม่สูงมาก, หรือ payload ที่มนุษย์ต้องอ่าน/debug — ตรงนี้ human-readability + tooling + ไม่ต้อง code-gen ชนะขาด. **ต้นทุนที่ยอมรับ:** payload ใหญ่กว่า, CPU parse แพงกว่า, type ambiguity, และไม่มี schema บังคับให้ตรวจ error.\n\n**เมื่อไหร่ไม่ควรใช้:** internal service-to-service ที่ traffic สูง, ข้อมูล typed แน่นอน, หรือ bandwidth จำกัด — ที่นั่น schema-based binary (`protobuf-thrift-avro`) กระชับกว่าและ ambiguity น้อยกว่ามาก คุ้มกับต้นทุนดูแล schema/registry.\n\n**กับดักของ binary JSON:** มันเป็นทางสายกลางที่มัก *ไม่* ใช่ sweet spot — คุณเสีย human-readability ไปแต่ได้ขนาดลดแค่เล็กน้อย เพราะยัง schemaless. ส่วนใหญ่คุณจะอยากได้สุดทางใดทางหนึ่ง: readability เต็ม (JSON แล้ว gzip เอาถ้าห่วงขนาด) หรือ compact เต็ม (Protobuf/Avro). binary JSON คุ้มเฉพาะเมื่ออยากได้ JSON ที่แน่นขึ้นแบบ drop-in โดยไม่อยากรับภาระ schema — เงื่อนไขที่แคบกว่าที่หลายคนคิด.\n\n## มุมสัมภาษณ์\n\n- \"ทำไม Twitter API ถึงมีทั้ง `id` และ `id_str` ในผลลัพธ์?\" → JSON number ใช้ double, ค่าเกิน 2^53 เสีย precision จึงต้องแนบ string คู่มา.\n- \"มี JSON อยู่แล้ว จะย้ายไป MessagePack เพื่อลดขนาด กับ gzip JSON เฉย ๆ อันไหนดีกว่า?\" → บ่อยครั้ง gzip ชนะ เพราะบีบชื่อ field ซ้ำ ๆ ที่ binary JSON ยังฝังอยู่ทุก record.\n- \"MessagePack กับ Protobuf ต่างกันตรงไหน?\" → binary JSON = schemaless, ส่งชื่อ field; Protobuf = schema-based, ส่ง tag number ไม่ส่งชื่อ จึงเล็กกว่ามาก.\n- \"ออกแบบ field เงินและ ID ใน JSON API ยังไงให้ปลอดภัย?\" → เงินเป็น integer minor units หรือ decimal string ไม่ใช่ float; ID ใหญ่เป็น string ไม่ใช่ number.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไมค่า binary (เช่น รูปภาพหรือไฟล์) ถึงต้อง base64 ก่อนใส่ลง JSON?",
+      "expected_answer": "เพราะ JSON/XML ไม่มี native binary-string type จึงต้อง encode bytes เป็น base64 text ก่อน แลกกับขนาดที่พองขึ้น ~33%",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม binary JSON variant อย่าง MessagePack ถึงเล็กกว่า JSON แค่เล็กน้อย ไม่เท่า Protobuf?",
+      "expected_answer": "เพราะมันยัง schemaless และฝังชื่อ field ลงในทุก record",
+      "type": "mcq",
+      "options": [
+        "เพราะมันยัง schemaless และฝังชื่อ field ลงในทุก record",
+        "เพราะมันบีบอัดด้วย gzip ในตัวอยู่แล้ว",
+        "เพราะมันตัดชื่อ field ออกด้วย schema เหมือน Protobuf"
+      ]
+    },
+    {
+      "q": "ทำไม Twitter ต้องเพิ่ม field id_str (string) คู่กับ id (number)?",
+      "expected_answer": "เพราะ JSON number ถูก parse เป็น IEEE 754 double ค่าที่เกิน 2^53 จึงเสีย precision",
+      "type": "mcq",
+      "options": [
+        "เพราะ string ค้นหาได้เร็วกว่า number",
+        "เพราะ JSON number ถูก parse เป็น IEEE 754 double ค่าที่เกิน 2^53 จึงเสีย precision",
+        "เพราะ XML ไม่รองรับ integer เลย"
+      ]
+    },
+    {
+      "q": "วิธีที่ปลอดภัยในการส่งจำนวนเงินใน JSON API เพื่อเลี่ยง float imprecision คือข้อใด?",
+      "expected_answer": "ส่งเป็น integer ของหน่วยย่อย (เช่น สตางค์) หรือเป็น decimal string",
+      "type": "mcq",
+      "options": [
+        "ส่งเป็น floating-point number ปกติ เช่น 19.99",
+        "base64 ค่าเงินก่อนส่งทุกครั้ง",
+        "ส่งเป็น integer ของหน่วยย่อย (เช่น สตางค์) หรือเป็น decimal string"
+      ]
+    },
+    {
+      "q": "เมื่อไหร่ schema-based binary format เหมาะกว่า textual JSON?",
+      "expected_answer": "เมื่อ traffic ภายในสูง ข้อมูล typed แน่นอน หรือ bandwidth จำกัด — ต้องการ payload กระชับและ type ที่ไม่ ambiguous (sibling protobuf-thrift-avro)",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 4: Encoding and Evolution (\"JSON, XML, and Binary Variants\")",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 4",
+      "why": "อ่านต้นฉบับจุดแข็ง/จุดอ่อนของ JSON, XML, CSV และทำไม binary JSON variant ยัง schemaless"
+    },
+    {
+      "title": "The JavaScript Object Notation (JSON) Data Interchange Format, Section 6: Numbers",
+      "source": "IETF RFC 8259, datatracker.ietf.org/doc/html/rfc8259#section-6",
+      "why": "อ่านต้นทางว่าทำไม JSON ไม่การันตี precision ของตัวเลข และคำเตือน interop เรื่องค่าที่เกินช่วง double"
+    },
+    {
+      "title": "MessagePack specification",
+      "source": "github.com/msgpack/msgpack/blob/master/spec.md",
+      "why": "อ่าน format จริงแล้วเห็นว่า map/str ยังฝังชื่อ field ทุก record จึงประหยัดได้จำกัด"
+    }
+  ]
+}

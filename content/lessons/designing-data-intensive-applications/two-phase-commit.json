@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "two-phase-commit",
+  "version": 1,
+  "title_en": "Two-Phase Commit",
+  "est_minutes": 8,
+  "body_md": "# Two-Phase Commit\n\n## ทำไมถึงสำคัญ\n\nเมื่อ transaction เดียวต้องเขียนข้าม node หลายตัว (คนละ database, คนละ service) เราต้องการ atomicity แบบ all-or-nothing: ทุก node commit หรือไม่ commit เลย — ห้ามครึ่ง ๆ กลาง ๆ. Two-Phase Commit (2PC) คือ protocol คลาสสิกที่ให้ atomic commit แบบนั้นได้ และเป็นคำตอบมาตรฐานที่ interviewer คาดหวัง เมื่อถามเรื่อง distributed transaction. แต่หัวใจที่ต้องเข้าใจคือ *ราคา* ของมัน — มันแลก atomicity มาด้วยการ block.\n\n## แก่นของแนวคิด\n\n2PC มี actor สองบทบาท: **coordinator** (มักฝังอยู่ในตัว application ที่เริ่ม transaction) และ **participant** หลายตัว (แต่ละ node ที่ต้องเขียนข้อมูล). Protocol เดินสองเฟส:\n\n- **Phase 1 — prepare (voting):** coordinator ส่ง `prepare` ไปทุก participant, ถามว่า \"แกพร้อม commit ได้แน่ไหม?\" participant ที่ตอบ **yes** ต้องเขียนข้อมูลลง disk ให้ครบ (durable), ถือ lock ที่จำเป็นไว้ทั้งหมด และ**สละสิทธิ์ที่จะ abort เอง** — มันสัญญาว่า *ถ้า* coordinator สั่ง commit มันจะ commit ได้แน่ ไม่ว่าจะเกิดอะไร (แม้จะ crash แล้ว restart ก็ต้องยังทำได้).\n- **Phase 2 — commit/abort:** ถ้า participant ทุกตัวโหวต yes → coordinator เขียน commit decision ลง log (จุดนี้คือ point of no return) แล้วส่ง `commit` ให้ทุกตัว. ถ้ามีแม้แต่ตัวเดียวโหวต no หรือ timeout → coordinator สั่ง `abort` ทั้งหมด.\n\nจุดสำคัญที่ทำให้ 2PC ต่างจาก single-node commit คือ \"สองจุดที่ไม่มีทางถอยกลับ\" (two points of no return): participant ยืนยันเมื่อโหวต yes, และ coordinator ยืนยันเมื่อเขียน decision. เมื่อทั้งสองผูกกัน ระบบจึงรับประกัน atomicity ได้.\n\n**จุดอ่อนถึงตาย — blocking:** สมมติ participant ทุกตัวโหวต yes แล้ว แต่ coordinator **crash ก่อน**ส่งคำตัดสิน. ตอนนี้ participant อยู่ใน **in-doubt / uncertain state**: มันโหวต yes ไปแล้ว จึง abort เองไม่ได้ (ผิดสัญญา), แต่ก็ commit เองไม่ได้เพราะไม่รู้ว่าตัวอื่นโหวตอะไร. ทางเดียวคือ **รอ coordinator ฟื้น**มาอ่าน log แล้วบอกผลลัพธ์. ระหว่างรอ participant ยังถือ lock ค้างไว้ → transaction อื่นที่แตะ row เดียวกัน block ตามไปด้วย. นี่ทำให้ **coordinator เป็น single point of failure**: ถ้ามันล่มยาว participant ก็ค้างยาว.\n\n## ตัวอย่าง (fintech: โอนเงินข้าม service)\n\nโอน 1,000 บาท จากบัญชีใน **Debit service** (DB ก้อนหนึ่ง) ไปบัญชีใน **Credit service** (อีก DB). ต้อง atomic: ห้ามหักเงินต้นทางสำเร็จแต่เติมปลายทางล้มเหลว.\n\n```mermaid\nsequenceDiagram\n    participant C as Coordinator\n    participant A as Debit service\n    participant B as Credit service\n    C->>A: prepare (debit 1000)\n    C->>B: prepare (credit 1000)\n    A-->>C: vote yes (durable, locks held)\n    B-->>C: vote yes (durable, locks held)\n    Note over C: crash BEFORE sending decision\n    A->>A: in doubt, keep locks\n    B->>B: in doubt, keep locks\n    Note over A,B: blocked until coordinator recovers\n```\n\nพอทั้งสอง service โหวต yes แล้ว coordinator ดันล่มพอดี ก่อนส่ง `commit`. ทั้ง Debit และ Credit ต่างถือ lock บน row บัญชีของตัวเองไว้ ตัดสินใจเองไม่ได้ — เงินก้อนนี้ \"แขวน\" อยู่, และลูกค้าคนอื่นที่จะแตะบัญชีเดียวกันก็ทำอะไรไม่ได้จนกว่า coordinator จะกลับมา. (หมายเหตุ: เรื่อง lock/isolation ระหว่าง transaction เป็นเนื้อหาของ chapter 7 Transactions — ที่นี่โฟกัสเฉพาะกลไก atomic commit ข้าม node.)\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"2PC ทนต่อ fault ได้ เพราะมันเป็น distributed protocol\"** ผิด. 2PC ไม่ใช่ fault-tolerant algorithm — มันจะเดินหน้าได้ก็ต่อเมื่อ participant **ทุกตัว**ยังมีชีวิตและ coordinator ยังมีชีวิต. ตัวใดตัวหนึ่งหายไปในจังหวะผิด = block. ต่างจาก consensus algorithm (เช่น Raft/Paxos, สอนต่อใน `consensus-and-zookeeper`) ที่ต้องการแค่ **majority** ยังทำงาน ก็เดินต่อได้ทั้งที่ minority ล่ม.\n- **\"เพิ่ม timeout ให้ participant abort เองสิ ถ้ารอ coordinator นานเกิน\"** ผิด — และนี่คือกับดัก. participant ที่โหวต yes ไปแล้ว *ห้าม* abort เอง เพราะตัวอื่นอาจได้รับ `commit` ไปแล้ว การ abort ข้างเดียวจะทำลาย atomicity. การ block คือสิ่งที่ protocol *ต้อง* ทำ ไม่ใช่ bug ที่ patch ได้ด้วย timeout.\n- **\"coordinator crash แล้ว transaction หายหมด\"** ผิด. decision ถูกเขียน log ไว้ก่อนส่ง เมื่อ coordinator ฟื้นมันอ่าน log แล้วเดินเฟส 2 ต่อได้ — ปัญหาไม่ใช่ข้อมูลหาย แต่คือ *ระยะเวลาที่ทุกคนถูก block* ระหว่างที่มันยังไม่ฟื้น.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\n2PC ซื้อ atomicity ข้าม node มาด้วยราคาสามอย่าง: (1) **latency** — ต้องรอ round-trip สองรอบบวก fsync ที่ทุก participant ก่อนจบ; (2) **availability ตก** — เพราะต้องรอ participant ครบทุกตัว โอกาสที่ commit สำเร็จ = ผลคูณของ availability ของทุก node ยิ่งมี node เยอะยิ่งเปราะ; (3) **lock ถูกถือค้างข้าม network round-trip** ทำให้ throughput ตกและเสี่ยง block ยาวเมื่อ coordinator ล่ม. XA transaction (2PC เวอร์ชันที่ใช้จริงในอุตสาหกรรม) ขึ้นชื่อเรื่องปวดหัวเชิง operation ตรงนี้.\n\nอย่าใช้ 2PC เมื่อ: ระบบ throughput สูงที่ทน lock ค้างไม่ได้; งานข้าม microservice ที่ยอมรับ eventual consistency ได้ — ใช้ **saga** (ชุด local transaction + compensating action) หรือ **outbox/idempotency** จะทน fault ได้ดีกว่าและไม่ block ทั้งระบบเมื่อ node เดียวล่ม; หรือเมื่อ node เป็น system ต่างชนิดที่ไม่รองรับ XA. ใช้ 2PC ต่อเมื่อ **ต้องการ atomicity จริง ๆ**, จำนวน participant น้อยและอยู่ใกล้กัน, และรับ latency/blocking window ได้. งานของ senior คือรู้ว่าเมื่อไหร่ atomicity คุ้มกับการ block ทั้งระบบ ไม่ใช่ใช้ 2PC กับทุก distributed write.\n\nหนึ่งบรรทัดเทียบ sibling: **2PC ต้องการ participant *ทุกตัว* โหวต yes + coordinator ที่ยังมีชีวิต; consensus ต้องการแค่ *majority*** — นี่คือเหตุผลที่ระบบสมัยใหม่มักวาง coordinator/metadata ไว้บน consensus service (ZooKeeper/etcd) เพื่อลบจุด SPOF ออก (ต่อใน `consensus-and-zookeeper`).\n\n## มุมสัมภาษณ์\n\n- \"เล่ากลไก 2PC สองเฟส\" → prepare/vote แล้ว commit/abort; เน้นว่า yes-vote = สละสิทธิ์ abort, และ decision ถูก log ก่อนส่ง.\n- \"ถ้า coordinator crash หลัง participant โหวต yes จะเกิดอะไร?\" → participant ค้างใน in-doubt state ถือ lock รอ coordinator ฟื้น = blocking; coordinator เป็น SPOF. (คำถามนี้คือหัวใจ)\n- \"2PC ต่างจาก consensus ยังไง / ทำไมไม่ใช้ 2PC แทน Raft?\" → 2PC block เมื่อ node เดียวล่ม (ต้องครบทุกตัว); consensus เดินต่อได้ด้วย majority. มักต่อเข้าเรื่อง `consensus-and-zookeeper`.\n- \"microservice โอนเงินข้าม service ควรใช้ 2PC ไหม?\" → ชวนพูด trade-off: ส่วนมากตอบ saga/outbox เพราะทน fault และ scale ดีกว่า, 2PC เก็บไว้เมื่อ atomicity จำเป็นจริงและ participant น้อย.\n",
+  "recall_checks": [
+    {
+      "q": "ใน phase 1 (prepare) participant ที่โหวต yes สละสิทธิ์อะไรไป?",
+      "expected_answer": "สละสิทธิ์ที่จะ abort เอง — ต้องรอคำตัดสินจาก coordinator เท่านั้น และสัญญาว่าจะ commit ได้แน่ถ้าถูกสั่ง",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม 2PC ถึง block เมื่อ coordinator crash หลังจาก participant ทุกตัวโหวต yes?",
+      "expected_answer": "participant อยู่ใน in-doubt state: abort เองไม่ได้เพราะโหวต yes ไปแล้ว, commit เองไม่ได้เพราะไม่รู้ผลรวม จึงต้องถือ lock รอจนกว่า coordinator จะฟื้น",
+      "type": "mcq",
+      "options": [
+        "participant จะ abort อัตโนมัติหลัง timeout แล้วปล่อย lock",
+        "participant ตัวหนึ่งจะขึ้นมาเป็น coordinator แทนทันที",
+        "participant อยู่ใน in-doubt state: abort เองไม่ได้เพราะโหวต yes ไปแล้ว, commit เองไม่ได้เพราะไม่รู้ผลรวม จึงต้องถือ lock รอจนกว่า coordinator จะฟื้น"
+      ]
+    },
+    {
+      "q": "2PC ต่างจาก consensus algorithm อย่าง Raft/Paxos ตรงเรื่องความทนทานต่อ fault อย่างไร?",
+      "expected_answer": "2PC ต้องการ participant ทุกตัวโหวต yes และ coordinator ที่ยังมีชีวิต ถ้าตัวใดล่มในจังหวะผิดก็ block; consensus ต้องการแค่ majority ก็เดินต่อได้แม้ minority ล่ม",
+      "type": "mcq",
+      "options": [
+        "2PC ต้องการ participant ทุกตัวโหวต yes และ coordinator ที่ยังมีชีวิต ถ้าตัวใดล่มในจังหวะผิดก็ block; consensus ต้องการแค่ majority ก็เดินต่อได้แม้ minority ล่ม",
+        "ไม่ต่างกัน ทั้งคู่ต้องการให้ทุก node ตอบตกลงเหมือนกัน",
+        "2PC ทน fault ได้ดีกว่าเพราะไม่มี coordinator เป็นจุดเดียว"
+      ]
+    },
+    {
+      "q": "ใน 2PC สิ่งใดคือ single point of failure ที่ทำให้ทั้งระบบ block ได้?",
+      "expected_answer": "coordinator — เมื่อมันล่มหลัง participant โหวต yes participant ทุกตัวจะค้างรอคำตัดสินจากมัน",
+      "type": "short_answer"
+    },
+    {
+      "q": "งานโอนเงินข้าม microservice ที่ต้องการ throughput สูงและทน node ล่มได้ ควรเลือกอะไรแทน 2PC?",
+      "expected_answer": "saga (local transaction + compensating action) หรือ outbox/idempotency ที่ยอมรับ eventual consistency ได้ ไม่ block ทั้งระบบเมื่อ node เดียวล่ม",
+      "type": "mcq",
+      "options": [
+        "บังคับใช้ 2PC เสมอเพราะเป็น protocol เดียวที่ให้ atomicity",
+        "saga (local transaction + compensating action) หรือ outbox/idempotency ที่ยอมรับ eventual consistency ได้ ไม่ block ทั้งระบบเมื่อ node เดียวล่ม",
+        "เพิ่ม coordinator หลายตัวให้แต่ละตัวตัดสินใจเองอิสระ"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 9: Consistency and Consensus (Atomic Commit and Two-Phase Commit)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 9",
+      "why": "อ่านต้นฉบับ 2PC, in-doubt state, และปัญหา coordinator failure แบบละเอียด"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 9: Distributed Transactions in Practice (XA)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 9",
+      "why": "อ่านต่อว่าทำไม XA/2PC ในการใช้งานจริงถึงปวดหัวเชิง operation และ block ทรัพยากร"
+    },
+    {
+      "title": "Consensus on Transaction Commit",
+      "source": "Jim Gray & Leslie Lamport, ACM TODS (2006)",
+      "why": "อ่าน paper ต้นทางที่วาง 2PC เทียบกับ Paxos Commit เพื่อลบจุด blocking ของ coordinator"
+    }
+  ]
+}

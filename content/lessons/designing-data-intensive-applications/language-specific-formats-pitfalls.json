@@ -1,0 +1,67 @@
+{
+  "concept_id": "language-specific-formats-pitfalls",
+  "topic": "designing-data-intensive-applications",
+  "version": 1,
+  "title_en": "Language-Specific Formats and Their Pitfalls",
+  "est_minutes": 8,
+  "body_md": "# Language-Specific Formats and Their Pitfalls\n\n## ทำไมถึงสำคัญ\n\nเกือบทุกภาษามี built-in serialization ที่แปลง in-memory object เป็น byte ได้ในบรรทัดเดียว (Java `Serializable`, Python `pickle`, Ruby `Marshal`) มันเย้ายวนเพราะแทบไม่ต้องเขียนโค้ดเพิ่มเลย แต่มันคือ default ที่อันตรายที่สุดสำหรับข้อมูลที่ต้องเก็บนานหรือเดินทางข้าม service. เข้าใจว่าทำไมมันเป็น anti-pattern คือด่านแรกของ chapter Encoding and Evolution และเป็นคำถามที่ interviewer ชอบใช้จับว่าคุณคิดเรื่อง interoperability, security, และ schema evolution เป็นระบบหรือแค่หยิบทางลัดที่ใกล้มือ.\n\n## แก่นของแนวคิด\n\nbuilt-in serialization คือกลไกที่ภาษาให้มาเพื่อ encode/decode object เป็น byte โดยผูกกับ runtime ของภาษานั้นตรง ๆ. DDIA ชี้ปัญหาหลักสี่ข้อ:\n\n- **ผูกกับภาษาเดียว (no interoperability)**: byte ที่ Java `Serializable` ผลิตออกมา อ่านกลับได้จริงแค่ด้วย Java (และมักต้องเป็น class เดิม บน classpath เดิม). ระบบที่เขียนด้วย Go หรือ Python อ่านไม่ออกเลย คุณจึง lock ตัวเองไว้กับภาษาเดียวตลอดอายุของข้อมูลก้อนนั้น.\n- **security — arbitrary code execution**: การ deserialize คือการ *สั่งให้ runtime สร้าง object ตามที่ byte บอก*. ถ้า byte มาจาก source ที่ไม่ไว้ใจ ผู้โจมตี craft payload ให้ instantiate class อะไรก็ได้ที่อยู่ใน classpath และทริกเกอร์ side-effect ระหว่างสร้าง object นั้น นำไปสู่ remote code execution. นี่คือช่องโหว่ตระกูลใหญ่ที่รู้จักกันดีในโลก Java/Python — `pickle.loads` บน untrusted input ถือว่าอันตรายโดยนิยาม.\n- **versioning / compatibility อ่อน**: format พวกนี้ผูกกับโครงสร้าง class ณ ตอน serialize. พอเพิ่ม/ลบ/rename field หรือย้าย package โค้ดใหม่มัก deserialize ข้อมูลเก่าไม่ได้ หรือได้แบบเปราะ. ไม่มีกลไก forward/backward compatibility ที่ออกแบบมาจริงจังแบบ schema format — เรื่อง compatibility เต็ม ๆ อยู่ใน sibling `schema-evolution-compatibility`.\n- **performance / ขนาดบวม**: มัก encode ช้าและ payload ใหญ่ (Java serialization ฝัง class metadata เยอะ) ไม่เหมาะกับ hot path หรือ storage ที่ต้องประหยัดพื้นที่.\n\nทางเลือกที่เป็นมาตรฐาน: format แบบ textual อย่าง JSON/XML (sibling `json-xml-binary`) และ schema-based binary อย่าง Protobuf/Thrift/Avro (sibling `protobuf-thrift-avro`) — สองกลุ่มนี้แก้ปัญหา interop และ (สำหรับ schema-based) versioning ให้ตรงจุด.\n\n```mermaid\nflowchart TD\n  OBJ[In-memory domain object] --> SER[Language serializer: pickle or Serializable]\n  SER --> BYTES[Opaque language-specific bytes]\n  BYTES --> SAME[Same-language service: reads OK but locked in]\n  BYTES -.->|other language| POLY[Go or JVM consumer: cannot decode]\n  ATT[Untrusted crafted payload] --> DESER[deserialize / pickle.loads]\n  DESER --> INST[Instantiate arbitrary class]\n  INST --> RCE[Remote code execution]\n```\n\n## ตัวอย่าง (fintech: อย่า pickle domain object ลง queue/store)\n\nทีม payments เขียน service ด้วย Python และอยากส่ง `PaymentInstruction` object ให้ downstream worker ผ่าน queue (เช่น Kafka/SQS). ทางลัดที่เย้ายวนคือ `pickle.dumps(instruction)` แล้วโยนลง queue ตรง ๆ. ปัญหาที่จะตามมา:\n\n- **reconciliation service ที่เป็น Go อ่านไม่ออก**: message ใน queue กลายเป็น Python-only blob ทีม ledger (Go) หรือ analytics (JVM) แตะไม่ได้เลย — คุณเพิ่งสร้าง integration wall ไว้กลางเส้นทางเงิน.\n- **schema ขยับแล้วพัง**: วันหนึ่งเพิ่ม field `idempotency_key` ใน `PaymentInstruction` หรือย้าย class ไป module ใหม่ — message เก่าที่ค้างใน queue หรือใน dead-letter deserialize กลับไม่ได้ ธุรกรรมค้างเติ่ง.\n- **security**: ถ้า producer ตัวใดตัวหนึ่งถูก compromise แม้แต่นิดเดียว `pickle.loads` ฝั่ง consumer กลายเป็นช่องทาง RCE ตรงเข้า payment worker — ระดับความเสียหายในระบบการเงินยอมรับไม่ได้.\n\nทางที่ถูก: กำหนด schema ให้ชัด (Protobuf/Avro) หรืออย่างน้อย JSON ที่ทุกภาษาอ่านได้ แล้ว serialize domain object เป็น format นั้นตรง boundary — ไม่เอา object ของภาษาตัวเอง pickle ลง durable store หรือ queue ที่มีอายุยืนกว่าโค้ด version เดียว.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"pickle/Serializable ปลอดภัยถ้าข้อมูลอยู่ในระบบเราเอง\"** ผิดเชิงความเสี่ยง: durable data มีอายุยืนกว่าโค้ด และ trust boundary เปลี่ยนได้ (component ถูก compromise, ข้อมูลถูกย้าย) การ deserialize input ที่ไม่ได้ไว้ใจเต็มร้อยอันตรายเสมอ.\n- **\"มันเป็นแค่เรื่อง performance\"** ผิด: ปัญหาหลักไม่ใช่ความเร็ว แต่คือ language lock-in + security + versioning ที่เป็นปัญหาเชิงสถาปัตยกรรมระยะยาว.\n- **\"แก้ security ได้ด้วยการ whitelist class ที่ยอม deserialize\"** บรรเทาได้บ้างแต่เปราะ และยังไม่แก้ปัญหา interop กับ versioning เลย — เปลี่ยนไปใช้ format มาตรฐานคือคำตอบเชิงโครงสร้าง.\n\n## ขีดจำกัด / เมื่อไหร่พอใช้ได้ และต้นทุน\n\nbuilt-in serialization ไม่ได้ห้ามใช้เด็ดขาด มันเหมาะกับกรณีที่แคบและอายุสั้น:\n\n- ข้อมูล transient ภายใน process หรือภาษาเดียวล้วน ที่ producer และ consumer deploy พร้อมกันเสมอ (เช่น cache ชั่วคราว, checkpoint ที่อ่านกลับด้วยโค้ด version เดิม, RPC ภายในของ framework เดียวที่คุมทั้งสองฝั่ง).\n- prototype / throwaway ที่ไม่มีวันข้ามภาษาและไม่เก็บนาน.\n\nต้นทุนที่ต้องยอมรับเมื่อเลือกใช้: ยอม lock ภาษาเดียว, ยอมว่า input ต้องมาจาก source ที่ไว้ใจ 100%, และยอมว่าเปลี่ยน schema แล้วต้อง deploy producer/consumer พร้อมกัน (ไม่มี rolling upgrade แบบปลอดภัย).\n\nเมื่อไหร่ห้ามใช้ (bad default): อะไรก็ตามที่ (1) เก็บนานกว่าโค้ด version เดียว — database, event log, message queue ที่มี backlog; (2) ข้ามขอบเขต service หรือข้ามภาษา; (3) รับ input จากภายนอกหรือจาก component ที่อาจถูก compromise. สามกรณีนี้ต้นทุนแฝง (integration wall, migration ที่ทำไม่ได้, ช่องโหว่ RCE) แพงกว่าความสะดวกที่ประหยัดได้ตอนแรกมาก senior จึงถือว่า language-specific format เป็น bad default และเลือก standardized/schema format ตั้งแต่ต้น.\n\n## มุมสัมภาษณ์\n\n- \"ทำไมไม่ควรใช้ Java Serializable / pickle เก็บข้อมูลลง database หรือ queue?\" → ตอบเป็นระบบ: language lock-in, security (RCE จาก untrusted deserialize), versioning อ่อน, payload บวม.\n- \"pickle untrusted input อันตรายยังไง?\" → deserialize = instantiate arbitrary class + ทริกเกอร์ side-effect ระหว่างสร้าง object → remote code execution.\n- \"ถ้าไม่ใช้ language format แล้วใช้อะไรแทน ขึ้นกับอะไร?\" → JSON/XML เมื่อต้อง human-readable และ interop กว้าง (sibling `json-xml-binary`); Protobuf/Avro เมื่อต้องการ compact + schema evolution (sibling `protobuf-thrift-avro`).\n- \"มีกรณีไหนใช้ language serialization ได้บ้าง?\" → transient, ภาษาเดียว, deploy พร้อมกัน, input เชื่อถือได้ — คำถามนี้วัดว่าคุณเห็น trade-off ไม่ใช่ท่องว่าห้ามใช้.\n",
+  "recall_checks": [
+    {
+      "q": "ปัญหาหลักสี่ข้อของ language-specific serialization (เช่น Java Serializable, pickle) ตาม DDIA คืออะไร?",
+      "expected_answer": "ผูกกับภาษาเดียว (ไม่ interoperable), security (deserialize untrusted input สร้าง arbitrary class จนเกิด RCE), versioning/compatibility อ่อน, และ performance/ขนาด payload บวม",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมการ deserialize (เช่น pickle.loads) ข้อมูลจาก source ที่ไม่ไว้ใจถึงอันตราย?",
+      "expected_answer": "เพราะ deserialize สามารถ instantiate arbitrary class และทริกเกอร์ side-effect ระหว่างสร้าง object นำไปสู่ remote code execution",
+      "type": "mcq",
+      "options": [
+        "เพราะ payload จะมีขนาดใหญ่จน memory เต็ม",
+        "เพราะ deserialize สามารถ instantiate arbitrary class และทริกเกอร์ side-effect ระหว่างสร้าง object นำไปสู่ remote code execution",
+        "เพราะข้อมูลจะถูกเข้ารหัสจนอ่านกลับไม่ได้"
+      ]
+    },
+    {
+      "q": "เหตุผลหลักที่ไม่ควร pickle domain object ลง message queue ในระบบที่มีหลายภาษาคืออะไร?",
+      "expected_answer": "byte ที่ได้ผูกกับภาษาเดียว service ที่เขียนด้วยภาษาอื่น decode กลับไม่ได้ (ไม่ interoperable)",
+      "type": "mcq",
+      "options": [
+        "queue ส่วนใหญ่ไม่รองรับ binary data",
+        "pickle ช้าเกินกว่าจะใช้กับ queue ได้",
+        "byte ที่ได้ผูกกับภาษาเดียว service ที่เขียนด้วยภาษาอื่น decode กลับไม่ได้ (ไม่ interoperable)"
+      ]
+    },
+    {
+      "q": "กรณีใดที่ language-specific serialization ยังพอยอมรับได้?",
+      "expected_answer": "ข้อมูล transient ภายในภาษาเดียว ที่ producer/consumer deploy พร้อมกันและ input เชื่อถือได้",
+      "type": "mcq",
+      "options": [
+        "ข้อมูล transient ภายในภาษาเดียว ที่ producer/consumer deploy พร้อมกันและ input เชื่อถือได้",
+        "event log ที่ต้องเก็บถาวรหลายปีเป็น source of truth",
+        "message queue ที่มี consumer หลายภาษาอ่านร่วมกัน"
+      ]
+    },
+    {
+      "q": "ทำไม senior ถือว่า language-specific format เป็น bad default สำหรับข้อมูลที่เก็บนานหรือข้าม service?",
+      "expected_answer": "เพราะข้อมูลอยู่นานกว่าโค้ด version เดียว (schema เปลี่ยนแล้ว deserialize ไม่ได้), ข้ามภาษาไม่ได้ (lock-in), และเสี่ยง RCE จาก untrusted input; ต้นทุนแฝงเหล่านี้แพงกว่าความสะดวกจึงควรใช้ standardized/schema format แทน",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 4: Encoding and Evolution (section 'Formats for Encoding Data' / 'Language-Specific Formats')",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 4",
+      "why": "อ่านต้นฉบับปัญหาทั้งสี่ข้อของ built-in serialization และเหตุผลที่ควรเลือก standardized format"
+    },
+    {
+      "title": "pickle — Python object serialization (Warning: pickle is not secure)",
+      "source": "docs.python.org/3/library/pickle.html",
+      "why": "อ่านคำเตือนทางการว่า unpickle ข้อมูลจาก source ที่ไม่ไว้ใจนำไปสู่ arbitrary code execution ได้"
+    },
+    {
+      "title": "OWASP — Deserialization of Untrusted Data / Deserialization Cheat Sheet",
+      "source": "OWASP Foundation — Deserialization Cheat Sheet (cheatsheetseries.owasp.org)",
+      "why": "อ่านว่าทำไม insecure deserialization ถึงนำไปสู่ RCE และแนวทางบรรเทาในทางปฏิบัติ"
+    }
+  ]
+}

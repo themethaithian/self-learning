@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "ordering-and-causality",
+  "version": 1,
+  "title_en": "Ordering and Causality",
+  "est_minutes": 8,
+  "body_md": "# Ordering and Causality\n\n## ทำไมถึงสำคัญ\n\nในระบบกระจายไม่มี \"เวลากลาง\" ที่บอกได้ว่า event ไหนเกิดก่อน แต่บาง event *ต้อง* มาก่อนอีก event เพราะมันเป็น \"เหตุ\" ของกัน (เห็น post ก่อนถึงจะ reply ได้, ต้อง debit ก่อนถึงจะ credit). causal order คือการจับเฉพาะความสัมพันธ์ \"เหตุมาก่อนผล\" ที่สำคัญนี้ โดยไม่บังคับให้ทุก event เรียงเป็นเส้นเดียว. งานของ senior คือแยกออกว่า order แบบไหนที่ระบบ *จำเป็น* ต้องรักษา (causal) กับแบบที่แพงเกินจำเป็น (total) และรู้ว่าเครื่องมือ track causality แต่ละอันบอกอะไรได้/ไม่ได้.\n\n## แก่นของแนวคิด: partial order vs total order\n\n**happens-before** (Lamport 1978): event `a` happens-before `b` (เขียน `a → b`) เมื่อ\n\n1. อยู่ node เดียวกันและ `a` เกิดก่อน `b`, หรือ\n2. `a` คือการ *ส่ง* message และ `b` คือการ *รับ* message นั้น, หรือ\n3. transitive: `a → c` และ `c → b` ⇒ `a → b`\n\nถ้าทั้ง `a → b` และ `b → a` **ไม่จริงทั้งคู่** → `a` กับ `b` เป็น **concurrent** (ไม่มีใครเป็นเหตุของใคร).\n\n- **causal order = partial order**: เรียงเฉพาะคู่ที่มีสาย causal; คู่ที่ concurrent ถูกปล่อยให้ \"ไม่มีลำดับ\" ได้.\n- **total order**: ทุกคู่ event เทียบกันได้หมด เรียงเป็นเส้นเดียว. linearizability คือการบังคับ total order เดียวที่ทุก node เห็นตรงกัน — **แข็งกว่า** causal (ดู sibling `linearizability`).\n\ncausal order อ่อนกว่า total order แต่เก็บ \"สิ่งที่สำคัญจริง\" ไว้ครบ: ระบบจะไม่มีวันแสดง *ผล* ก่อน *เหตุ*.\n\n```mermaid\nflowchart LR\n  subgraph T1 [Transfer 1]\n    D1[\"debit A\"] --> C1[\"credit B\"]\n  end\n  subgraph T2 [Transfer 2 - concurrent]\n    D2[\"debit C\"] --> C2[\"credit D\"]\n  end\n```\n\nในภาพ: แต่ละ transfer มีสาย causal `debit → credit` ที่ต้องรักษาลำดับเสมอ; แต่สอง transfer ที่ไม่เกี่ยวกันเป็น concurrent — replica คนละตัวจะเห็นสองสายนี้สลับลำดับกันก็ได้ ไม่ผิด causal.\n\n## track causality: Lamport timestamp vs version vector\n\n**Lamport timestamp** — counter เดียวต่อ node:\n\n- ทุก event: `counter += 1`; แนบ `(counter, nodeID)` ไปกับ message\n- รับ message: `counter = max(local, received) + 1`\n- ได้ **total order** ที่ *สอดคล้อง* กับ causality: ถ้า `a → b` แล้ว `L(a) < L(b)` เสมอ (tie ตัดด้วย nodeID)\n\n**ข้อจำกัดสำคัญ:** ทางกลับ **ไม่จริง** — `L(a) < L(b)` ไม่ได้แปลว่า `a → b`. สอง event ที่ concurrent ก็มี Lamport timestamp ต่างกันได้ (แล้วตัวเลขก็ถูกเอาไปเรียง) ดังนั้น *เมื่อมองแค่ตัวเลข Lamport เพียว ๆ คุณแยกไม่ออกว่าสอง event เป็น causal หรือ concurrent*. Lamport ยุบ partial order ให้กลายเป็น total order — สะดวกแต่ทิ้งข้อมูล concurrency ไป.\n\nตัวอย่างเลข: node1 กับ node2 ไม่คุยกันเลย ต่างทำ 1 event → `L = (1, node1)` และ `(1, node2)`. total order (tie-break) บอกว่า node1 มาก่อน แต่จริง ๆ มัน concurrent — Lamport บอกความจริงข้อนี้ไม่ได้.\n\n**Version vector** — vector ของ counter (หนึ่งช่องต่อ node):\n\n- local event: เพิ่มช่องของตัวเอง\n- รับ message: element-wise `max` แล้วเพิ่มช่องตัวเอง\n- เทียบสอง vector: ถ้าทุกช่องของ `V1 ≤ V2` และมีอย่างน้อยหนึ่งช่อง `<` ⇒ `V1 → V2`; ถ้า **ไม่มีใคร ≤ อีกฝั่ง ⇒ concurrent (ตรวจจับได้!)**\n\nเลขเดียวกันข้างบน: node1 → `[1,0]`, node2 → `[0,1]`; ไม่มีใคร ≤ อีกฝั่ง ⇒ ระบบ *รู้* ว่ามัน concurrent. นี่คือความต่างแกนกลาง: **Lamport ให้ total order แต่ตรวจ concurrency ไม่ได้; version vector ตรวจ concurrency ได้แต่ไม่ให้ total order** (และกินเนื้อที่ O(จำนวน node) ต่อค่า).\n\n(หมายเหตุศัพท์: \"vector clock\" คือคำทั่วไปสำหรับ track causality ระหว่าง process; \"version vector\" คือ variant ที่ track version ของค่าที่ replicate ต่อ key — DDIA ใช้คำหลังในบริบท replica.)\n\n## ตัวอย่าง (fund transfer / read replica)\n\nโอนเงิน A → B: ระบบบันทึก event `debit A` แล้วจึง `credit B` ที่ *เกิดจาก* debit นั้น → `debit A → credit B` (happens-before).\n\nผู้ใช้เปิด dashboard ที่อ่านจาก read replica หลายตัว. **causal consistency** รับประกันว่า: ถ้าคุณ *เห็น* `credit B` คุณต้องเห็น `debit A` ด้วยเสมอ — จะไม่มีวันเห็น \"เงินโผล่เข้า B จากอากาศ\" โดยที่ยังไม่เห็นเงินออกจาก A.\n\nสิ่งที่ causal consistency **ยอมให้เกิด** (และนี่คือเหตุผลที่มันถูกกว่า linearizability):\n\n- เห็นว่า *ยังไม่เกิดอะไรเลย* (ทั้ง debit และ credit ยังมาไม่ถึง) — แค่ replication lag ธรรมดา ไม่ผิด causal\n- transfer อื่นที่ไม่เกี่ยวกัน (concurrent) โผล่มาสลับลำดับกันบนคนละ replica — ไม่ผิด causal\n\nสิ่งที่มัน **ห้าม**: เห็น credit โดยไม่เห็น debit (ผลก่อนเหตุ). ส่วนกรณีเขียน balance พร้อมกันจากสอง node → version vector จะ *ตรวจจับ* ได้ว่าเป็น concurrent write (ต้อง resolve) แทนที่จะให้ตัวหนึ่งทับอีกตัวเงียบ ๆ.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Lamport timestamp ใช้ตรวจว่าสอง event concurrent ได้\"** ผิด — Lamport ให้ total order แต่ `L(a)<L(b)` ไม่ได้บอกความสัมพันธ์ causal; ต้องใช้ version vector ถึงจะ *ตรวจจับ* concurrency.\n- **\"causal order = total order แบบเบา ๆ\"** ผิด — causal เป็น partial order โดยตั้งใจ; คู่ที่ concurrent ไม่มีลำดับ และนั่นคือฟีเจอร์ ไม่ใช่บั๊ก.\n- **\"version vector resolve conflict ให้เลย\"** ผิด — มันแค่ *ตรวจจับ* ว่า concurrent; การ merge (LWW / CRDT / app logic) เป็นอีกเรื่องหนึ่ง. detection ≠ resolution.\n- **\"timestamp จากนาฬิกาจริง (wall clock) ใช้เรียง causal ได้\"** ผิด — clock ข้าม node ไม่ sync พอ และ last-write-wins ด้วย wall clock ทำให้ write หายเงียบ ๆ (ดู sibling `unreliable-clocks`).\n\n## ขีดจำกัด / เมื่อไหร่ causal ไม่พอ\n\ncausal consistency คือ **โมเดลที่แข็งที่สุดเท่าที่ยัง available ได้ตอน network partition** (ต่างจาก linearizability ที่ CAP บอกว่าต้องเสีย availability). มันถูกกว่าเพราะ node ไม่ต้องรอ coordinate กันก่อนตอบ — แต่ราคาที่จ่ายคือ:\n\n1. **concurrent operation ถูกเห็นคนละลำดับบนคนละ node ได้** — ถ้า business ต้องการคำตอบเดียวว่า \"ใครก่อน\" (จองที่นั่งสุดท้าย, username ต้อง unique, ตัดสิน leader) causal ให้ไม่ได้ ต้องใช้ **total order** ที่ทุก node เห็นตรงกัน → ดู sibling `total-order-broadcast` (เทียบเท่าปัญหา consensus).\n2. **enforce global invariant ไม่ได้** — เช่น \"balance ห้ามติดลบ\" ที่ต้องรู้ค่าล่าสุดจริงทั่วทั้งระบบ ณ จุดตัดสินใจ; causal อนุญาตให้แต่ละ node เห็น state คนละเวอร์ชัน จึงบังคับ invariant แบบนี้ไม่ได้.\n3. **ต้นทุน metadata + buffering** — version vector โตตามจำนวน node ที่เขียน (O(n) ต่อค่า); ระบบ causal จริงต้อง *buffer* operation ที่ dependency ยังมาไม่ครบก่อน apply เพิ่มทั้ง memory และ latency.\n4. **detection ≠ resolution** — ตรวจ concurrent write ได้ แต่ยังต้องออกแบบวิธี merge เอง.\n\n**สรุปเชิงตัดสินใจ:** ใช้ causal เมื่อ correctness ต้องการแค่ \"ห้ามเห็นผลก่อนเหตุ\" และอยาก available สูง/latency ต่ำ; อย่าใช้ causal เดี่ยว ๆ เมื่อ business ต้องการ single agreed ordering หรือ global uniqueness/invariant — งานพวกนั้นต้องเลื่อนขึ้นไปหา total order broadcast หรือ linearizability ซึ่งแลกด้วย latency และ availability ตอน partition.\n\n## มุมสัมภาษณ์\n\n- \"causal order ต่างจาก total order ยังไง?\" → causal = partial order (เรียงเฉพาะคู่ที่ causal, concurrent ไม่เรียง); total = ทุกคู่เรียงกันหมด; linearizability = total order เดียวที่ทุก node เห็นตรงกัน แข็งกว่า causal.\n- \"ทำไม Lamport timestamp ตรวจ concurrency ไม่ได้ แต่ version vector ได้?\" → Lamport ยุบเป็น total order, เลข `L(a)<L(b)` ไม่ implies `a→b`; version vector เทียบทีละช่อง ถ้าไม่มีใคร ≤ อีกฝั่ง = concurrent.\n- \"causal consistency ยัง available ตอน partition ไหม?\" → ได้ เป็นโมเดลที่แข็งสุดที่ยัง available ตอน partition; linearizability ทำไม่ได้ (CAP).\n- \"เมื่อไหร่ causal ไม่พอ?\" → ต้อง global uniqueness / single ordering decision / enforce invariant → ต้อง total order broadcast / consensus (เป็นสะพานไป sibling ถัดไป).\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม causal order ถึงเป็น partial order ไม่ใช่ total order?",
+      "expected_answer": "เพราะมันเรียงลำดับเฉพาะคู่ event ที่มีสาย causal (happens-before) เท่านั้น ส่วนคู่ที่ concurrent ปล่อยให้ไม่มีลำดับได้ ต่างจาก total order ที่ทุกคู่ต้องเทียบกันได้หมด",
+      "type": "short_answer"
+    },
+    {
+      "q": "ถ้าต้องการ 'ตรวจจับ' ว่าสอง write เป็น concurrent (ไม่มีใครเป็นเหตุของใคร) ควรใช้อะไร?",
+      "expected_answer": "version vector",
+      "type": "mcq",
+      "options": [
+        "Lamport timestamp เพียงอย่างเดียว",
+        "version vector",
+        "wall-clock timestamp ของแต่ละ node"
+      ]
+    },
+    {
+      "q": "Lamport timestamp ที่ L(a) < L(b) บอกอะไรได้/ไม่ได้?",
+      "expected_answer": "บอกได้ว่า 'ถ้า a→b แล้ว L(a)<L(b)' แต่ทางกลับไม่จริง — L(a)<L(b) ไม่ได้แปลว่า a→b เพราะสอง event ที่ concurrent ก็มี L ต่างกันได้",
+      "type": "mcq",
+      "options": [
+        "บอกได้ว่า 'ถ้า a→b แล้ว L(a)<L(b)' แต่ทางกลับไม่จริง — L(a)<L(b) ไม่ได้แปลว่า a→b เพราะสอง event ที่ concurrent ก็มี L ต่างกันได้",
+        "บอกได้เสมอว่า a เกิดก่อน b ในเชิง causal (a→b)",
+        "บอกได้ทันทีว่า a กับ b เป็น concurrent"
+      ]
+    },
+    {
+      "q": "causal consistency เทียบกับ linearizability ในแง่ availability ตอน network partition เป็นอย่างไร?",
+      "expected_answer": "causal consistency ยัง available ตอน partition ได้ (เป็นโมเดลที่แข็งสุดที่ยังทำได้) ส่วน linearizability ทำไม่ได้ตาม CAP",
+      "type": "mcq",
+      "options": [
+        "ทั้งคู่ต้องเสีย availability เท่ากันเมื่อ partition",
+        "linearizability ยัง available แต่ causal ทำไม่ได้",
+        "causal consistency ยัง available ตอน partition ได้ (เป็นโมเดลที่แข็งสุดที่ยังทำได้) ส่วน linearizability ทำไม่ได้ตาม CAP"
+      ]
+    },
+    {
+      "q": "ยกตัวอย่างสถานการณ์ที่ causal consistency ไม่พอ ต้องเลื่อนขึ้นไปใช้ total order",
+      "expected_answer": "งานที่ต้องการ single agreed ordering หรือ global invariant เช่น username ต้อง unique, จองที่นั่งสุดท้าย, ตัดสิน leader, หรือบังคับ balance ห้ามติดลบทั่วทั้งระบบ — ต้องใช้ total order broadcast / consensus",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 9: Consistency and Consensus (Ordering Guarantees / Ordering and Causality / Sequence Number Ordering)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 9",
+      "why": "อ่านต้นฉบับ causal order เทียบ total order, Lamport timestamp, และเหตุผลที่ causal คือโมเดลแข็งสุดที่ยัง available ตอน partition"
+    },
+    {
+      "title": "Time, Clocks, and the Ordering of Events in a Distributed System",
+      "source": "Leslie Lamport, Communications of the ACM, vol. 21 no. 7 (1978)",
+      "why": "อ่านนิยาม happens-before และ Lamport timestamp จาก paper ต้นทางโดยตรง รวมถึงเหตุผลที่มันให้ total order สอดคล้อง causality"
+    },
+    {
+      "title": "Detection of Mutual Inconsistency in Distributed Systems",
+      "source": "Parker et al., IEEE Transactions on Software Engineering (1983)",
+      "why": "อ่านที่มาของ version vector และวิธีใช้เทียบ vector เพื่อ 'ตรวจจับ' concurrent update ที่ Lamport timestamp ทำไม่ได้"
+    }
+  ]
+}

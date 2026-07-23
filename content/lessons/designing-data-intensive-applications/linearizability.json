@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "linearizability",
+  "version": 1,
+  "title_en": "Linearizability",
+  "est_minutes": 8,
+  "body_md": "# Linearizability\n\n## ทำไมถึงสำคัญ\n\nLinearizability คือ consistency guarantee ที่แข็งแรงที่สุดสำหรับข้อมูล \"ชิ้นเดียว\" (single object / register): ทำให้ระบบกระจายที่มีหลาย replica ดูราวกับมี copy เดียว และทุก operation มีผลทันทีทันใด ณ จุดเดียว. มันคือ **recency guarantee** — พอ write หนึ่ง commit แล้ว ทุก read ที่เกิดหลังจากนั้นต้องเห็นค่าใหม่ (หรือใหม่กว่า) ห้ามย้อนไปเห็นค่าเก่า. ระบบสำคัญอย่าง lock, leader election, และ uniqueness constraint จะพังทันทีถ้าขาด guarantee นี้ เพราะสองฝั่งอาจ \"เห็นความจริงคนละเวอร์ชัน\" พร้อมกัน.\n\n## แก่นของแนวคิด\n\n- นิยามแบบใช้งานได้: มี total order ของทุก operation ที่สอดคล้องกับเวลาจริง (real-time) — ถ้า operation A จบก่อน operation B เริ่ม A ต้องมาก่อน B ใน order นั้น. แต่ละ operation \"เกิดผลแบบ atomic\" ณ จุดเดียว (linearization point) ที่อยู่ระหว่างเวลาที่มัน invoke กับเวลาที่มัน return.\n- ผลลัพธ์ที่จับต้องได้: ระบบทำตัวเหมือนมีตัวแปรตัวเดียวในโลก. หลังจากใครก็ตามอ่านได้ค่าใหม่ คนอื่นที่อ่านหลังจากนั้นห้ามได้ค่าเก่ากว่านั้นอีก (no going back in time).\n- ชื่ออื่นที่หมายถึงสิ่งเดียวกัน: atomic consistency, strong consistency, immediate consistency, external consistency.\n- linearizability พูดถึงข้อมูล \"ชิ้นเดียว\" เท่านั้น ไม่ได้พูดถึงการจับหลาย operation รวมเป็น transaction — เรื่องนั้นคือ serializability (ดูหัวข้อ linearizability ≠ serializability).\n- single-leader **ไม่ได้** linearizable อัตโนมัติ: ถ้าอ่านจาก async follower ที่ยัง lag อยู่ ก็ได้ stale read = ละเมิด linearizability. ต้องอ่านจาก leader หรือ replica ที่ sync ทันจริงเท่านั้น. และ quorum (w + r > n) ก็ไม่การันตี linearizability เสมอไปเมื่อมี concurrent write หรือ sloppy quorum (ดู sibling `quorum-consistency`).\n\n## อะไรบ้างที่ \"จำเป็นต้อง\" ใช้ linearizability\n\n- **Locking / leader election:** ต้องมี leader เดียว. lock service (ZooKeeper, etcd) เก็บ state บน linearizable storage มิฉะนั้นสอง node อาจเชื่อว่าตัวเองถือ lock พร้อมกัน (split brain).\n- **Uniqueness constraint:** username, email, หรือ account number ที่ห้ามซ้ำ ต้องมีค่า \"ล่าสุดที่ทุกคนเห็นตรงกัน\" ณ จังหวะตัดสินใจ.\n- **Cross-channel timing:** เมื่อมีช่องทางส่งข้อมูลนอก database (เช่น message queue สั่งให้ worker ไปอ่าน row ที่เพิ่งเขียน) ถ้า read เป็น stale ได้จะเกิด race condition.\n\n## ตัวอย่าง (fintech: เปิดบัญชีใหม่)\n\nระบบเปิดบัญชีมี business rule ว่า account number ต้อง unique. คำขอสมัครสองรายพุ่งเข้าคนละ replica พร้อมกัน แล้วทั้งคู่พยายามจองเลข `A100`:\n\n```mermaid\nsequenceDiagram\n    participant W as Writer (open account)\n    participant L as Leader\n    participant F as Follower (lagging)\n    participant R as Reader (check unique)\n    W->>L: write acct=A100 (committed)\n    Note over L,F: replication lag\n    R->>F: is A100 taken?\n    F-->>R: no (stale value)\n    Note over R: read AFTER write returns OLD value<br/>linearizability violated\n```\n\n- Writer เขียน `A100` ที่ leader และ commit สำเร็จ.\n- Reader อีกฝั่งไปเช็ค \"A100 ถูกใช้ไปหรือยัง\" กับ follower ที่ replication ยัง lag → ตอบว่า \"ยังว่าง\" (ค่าเก่า).\n- ผลคือมีสองบัญชีเลข `A100` — ละเมิดทั้ง uniqueness และ linearizability เพราะ read ที่เกิด \"หลัง\" write กลับเห็นค่าเก่า.\n\nlinearizable check จะบังคับให้ read ครั้งนี้เห็นผลของ write ที่ commit ไปแล้วเสมอ จึง reject เลขซ้ำได้. ในทางปฏิบัติ fintech มักได้ guarantee นี้จาก unique index บน database เดียว (single-node linearizable) หรือจาก consensus service — ไม่ใช่จากการเช็คบน replica ที่อ่านแบบ async.\n\n(หมายเหตุ: การกัน stale leader ที่ pause นานแล้วกลับมาเขียนทับ ต้องใช้ fencing token เพิ่ม — เป็นคนละปัญหา ครอบคลุมใน sibling `process-pauses`.)\n\n## linearizability ≠ serializability (จุดที่คนสับสนที่สุด)\n\nสองคำนี้ฟังคล้ายแต่เป็นคนละมิติ:\n\n- **Serializability** = isolation property ของ transaction: รับประกันว่าผลของหลาย transaction (ที่อาจแตะหลาย object) เท่ากับรันเรียงกันทีละตัวใน *บาง* ลำดับ. มันไม่สนว่า serial order นั้นตรงกับเวลาจริงไหม.\n- **Linearizability** = recency guarantee ของ read/write บน object **เดียว**: พูดเรื่องเวลาจริงล้วน ๆ (read เห็นค่าล่าสุด) ไม่ได้จับ operation รวมเป็น transaction.\n\nทั้งสองเป็นคนละมิติที่อิสระต่อกัน: Serializable Snapshot Isolation (SSI) เป็น serializable แต่ *ไม่* linearizable เพราะอ่านจาก snapshot ที่อาจเก่า. ถ้าอยากได้ทั้งคู่พร้อมกันเรียกว่า strict serializability (เช่น actual serial execution หรือ 2PL). เวลา interview ถ้าตอบสองคำนี้สลับกัน = สัญญาณว่ายังไม่แม่น.\n\nการจัดลำดับแบบ causal (เหตุก่อนผล) ที่อ่อนกว่า linearizability แต่ยังมีประโยชน์ อยู่ใน sibling `ordering-and-causality`; การทำ total order ให้ทุก node เห็นตรงกันผ่าน consensus อยู่ใน `total-order-broadcast`.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"linearizability = serializability\"** ผิด. อันหนึ่งคือ recency ของ object เดียว อีกอันคือ isolation ของ transaction.\n- **\"เพราะมันแข็งแรง มันเลยเร็ว/ไม่มี lag\"** ผิด. ความแข็งแรงนี้ *ซื้อมาด้วย* latency และ availability ที่ต่ำลง (ดูหัวข้อถัดไป).\n- **\"ใช้ quorum w + r > n แล้วได้ linearizability ฟรี\"** ผิด. quorum เพียว ๆ ยังหลุด linearizability ได้เมื่อมี concurrent write; ต้องมี synchronous read repair หรือกลไกเพิ่ม.\n- **\"single-leader database เป็น linearizable โดยอัตโนมัติ\"** ผิด ถ้าปล่อยให้อ่านจาก async replica.\n\n## ขีดจำกัด / trade-off (CAP + latency — สำคัญที่สุด)\n\nLinearizability ไม่ฟรี และ senior interview จะเจาะตรงนี้:\n\n- **CAP — เสีย availability ตอน network partition:** เมื่อ network แตกเป็นสองฝั่ง ระบบที่ยืนยัน linearizability ต้องเลือกเป็น CP — ฝั่งที่ติดต่อ quorum ไม่ได้ต้อง *ปฏิเสธ* คำขอ (ทั้ง read และ write) เพราะถ้าตอบไปก็เสี่ยงคืนค่าเก่า. ระบบที่เลือก AP (ยอมตอบต่อไป) จะไม่ linearizable ในช่วงนั้น. สรุป: linearizable ⇒ ยอม unavailable บางส่วนตอน partition.\n- **Latency — จ่ายตลอดเวลา แม้ไม่มี partition:** เพื่อรับประกัน recency ต้อง coordinate ข้าม replica (อ่านจาก leader / รอ quorum / รอ replication) ซึ่งเพิ่ม network round-trip. response time ถูก bound ล่างด้วย network delay ระหว่าง replica เสมอ. ยิ่ง replica กระจายข้าม region ยิ่งแพง.\n- **เมื่อไหร่ไม่ควรใช้:** ข้อมูลที่ stale ได้นิดหน่อยไม่เป็นไร (feed, จำนวน like, analytics, cache) ไม่ควรจ่ายราคานี้ — ใช้ causal หรือ eventual consistency แทนได้ throughput/latency ดีกว่ามาก. เลือก linearizability เฉพาะจุดที่ \"เห็นค่าเก่า = ผิดจริง\" เช่น lock, ยอดเงิน, uniqueness.\n- งานของ senior คือรู้ว่า *ส่วนไหน* ของระบบต้อง linearizable (มักเป็นส่วนเล็ก ๆ เช่น lock/uniqueness) แล้วปล่อยส่วนที่เหลือให้ consistency อ่อนกว่าเพื่อ scale.\n\n## มุมสัมภาษณ์\n\n- \"linearizability คืออะไร ต่างจาก serializability ยังไง?\" → recency ของ object เดียวตามเวลาจริง vs isolation/ordering ของ transaction.\n- \"ต้องทำ distributed lock สำหรับ leader election ต้องการ consistency ระดับไหน เพราะอะไร?\" → linearizable เพื่อกัน split brain.\n- \"ทำไมมี linearizability กับ availability พร้อมกันตอน network partition ไม่ได้?\" → CAP; ฝั่ง minority ต้องปฏิเสธ request.\n- \"ยกตัวอย่างที่ eventual consistency พังและต้องใช้ linearizability จริง ๆ\" → uniqueness constraint / cross-channel race.\n- มักต่อยอดไปถาม \"แล้วจะ implement ยังไง\" → consensus / total order broadcast (sibling).\n",
+  "recall_checks": [
+    {
+      "q": "อธิบายสั้น ๆ ว่า linearizability คืออะไร (recency guarantee)",
+      "expected_answer": "guarantee ที่ทำให้ระบบกระจายดูเหมือนมี copy เดียว ทุก operation เกิดผลแบบ atomic ณ จุดเดียวระหว่าง invoke กับ return และ read ที่เกิดหลัง write ต้องเห็นค่าล่าสุด (หรือใหม่กว่า) เสมอ",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดอธิบายความต่างระหว่าง linearizability กับ serializability ได้ถูกต้อง?",
+      "expected_answer": "linearizability = recency ของ object เดียวตามเวลาจริง; serializability = isolation ของ transaction ที่ให้ผลเหมือนรันเรียงกันทีละตัว",
+      "type": "mcq",
+      "options": [
+        "ทั้งสองเป็นคำเดียวกัน ใช้แทนกันได้",
+        "linearizability = recency ของ object เดียวตามเวลาจริง; serializability = isolation ของ transaction ที่ให้ผลเหมือนรันเรียงกันทีละตัว",
+        "linearizability พูดเรื่อง transaction หลาย object ส่วน serializability พูดเรื่อง object เดียว"
+      ]
+    },
+    {
+      "q": "ตาม CAP เมื่อเกิด network partition ระบบที่ยืนยัน linearizability ต้องทำอย่างไร?",
+      "expected_answer": "ฝั่งที่ติดต่อ quorum ไม่ได้ต้องปฏิเสธ request เพื่อไม่คืนค่าเก่า (ยอมเสีย availability)",
+      "type": "mcq",
+      "options": [
+        "ยังตอบทุก request ได้ตามปกติโดยไม่กระทบอะไร",
+        "เพิ่ม replica อัตโนมัติเพื่อคง availability เอาไว้",
+        "ฝั่งที่ติดต่อ quorum ไม่ได้ต้องปฏิเสธ request เพื่อไม่คืนค่าเก่า (ยอมเสีย availability)"
+      ]
+    },
+    {
+      "q": "ข้อใด \"จำเป็นต้อง\" ใช้ linearizability มากที่สุด?",
+      "expected_answer": "การรับประกันว่า account number ไม่ซ้ำ (uniqueness constraint)",
+      "type": "mcq",
+      "options": [
+        "การแสดงจำนวน like บนโพสต์",
+        "การรับประกันว่า account number ไม่ซ้ำ (uniqueness constraint)",
+        "การสร้างรายงาน analytics ประจำวัน"
+      ]
+    },
+    {
+      "q": "นอกจากเสีย availability ตอน network partition แล้ว linearizability ยังมีต้นทุนอะไรที่ต้องจ่ายตลอดเวลา แม้ network ปกติ?",
+      "expected_answer": "latency — ต้อง coordinate ข้าม replica (อ่านจาก leader / รอ quorum / รอ replication) ซึ่งเพิ่ม network round-trip; response time ถูก bound ด้วย network delay ระหว่าง replica",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 9: Consistency and Consensus (Linearizability)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 9",
+      "why": "อ่านต้นฉบับนิยาม linearizability, การแยกจาก serializability และการโยงกับ CAP"
+    },
+    {
+      "title": "Linearizability: A Correctness Condition for Concurrent Objects",
+      "source": "Herlihy & Wing, ACM TOPLAS, 1990",
+      "why": "อ่านนิยาม formal ดั้งเดิมของ linearizability ที่ Kleppmann อ้างถึง"
+    },
+    {
+      "title": "Please stop calling databases CP or AP",
+      "source": "Martin Kleppmann, martinkleppmann.com (2015)",
+      "why": "อ่านมุมมองว่า CAP อธิบาย trade-off linearizability/availability แบบหยาบเกินจริงอย่างไร"
+    }
+  ]
+}

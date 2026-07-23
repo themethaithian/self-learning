@@ -1,0 +1,67 @@
+{
+  "concept_id": "total-order-broadcast",
+  "topic": "designing-data-intensive-applications",
+  "version": 1,
+  "title_en": "Total Order Broadcast",
+  "est_minutes": 8,
+  "body_md": "# Total Order Broadcast\n\n## ทำไมถึงสำคัญ\n\nTotal order broadcast (หรือ atomic broadcast) คือ protocol ที่ทำให้ทุก node ใน cluster เห็น message ชุดเดียวกัน \"ตามลำดับเดียวกันเป๊ะ\" — ไม่ใช่แค่ eventually เท่ากัน แต่ลำดับที่แต่ละ node เห็นต้องตรงกันตัวต่อตัว. นี่คือ building block ที่อยู่ใต้ replication ที่ไม่หลุด consistency: ถ้าทุก replica apply operation ตามลำดับเดียวกัน state ก็จะเหมือนกัน. และมันคือแนวคิดที่ interviewer ใช้เชื่อมเรื่อง consensus, replication, และ linearizability เข้าด้วยกัน.\n\n## แก่นของแนวคิด\n\nTotal order broadcast นิยามด้วยคุณสมบัติ safety สองข้อที่ต้องเป็นจริง \"เสมอ\" แม้ node หรือ network จะ fail:\n\n- **Reliable delivery** — ไม่มี message หาย. ถ้า message ถูก deliver ให้ node หนึ่ง มันต้องถูก deliver ให้ทุก node (ระหว่าง network ขาด อาจ deliver ช้าได้ แต่ algorithm ต้อง retry จน message ไปถึงครบเมื่อ network กลับมา).\n- **Totally ordered delivery** — ทุก node deliver message ในลำดับเดียวกัน.\n\nจุดที่คนมองข้าม: ลำดับถูก \"ตรึง ณ ตอน deliver\" (fixed at delivery time). เมื่อ node deliver `m3` ไปแล้ว จะย้อนกลับมาแทรก message ใหม่เข้าไประหว่าง `m1` กับ `m2` ไม่ได้อีก. คุณสมบัตินี้ทำให้ total order broadcast แข็งแรงกว่าการเรียงด้วย timestamp ธรรมดา (ซึ่งยังแทรกย้อนหลังได้).\n\nอีกมุมหนึ่ง: total order broadcast ก็คือวิธี \"สร้าง log\" — การ deliver หนึ่ง message = การ append เข้า log หนึ่งบรรทัด. เพราะทุก node เห็น message เดียวกันลำดับเดียวกัน ทุก node จึงอ่าน log ได้เป็นลำดับเดียวกันเป๊ะ. log นี้แหละคือหัวใจของทุกอย่างที่ตามมา.\n\n## ตัวอย่าง (fintech: ledger เป็น replicated state machine)\n\nสมมติระบบ ledger ที่ต้อง replicate 3 node เพื่อ HA. แต่ละ operation คือ posting เข้า journal เช่น `debit acct A 100`, `credit acct B 100`. ถ้าปล่อยให้แต่ละ node รับ operation ตามลำดับที่มันได้ยินเอง — node หนึ่งอาจ apply `withdraw 100` ก่อน `deposit 100` แล้ว balance ติดลบจน reject ในขณะที่อีก node apply สลับลำดับแล้วผ่าน → state แตกกัน เงินไม่ตรง.\n\nTotal order broadcast แก้ตรงนี้: ทุก operation ถูกยัดผ่าน ordering step เดียวกันจนได้ log ที่เรียงแล้ว (`m1, m2, m3, ...`) แล้วทุก replica apply log นั้นตามลำดับเดิม. เพราะ input log เหมือนกันและ operation เป็น deterministic ทุก replica จึงจบที่ state เดียวกันเป๊ะ. หลักการนี้ชื่อว่า **state machine replication**: replica = state machine ตัวเดียวกัน, log = ลำดับ input ตัวเดียวกัน → output เดียวกัน.\n\n```mermaid\nflowchart LR\n  C[Clients: ledger operations] --> TOB[Total order broadcast: pick one global order]\n  TOB --> L[(Ordered log m1 m2 m3 ...)]\n  L --> RA[Replica A apply in order]\n  L --> RB[Replica B apply in order]\n  L --> RC[Replica C apply in order]\n  RA --> SA[State A]\n  RB --> SB[State B]\n  RC --> SC[State C]\n  SA -.->|identical| SB\n  SB -.->|identical| SC\n```\n\n## เทียบเท่ากับ consensus\n\nผลลัพธ์สำคัญ: total order broadcast **equivalent กับ consensus** — แก้ปัญหาหนึ่งได้ ก็แปลงไปแก้อีกปัญหาได้ทันที. การตกลงว่า \"message ตัวถัดไปใน log คือตัวไหน\" ก็คือการรัน consensus หนึ่งรอบต่อหนึ่ง slot ของ log นั่นเอง. เพราะฉะนั้นระบบจริงที่ให้ total order broadcast (ZooKeeper ที่ใช้ Zab, etcd ที่ใช้ Raft) ข้างในคือ consensus algorithm ทำงานอยู่. ตัว algorithm เอง (Raft, Paxos) เป็นเรื่องของ sibling concept `consensus-and-zookeeper` — ที่นี่ขอ own แค่ข้อเท็จจริง \"TOB ↔ consensus เท่ากัน\" ก็พอ.\n\nเชื่อมกับ sibling อีกสองตัวสั้น ๆ:\n- **Linearizability** (sibling) — เอา total order broadcast มาสร้าง linearizable log / compare-and-set ได้ เช่น claim username แบบ unique: append คำขอเข้า log, อ่าน log กลับมา, ถ้า message แรกของ username นั้นเป็นของเรา = สำเร็จ (ได้ linearizable writes; ส่วน reads อาจ stale ต้องเสริมกลไกเพิ่ม).\n- **Causal order** (sibling) — total order เข้มกว่า causal order: total order เรียง \"ทุกคู่\" ของ message ส่วน causal เรียงเฉพาะคู่ที่มีความสัมพันธ์ happened-before, ดังนั้น total ⊃ causal.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ให้ทุก node แปะ timestamp แล้วเรียง ก็ได้ลำดับเดียวกันเอง\"** ผิด. timestamp ordering ไม่ใช่ total order broadcast เพราะ message ที่มาช้าอาจมี timestamp เก่ากว่า ต้องแทรกย้อนหลัง — แต่ TOB ห้ามแทรกย้อนหลังเมื่อ deliver ไปแล้ว.\n- **\"reliable delivery คือส่งให้ครบพอ ไม่เกี่ยวกับ order\"** ผิด. TOB ต้องได้ทั้งสองคุณสมบัติพร้อมกัน; ส่งครบแต่คนละลำดับ = state แตก.\n- **\"มันก็คือ message queue ธรรมดา\"** ผิด. queue ทั่วไป (หลาย consumer, มี redelivery) ไม่รับประกันว่าทุก consumer เห็นลำดับเดียวกันแบบ agreed globally.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรใช้ และจ่ายอะไร)\n\nราคาที่ต้องจ่ายคือ **throughput**: ทุก message ต้องวิ่งผ่าน ordering step ร่วมอันเดียว (ปกติคือ single leader ที่รัน consensus) เพื่อให้ได้ order เดียวทั้งระบบ. นั่นแปลว่า throughput สูงสุดถูกจำกัดไว้ที่กำลังของ node เดียว — จะ scale เกินนั้นต้อง partition แต่ total order \"ข้าม partition\" ไม่ได้มาฟรี (แต่ละ partition มี log ของตัวเอง; order ข้าม partition ต้องออกแบบเพิ่มเอง).\n\nต้นทุนอื่น:\n- **Latency + blocking** — consensus ต้องรอ quorum (majority) ตอบ; ถ้า node ล่มเกินครึ่งหรือเกิด network partition ระบบจะเลือก \"หยุดรับ message\" ดีกว่าเสี่ยงเสีย order (เลือก consistency แล้วทิ้ง availability ในช่วงนั้น).\n- **Order ตรึงถาวร** — เมื่อ deliver แล้วเปลี่ยนลำดับย้อนหลังไม่ได้ ระบบที่อยากให้แต่ละ node จัดลำดับเองตามบริบท (เช่น CRDT / multi-leader ที่รับ concurrent write แล้ว merge ทีหลัง) ไม่เหมาะกับ TOB.\n\nเพราะฉะนั้นอย่าเอา total order broadcast ไปครอบทุก write ถ้างานนั้นไม่ต้องการ single global order จริง ๆ. ถ้าแค่ต้องการ availability สูงและรับ eventual consistency ได้ (feed, analytics, counter ที่ merge ได้) การบังคับ total order คือจ่ายแพงเกินเหตุ. TOB คุ้มเมื่อ correctness ขึ้นกับลำดับที่ทุก node ตกลงร่วมกัน เช่น ledger, leader election, uniqueness constraint.\n\n## มุมสัมภาษณ์\n\n- \"total order broadcast กับ consensus ต่างกันไหม?\" → เทียบเท่ากัน แก้ตัวหนึ่งแปลงเป็นอีกตัวได้; หนึ่ง slot ของ log = หนึ่งรอบ consensus.\n- \"จะ replicate database ให้ replica ไม่หลุด consistency ทำยังไง?\" → state machine replication: broadcast ทุก write เป็น total order แล้วให้ทุก replica apply log เดียวกันตามลำดับ.\n- \"ทำไม total order broadcast ถึง scale write ยาก?\" → ทุก message ผ่าน ordering step เดียว throughput จึงติดเพดานที่ node เดียว; total order ข้าม partition ไม่ฟรี.\n- \"ต่างจากการให้ทุก node เรียงด้วย timestamp ยังไง?\" → order ถูกตรึงตอน deliver แทรกย้อนหลังไม่ได้; timestamp ordering ยังแทรกย้อนได้ = อ่อนกว่า.\n",
+  "recall_checks": [
+    {
+      "q": "Total order broadcast รับประกันคุณสมบัติ safety สองข้ออะไร?",
+      "expected_answer": "reliable delivery (ไม่มี message หาย ส่งถึงทุก node) และ totally ordered delivery (ทุก node deliver message ในลำดับเดียวกัน)",
+      "type": "short_answer"
+    },
+    {
+      "q": "Total order broadcast เทียบเท่ากับปัญหาใด (แก้ตัวหนึ่งแล้วแปลงไปเป็นอีกตัวได้)?",
+      "expected_answer": "consensus",
+      "type": "mcq",
+      "options": [
+        "two-phase commit",
+        "consensus",
+        "leader election เพียงอย่างเดียว"
+      ]
+    },
+    {
+      "q": "state machine replication ทำให้ทุก replica มี state เหมือนกันได้อย่างไร?",
+      "expected_answer": "apply operation จาก ordered log เดียวกันตามลำดับเดียวกัน บน replica ที่ deterministic",
+      "type": "mcq",
+      "options": [
+        "apply operation จาก ordered log เดียวกันตามลำดับเดียวกัน บน replica ที่ deterministic",
+        "ให้แต่ละ replica รับ write ตามลำดับที่ตัวเองได้ยินก่อน",
+        "sync ค่า balance ตรง ๆ ระหว่าง replica ทุก 1 วินาที"
+      ]
+    },
+    {
+      "q": "trade-off หลักของ total order broadcast ต่อ throughput คืออะไร?",
+      "expected_answer": "ทุก message ต้องผ่าน ordering step ร่วมอันเดียว throughput จึงติดเพดานที่กำลังของ node เดียว",
+      "type": "mcq",
+      "options": [
+        "ไม่มี trade-off เพราะ partition ได้อิสระเต็มที่",
+        "เปลืองแค่ RAM มากขึ้นเท่านั้น",
+        "ทุก message ต้องผ่าน ordering step ร่วมอันเดียว throughput จึงติดเพดานที่กำลังของ node เดียว"
+      ]
+    },
+    {
+      "q": "ทำไมการเรียง message ด้วย timestamp เฉย ๆ ถึงไม่ใช่ total order broadcast?",
+      "expected_answer": "เพราะ timestamp ordering ยังแทรก message ย้อนหลังได้ ส่วน total order broadcast ตรึงลำดับ ณ ตอน deliver แล้ว แทรกย้อนหลังไม่ได้",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 9: Consistency and Consensus (Total Order Broadcast)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 9",
+      "why": "อ่านต้นฉบับนิยาม total order broadcast, ความเท่ากับ consensus, และ state machine replication"
+    },
+    {
+      "title": "Total Order Broadcast and Multicast Algorithms: Taxonomy and Survey",
+      "source": "Xavier Defago, Andre Schiper, Peter Urban, ACM Computing Surveys 36(4), 2004",
+      "why": "อ่านลงลึกว่ามี algorithm จริงกี่แบบที่ให้ total order และแต่ละแบบแลกอะไร"
+    },
+    {
+      "title": "In Search of an Understandable Consensus Algorithm (Raft)",
+      "source": "Diego Ongaro, John Ousterhout, USENIX ATC 2014",
+      "why": "อ่านต่อว่าตัว consensus ที่อยู่ใต้ TOB ถูก implement เป็น replicated log อย่างไร (สู่ sibling consensus-and-zookeeper)"
+    }
+  ]
+}

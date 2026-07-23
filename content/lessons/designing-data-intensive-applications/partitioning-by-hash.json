@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "partitioning-by-hash",
+  "version": 1,
+  "title_en": "Partitioning by Hash of Key",
+  "est_minutes": 8,
+  "body_md": "# Partitioning by Hash of Key\n\n## ทำไมถึงสำคัญ\n\nการแบ่ง partition ตามช่วงของ key (key-range, sibling `partitioning-key-range`) ทำ range query ได้เร็ว แต่เสี่ยง hot spot รุนแรงเมื่อ key มี pattern ต่อเนื่อง เช่น timestamp หรือ id ที่ออกเรียงเพิ่มขึ้น. Hash partitioning แก้ปัญหานี้ตรง ๆ: เอา key ไป hash ก่อน แล้วค่อยแบ่ง partition ตามค่า hash ทำให้ข้อมูลที่เคยกองอยู่ติดกันกระจายไปทั่วทุก partition สม่ำเสมอ. แต่ของฟรีไม่มี — สิ่งที่จ่ายคือ efficient range query ข้าม partition ที่หายไป.\n\n## แก่นของแนวคิด\n\n- แนวคิดคือใส่ hash function กั้นระหว่าง key กับ partition: `partition = f(hash(key))`. hash function ที่ดีจะรับ key ที่ skew มาก ๆ แล้วคายค่าออกมากระจายทั่วช่วงแบบ uniformly distributed ทำให้ key ที่อยู่ติดกันเชิงความหมาย (1001, 1002, 1003) ตกไปคนละ partition.\n- hash ต้องเลือกให้เหมาะกับงาน partitioning ไม่ใช่ hash อะไรก็ได้. Kleppmann เตือนว่า built-in hash ของหลายภาษาใช้ไม่ได้ เช่น `Object.hashCode()` ของ Java หรือ `hashCode` ของ Ruby ที่ให้ค่าต่างกันคนละ process — สำหรับ partitioning นั้น key เดียวกันต้องได้ค่าเดียวกันเสมอทุกที่ทุกครั้ง (deterministic). ระบบจริงจึงเลือก hash เอง เช่น Cassandra/MongoDB ใช้ MD5.\n- ไม่ต้องการ cryptographic strength — ต้องการแค่ distribution ที่สม่ำเสมอและ deterministic เท่านั้น.\n- เมื่อได้ค่า hash แล้ว การ map ไป partition ทำได้หลายแบบ (แบ่งช่วงของค่า hash, หรือ mod จำนวน partition) — กลไก map และการย้ายข้อมูลตอน scale เป็นของ sibling `rebalancing-and-routing`.\n\n```mermaid\nflowchart LR\n  K1[account_id 1001] --> H[hash function]\n  K2[account_id 1002] --> H\n  K3[account_id 1003] --> H\n  H --> P0[Partition 0]\n  H --> P1[Partition 1]\n  H --> P2[Partition 2]\n  RQ[Range query id 1001-2000] -. scatter-gather .-> P0\n  RQ -.-> P1\n  RQ -.-> P2\n```\n\n- ราคาที่จ่าย: เมื่อ hash แล้ว ลำดับตามธรรมชาติของ key หายไป. query แบบ \"ขอทุก record ที่ key อยู่ระหว่าง A ถึง B\" ไม่รู้อีกต่อไปว่าข้อมูลอยู่ partition ไหน ต้องยิงไปทุก partition แล้วรวมผล (scatter-gather) ซึ่งแพงกว่าอ่าน partition เดียวมาก.\n\n## ตัวอย่าง (payments)\n\nสมมติเก็บ transaction ของระบบจ่ายเงิน keyed ด้วย `account_id`. ถ้าใช้ key-range บน `account_id` ที่ออกเรียงเพิ่มขึ้น บัญชีที่เพิ่งเปิดใหม่ (มักactive ที่สุด) จะกองอยู่ partition สุดท้ายเกือบทั้งหมด — partition นั้นร้อนจัด ส่วน partition ของ id เก่านิ่งสนิท.\n\nเปลี่ยนมา hash `account_id`: บัญชี 1001, 1002, 1003 กระจายไปคนละ partition, write load เกลี่ยทั่ว cluster.\n\nแต่พอ finance ขอรายงาน \"ทุก transaction ของ account 1000–2000\" ระบบทำ efficient range scan ไม่ได้แล้ว ต้องถามทุก partition แล้วรวมผล.\n\nนุ่นที่ควรรู้ — Cassandra ใช้ compound primary key: hash เฉพาะส่วนแรก (partition key) ส่วนที่เหลือ (clustering columns) เก็บแบบ sorted ภายใน partition. ถ้า design เป็น `(account_id, timestamp)` จะ hash `account_id` (กระจายทั่ว) แต่ range scan ตาม `timestamp` *ภายในบัญชีเดียว* ยังเร็วอยู่. นี่คืนความสามารถ range query กลับมาได้ — แต่เฉพาะ within a single partition key ไม่ใช่ range ข้าม partition.\n\n## consistent hashing (และคำเตือนเรื่องคำ)\n\nจุดอ่อนของ hash partitioning แบบ `mod N` ตรง ๆ คือ เมื่อเพิ่ม/ลด node แล้ว N เปลี่ยน key เกือบทั้งหมดต้องย้ายที่. Consistent hashing ตามนิยามของ Karger et al. เลือก partition boundary แบบสุ่มบนวงแหวนของค่า hash เพื่อให้ตอนเพิ่ม/ลด node มีแค่ key ส่วนน้อยที่ต้องย้าย ไม่ใช่เกือบทั้งหมด และทำได้โดยไม่ต้องมีตัวกลางคอยสั่งการ.\n\nคำเตือนของ Kleppmann ที่ต้องรู้:\n\n1. คำว่า \"consistent\" ในที่นี้ไม่เกี่ยวกับ replica consistency หรือ ACID consistency เลย — มันหมายถึงวิธี rebalance เท่านั้น.\n2. consistent hashing แบบ Karger ดั้งเดิม (ออกแบบมาสำหรับ CDN cache) จริง ๆ ใช้กับ database ได้ไม่ดีนัก จึงพบไม่บ่อยในทางปฏิบัติ. เอกสารของหลาย database อ้างถึง \"consistent hashing\" อย่างหลวม ๆ และมักไม่ตรงกับนิยามดั้งเดิม. Kleppmann จึงแนะนำให้เรียกมันว่า hash partitioning เฉย ๆ จะสับสนน้อยกว่า.\n\n(กลไก rebalance จริงในทางปฏิบัติ เช่น fixed number of partitions เป็นของ sibling `rebalancing-and-routing`.)\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"hash partitioning แก้ hot spot ได้ทุกกรณี\"** — ผิด. มันเกลี่ย key ที่ *ต่างกัน* ให้กระจาย แต่ถ้ามี key เดียวที่ร้อนผิดปกติ (เช่น celebrity account, หรือบัญชี settlement กลางที่ทุก transaction วิ่งผ่าน) ทุก request ของ key นั้น hash ไปค่าเดียว ตก partition เดียวเสมอ — hash ช่วยไม่ได้. วิธีจัดการอยู่ใน sibling `hot-spots-skew`.\n- **\"consistent hashing เกี่ยวกับ data consistency\"** — ผิด ตามคำเตือนข้อ 1 ข้างบน.\n- **\"hash แล้วยังทำ range query ได้ปกติ\"** — ผิด สำหรับ range ที่ข้าม partition; ทำได้แค่ within-partition ผ่าน compound key.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ และจ่ายอะไร\n\nHash partitioning ไม่ใช่ default ที่ถูกเสมอ. ถ้า workload หลักคือ range query — time-series (ทุก event ในช่วงเวลา), analytics ที่ scan ต่อเนื่อง, feed เรียงตามเวลา — การ hash ทำลาย locality ที่ query พวกนี้พึ่งพา ทำให้ query ที่เคยแตะ partition เดียวกลายเป็น scatter-gather ทุกครั้ง ทั้ง latency และ load สูงขึ้นชัดเจน. ต้นทุนอีกด้านคือ sort order ตามธรรมชาติของ key หายทั้งหมด: ต้อง sort ที่ application เอง หรือพึ่ง compound key ที่ recover ได้แค่ within-partition. senior จึงเลือกตาม access pattern: read เป็น point lookup ด้วย exact key เยอะ → hash คุ้ม; read เป็น range เยอะ → key-range หรือ hybrid (compound key) คุ้มกว่า. database หลายตัวให้เลือก strategy ต่อ table ได้ ไม่ต้องเหมาเข่งทั้งระบบ.\n\n## มุมสัมภาษณ์\n\n- \"hash partitioning ต่างจาก key-range ยังไง และแลกอะไร?\" → hash เกลี่ย load ดีกว่าและกัน hot spot จาก sequential key ได้ แต่เสีย efficient range query ข้าม partition.\n- \"hash partitioning กันได้ทุก hot spot ไหม?\" → ไม่; กัน key ที่ต่างกันได้ แต่ single hot key กันไม่ได้ (โยงต่อ `hot-spots-skew`).\n- \"consistent hashing คืออะไร ทำไมชื่อชวนงง?\" → เป็นวิธีลด key movement ตอนเพิ่ม/ลด node; คำว่า 'consistent' ไม่เกี่ยว data consistency และ Kleppmann บอกว่ามักถูกใช้อย่างหลวม ๆ ไม่ตรงนิยาม.\n- \"จะ recover range query หลัง hash ได้ยังไง?\" → ใช้ compound key (hash ส่วนแรก, sort ส่วนที่เหลือ) → range scan ได้ within a single partition key.\n",
+  "recall_checks": [
+    {
+      "q": "Hash partitioning แลกอะไรไปเพื่อให้ load กระจายสม่ำเสมอกว่า key-range?",
+      "expected_answer": "เสียความสามารถทำ efficient range query ข้าม partition (query แบบ range ต้อง scatter-gather ทุก partition)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม built-in hash เช่น Java Object.hashCode() ถึงมักใช้กับ partitioning ไม่ได้?",
+      "expected_answer": "เพราะ key เดียวกันอาจได้ค่า hash ต่างกันคนละ process จึงไม่ deterministic พอสำหรับ partitioning",
+      "type": "mcq",
+      "options": [
+        "เพราะ key เดียวกันอาจได้ค่า hash ต่างกันคนละ process จึงไม่ deterministic พอสำหรับ partitioning",
+        "เพราะมันเป็น cryptographic hash ที่ช้าเกินไปสำหรับ partitioning",
+        "เพราะมันคืนค่าเป็น string ไม่ใช่ตัวเลข map ไป partition ไม่ได้"
+      ]
+    },
+    {
+      "q": "คำว่า \"consistent\" ใน consistent hashing หมายถึงอะไร?",
+      "expected_answer": "วิธี rebalance/กระจายข้อมูลเมื่อเพิ่มหรือลด node ไม่เกี่ยวกับ replica หรือ ACID consistency",
+      "type": "mcq",
+      "options": [
+        "วิธี rebalance/กระจายข้อมูลเมื่อเพิ่มหรือลด node ไม่เกี่ยวกับ replica หรือ ACID consistency",
+        "การรับประกันว่าทุก replica เห็นข้อมูลตรงกันเสมอ",
+        "การรับประกัน ACID consistency ของ transaction ที่ข้าม partition"
+      ]
+    },
+    {
+      "q": "hash partitioning จัดการ single hot key เช่น celebrity account ได้ไหม เพราะอะไร?",
+      "expected_answer": "ไม่ได้ เพราะ key เดียวจะ hash ไปได้ค่าเดียว ตกลง partition เดียวเสมอ ทุก request จึงกองที่ partition นั้น",
+      "type": "short_answer"
+    },
+    {
+      "q": "Cassandra recover ความสามารถทำ range query หลัง hash key ได้อย่างไร?",
+      "expected_answer": "ใช้ compound key: hash เฉพาะ partition key ส่วนแรก แล้วเก็บ clustering columns ที่เหลือแบบ sorted → range scan ได้ภายใน partition key เดียว",
+      "type": "mcq",
+      "options": [
+        "ใช้ compound key: hash เฉพาะ partition key ส่วนแรก แล้วเก็บ clustering columns ที่เหลือแบบ sorted → range scan ได้ภายใน partition key เดียว",
+        "hash ทั้ง key แล้วเก็บ index ที่ sort ตามค่า hash ทำให้ range query ข้าม partition เร็ว",
+        "เปลี่ยนไปใช้ key-range partitioning ทั้งตารางเมื่อมี range query"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 6: Partitioning (Partitioning by Hash of Key)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 6",
+      "why": "อ่านต้นฉบับเรื่อง hash partitioning, compound key, และคำเตือนว่า 'consistent hashing' มักถูกใช้อย่างหลวม ๆ"
+    },
+    {
+      "title": "Consistent Hashing and Random Trees: Distributed Caching Protocols for Relieving Hot Spots on the World Wide Web",
+      "source": "Karger et al., Proceedings of the 29th ACM Symposium on Theory of Computing (STOC), 1997",
+      "why": "อ่านนิยามดั้งเดิมของ consistent hashing ที่ Kleppmann อ้างถึง เพื่อเทียบกับที่ database ใช้จริง"
+    },
+    {
+      "title": "Apache Cassandra Documentation — Architecture: Data Distribution and Partitioners",
+      "source": "Apache Cassandra docs, Architecture / Partitioners section (cassandra.apache.org)",
+      "why": "อ่านว่า production database เลือก hash partitioner + compound (partition/clustering) key อย่างไรในทางปฏิบัติ"
+    }
+  ]
+}

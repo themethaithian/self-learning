@@ -48,6 +48,11 @@ lesson-writer → lesson-verifier ทีละ concept. ทุก lesson มี 
 - **batch 1 — ch.5 Replication (5 lessons):** single-leader, replication-lag-problems,
   multi-leader, leaderless-dynamo-style, quorum-consistency. → **PR #20 merged.**
 - **batch 2 — ch.7 Transactions (5 lessons):** acid-meaning, read-committed,
-  snapshot-isolation-mvcc, lost-updates-and-write-skew, serializability. verifier PASS
-  ครบ 5 (acid-meaning แก้ 1 รอบ: ลบการอ้าง Hellerstein ที่กุ). → **branch `content/ddia-transactions`, PR รอ merge.**
-- ที่เหลืออีก 10 บท ตาม tree ใน `content/curriculum/ddia.json`.
+  snapshot-isolation-mvcc, lost-updates-and-write-skew, serializability. → **PR #22 merged.**
+- **batch 3 — interview-critical (5 บท / 25 lessons):** ch.6 Partitioning, ch.9
+  Consistency & Consensus, ch.3 Storage & Retrieval, ch.2 Data Models, ch.4 Encoding &
+  Evolution. verifier PASS ครบ 25 (แก้ระหว่างทาง: partitioning-secondary-indexes ตัด
+  graded DynamoDB claim, json-xml-binary แก้เลข IEEE-754 ที่คำนวณผิด, + warn ย่อยหลายจุด).
+  → **branch `content/ddia-interview-critical`, PR รอ merge.**
+- ที่เหลือ 5 บท (ch.1 Reliable/Scalable, ch.8 Trouble w/ Distributed Systems, ch.10 Batch,
+  ch.11 Stream, ch.12 Future) ตาม tree ใน `content/curriculum/ddia.json`.

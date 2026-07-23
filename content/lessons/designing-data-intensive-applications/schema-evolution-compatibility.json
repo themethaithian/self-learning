@@ -1,0 +1,72 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "schema-evolution-compatibility",
+  "version": 1,
+  "title_en": "Schema Evolution and Compatibility",
+  "est_minutes": 8,
+  "body_md": "# Schema Evolution and Compatibility\n\n## ทำไมถึงสำคัญ\n\nในระบบกระจายเราไม่ได้ deploy ทุก node พร้อมกันในวินาทีเดียว แต่ทำ rolling upgrade คือทยอยเปลี่ยนทีละ node ดังนั้นช่วงหนึ่งจะมีโค้ดเวอร์ชันเก่าและใหม่ทำงานพร้อมกัน และข้อมูลที่เขียนด้วย schema เก่ายังปนอยู่กับข้อมูลที่เขียนด้วย schema ใหม่. ถ้าการแก้ schema ทำให้ฝั่งใดฝั่งหนึ่งอ่านข้อมูลไม่ออก จะเกิด downtime หรือข้อมูลเสียทันที. กฎ compatibility คือสิ่งที่ทำให้เปลี่ยน schema ได้โดยไม่ต้องหยุดระบบ.\n\n## แก่นของแนวคิด\n\ncompatibility มีสองทิศ และการสลับสองคำนี้คือความผิดพลาดที่พบบ่อยที่สุด:\n\n- **Backward compatibility** = โค้ด**ใหม่**อ่านข้อมูลที่เขียนโดยโค้ด**เก่า**ได้ (new reads old). มักทำได้ง่าย เพราะโค้ดใหม่รู้จัก field เก่าทุกตัวอยู่แล้ว.\n- **Forward compatibility** = โค้ด**เก่า**อ่านข้อมูลที่เขียนโดยโค้ด**ใหม่**ได้ (old reads new). ยากกว่า เพราะโค้ดเก่าต้อง **ignore field ที่มันไม่รู้จัก** แล้วอ่านส่วนที่เหลือต่อได้.\n\nตัวช่วยจำ: *backward* = ตัวอ่านใหม่เอื้อมกลับไปอ่านของ**เก่า**, *forward* = ของ**เก่า**เอื้อมไปอ่านข้อมูลที่มาจาก**อนาคต**.\n\nกฎที่รักษา compatibility ทั้งสองทิศพร้อมกัน:\n\n- **ห้ามเปลี่ยนหรือ reuse tag number ของ field.** ใน binary format แบบ Protobuf/Thrift, field ถูกอ้างด้วย tag number ไม่ใช่ชื่อ. ถ้าเอา tag เดิมไปใช้กับ field ใหม่ ข้อมูลเก่าจะถูกอ่านผิดความหมาย. (กลไก tag number / schema ของแต่ละ format เป็นของ sibling concept `protobuf-thrift-avro` — ที่นี่สมมติว่ารู้แล้ว.)\n- **field ใหม่ต้อง optional หรือมี default.** ถ้า field ใหม่เป็น required แต่ไม่มี default โค้ดใหม่จะอ่านข้อมูลเก่า (ที่ไม่มี field นี้) ไม่ได้ = พัง backward compatibility.\n- **ลบได้เฉพาะ field ที่ optional และห้าม reuse tag ของมันซ้ำภายหลัง** เพราะข้อมูลเก่ายังส่ง field นั้นมา และ tag ที่ปล่อยว่างถ้าเอาไปใช้ใหม่จะชนกับข้อมูลเก่า.\n\nAvro ต่างออกไป: ไม่มี tag number เลย มันจับคู่ field ด้วย **ชื่อ** ผ่าน **schema resolution** — reader ถือทั้ง writer's schema (ที่ใช้ตอนเขียนข้อมูลนั้น) และ reader's schema (ที่ตัวเองรู้จัก) มาเทียบกัน: field ที่มีใน writer แต่ไม่มีใน reader จะถูก ignore, field ที่มีใน reader แต่ไม่มีใน writer จะเติมด้วย default ที่ reader's schema ประกาศไว้. เพราะฉะนั้นใน Avro การเพิ่มหรือลบ field ที่มี default ปลอดภัยทั้งสองทิศโดยอัตโนมัติ.\n\n## ตัวอย่าง (payment event ระหว่าง rolling deploy)\n\nสมมติมี event `PaymentAuthorized` ที่ไหลผ่าน message broker โดยมี field: `paymentId` (tag 1), `amount` (tag 2), `currency` (tag 3). ทีม risk อยากให้ทุก event แนบ `fraudScore` มาด้วย.\n\nวิธีที่ปลอดภัยคือเพิ่ม `fraudScore` เป็น field **optional, tag 4 (ใหม่ ไม่เคยใช้), มี default**. ระหว่าง rolling deploy ที่ node เก่ากับใหม่รันปนกัน:\n\n- node **ใหม่เขียน** event ที่มี `fraudScore` แล้ว node **เก่าอ่าน**: มันไม่รู้จัก tag 4 จึง **ignore** แล้ว process payment ต่อได้ = *forward compatibility*.\n- node **เก่าเขียน** event ที่ไม่มี `fraudScore` แล้ว node **ใหม่อ่าน**: เห็น tag 4 หายไป จึงใช้ **default** (เช่น `null` หรือ 0) = *backward compatibility*.\n\ndiagram ด้านล่างคือหัวใจของ rolling upgrade — ข้อมูลวิ่งข้ามไปมาระหว่างสองเวอร์ชัน และต้องอ่านออกทั้งสองทิศ:\n\n```mermaid\nflowchart LR\n  subgraph New node\n    NW[Write event with fraudScore]\n    NR[Read and fill default if missing]\n  end\n  subgraph Old node\n    OW[Write event without fraudScore]\n    OR[Read and ignore unknown field]\n  end\n  NW -->|forward compat, old reads new| OR\n  OW -->|backward compat, new reads old| NR\n```\n\nจุดตาย: ถ้าตั้ง `fraudScore` เป็น **required** node เก่าที่เขียน event โดยไม่มีมันจะทำให้ node ใหม่อ่านไม่ผ่าน. หรือถ้า **reuse tag 2** (`amount`) มาเป็น `fraudScore` ข้อมูลเก่าที่มียอดเงินอยู่ที่ tag 2 จะถูกอ่านกลายเป็น fraudScore ทันที = เงินเพี้ยน.\n\n(event นี้เดินทางผ่าน message broker — รายละเอียดว่า old กับ new มาเจอกันได้ที่ช่องทางไหนบ้าง เป็นของ sibling `dataflow-modes`.)\n\n## เข้าใจผิดที่พบบ่อย\n\n- **สลับสองคำ**: จำผิดว่า backward = โค้ดเก่าอ่านข้อมูลใหม่. ผิด — backward คือ **new reads old**. ยึด perspective ของ \"ตัวที่กำลังอ่าน\": backward = ตัวอ่านใหม่มองย้อนไปอ่านข้อมูลเก่า.\n- **\"เพิ่ม field เมื่อไรก็ปลอดภัย\"**: ปลอดภัยเฉพาะเมื่อ field นั้น optional หรือมี default และใช้ tag ใหม่. field ใหม่ที่เป็น required พัง compatibility ทันที.\n- **\"forward compatibility คือแค่ ignore field แปลก ๆ\"**: ยังมีกับดักที่ลึกกว่า — ถ้าโค้ดเก่าอ่าน record มาแล้วเขียนกลับ (read-modify-write) มันอาจ **ทำ field ใหม่ที่มันไม่รู้จักหายไป** เว้นแต่ format หรือโค้ดจะเก็บ unknown field ไว้ให้. อย่าสมมติว่า pass-through ปลอดภัยเสมอ.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่คุ้ม)\n\nการบังคับ compatibility คือ \"ประกัน\" ที่ให้ผลตอบแทนเป็น **zero-downtime rolling upgrade** (node เก่ากับใหม่รันปนกันได้) และทำให้ข้อมูลที่นอนอยู่ใน storage เป็นปี ๆ ยังอ่านออกด้วยโค้ดรุ่นใหม่. แต่เบี้ยประกันคือ **ความแข็งของ schema**: คุณ reuse tag number ไม่ได้ตลอดกาล, ทำ field ใหม่ให้เป็น required ไม่ได้, ต้องแบก default ติดตัว, และ field ที่ deprecate ไปแล้วทิ้ง \"รู\" ถาวรใน tag space ที่เก็บกวาดไม่ได้ — นานวันเข้า schema จะรกขึ้นเรื่อย ๆ.\n\nเมื่อไหร่ *ไม่* ต้องเข้มงวด: ถ้า writer กับ reader deploy พร้อมกันแบบ atomic เสมอ (เช่น binary ตัวเดียวอ่านไฟล์ของตัวเองที่ไม่แชร์ให้ใคร, หรือ cache ที่ล้างทิ้งแล้วสร้างใหม่ได้ทั้งก้อน) การ break compatibility แล้ว rewrite รวดเดียวถูกกว่าการแบกวินัยนี้. เช่นเดียวกับข้อมูล ephemeral ที่ consume จบในไม่กี่วินาทีและ drop ทิ้งได้ กฎเข้มงวดกลายเป็นพิธีกรรมที่ไม่คุ้ม. แก่นระดับ senior: compatibility คุ้มก็ต่อเมื่อ **ข้อมูลอยู่นานกว่าโค้ด** และ **deploy ไม่ atomic** ซึ่งเป็นเรื่องปกติของระบบกระจายจริง.\n\n## มุมสัมภาษณ์\n\n- \"backward กับ forward compatibility ต่างกันยังไง?\" ตอบ new reads old กับ old reads new พร้อมตัวช่วยจำและยกตัวอย่าง rolling upgrade.\n- \"จะเพิ่ม field เข้า event ที่หลาย service consume คนละเวลา อย่างปลอดภัยยังไง?\" ตอบ optional หรือมี default + tag ใหม่ + ห้าม required.\n- \"ทำไม reuse tag number ไม่ได้?\" ตอบ ข้อมูลเก่าจะถูก decode ผิดความหมาย.\n- \"Avro ไม่มี tag number แล้ว evolve schema ยังไง?\" ตอบ writer/reader schema resolution จับคู่ตามชื่อ + default เติมช่องว่าง.\n- \"ระหว่าง rolling upgrade compatibility ทิศไหนสำคัญ?\" ตอบ ทั้งสองทิศพร้อมกัน เพราะข้อมูลวิ่งทั้ง old ไป new และ new ไป old.\n",
+  "recall_checks": [
+    {
+      "q": "ตามบทนี้ backward compatibility หมายความว่าอะไร?",
+      "expected_answer": "โค้ดใหม่อ่านข้อมูลที่เขียนด้วย schema เก่าได้ (new reads old)",
+      "type": "mcq",
+      "options": [
+        "โค้ดใหม่อ่านข้อมูลที่เขียนด้วย schema เก่าได้ (new reads old)",
+        "โค้ดเก่าอ่านข้อมูลที่เขียนด้วย schema ใหม่ได้ (old reads new)",
+        "ทุก node ต้องใช้ schema version เดียวกันตลอดเวลา"
+      ]
+    },
+    {
+      "q": "forward compatibility ต้องอาศัยพฤติกรรมใดของโค้ดเก่าเมื่อเจอ field ที่ไม่รู้จักในข้อมูลใหม่?",
+      "expected_answer": "ignore หรือข้าม field ที่ไม่รู้จัก แล้วอ่านส่วนที่เหลือต่อได้",
+      "type": "mcq",
+      "options": [
+        "reject ทั้ง record ทิ้งไป",
+        "ignore หรือข้าม field ที่ไม่รู้จัก แล้วอ่านส่วนที่เหลือต่อได้",
+        "แปลง field นั้นเป็น null แล้ว throw error"
+      ]
+    },
+    {
+      "q": "เพื่อรักษา compatibility ทั้งสองทิศ เมื่อเพิ่ม field ใหม่เข้า schema แบบ Protobuf/Thrift ต้องทำอย่างไร?",
+      "expected_answer": "ตั้งเป็น optional หรือมี default และใช้ tag number ใหม่ที่ไม่เคยใช้",
+      "type": "mcq",
+      "options": [
+        "ตั้งเป็น required แล้ว reuse tag number เดิมที่ว่างอยู่",
+        "เปลี่ยน tag number ของ field ที่มีอยู่แล้วให้เรียงใหม่",
+        "ตั้งเป็น optional หรือมี default และใช้ tag number ใหม่ที่ไม่เคยใช้"
+      ]
+    },
+    {
+      "q": "Avro ไม่มี tag number แล้วจัดการ schema evolution อย่างไรเมื่อ writer schema กับ reader schema ต่างกัน?",
+      "expected_answer": "ใช้ schema resolution จับคู่ field ตามชื่อ: field ที่มีใน writer แต่ไม่มีใน reader จะถูก ignore, field ที่มีใน reader แต่ไม่มีใน writer จะเติมด้วย default ที่ reader schema ประกาศไว้",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมห้าม reuse tag number ของ field ที่ลบไปแล้ว?",
+      "expected_answer": "เพราะข้อมูลเก่าที่ยังมีอยู่จะถูกอ่านผิดความหมาย reader จะตีความ bytes ของ field เก่าว่าเป็น field ใหม่ที่ใช้ tag เดียวกัน ทำให้ข้อมูลเสีย",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 4: Encoding and Evolution",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 4",
+      "why": "อ่านต้นฉบับเรื่อง backward/forward compatibility และกฎ safe evolution ของ Protobuf/Thrift"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, ch. 4 — Avro: The Writer's Schema and the Reader's Schema",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 4",
+      "why": "อ่านต่อว่า Avro ทำ schema resolution ด้วยการจับคู่ตามชื่อ + default อย่างไร"
+    },
+    {
+      "title": "Protocol Buffers Language Guide (proto3) — Updating A Message Type",
+      "source": "protobuf.dev (Protocol Buffers documentation), Language Guide (proto3)",
+      "why": "อ่านกฎทางการว่าเปลี่ยน .proto อย่างไรให้ไม่ break compatibility (ห้าม reuse tag, field ใหม่ต้อง optional)"
+    },
+    {
+      "title": "Apache Avro Specification — Schema Resolution",
+      "source": "avro.apache.org, Avro Specification, section Schema Resolution",
+      "why": "อ่านรายละเอียดกติกา matching by name และการเติม default ระหว่าง writer/reader schema"
+    }
+  ]
+}
