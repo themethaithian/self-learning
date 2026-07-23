@@ -6,13 +6,13 @@
  * or violet-* classes. Palette values are the skill's fixed light theme.
  */
 @theme {
-  --color-page: #fafafa; /* zinc-50 */
-  --color-surface: #ffffff;
+  --color-page: #faf7f2; /* warm cream — cooler zinc-50 read as harsh in long sessions */
+  --color-surface: #fffdfa; /* near-white, nudged warm so cards don't look cold on cream */
   --color-heading: #18181b; /* zinc-900 */
   --color-body: #27272a; /* zinc-800 */
   --color-muted: #52525b; /* zinc-600 */
   --color-faint: #71717a; /* zinc-500 — lightest text allowed on white */
-  --color-subtle: #e4e4e7; /* zinc-200 — hairline borders */
+  --color-subtle: #e6e2dc; /* warm-nudged zinc-200 — hairline borders */
 
   --color-accent: #7c3aed; /* violet-600 */
   --color-accent-hover: #6d28d9; /* violet-700 */
