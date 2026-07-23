@@ -29,8 +29,11 @@ Structure: why it matters (2-3 sentences) → core explanation →
 one concrete example (fintech-flavored where natural) →
 common misconception → interview angle (how it gets asked).",
 "recall_checks": [
-{ "q": "...", "expected_answer": "...", "type": "short_answer|mcq" }
-// 3-5 items, answerable purely from this lesson
+{ "q": "...", "expected_answer": "...", "type": "short_answer" },
+{ "q": "...", "expected_answer": "...", "type": "mcq", "options": ["...", "...", "..."] }
+// 3-5 items, answerable purely from this lesson.
+// "options" (2+ choices) is REQUIRED for type "mcq" and MUST be absent for
+// "short_answer"; expected_answer is one of the options for mcq.
 ],
 "references": [
 { "title": "...", "source": "URL or book chapter (e.g. Evans ch. 4, Go blog)", "why": "one Thai line: read this for..." }

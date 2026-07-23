@@ -52,6 +52,8 @@
   - `ci.yml` web job รันทุก PR ไม่มี path filter (จงใจ — path-filtered required check อาจค้าง "expected but never ran" บล็อก merge) ถ้าอยาก optimize ใช้ `dorny/paths-filter` ไม่ใช่ top-level `paths:`
 - **ค้างจาก T9** (code-reviewer, non-blocking / watch-item):
   - `LessonProgress` ไม่ถือ `first_passed_at`/`last_read_at` — วันนี้ถูกต้อง (ไม่มี invariant ไหนอ่านมัน, repository stamp เอง) แต่**ถ้าวันหน้ามีกฎที่ใช้ "passed เมื่อไหร่" เป็น input ตัดสินใจ** (streak, "passed ใน session", retro delta) ต้องย้าย timestamp เข้า aggregate ไม่งั้น logic "first pass พิเศษ" จะรั่วไป app/infra
+- **ค้างจาก T10** (code-reviewer, non-blocking):
+  - `cmd/import-lessons` ไม่มี app-layer `ImportService` (orchestration load→save→summary อยู่ใน `run()`) → two-level walk / zero-files / first-failure / skip stray file ไม่มี unit test (verify live แล้วถูกทั้งหมด) — แยก service + test `lessonFiles` กับ `t.TempDir()` จะปิด gap (เหมือน import-curriculum)
 - **Acceptance**: list ที่ตกลงกันไว้เคลียร์หมดหรือมีเหตุผลที่ข้าม
 - Status: `todo`
 
