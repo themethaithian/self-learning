@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "latency-percentiles",
+  "version": 1,
+  "title_en": "Latency and Percentiles",
+  "est_minutes": 8,
+  "body_md": "# Latency and Percentiles\n\n## ทำไมถึงสำคัญ\n\nการอธิบาย performance ด้วยตัวเลขเดียวอย่าง \"เฉลี่ย 40 ms\" ซ่อนความจริงที่สำคัญที่สุดไว้ — request ที่ช้าที่สุดช้าแค่ไหน และช้ากับใคร. senior interview แทบไม่ถามว่า mean เท่าไร แต่ถาม p99 เพราะ tail latency คือสิ่งที่ user รู้สึกจริงและคือสิ่งที่ SLA เขียนถึง. เข้าใจ throughput, response time, และ percentile ให้ตรงคือพื้นฐานของทุกบทสนทนาเรื่อง scale.\n\n## แก่นของแนวคิด\n\nแยกสองคำที่คนสับสนบ่อย:\n\n- **Throughput**: จำนวนงานที่ระบบทำเสร็จต่อหน่วยเวลา (เช่น requests/second, records/second). เป็นมุมของ \"ระบบ\".\n- **Response time**: เวลาที่ client เห็นตั้งแต่ยิง request จนได้ response กลับครบ. เป็นมุมของ \"ผู้ใช้แต่ละคน\".\n\nResponse time ไม่ใช่ค่าคงที่ แต่เป็น **distribution** ที่ต่างกันทุก request แม้ยิง request เหมือนกันเป๊ะ เพราะมันคือผลรวมของหลายส่วน:\n\n> response time ≈ service time (เวลาประมวลผลจริง) + queueing delay (รอคิวเมื่อ server ไม่ว่าง) + network delay (เดินทางไป-กลับ)\n\nNuance ที่ควรแยกให้ได้ตอนสัมภาษณ์: **latency** กับ **response time** ไม่ใช่คำเดียวกันเป๊ะ — response time คือทั้งก้อนที่ client วัดได้ (รวม network + queueing + service), ส่วน latency มักหมายถึงช่วงที่ request \"รอ\" ยังไม่ถูกลงมือทำ (queueing / network). คนใช้ปนกันบ่อย แต่การแยกได้ทำให้ตอบคม.\n\n**ทำไมต้อง percentile ไม่ใช่ mean**: mean (average) ถูกดึงด้วย outlier ได้ง่ายและไม่บอกว่า \"ผู้ใช้ทั่วไปเจออะไร\". ถ้า 999 request ตอบใน 10 ms แต่ 1 request ค้าง 5 วินาที mean อาจยังดูปกติทั้งที่มีคนเจอของแย่มาก. **percentile** ตอบตรงกว่า — เรียง response time จากน้อยไปมากแล้วดูจุดตัด:\n\n- **p50 (median)**: ครึ่งหนึ่งของ request เร็วกว่าค่านี้ = \"ผู้ใช้ทั่วไปเจออะไร\".\n- **p95 / p99 / p999**: 95% / 99% / 99.9% ของ request เร็วกว่าค่านี้ = อธิบาย **tail** กลุ่มที่ช้าที่สุด. p99 = 300 ms แปลว่า 1 ใน 100 request ช้ากว่า 300 ms.\n\n**tail latency สำคัญเพราะอะไร**: request ที่ช้ามักเป็นของ user ที่มีข้อมูลเยอะที่สุด/activity มากที่สุด — ซึ่งบ่อยครั้งคือ user ที่มีค่าที่สุดต่อธุรกิจ (ลูกค้าที่ซื้อบ่อย, บัญชีที่ transaction เยอะ). optimize แต่ค่ากลางจึงพลาดคนกลุ่มที่สำคัญที่สุด.\n\n**tail latency amplification**: เมื่อ request หนึ่งของ user ต้อง fan-out ไปเรียกหลาย backend แล้วต้องรอ **ทุกตัว** ตอบก่อนถึงจะ return, response time ที่ user เห็น = ตัวที่ **ช้าที่สุด**. ยิ่ง fan-out หลาย service ยิ่งมีโอกาสสูงที่จะโดน tail ของอย่างน้อยหนึ่งตัว. ถ้าแต่ละ backend มี p99 = ช้า 1%, การเรียก 100 backend ขนานกันทำให้โอกาสที่ request รวมจะโดน slow call อย่างน้อยหนึ่งครั้งพุ่งสูงมาก — สิ่งที่เป็นแค่ p99 ของ backend เดี่ยว กลายเป็น \"เรื่องปกติ\" ของ request รวม.\n\n```mermaid\nflowchart TD\n  U[User checkout request] --> G[API gateway]\n  G --> F[\"Fraud check p99 20 ms\"]\n  G --> L[\"Ledger debit p99 250 ms\"]\n  G --> I[\"Inventory hold p99 15 ms\"]\n  G --> P[\"Payment gateway p99 40 ms\"]\n  F --> W{Wait for all}\n  L --> W\n  I --> W\n  P --> W\n  W --> R[\"Response equals slowest equals 250 ms\"]\n```\n\n**SLO / SLA นิยามบน percentile ไม่ใช่ mean**: เช่น \"p99 ของ checkout API ต้อง < 300 ms ตลอด 99.9% ของเดือน\". เขียน SLA ด้วย mean แทบไม่มีความหมาย เพราะ mean ถูก outlier ซ่อนได้ทั้งที่ผู้ใช้บางกลุ่มเจอของช้ามาก.\n\n> การนิยาม \"load\" ที่จะวัด performance ภายใต้มัน (load parameter) เป็นของ sibling `scalability-load`; ที่นี่สมมติว่ารู้แล้วว่ากำลังวัดที่ load เท่าไร — percentile จะมีความหมายก็ต่อเมื่อระบุ load ที่วัดด้วยเสมอ.\n\n## ตัวอย่าง (checkout / payment API)\n\nระบบ checkout ของ fintech รับ request เดียวจาก user แต่ภายใน fan-out ขนานไป 4 service: fraud check, ledger debit (หัก wallet), inventory hold, และ payment gateway ภายนอก. gateway จะตอบ user ว่า \"จ่ายสำเร็จ\" ก็ต่อเมื่อ **ทุกตัว** ตอบครบ ดังนั้น response time = ตัวที่ช้าที่สุด.\n\nสมมติ 3 ตัวแรกเร็ว (p99 ~15-40 ms) แต่ ledger debit ตอน month-end โดน lock contention จน p99 พุ่งไป 250 ms. แม้ค่าเฉลี่ยรวมของ checkout ยังดูดี (~50 ms) แต่ **p99 ของ checkout ทั้ง flow ถูกลากไปที่ ~250 ms** ตาม ledger — นี่คือ tail amplification ตรง ๆ. ทีมตั้ง SLO ไว้ที่ **p99 checkout < 300 ms** แล้ว alert เมื่อ p99 (ไม่ใช่ mean) ทะลุ. การวัดที่ถูกต้องคือ instrument response time ทุก request ที่ขอบ (client-side หรือ gateway) แล้วสร้าง histogram — ไม่ใช่วัดแค่ค่าเฉลี่ยของ server แต่ละตัว.\n\nข้อสังเกต operational: เมื่อ request ช้าเพราะ **head-of-line blocking** (request หนักตัวเดียวจองคิวอยู่หน้า ทำให้ request เบา ๆ ข้างหลังรอด้วย) การวัดที่ฝั่ง client จะเห็น tail ที่ฝั่ง server มองไม่เห็น เพราะ server เริ่มจับเวลาเฉพาะตอนตัวเองเริ่มทำงาน ไม่นับเวลาที่ request นั่งรอในคิว.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"p95 คือค่าเฉลี่ยของ 5% ที่ช้าที่สุด\"** — ผิด. p95 คือ **threshold** ที่ 95% ของ request เร็วกว่า ไม่ใช่ค่าเฉลี่ยของกลุ่ม tail; ตัวที่ช้ากว่า p95 อาจช้ากว่านั้นอีกมากโดยไม่ปรากฏในเลข p95.\n- **\"เอา p99 ของแต่ละ server มาเฉลี่ยกัน ได้ p99 ของทั้ง fleet\"** — ผิดทางสถิติ. percentile เฉลี่ยข้าม server/เวลาไม่ได้; ต้องรวม raw data หรือ merge histogram (เช่น t-digest, HDR histogram) ของทุก server ก่อนแล้วค่อยคำนวณ percentile.\n- **\"mean กับ p50 คือค่าเดียวกัน\"** — ผิด. p50 = median, mean = average; สอง distribution ที่เบ้ขวา (skewed) ซึ่ง response time เป็นเสมอ จะมี mean สูงกว่า median ชัดเจน.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรลงทุนหนัก\n\nนี่คือส่วนที่ senior interview เจาะ — ไม่ใช่ข้อดี แต่คือราคา:\n\n- **ไล่ optimize p999/p9999 แพงขึ้นแบบ diminishing returns**: ลด p50 มักแก้ที่ algorithm/query ธรรมดา แต่ลด p999 ต้องไปสู้กับ GC pause, lock contention, cold cache, retry storm, TCP retransmit — ต้นทุน engineering สูงมากเพื่อคนกลุ่มเล็กมาก (0.1%). ต้องถามว่าคุ้มกับ SLA จริงไหม: payment/checkout อาจคุ้ม, feed แนะนำเนื้อหาทั่วไปมักไม่คุ้ม.\n- **percentile สูงต้องการ sample จำนวนมากถึงจะนิ่ง**: p999 ต้องมี request หลักพัน ๆ ต่อ window ถึงจะเชื่อถือได้; traffic น้อย p999 จะแกว่งจนตัดสินใจอะไรไม่ได้.\n- **averaging percentiles ผิดเงียบ ๆ**: dashboard จำนวนมากเผลอเอา pre-computed p99 ของแต่ละ instance มา average — ได้ตัวเลขที่ \"ดูสมเหตุสมผล\" แต่ผิด ทำให้ตัดสินใจ scaling บนข้อมูลลวง. ราคาที่ถูกต้องคือต้องเก็บและ merge histogram ซึ่งกิน storage/CPU ของ metrics pipeline เพิ่ม.\n- **การวัด tail เองมีต้นทุน**: เก็บ high-percentile ต้อง instrument ทุก request (ไม่ใช่ sampling หยาบ ๆ ที่จะพลาด outlier) เพิ่มภาระ CPU และ storage ของ observability. บางระบบที่ latency ไม่ใช่เรื่องเป็นตายจึงเลือกวัดแค่ p50/p95 พอ.\n\nสรุปเมื่อไหร่ไม่ควรลงแรง: เมื่อ tail ไม่กระทบผู้ใช้ที่มีค่า, traffic น้อยเกินจน p999 ไม่ stable, หรือ SLA ไม่ได้เขียนถึง percentile สูงขนาดนั้น — จ่าย engineering effort ไปกับ p50/p95 ที่กระทบคนหมู่มากคุ้มกว่า.\n\n## มุมสัมภาษณ์\n\n- \"ทำไมใช้ p99 ไม่ใช่ average ในการอธิบาย response time?\" → mean ถูก outlier ดึงและซ่อน request ช้าที่สุด; percentile อธิบาย tail ที่ผู้ใช้เจอจริงและเป็นสิ่งที่ SLA เขียนถึง.\n- \"tail latency amplification คืออะไร เกิดตอนไหน?\" → เมื่อ request fan-out ไปหลาย backend แล้วรอทุกตัว ทำให้ตัวช้าที่สุดกำหนด response time รวม; ยิ่ง fan-out มากยิ่งเจอ tail ง่าย.\n- \"เอา p99 ของ 10 server มาเฉลี่ยได้ p99 ของ fleet ไหม?\" → ไม่ได้; ต้อง merge raw data/histogram ก่อนคำนวณ.\n- \"SLO/SLA เขียนด้วยอะไร ทำไมไม่ใช้ mean?\" → เขียนด้วย percentile (เช่น p99 < 300 ms) เพราะ mean ซ่อน tail ที่ผู้ใช้เจอจริง.\n- \"ควร optimize p999 ทุกจุดไหม?\" → ไม่; ต้นทุนสูงแบบ diminishing returns ต้องเลือกตาม SLA และมูลค่าของ user กลุ่มที่โดน tail.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไมจึงนิยมอธิบาย response time ด้วย p99 มากกว่า mean?",
+      "expected_answer": "เพราะ mean ถูก outlier ดึงและซ่อน request ที่ช้าที่สุดไว้ ส่วน percentile อธิบาย tail ได้ตรง",
+      "type": "mcq",
+      "options": [
+        "เพราะ mean ถูก outlier ดึงและซ่อน request ที่ช้าที่สุดไว้ ส่วน percentile อธิบาย tail ได้ตรง",
+        "เพราะ mean คำนวณยากกว่าและต้องเก็บ raw data ทั้งหมด ส่วน percentile ประมาณได้จาก sample เล็ก ๆ",
+        "เพราะ percentile ให้ค่าต่ำกว่า mean เสมอในทุก distribution ทำให้รายงานตัวเลข performance ดูดีขึ้น"
+      ]
+    },
+    {
+      "q": "response time ที่ client เห็นประกอบด้วยส่วนใดบ้าง (โดยประมาณ)?",
+      "expected_answer": "service time (เวลาประมวลผลจริง) + queueing delay (รอคิว) + network delay (เดินทางไป-กลับ)",
+      "type": "short_answer"
+    },
+    {
+      "q": "tail latency amplification เกิดขึ้นเมื่อใด?",
+      "expected_answer": "เมื่อ request หนึ่งต้อง fan-out ไปหลาย backend แล้วรอทุกตัวตอบ ทำให้ตัวที่ช้าที่สุดกำหนด response time รวม",
+      "type": "mcq",
+      "options": [
+        "เมื่อเพิ่มจำนวน server แล้ว throughput รวมกลับลดลงเพราะ overhead ของ coordination ระหว่าง node มากขึ้นจนกลายเป็นคอขวดใหม่",
+        "เมื่อ request หนึ่งต้อง fan-out ไปหลาย backend แล้วรอทุกตัวตอบ ทำให้ตัวที่ช้าที่สุดกำหนด response time รวม",
+        "เมื่อ mean ของ response time สูงกว่า median มากจน distribution เบ้ขวาผิดปกติจากภาวะ overload"
+      ]
+    },
+    {
+      "q": "ต้องการหา p99 ของทั้ง fleet จากหลาย server ควรทำอย่างไร?",
+      "expected_answer": "รวม raw data หรือ merge histogram ของทุก server ก่อน แล้วค่อยคำนวณ percentile",
+      "type": "mcq",
+      "options": [
+        "เอา p99 ของแต่ละ server มาบวกกันแล้วหารด้วยจำนวน server เพื่อให้ได้ค่าเฉลี่ยของทั้ง fleet",
+        "เลือก p99 ที่สูงที่สุดในบรรดา server ทั้งหมดมาเป็นค่าตัวแทน p99 ของทั้ง fleet",
+        "รวม raw data หรือ merge histogram ของทุก server ก่อน แล้วค่อยคำนวณ percentile"
+      ]
+    },
+    {
+      "q": "ถ้า checkout API มี p99 = 300 ms หมายความว่าอย่างไร?",
+      "expected_answer": "1 ใน 100 request (1% ที่ช้าที่สุด) มี response time ช้ากว่า 300 ms ส่วนอีก 99% เร็วกว่านั้น",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 1: Reliable, Scalable, and Maintainable Applications (Describing Performance)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 1",
+      "why": "อ่านต้นฉบับเรื่อง throughput vs response time, percentile, และ tail latency"
+    },
+    {
+      "title": "The Tail at Scale",
+      "source": "Jeffrey Dean and Luiz André Barroso, Communications of the ACM, Vol. 56 No. 2 (2013)",
+      "why": "อ่านต่อว่าทำไม tail latency amplification เกิดเมื่อ fan-out และเทคนิคลดมันในระบบจริงของ Google"
+    },
+    {
+      "title": "Site Reliability Engineering, Chapter 4: Service Level Objectives",
+      "source": "sre.google/sre-book/service-level-objectives/",
+      "why": "อ่านว่าทำไม SLO/SLA ถึงนิยามบน percentile และเลือก target percentile อย่างไร"
+    }
+  ]
+}

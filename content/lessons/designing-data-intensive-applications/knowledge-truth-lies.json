@@ -1,0 +1,72 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "knowledge-truth-lies",
+  "version": 1,
+  "title_en": "Knowledge, Truth, and Lies",
+  "est_minutes": 8,
+  "body_md": "# Knowledge, Truth, and Lies\n\n## ทำไมถึงสำคัญ\n\nในระบบ distributed node หนึ่งไม่มีทาง \"รู้\" สถานะจริงของ node อื่นได้เลย — รู้ได้แค่ผ่าน message ที่อาจล่าช้า, สลับลำดับ, หรือหายไป. เมื่อ node เชื่อการตัดสินของตัวเองเหนือเสียงส่วนใหญ่ ระบบจะเกิด split-brain และข้อมูลเสียหาย. บทนี้ตอบว่า \"truth\" ในระบบกระจายถูกนิยามอย่างไร และจะบังคับให้ node ที่ \"คิดผิด\" เขียนข้อมูลทำลายของไม่ได้อย่างไร.\n\n## แก่นของแนวคิด\n\n- **Truth = quorum ไม่ใช่ node เดียว.** ไม่มี node ใดเป็นเจ้าของความจริง; ระบบใช้ majority vote (quorum) ตัดสินแทน. ถ้า quorum ประกาศว่า node หนึ่งตาย node นั้นก็ถูกถือว่าตาย **แม้ตัวมันเองจะรู้สึกว่ายัง alive ทุกอย่างปกติ** — มันต้อง step down และเลิกทำหน้าที่ leader. node เชื่อการตัดสินของตัวเองเหนือ quorum ไม่ได้ เพราะมุมมองของมันอาจผิด (เช่นถูก network partition แยกออกไป หรือเพิ่งหยุดนิ่งไปนาน).\n- **ทำไมต้องเป็น quorum:** node ตัวเดียวแยกไม่ออกระหว่าง \"ฉันโดนตัดขาด\" กับ \"คนอื่นตายหมด\" — สองกรณีนี้เห็นเหมือนกันหมดคือเงียบ. เสียงส่วนใหญ่เป็นจุดอ้างอิงเดียวที่ node ซึ่งถูกแยกออกไปไม่มีทางชนะได้.\n- **Fencing token — ทำให้การตัดสินของ quorum มีผลจริง.** ปัญหาคือ node ที่ถูก supersede ไปแล้ว (เช่น leader เก่าที่เพิ่งตื่นจากการหยุดนิ่ง) อาจยังไม่รู้ตัวและส่ง write มาทับ. วิธีแก้: lock/lease service แจก **token ที่เพิ่มขึ้นทางเดียว (monotonically increasing)** ทุกครั้งที่ grant สิทธิ์. resource ที่ถูกป้องกันจะจำ token สูงสุดที่เคยเห็น แล้ว **reject ทุก request ที่พก token เก่ากว่านั้น**. node เก่าจึงเขียนไม่ได้ ต่อให้มั่นใจว่าตัวเองยังเป็น leader.\n- (สถานการณ์ที่ทำให้ต้องมี fencing — process หยุดชั่วคราวโดยไม่รู้ตัว เช่น GC pause / VM suspend — คือเรื่องของ sibling `process-pauses`; ที่นี่เรารับหน้าที่ให้ *กลไกแก้* คือ fencing token.)\n- **System model — สมมติฐานที่เราออกแบบอยู่ภายใต้มัน.** ต้องระบุให้ชัดว่า node ล้มแบบไหน: **crash-stop** (ตายแล้วหายไปเลย), **crash-recovery** (ตายแล้วกลับมาใหม่ ข้อมูลบน stable storage รอด แต่ in-memory หาย), หรือ **Byzantine** (ทำตัว arbitrary หรือโกหก). algorithm ที่ถูกต้องภายใต้ model หนึ่ง อาจพังใต้อีก model. บทนี้สมมติ node ซื่อสัตย์แต่ผิดพลาด/หลับ/ถูก partition ได้ (non-Byzantine); กรณี node โกหกอยู่ที่ sibling `byzantine-faults`.\n- **Safety vs liveness.** algorithm ที่ถูกต้องต้องพูดถึงสองแบบ: **safety** = \"สิ่งเลวจะไม่เกิดขึ้น\" (เช่นจะไม่มีสอง leader เขียนพร้อมกัน — ถ้าละเมิด ชี้จุดเวลาที่พังได้ และย้อนคืนไม่ได้), **liveness** = \"สิ่งดีจะเกิดขึ้นในที่สุด\" (เช่น request จะได้คำตอบสักวัน). ปกติเรายืนกราน safety ไว้เสมอแม้ network แย่ แต่ยอมให้ liveness เป็นแบบมีเงื่อนไข.\n\n## ตัวอย่าง (lock service + fencing token คุ้มกัน ledger write)\n\nระบบโอนเงินมี ledger กลางที่ต้องมีผู้เขียนได้ทีละคน จึงใช้ lock service (เช่น ZooKeeper) เลือก leader:\n\n1. Node 1 ได้ lease พร้อม token `33` → เริ่มเตรียม post journal entry.\n2. Node 1 เจอ **GC pause 20 วินาที** — หยุดนิ่งโดยไม่รู้ตัว, lease หมดอายุระหว่างนั้น.\n3. lock service มอบ lease ใหม่ให้ Node 2 พร้อม token `34`. Node 2 เขียน ledger ด้วย token `34` → ledger จำว่า max token = `34`, accept.\n4. Node 1 ตื่นขึ้นมา ยังเชื่อว่าตัวเองเป็น leader จึงส่ง debit/credit ด้วย token `33`.\n5. ledger เห็น `33 < 34` → **reject**. เงินไม่ถูกเขียนซ้ำ ยอดบัญชีไม่เพี้ยน.\n\nหัวใจคือ ledger ไม่ต้องรู้เลยว่า \"จริง ๆ\" ใครเป็น leader — มันแค่เชื่อ token ที่ใหญ่กว่าเสมอ ซึ่งสะท้อนการตัดสินล่าสุดของ quorum โดยตรง.\n\n```mermaid\nflowchart TD\n  LS[\"Lock service (quorum)\"] -->|\"grant token 33\"| N1[\"Node 1 then GC pause\"]\n  LS -->|\"grant token 34 after lease expiry\"| N2[\"Node 2 new holder\"]\n  N2 -->|\"write with token 34\"| LG{\"Ledger: token >= max seen?\"}\n  N1 -->|\"write with token 33 after waking\"| LG\n  LG -->|\"34 accepted, max becomes 34\"| OK[\"Commit journal entry\"]\n  LG -->|\"33 less than 34, rejected\"| DROP[\"Reject stale write\"]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"node ที่ยัง healthy และตอบ ping ได้ ย่อมมีสิทธิ์ทำงานต่อ\"** ผิด. มุมมองของ node เดียวไม่ใช่ truth; ถ้า quorum ตัดมันออกไปแล้ว มันต้อง step down แม้ hardware ยังปกติทุกอย่าง.\n- **\"fencing token กันด้วยเวลา/หมดอายุ (TTL)\"** ผิด. ledger ไม่ได้ดูเวลา แต่ดูว่า token เล็กกว่า max ที่เคยเห็นหรือไม่ — token ที่เล็กกว่าแปลว่า \"ผู้ส่งถูก supersede ไปแล้ว\" ไม่เกี่ยวกับนาฬิกาหรืออายุ lease.\n- **\"ตั้ง timeout ให้พอดี node เก่าก็จะรู้ตัวเองว่าหมดสิทธิ์แล้ว\"** ผิด. node ที่หยุดนิ่งไม่มีทางรู้ว่าตัวเองหลับไปนานแค่ไหน — พึ่งให้มันสำนึกเองไม่ได้ ต้องให้ resource ปลายทางเป็นคน enforce ด้วย token.\n\n## ขีดจำกัด / trade-off\n\n- **แลกกับ availability.** ถ้าต้องรอ quorum ทุกการตัดสิน เมื่อ node ส่วนใหญ่ unreachable (network partition ใหญ่) ระบบจะตัดสินใจอะไรไม่ได้เลย — ฝั่งข้างน้อยต้องหยุดให้บริการเพื่อรักษา correctness. นี่คือด้าน CP ของ CAP: outline ของ concept นี้ชี้ตรง ๆ ว่า quorum ซื้อความถูกต้องมาด้วย availability ที่ลดลงเมื่อ node ส่วนใหญ่ติดต่อไม่ได้.\n- **แลกกับ latency + ความซับซ้อน.** ทุก write ต้องผ่าน coordination (ขอ token, ตรวจ token) เพิ่ม round-trip. และ **ทุก resource ที่ถูกป้องกันต้องถูกแก้ให้ตรวจ token** — ถ้ามีสักตัวที่ลืมเช็ค (เช่น external storage หรือ third-party API ที่แก้ไม่ได้) การป้องกันก็รั่วทันที.\n- **เมื่อไหร่ไม่ควรใช้:** ระบบ node เดียว, งานที่ availability สำคัญกว่า correctness (แนว AP เช่น shopping cart ที่ merge ทีหลังได้), หรือ operation ที่ idempotent/commutative อยู่แล้วจน stale write ไม่ทำอันตราย. การยัด quorum + fencing เข้าไปในกรณีเหล่านี้คือจ่ายค่า latency ฟรีโดยไม่ได้ safety เพิ่ม.\n- แต่เมื่อ node อาจผิด/หลับ/ถูก partition ได้จริง (ซึ่งในระบบใหญ่แปลว่า \"เมื่อไหร่ก็ได้\") quorum-defined truth + fencing เป็นทางเดียวที่ยังคงถูกต้อง. algorithm ที่ทำให้ quorum ตกลงกันเรื่อง token/leader ได้แม้ message หาย คือ consensus — รายละเอียดอยู่ ch.9 (`consensus-and-zookeeper`).\n\n## มุมสัมภาษณ์\n\n- \"node ที่ยัง healthy แต่ถูก quorum ประกาศว่าตาย ควรทำยังไง?\" → step down; มุมมองของตัวเองไม่เหนือ quorum. คำถามนี้ probe ว่าเข้าใจ split-brain จริงไหม.\n- \"distributed lock ธรรมดายังไม่พอ ต้องเติมอะไร?\" → fencing token; อธิบายว่า lock lease อาจหมดอายุระหว่าง client pause แล้ว client เก่ากลับมาเขียนทับ ถ้าไม่มี token กัน.\n- \"ทำไม resource ต้อง reject token เก่า แทนที่จะดูเวลา?\" → เพราะ monotonic token คือลำดับที่ quorum การันตี ส่วนเวลาบน node แต่ละตัวเชื่อไม่ได้ (โยงไป unreliable clocks).\n- \"safety vs liveness ต่างกันยังไง ยกตัวอย่างใน leader election\" → safety: ไม่มีสอง leader พร้อมกัน; liveness: election จบและมี leader ในที่สุด.\n",
+  "recall_checks": [
+    {
+      "q": "ถ้า quorum ประกาศว่า node หนึ่งตาย ทั้งที่ node นั้นยังทำงานปกติทุกอย่าง node นั้นควรทำอย่างไร?",
+      "expected_answer": "ต้อง step down และเลิกทำหน้าที่ leader แม้ตัวเองจะรู้สึกว่ายัง alive",
+      "type": "mcq",
+      "options": [
+        "ยืนยันกับ node อื่นว่าตัวเองยัง alive อยู่ แล้วเดินหน้าทำหน้าที่ leader ต่อไปจนกว่า hardware จะเสียจริง",
+        "ต้อง step down และเลิกทำหน้าที่ leader แม้ตัวเองจะรู้สึกว่ายัง alive",
+        "รอ ping node อื่นทีละตัวจนครบ quorum เพื่อยืนยันสถานะของตัวเองก่อนค่อยตัดสินใจ step down"
+      ]
+    },
+    {
+      "q": "ทำไม ledger ถึง reject write ที่พก fencing token เลขเก่ากว่าที่เคยเห็น?",
+      "expected_answer": "เพราะ token เพิ่มขึ้นทางเดียว (monotonic) token ที่เล็กกว่าจึงแปลว่าผู้ส่งถูก supersede ไปแล้ว",
+      "type": "mcq",
+      "options": [
+        "เพราะ token เก่าหมดอายุตามเวลา (TTL) ที่ lock service กำหนดไว้ตอน grant ledger จึงถือว่ามันใช้ไม่ได้แล้ว",
+        "เพราะ node เก่าส่ง token มาในรูปแบบที่ผิด format ทำให้ ledger parse ค่าไม่ผ่านและ reject request ทิ้ง",
+        "เพราะ token เพิ่มขึ้นทางเดียว (monotonic) token ที่เล็กกว่าจึงแปลว่าผู้ส่งถูก supersede ไปแล้ว"
+      ]
+    },
+    {
+      "q": "fencing token คืออะไร และมันบังคับ correctness อย่างไร?",
+      "expected_answer": "token ที่เพิ่มขึ้นแบบ monotonic ออกให้ทุกครั้งที่ grant lock/lease; resource ที่ถูกป้องกันจะ reject request ที่พก token เก่ากว่าที่เคยเห็น ทำให้ node ที่ถูก supersede (เช่นเพิ่งหยุดนิ่ง) เขียนข้อมูลไม่ได้",
+      "type": "short_answer"
+    },
+    {
+      "q": "crash-recovery system model ต่างจาก crash-stop อย่างไร?",
+      "expected_answer": "crash-recovery ถือว่า node อาจ crash แล้วกลับมาใหม่ได้ โดยข้อมูลบน stable storage รอด ส่วน crash-stop ถือว่า node ที่ crash แล้วหายไปเลยไม่กลับมา",
+      "type": "mcq",
+      "options": [
+        "crash-recovery ถือว่า node อาจ crash แล้วกลับมาใหม่ได้ โดยข้อมูลบน stable storage รอด ส่วน crash-stop ถือว่า node ที่ crash แล้วหายไปเลยไม่กลับมา",
+        "crash-recovery ถือว่า node อาจโกหกหรือส่งข้อมูลผิดเพี้ยนแบบ arbitrary ได้ ส่วน crash-stop ถือว่า node ทุกตัวซื่อสัตย์และตอบตรงเสมอ",
+        "ทั้งสอง model เหมือนกันทุกอย่างในทางปฏิบัติ ต่างแค่ชื่อเรียกตามยุคของงานวิจัยที่คิดขึ้นมา จะเลือกใช้ตัวไหนก็ได้เพราะไม่มีผลต่อ correctness ของ algorithm"
+      ]
+    },
+    {
+      "q": "safety property ต่างจาก liveness property อย่างไร?",
+      "expected_answer": "safety = สิ่งเลวจะไม่เกิดขึ้น (ละเมิดแล้วชี้จุดเวลาที่พังได้และย้อนคืนไม่ได้), liveness = สิ่งดีจะเกิดขึ้นในที่สุด",
+      "type": "mcq",
+      "options": [
+        "safety = สิ่งเลวจะไม่เกิดขึ้น (ละเมิดแล้วชี้จุดเวลาที่พังได้และย้อนคืนไม่ได้), liveness = สิ่งดีจะเกิดขึ้นในที่สุด",
+        "safety วัดที่ latency ของแต่ละ request ส่วน liveness วัดที่ throughput รวมของทั้งระบบต่อวินาที",
+        "safety ใช้กับ operation แบบ read อย่างเดียว ส่วน liveness ใช้กับ write ที่เปลี่ยน state ของระบบเท่านั้น จึงต้องออกแบบการรับประกันแยกกันคนละชั้น"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 8: The Trouble with Distributed Systems (Knowledge, Truth, and Lies)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 8",
+      "why": "อ่านต้นฉบับเรื่อง truth = quorum, fencing token, system model และ safety vs liveness"
+    },
+    {
+      "title": "How to do distributed locking",
+      "source": "martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html",
+      "why": "อ่านลึกว่าทำไม distributed lock ต้องมี fencing token ไม่งั้น client ที่ pause เขียนทับได้"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 9: Consistency and Consensus",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 9",
+      "why": "อ่านต่อว่า algorithm อะไรทำให้ quorum ตกลงเรื่อง leader/token กันได้แม้ message หาย"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "exactly-once-fault-tolerance",
+  "version": 1,
+  "title_en": "Fault Tolerance and Exactly-Once Semantics",
+  "est_minutes": 8,
+  "body_md": "# Fault Tolerance and Exactly-Once Semantics\n\n## ทำไมถึงสำคัญ\n\nBatch job มี input ที่มีจุดจบ ถ้า task fail ก็ re-run ตั้งแต่ต้นได้อย่างปลอดภัย (ดู ch.10 batch processing). แต่ stream เป็น unbounded — ไม่มีจุดจบให้ \"เริ่มใหม่ทั้งหมด\" ดังนั้น fault tolerance ต้องทำแบบ incremental: กู้จากจุดที่ค้างไว้โดยไม่ประมวลผลเหตุการณ์เดิมซ้ำจนเกิดผลข้างเคียงซ้ำ. ในระบบ fintech เรื่องนี้คือเส้นแบ่งระหว่าง \"หัก 1 ครั้ง\" กับ \"หัก 2 ครั้ง\" — retry ที่ออกแบบผิดแปลว่าลูกค้าโดนชาร์จซ้ำ.\n\n## แก่นของแนวคิด\n\n### ระดับของ delivery guarantee\n\n- **at-most-once**: ประมวลผลอย่างมากหนึ่งครั้ง — fail แล้วยอมทิ้ง event (อาจหายบางส่วน) แต่ไม่มีทางซ้ำ.\n- **at-least-once**: รับประกันไม่หาย แต่ retry ทำให้ event เดียวถูกประมวลผลซ้ำได้ → ผลข้างเคียงอาจเกิดซ้ำ.\n- **exactly-once**: เป้าหมายที่อยากได้ — ผลของแต่ละ event เกิดขึ้น \"ครั้งเดียว\".\n\nคำว่า exactly-once ทำให้เข้าใจผิดง่าย. ในระบบกระจายที่ network/node ล้มได้ตลอด เรารับประกันไม่ได้ว่า event ถูก *ประมวลผล* จริงแค่ครั้งเดียว — framework อาจรัน batch เดิมซ้ำหรือ replay หลัง restart. สิ่งที่ทำได้จริงคือ **effectively-once**: ให้ *effect* (ผลต่อ output และ state) ของแต่ละ event ปรากฏครั้งเดียว แม้เบื้องหลังจะประมวลผลซ้ำ.\n\n### กู้จาก fault บน stream ที่ไม่มีจุดจบ\n\nสองแนวทางหลัก:\n\n- **Microbatching (Spark Streaming)**: มอง stream เป็น batch เล็ก ๆ ต่อเนื่อง แต่ละ batch เป็น deterministic function จาก input ที่รู้ขอบเขต ถ้า batch ไหน fail ก็ re-run เฉพาะ batch นั้นเหมือน batch job ปกติ. เข้าใจง่ายแต่ latency ผูกกับขนาด batch.\n- **Checkpointing (Flink)**: สอด **barrier** พิเศษเข้าไปในสาย event เป็นระยะ; เมื่อ barrier ไหลผ่าน operator แต่ละตัว มันจะ snapshot state ของ operator นั้นลง durable storage. เมื่อเกิด fault ก็ rollback ทุก operator กลับไป checkpoint ล่าสุดแล้ว replay event หลังจากนั้น. เทคนิคนี้ต่อยอดจาก Chandy-Lamport distributed snapshot.\n\n### ทำ effectively-once ให้เกิดจริงด้วยอะไร\n\nCheckpoint/microbatch ทำให้ระบบ recover state *ภายใน* ได้ แต่ยังไม่พอเมื่อผลต้องออกไปสู่ output ภายนอก (เขียน DB, ส่ง event ต่อ). ต้องใช้อย่างน้อยหนึ่งใน:\n\n- **Idempotence**: ออกแบบ operation ให้ทำซ้ำแล้วผลเท่าเดิม เช่น `SET balance = x` (keyed write) แทน `balance += x`, หรือ dedup ด้วย unique key ก่อนเขียน. ปลอดภัยต่อ retry โดยไม่ต้องประสานงานกับใคร.\n- **Atomic commit**: มัด \"output\" กับ \"การเลื่อน offset\" ให้ commit พร้อมกันใน transaction เดียว — ถ้า crash ก่อน commit ทั้งคู่ถูก rollback แล้ว restart อ่าน offset เดิมซ้ำ; ถ้า commit สำเร็จ ทั้งคู่ติดพร้อมกัน จึงไม่มีสภาพ \"เขียน output แล้วแต่ offset ยังไม่ขยับ\" ที่ทำให้ประมวลผลซ้ำ. โลกจริงคือ Kafka transactions และ Flink two-phase-commit sink (กลไก 2PC ดู ch.9 two-phase-commit; offset คือตำแหน่งอ่านใน partitioned log ดู sibling partitioned-logs).\n\n```mermaid\nflowchart TD\n  R[\"Read event at offset N\"] --> P[\"Process: compute charge\"]\n  P --> C{\"Atomic commit?\"}\n  C -->|\"output + offset N+1 committed\"| OK[\"Effect applied once\"]\n  C -->|\"crash before commit\"| RB[\"Rollback: offset stays N\"]\n  RB --> R\n  OK --> NEXT[\"Read next event\"]\n```\n\n## ตัวอย่าง (payment stream processor)\n\nสมมติมี stream ของ `PaymentRequested` event ที่ processor ต้องอ่านแล้วเรียก charge จริง. ถ้าใช้ at-least-once เฉย ๆ: processor charge แล้ว crash ก่อนเลื่อน offset → restart อ่าน event เดิม → **ชาร์จซ้ำ**.\n\nแก้สองชั้น:\n\n1. **Idempotency key ที่ขอบภายนอก**: ทุก charge ส่ง `idempotency_key = payment_id` ไปกับ request; payment gateway/ledger เห็น key ซ้ำก็คืนผลเดิมโดยไม่หักเงินอีกรอบ. นี่คือด่านสุดท้ายที่กัน double-charge เพราะ effect อยู่ในระบบภายนอกที่ transaction ของ stream engine เอื้อมไม่ถึง.\n2. **Atomic offset commit ภายใน**: การเขียนผล (เช่น mark ว่า charged ใน state store) กับการเลื่อน offset ผูกใน transaction เดียว เพื่อไม่ให้เกิดสภาพครึ่ง ๆ กลาง ๆ หลัง restart.\n\nจุดสำคัญเชิงสัมภาษณ์: exactly-once *ภายใน* engine ไม่ครอบคลุมผลข้างเคียงที่ออกไปนอกระบบ (หักบัตร, ส่งอีเมล) — ตรงขอบนั้นต้องพึ่ง idempotency key เสมอ.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"exactly-once = แต่ละ event ถูกประมวลผลแค่ครั้งเดียวจริง ๆ\"** ผิด. เบื้องหลังยังประมวลผล/replay ซ้ำได้ สิ่งที่การันตีคือ *effect* เกิดครั้งเดียว (จึงเรียกให้ตรงกว่าว่า effectively-once).\n- **\"เปิดโหมด exactly-once ของ framework แล้วครอบคลุมทุกอย่าง\"** ผิด. มันครอบคลุมเฉพาะ state/output ภายในที่ transaction เอื้อมถึง; side effect ภายนอก (charge, email) ยังต้องมี idempotency key เอง.\n- **\"at-least-once ปลอดภัยพอเสมอถ้ามี retry\"** ผิด. at-least-once + operation ที่ไม่ idempotent = ผลซ้ำ; ต้องคู่กับ idempotent consumer ถึงจะเทียบเท่า effectively-once.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\nexactly-once ไม่ฟรี. มันต้องการ coordination — checkpoint หรือ transaction — ซึ่งเพิ่ม latency (ต้องรอ barrier/commit) และลด throughput; sink ปลายทางต้องรองรับ transaction ด้วย ไม่งั้นทำไม่ได้เลย. ยิ่ง dedup state ที่เก็บไว้กันซ้ำก็โตเรื่อย ๆ ต้องมี TTL/bound ไม่งั้นกินหน่วยความจำ. หลายงาน at-least-once + idempotent consumer นั้น *ง่ายกว่าและเพียงพอ* — โดยเฉพาะเมื่อ operation เป็น keyed write ที่ idempotent อยู่แล้ว. และสำหรับ metric/analytics ที่ยอมคลาดเคลื่อนเล็กน้อยได้ การจ่ายค่า coordination เพื่อความเป๊ะมักไม่คุ้ม. งานของ senior คือรู้ว่า exactly-once คุ้มเฉพาะเมื่อการซ้ำมีราคาแพงจริง (เช่น เงิน) และรู้ว่าต่อให้เปิดมันแล้ว ขอบระบบภายนอกก็ยังต้องมี idempotency key อยู่ดี.\n\n## มุมสัมภาษณ์\n\n- \"stream processor กู้จาก failure ต่างจาก batch ยังไง?\" → batch re-run ตั้งแต่ต้นได้ (input มีจุดจบ), stream ต้องกู้แบบ incremental ด้วย microbatch หรือ checkpoint.\n- \"exactly-once ทำได้จริงไหม ทำยังไง?\" → จริง ๆ คือ effectively-once ผ่าน idempotence และ/หรือ atomic commit (output+offset ใน transaction เดียว).\n- \"at-least-once กับ exactly-once ต่างกันตรงไหน?\" → at-least-once อาจเกิด effect ซ้ำ; exactly-once ทำให้ effect เกิดครั้งเดียวแม้ retry.\n- \"ระบบ charge บัตรกัน double-charge ตอน consumer retry ยังไง?\" → idempotency key ที่ gateway ภายนอก + atomic offset commit ภายใน.\n",
+  "recall_checks": [
+    {
+      "q": "คำว่า exactly-once ในทางปฏิบัติ (effectively-once) หมายถึงอะไรกันแน่?",
+      "expected_answer": "effect (ผลต่อ output/state) ของแต่ละ event เกิดขึ้นครั้งเดียว แม้เบื้องหลังจะประมวลผลหรือ replay ซ้ำ ไม่ใช่ว่า event ถูก process จริงแค่ครั้งเดียว",
+      "type": "short_answer"
+    },
+    {
+      "q": "exactly-once effect ทำให้เกิดจริงด้วยกลไกใด?",
+      "expected_answer": "idempotence หรือ atomic commit",
+      "type": "mcq",
+      "options": [
+        "เพิ่มจำนวน replica ของ broker ให้มากขึ้น",
+        "idempotence หรือ atomic commit",
+        "ตั้ง network timeout ให้สั้นลง"
+      ]
+    },
+    {
+      "q": "ภายใต้ at-least-once ผลลัพธ์ต่างจาก exactly-once อย่างไร?",
+      "expected_answer": "at-least-once อาจทำให้ effect เกิดซ้ำได้",
+      "type": "mcq",
+      "options": [
+        "at-least-once อาจทำให้ผลลัพธ์บางส่วนหายไป",
+        "at-least-once ช้ากว่า exactly-once เสมอ",
+        "at-least-once อาจทำให้ effect เกิดซ้ำได้"
+      ]
+    },
+    {
+      "q": "ต้นทุนหลักของการรับประกัน exactly-once คืออะไร?",
+      "expected_answer": "coordination overhead ทำให้ throughput ลด",
+      "type": "mcq",
+      "options": [
+        "coordination overhead ทำให้ throughput ลด",
+        "ต้องเพิ่มจำนวน node ในคลัสเตอร์อย่างน้อยสองเท่า",
+        "ทำให้ event ordering ผิดเพี้ยนไป"
+      ]
+    },
+    {
+      "q": "Spark Streaming กับ Flink ใช้เทคนิค fault tolerance ต่างกันอย่างไร?",
+      "expected_answer": "Spark Streaming ใช้ microbatching (มอง stream เป็น batch เล็ก ๆ แล้ว re-run batch ที่ fail), ส่วน Flink ใช้ checkpointing/barrier ที่ snapshot operator state เป็นระยะ แล้ว restart จาก checkpoint ล่าสุด",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 11: Stream Processing (Fault Tolerance)",
+      "source": "Martin Kleppmann, DDIA (O'Reilly, 2017), ch. 11",
+      "why": "อ่านต้นฉบับเรื่อง microbatch, checkpointing, atomic commit และ exactly-once/idempotence"
+    },
+    {
+      "title": "Distributed Snapshots: Determining Global States of Distributed Systems",
+      "source": "K. M. Chandy & L. Lamport, ACM TOCS (1985)",
+      "why": "อ่านต้นแบบของ barrier/checkpoint snapshot ที่ Flink นำมาต่อยอด"
+    },
+    {
+      "title": "Apache Flink Documentation — Stateful Stream Processing & Checkpointing",
+      "source": "flink.apache.org, Concepts: Stateful Stream Processing",
+      "why": "ดูวิธี barrier ไหลผ่าน operator เพื่อ snapshot state แล้ว restart จาก checkpoint"
+    },
+    {
+      "title": "Apache Kafka Documentation — Message Delivery Semantics & Transactions",
+      "source": "kafka.apache.org, Design: Message Delivery Semantics",
+      "why": "ดู atomic commit ของ output+offset (exactly-once) ในระบบจริง"
+    }
+  ]
+}

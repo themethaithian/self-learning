@@ -1,0 +1,67 @@
+{
+  "concept_id": "stream-joins-and-time",
+  "version": 1,
+  "topic": "designing-data-intensive-applications",
+  "title_en": "Stream Joins and Notions of Time",
+  "est_minutes": 9,
+  "body_md": "# Stream Joins and Notions of Time\n\n## ทำไมถึงสำคัญ\n\nใน stream ที่ไม่มีจุดจบ การถามว่า \"เกิดอะไรขึ้นในนาทีที่ผ่านมา\" ต้องนิยาม \"เวลา\" ให้ชัดก่อน เพราะเวลาที่เหตุการณ์เกิดจริงกับเวลาที่ระบบเห็นมันไม่เท่ากันเสมอ เลือกผิดแล้วตัวเลขอย่าง fraud rate หรือยอดรวมต่อ window จะเพี้ยนเงียบ ๆ โดยไม่มี exception ให้จับ. และผลของการ join สอง stream ก็ขึ้นกับเวลาเช่นกัน: \"state ณ ตอนนั้น\" กับ \"event ที่เพิ่งมาถึง\" ใครมาก่อนเปลี่ยนคำตอบ ทำให้ join result เป็น time-dependent.\n\n## event time เทียบกับ processing time\n\n- **Event time**: timestamp ที่เหตุการณ์เกิดจริงที่ต้นทาง (ฝังมากับ event เช่นเวลาที่ user กดจ่ายบนมือถือ).\n- **Processing time**: เวลาที่ stream processor เห็นและประมวลผล event นั้น.\n- สองค่านี้ diverge เสมอ จาก network delay, queue backlog, consumer restart, หรือ producer ที่ offline แล้วส่ง batch ตามมาทีหลัง. skew อาจเป็นมิลลิวินาที หรือเป็นชั่วโมงเมื่อ mobile client กลับมา online.\n- ใช้ processing time จัดกลุ่ม = ผลผิด: ถ้า consumer ล่ม 5 นาทีแล้วกลับมา event ทั้ง 5 นาทีจะกองมาที่ processing time เดียว กราฟจะเห็น spike ปลอมทั้งที่ของจริงกระจายเรียบ. ที่แย่กว่านั้นคือ processing time ทำให้ผล **ไม่ deterministic** re-run pipeline เดิมได้ผลต่างกัน.\n\n```mermaid\nflowchart LR\n  subgraph SRC[\"Source stream: event time\"]\n    E1[\"e1 at 10:00\"]\n    E2[\"e2 at 10:01\"]\n    E3[\"e3 at 10:02\"]\n  end\n  E1 -->|\"delayed: network\"| P[\"Processor arrives e3, e1, e2\"]\n  E2 -->|\"delayed: queue\"| P\n  E3 -->|fast path| P\n  P --> W{\"watermark past window edge?\"}\n  W -->|yes| EM[\"emit window result\"]\n  W -->|\"no: straggler\"| LATE[\"drop, requeue, or correct\"]\n```\n\n## Windows: จัดกลุ่มตาม event time\n\n- **Tumbling**: ช่วงยาวเท่ากันและไม่ทับกัน (เช่นทุก 1 นาที) แต่ละ event อยู่ได้ window เดียว.\n- **Hopping**: ยาวคงที่แต่เลื่อนทีละ step ที่เล็กกว่า (window 5 นาที เลื่อนทุก 1 นาที) event หนึ่งตัวตกอยู่ได้หลาย window.\n- **Sliding**: นิยามด้วยระยะเวลาระหว่างคู่ event ไม่ align กับหน้าปัดนาฬิกา.\n- **Session**: จัดกลุ่ม event ที่ชิดกัน คั่นด้วยช่วงเงียบ (gap) ความยาวไม่คงที่ตาม activity ของ user.\n\n## Watermark: window \"จบ\" เมื่อไหร่\n\nเพราะ event มาไม่เรียงและอาจมาช้า ระบบต้องตัดสินใจว่าเมื่อไหร่ถือว่า window ปิดได้. **Watermark** คือคำประกาศว่า \"เชื่อว่าไม่มี event ที่ event-time เก่ากว่า T มาอีกแล้ว\" พอ watermark เลยขอบ window ก็ emit ผลออก. Event ที่มาหลังจากนั้นคือ **late event / straggler** ต้องเลือก policy: ทิ้ง, นับรวมใน window ถัดไป, หรือ emit ผลแก้ (correction / retraction) ให้ downstream. จุดสำคัญคือ watermark เป็น heuristic ของการเดา ไม่ใช่ความจริง จึงไม่การันตีว่าจับ late event ได้ครบ.\n\n## Stream join สามแบบ\n\n1. **Stream-stream (window join)**: join สอง event stream ที่เกี่ยวข้องกันภายในกรอบเวลา เช่น \"click\" กับ \"purchase\" ภายใน 30 นาที. ต้อง buffer event ทั้งสองฝั่งไว้ใน state ตามขนาด window.\n2. **Stream-table (enrichment)**: เติมข้อมูลให้แต่ละ event ใน stream จาก table เช่น เติม account tier ให้ transaction. table ถูก keep-current ด้วย changelog ที่มาจาก database ผ่าน CDC (ราย detail อยู่ที่ sibling `change-data-capture`).\n3. **Table-table (materialized-view maintenance)**: join changelog สองสายเพื่อ maintain materialized view ที่ update ตัวเองเมื่อฝั่งใดฝั่งหนึ่งเปลี่ยน.\n\n## ตัวอย่าง (fintech): PaymentAuthorized join Settled\n\nระบบจ่ายเงินมีสอง stream: `PaymentAuthorized` (กันวงเงินเมื่อ user กดจ่าย) และ `Settled` (เงินเข้าจริงจากธนาคาร ตามมาทีหลังเป็นวินาทีถึงชั่วโมง). อยากรู้ \"authorize แล้วไม่ settle ภายใน 2 ชั่วโมง\" คือ **stream-stream window join** บน `payment_id` ในหน้าต่าง 2 ชั่วโมง.\n\n- ถ้า join ด้วย **processing time**: settlement ของธนาคารที่ตอบช้ากว่าปกติจะหลุด window แม้ event time จริงยังอยู่ในกรอบ ทำให้รายงาน \"จ่ายค้าง\" ปลอมและอาจไปปลุก alert ผิด ๆ.\n- ถ้า join ด้วย **event time + watermark**: straggler ที่มาช้าเล็กน้อยยังถูกจับได้ ผลถูกต้องขึ้น แลกกับการที่ผลลัพธ์ออกช้าลงตาม watermark delay.\n\nเวอร์ชัน **stream-table**: เติม `fx_rate` หรือ `account_tier` ให้ transaction stream เพื่อคำนวณค่าธรรมเนียม. คำถามคือ tier ถูกอัปเดต (state update) เทียบกับ transaction ที่ไหลเข้ามา (event) ใครชนะการแข่ง? ถ้า join กับ tier \"ปัจจุบัน\" transaction ที่เกิดก่อน tier เปลี่ยนจะถูกคิดค่าธรรมเนียมด้วย tier ใหม่ ผิดย้อนหลัง. ที่ถูกคือ join กับค่า ณ event time ของ transaction นั้น นี่คือปัญหา **slowly changing dimension** ที่ทำให้ join result เป็น time-dependent.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"processing time ง่ายกว่าและสดกว่า event time\"** ผิด: มันทำให้ผลไม่ deterministic และสร้าง artifact ปลอมทุกครั้งที่ pipeline มี delay.\n- **\"watermark การันตีว่าจับ late event ครบ\"** ผิด: watermark เป็นการเดา late event ที่มาช้าเกินขอบยังหลุดได้เสมอ.\n- **\"stream-table join อ่าน table ปัจจุบันก็พอ\"** ผิดในหลายกรณี เพราะเป็น slowly changing dimension ต้อง join ณ event time.\n\n## ขีดจำกัด / trade-off\n\nหัวใจของ trade-off คือ **รอ vs รีบ**. รอ watermark ให้นานขึ้น (buffer state ใหญ่ขึ้น) จับ late event ได้มากขึ้น ผลถูกต้องขึ้น แต่ latency ของผลลัพธ์สูงขึ้นและใช้ memory / state store มากขึ้น. รีบ emit ผลเร็ว ได้ผลทันเวลาแต่พลาด straggler หรือต้องส่ง correction ทีหลัง ซึ่ง downstream ต้องรองรับ retraction ที่ซับซ้อน. window join ยังต้องเก็บ state ทั้งสองฝั่งตามขนาด window window ยิ่งใหญ่ state ยิ่งแพงและ recovery ยิ่งช้า. ไม่มีคำตอบเดียว: fraud dashboard อาจยอม latency แลกความถูกต้อง ส่วน real-time alert ยอมพลาด straggler แลกความไว งานของ senior คือเลือกจุดสมดุลตาม SLA ไม่ใช่ท่องว่า \"event time ดีกว่าเสมอ\". การรับประกันว่า join/aggregate ไม่ถูกนับซ้ำเมื่อ retry เป็นคนละเรื่อง อยู่ที่ sibling `exactly-once-fault-tolerance`.\n\n## มุมสัมภาษณ์\n\n- \"event time กับ processing time ต่างกันยังไง และทำไมถึงเลือก event time?\" ตอบเรื่อง skew, determinism, spike ปลอม.\n- \"จะรู้ได้ยังไงว่า window ปิดได้แล้ว ในเมื่อ event มาไม่เรียง?\" นำไปสู่ watermark + late-event policy.\n- \"อธิบาย stream-stream เทียบกับ stream-table join\" window buffer สองฝั่ง เทียบกับ enrichment จาก table ที่ sync ด้วย CDC.\n- \"จะ enrich transaction ด้วย exchange rate ให้ถูกต้องได้ยังไง?\" join ณ event time เพราะเป็น slowly changing dimension.\n",
+  "recall_checks": [
+    {
+      "q": "event time กับ processing time ต่างกันอย่างไร?",
+      "expected_answer": "event time = เวลาที่เหตุการณ์เกิดจริงที่ต้นทาง; processing time = เวลาที่ stream processor เห็น/ประมวลผล event นั้น สองค่านี้ diverge จาก delay/backlog/restart",
+      "type": "short_answer"
+    },
+    {
+      "q": "stream-table join ทำงานอย่างไร?",
+      "expected_answer": "เติม event แต่ละตัวด้วยข้อมูลจาก table",
+      "type": "mcq",
+      "options": [
+        "buffer event สองฝั่งแล้ว join ในหน้าต่างเวลา",
+        "เติม event แต่ละตัวด้วยข้อมูลจาก table",
+        "รวม changelog สองฝั่งเป็น materialized view"
+      ]
+    },
+    {
+      "q": "watermark ในการประมวลผล stream คืออะไร?",
+      "expected_answer": "การเดาว่าไม่มี event เก่ากว่า T อีกแล้ว",
+      "type": "mcq",
+      "options": [
+        "การเดาว่าไม่มี event เก่ากว่า T อีกแล้ว",
+        "เวลาปัจจุบันของนาฬิกาเครื่อง processor",
+        "timestamp ที่ producer ฝังมากับ event ตั้งแต่ต้นทาง"
+      ]
+    },
+    {
+      "q": "การรอ watermark ให้นานขึ้นก่อนปิด window มี trade-off อย่างไร?",
+      "expected_answer": "จับ late event ได้มากขึ้น ผลถูกต้องขึ้น แต่ latency ของผลลัพธ์สูงขึ้นและใช้ state/memory มากขึ้น",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมการจัดกลุ่ม event ด้วย processing time จึงให้ผลผิด?",
+      "expected_answer": "เพราะ delay/outage ทำให้ event กองผิดช่วง",
+      "type": "mcq",
+      "options": [
+        "เพราะ event ทุกตัวถูก timestamp พร้อมกันเสมอ",
+        "เพราะ table ไม่ได้ sync ด้วย CDC",
+        "เพราะ delay/outage ทำให้ event กองผิดช่วง"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 11: Stream Processing (Reasoning About Time; Stream Joins)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 11",
+      "why": "อ่านต้นฉบับ event time vs processing time, windows, และ stream join สามแบบ"
+    },
+    {
+      "title": "The Dataflow Model: A Practical Approach to Balancing Correctness, Latency, and Cost in Massive-Scale, Unbounded, Out-of-Order Data Processing",
+      "source": "Akidau et al., Proceedings of the VLDB Endowment, 2015",
+      "why": "อ่านลึกเรื่อง watermark, windowing, และการจัดการ late/out-of-order event"
+    },
+    {
+      "title": "Streaming 101 & Streaming 102",
+      "source": "Tyler Akidau, O'Reilly Radar",
+      "why": "อ่านสรุปเข้าใจง่ายเรื่อง event time, watermark, และ window ก่อนลุยเปเปอร์"
+    }
+  ]
+}

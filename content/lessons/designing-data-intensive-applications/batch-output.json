@@ -1,0 +1,67 @@
+{
+  "concept_id": "batch-output",
+  "version": 1,
+  "topic": "designing-data-intensive-applications",
+  "title_en": "The Output of Batch Workflows",
+  "est_minutes": 8,
+  "body_md": "# The Output of Batch Workflows\n\n## ทำไมถึงสำคัญ\n\nbatch job ไม่ได้จบที่ตัวเลขสรุปบน dashboard — output ที่มีค่าที่สุดมักเป็น derived dataset ก้อนใหญ่ที่ระบบ online เอาไปใช้ต่อ เช่น search index, recommendation model, หรือ read-only key-value store. หัวใจที่ senior interview เจาะไม่ใช่ \"batch สร้างอะไร\" แต่คือ *ปรัชญา* เบื้องหลัง: input เป็น immutable, job ไม่มี side effect ต่อ input, และ deterministic re-run ได้ ทำให้ระบบทน human error ได้จริง ซึ่งเป็นสิ่งที่โลกแบบ mutate-in-place ทำไม่ได้.\n\n## แก่นของแนวคิด\n\noutput ที่ batch workflow ผลิตบ่อย ๆ:\n\n- **search index** — build inverted index (เช่น Lucene) แบบ bulk จากเอกสารทั้งกอง แล้วเอาไป serve query ได้ predictable กว่าการ index ทีละ record online\n- **ML model / recommendation data** — เทรน model หรือ precompute ตาราง \"user คนนี้น่าจะชอบอะไร\" ไว้ล่วงหน้าทั้งชุด\n- **read-only key-value store** — batch เขียนไฟล์ DB ทั้งก้อน (immutable file ที่ serving layer โหลด) แล้ว swap เข้าไปทั้งชุด ไม่ใช่เขียน record ทีละอันเข้า production DB\n\nปรัชญาที่ทำให้ pattern นี้ทรงพลัง สืบทอดจาก Unix philosophy:\n\n1. **input immutable** — job อ่าน input อย่างเดียว ไม่แก้ของเดิม; input เดิมยังอยู่ครบหลัง job จบ\n2. **ไม่มี side effect** — job ไม่ไปแก้ database อื่นระหว่างทาง ผลลัพธ์ทั้งหมดออกมาเป็น output dataset ก้อนใหม่ที่แยกจาก input\n3. **deterministic + re-runnable** — input เดิม + code เดิม → output เดิมเป๊ะ รันซ้ำกี่รอบก็ได้ผลเท่ากัน (pure function จาก input ไป output)\n4. **all-or-nothing swap** — เมื่อ output ก้อนใหม่พร้อม ค่อย swap เข้าทั้งชุดแบบ atomic ไม่ใช่ mutate ของเดิมทีละส่วนจนผู้ใช้เห็น state ครึ่ง ๆ กลาง ๆ\n\nผลพลอยได้ที่สำคัญที่สุดคือ **human fault tolerance**: ถ้า code มี bug แล้ว output ผิด คุณแค่แก้ code แล้ว re-run บน input เดิม (ที่ยัง immutable อยู่) ก็ได้ output ที่ถูกออกมาใหม่ทั้งก้อน. เทียบกับระบบที่ mutate ข้อมูล production in place — bug ที่เขียนค่าผิดทับลงไปแล้วมัก irreversible ต้องไล่ซ่อมทีละแถว. และเพราะเก็บ output เก่าไว้ได้ การ rollback จึงเป็นแค่การชี้ pointer กลับไป dataset เวอร์ชันก่อน.\n\n```mermaid\nflowchart LR\n  IN[(\"Immutable input: daily transaction partition\")] --> JOB[\"Batch job (pure, deterministic)\"]\n  JOB --> V2[\"New output dataset v2\"]\n  V2 --> SWAP{\"Atomic swap\"}\n  SWAP --> SERVE[\"Serving: search / fraud-score lookup\"]\n  V1[\"Old output v1 kept\"] -. \"rollback: repoint\" .-> SERVE\n  BUG[\"Bug in code?\"] -. \"fix code, re-run\" .-> JOB\n```\n\nengine ที่ผลิต output พวกนี้จริง ๆ — MapReduce และ dataflow engine อย่าง Spark — อยู่ใน concept พี่น้อง `mapreduce` และ `dataflow-engines` จะไม่ลงรายละเอียดที่นี่.\n\n## ตัวอย่าง (fintech)\n\npayment platform ต้องการตาราง **fraud-score** ต่อ (merchant, card fingerprint) ไว้ให้ checkout query ตอน authorize. ทำเป็น nightly batch:\n\n- **input**: `transactions/2026-07-22/` บน object store — เขียนครั้งเดียว ไม่แก้อีก (immutable partition ต่อวัน)\n- **job**: อ่านธุรกรรมย้อนหลัง N วัน คำนวณ fraud score แบบ pure — ไม่แตะ production DB ระหว่างทาง\n- **output**: เขียนไฟล์ read-only KV ก้อนใหม่ `fraud-scores/v20260723/` ทั้งชุด แล้วชี้ pointer `fraud-scores/current` ไปที่ v ใหม่แบบ atomic\n\nพรุ่งนี้พบว่า scoring logic คิดสูตรผิด → ไม่ต้อง panic ไล่แก้ข้อมูลใน production: แก้ code, re-run บน input วันเดิม (ยังอยู่ครบ), ได้ `v20260724` ที่ถูก, swap pointer. ถ้า v ใหม่ดันแย่กว่าเดิม ก็ชี้ `current` กลับไป `v20260723` ได้ทันที. เทียบกับถ้าเขียน fraud score ทับ production KV ทีละ key — ค่าถูกที่ถูก bug ทับหายไปแล้ว กู้ยาก.\n\nหลักเดียวกันกับ **search index over transactions**: build inverted index ทั้งก้อนคืนนี้ แล้ว swap ให้ search service โหลด segment ใหม่ทั้งชุด ไม่ใช่ update index ทีละ doc บนตัวที่ serve อยู่.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"immutable input แปลว่าข้อมูลห้ามเปลี่ยนตลอดกาล\"** — ผิด. ข้อมูลใหม่มาได้เรื่อย ๆ แต่มาเป็น *partition/ไฟล์ใหม่* (เช่นโฟลเดอร์ของวันถัดไป) ไม่ใช่ไปแก้ของเก่าที่ job รันไปแล้ว. immutability อยู่ที่ \"ของที่รันไปแล้วไม่ถูกแก้\" ไม่ใช่ \"ระบบหยุดรับข้อมูล\".\n- **\"deterministic re-run = idempotent เขียนทับ record เดิม\"** — ไม่เชิง. หัวใจคือผลิต output *ก้อนใหม่* แยกจากของเก่าแล้ว swap ไม่ใช่การเขียนทับ in place ให้บังเอิญได้ผลเท่าเดิม.\n- **\"swap ทั้ง dataset = ต้อง downtime\"** — ผิด. swap คือสลับ pointer/เวอร์ชันให้ serving layer อ่านก้อนใหม่ ทำ atomic ได้โดยไม่ต้องหยุด service.\n\n## ขีดจำกัด / เมื่อไหร่ต้นทุนไม่คุ้ม\n\nTrade-off คือสิ่งที่ interview เจาะ ไม่ใช่ตัว pitch:\n\n- **จ่ายด้วย storage**: ต้องเก็บ input ไว้ (เพื่อ re-run) บวก output หลายเวอร์ชัน (เพื่อ rollback). ยิ่ง dataset ใหญ่ ค่า storage ยิ่งบาน — เท่ากับแลกเงินค่า disk กับความปลอดภัยเชิงปฏิบัติการ.\n- **จ่ายด้วย latency / compute**: recompute ทั้งก้อนทุกครั้ง (แม้ input เปลี่ยนนิดเดียว) กิน CPU และเวลามากกว่าการ update เฉพาะส่วนที่เปลี่ยน. output จึงสด \"เท่ารอบ batch ล่าสุด\" เสมอ — freshness lag เท่ากับ cycle (รายคืน = เก่าได้ถึงหนึ่งวัน).\n- **เมื่อไหร่ไม่เหมาะ**: งานที่ต้องการผลลัพธ์ near-real-time (เช่น fraud score ต้อง reflect ธุรกรรมเมื่อ 5 วินาทีก่อน) — batch แบบ full-recompute ตอบไม่ได้. ความต้องการ latency ต่ำ ขณะที่ยังอยากได้ human-fault-tolerance/immutability แบบเดียวกันนี่แหละคือแรงผลักไปสู่ **stream processing** (incremental, ประมวลผล event ทีละอันต่อเนื่อง) — อยู่ใน ch.11 ของ DDIA จะไม่ลงรายละเอียดที่นี่.\n\n## มุมสัมภาษณ์\n\n- \"batch job output คืออะไรได้บ้าง?\" → search index, ML/recommendation data, read-only KV store ที่ bulk-load แล้ว swap เข้าทั้งชุด\n- \"ทำไม immutable input ถึงช่วยตอน code มี bug?\" → เพราะ input เดิมยังอยู่ครบ แก้ code แล้ว re-run ได้ output ใหม่ทั้งก้อน (human fault tolerance) และ rollback = swap กลับ dataset เก่า\n- \"ทำไมต้อง swap ทั้ง dataset แทน mutate in place?\" → all-or-nothing ผู้ใช้ไม่เห็น partial state, rollback ง่าย, debug ง่าย\n- \"ต้นทุนของ pattern นี้คืออะไร และอะไรผลักไปหา streaming?\" → storage (input + หลาย output version) + latency (full recompute, freshness lag) → streaming แก้ latency ด้วย incremental processing (ch.11)\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม immutable input ถึงทำให้ batch workflow ทน human error (bug ในโค้ด) ได้?",
+      "expected_answer": "เพราะ input เดิมยังอยู่ครบ แก้โค้ดแล้ว re-run ได้ output ใหม่ทั้งก้อน",
+      "type": "mcq",
+      "options": [
+        "เพราะ input เดิมยังอยู่ครบ แก้โค้ดแล้ว re-run ได้ output ใหม่ทั้งก้อน",
+        "เพราะ job เขียนทับ record ที่ผิดใน production ให้ถูกเองอัตโนมัติ",
+        "เพราะ input ถูก validate ไว้จน bug ในโค้ดเกิดขึ้นไม่ได้เลย"
+      ]
+    },
+    {
+      "q": "ข้อใดเป็น output ทั่วไปของ batch workflow ตามบทเรียนนี้?",
+      "expected_answer": "search index ที่ build แบบ bulk แล้ว swap เข้าไปทั้งชุด",
+      "type": "mcq",
+      "options": [
+        "read replica ที่ sync กับ production DB แบบ real-time ทันที",
+        "search index ที่ build แบบ bulk แล้ว swap เข้าไปทั้งชุด",
+        "transaction lock ที่กันการเขียนพร้อมกันข้าม node"
+      ]
+    },
+    {
+      "q": "ทำไม batch ถึง swap output ทั้ง dataset แทนการ mutate in place?",
+      "expected_answer": "เพื่อให้เป็น all-or-nothing ผู้ใช้ไม่เห็น partial state, rollback กลับเวอร์ชันเก่าง่าย และ debug ง่าย",
+      "type": "short_answer"
+    },
+    {
+      "q": "ต้นทุนหลักของการสร้าง derived data ใหม่ทั้งก้อนทุกครั้ง (แทน mutate in place) คืออะไร?",
+      "expected_answer": "ใช้ storage มากขึ้น (เก็บ input + หลาย output version) และใช้เวลา recompute มากกว่า",
+      "type": "mcq",
+      "options": [
+        "ทำให้ input เปลี่ยนแปลงไปเองระหว่างที่ job กำลังรัน จน output ออกมาไม่ deterministic",
+        "ทำให้ rollback กลับเวอร์ชันเก่าทำไม่ได้ เพราะ output เก่าถูกลบทิ้งทุกครั้งที่ swap",
+        "ใช้ storage มากขึ้น (เก็บ input + หลาย output version) และใช้เวลา recompute มากกว่า"
+      ]
+    },
+    {
+      "q": "อะไรคือแรงผลักหลักที่ทำให้ต้องขยับจาก batch ไปหา stream processing (ch.11)?",
+      "expected_answer": "ความต้องการผลลัพธ์ latency ต่ำ/near-real-time เพราะ batch แบบ full-recompute มี freshness lag เท่ารอบ batch เสมอ ขณะที่ streaming ประมวลผลแบบ incremental",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 10: Batch Processing — The Output of Batch Workflows",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 10",
+      "why": "อ่านต้นฉบับทั้ง search index / key-value store output และรากของ immutable input, no side effect, re-runnable job (Unix philosophy)"
+    },
+    {
+      "title": "MapReduce: Simplified Data Processing on Large Clusters",
+      "source": "Jeffrey Dean and Sanjay Ghemawat, OSDI 2004 (Google)",
+      "why": "อ่าน paper ต้นฉบับของระบบที่ถูกสร้างมา bulk-build search index ของ Google และ re-run task ที่ fail เพื่อ fault tolerance"
+    },
+    {
+      "title": "Kafka, Samza, and the Unix Philosophy of Distributed Data",
+      "source": "Martin Kleppmann and Jay Kreps, martin.kleppmann.com (2015)",
+      "why": "อ่านต่อว่าปรัชญา immutability/re-run นี้เชื่อมจาก batch ไปสู่ stream processing อย่างไร"
+    }
+  ]
+}

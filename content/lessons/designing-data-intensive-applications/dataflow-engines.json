@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "dataflow-engines",
+  "version": 1,
+  "title_en": "Dataflow Engines",
+  "est_minutes": 8,
+  "body_md": "# Dataflow Engines\n\n## ทำไมถึงสำคัญ\n\nMapReduce เขียนผลลัพธ์กลางลง distributed filesystem (เช่น HDFS) หลังทุก stage แล้วให้ job ถัดไปอ่านกลับขึ้นมาใหม่ ทำให้ multi-stage job หนึ่งกลายเป็นลูกโซ่ของ job อิสระที่จ่าย I/O และ replication ซ้ำทุกขั้น. Dataflow engine รุ่นหลัง MapReduce (Spark, Tez, Flink) มองทั้ง job เป็น DAG ของ operator ก้อนเดียว และ **ไม่** materialize state กลางลง durable filesystem ระหว่างทาง — นี่คือเหตุผลหลักที่มันเร็วกว่าหลายเท่า โดยเฉพาะงานหลาย stage และงาน iterative. คำถามสัมภาษณ์แทบทุกครั้งที่ถามว่า \"ทำไม Spark เร็วกว่า MapReduce\" ตอบด้วยประโยคนี้.\n\n## แก่นของแนวคิด\n\n- **MapReduce = materialize ทุก stage**: base model ของ MapReduce (sibling `mapreduce`) บังคับรูป map → reduce ตายตัว. งานจริงที่ซับซ้อนต้องต่อหลาย MR job เข้าด้วยกัน และ output ของ job ก่อนหน้าต้องถูกเขียนลง HDFS (มักถูก replicate 3 ชุด) จนเสร็จก่อน job ถัดไปจึงเริ่มอ่านได้. การเขียนผลกลางลง disk แบบนี้เรียกว่า **materialization**.\n- **dataflow engine = DAG ของ operator ก้อนเดียว**: แทนที่จะเป็น map/reduce แข็ง ๆ engine ให้เรานิยาม operator หลายชนิด (map, filter, join, group, ...) แล้วต่อกันเป็น directed acyclic graph. engine schedule ทั้ง DAG พร้อมกันในคราวเดียว ไม่ใช่ submit ทีละ job.\n- **ไม่เขียน intermediate ลง distributed FS**: ผลลัพธ์ระหว่าง operator ถูก **pipeline** ส่งต่อใน memory หรือ local disk ของ node เดิม ไม่ต้อง replicate ข้ามเครื่องและไม่ต้องรอเขียนจบทั้ง stage. ผลพลอยได้: ไม่ต้อง sort ทุกขั้นเหมือน MapReduce (MR sort เสมอแม้ไม่จำเป็น), reuse process/JVM ได้, และ operator เริ่มทำงานได้ทันทีที่ input พร้อม.\n- **fault recovery ด้วย lineage (recomputation)**: เมื่อไม่เขียน intermediate ลง durable storage ถ้า node เจ๊งแล้วข้อมูลกลางหาย engine จะ **คำนวณใหม่จาก lineage** — กราฟที่บันทึกว่าข้อมูลก้อนนั้นถูกสร้างมาจาก operator ใดบน input ใด (ใน Spark คือ RDD lineage). เงื่อนไขคือ operator ต้อง deterministic (input เดิม → output เดิม) ไม่งั้น recompute แล้วได้ค่าไม่ตรงเดิม. เพื่อลดต้นทุน recompute เราวาง checkpoint (materialize บางจุด) ได้ตามต้องการ.\n- **ทำไมชนะขาดในงาน iterative**: อัลกอริทึมที่ต้องวนซ้ำหลายรอบ (ML training, PageRank — รายละเอียด sibling `graphs-iterative`) บน MapReduce ต้อง start job ใหม่ทุก iteration และอ่าน dataset เต็มจาก HDFS ใหม่ทุกรอบ. dataflow engine cache working set ไว้ใน memory ครั้งเดียวแล้ววนอยู่บนนั้น — ตัด I/O ซ้ำ ๆ ออกทั้งหมด จึงเร็วกว่าได้หลายสิบเท่า.\n\n(หมายเหตุ: Flink และ Spark ทำ stream processing ได้ด้วย แต่นั่นเป็นเรื่องของ ch.11 — บทนี้พูดเฉพาะ batch.)\n\n```mermaid\nflowchart LR\n  subgraph MR[\"MapReduce: materialize each stage\"]\n    I1[Input on HDFS] --> J1[MR job 1]\n    J1 -->|write 3x replicated| D1[Intermediate on HDFS]\n    D1 -->|read back| J2[MR job 2]\n    J2 -->|write 3x replicated| D2[Intermediate on HDFS]\n    D2 --> O1[Final output]\n  end\n  subgraph DF[\"Dataflow engine: one DAG pipelined\"]\n    I2[Input] --> P1[Operator 1]\n    P1 -->|pipeline in memory| P2[Operator 2]\n    P2 -->|pipeline in memory| P3[Operator 3]\n    P3 --> O2[Final output]\n    P2 -.->|recompute from lineage on failure| P1\n  end\n```\n\n## ตัวอย่าง (fintech: nightly settlement + fraud feature pipeline)\n\nสมมติ batch คืนหนึ่งสร้าง settlement report และ feature dataset ให้ model ตรวจ fraud มี 4 stage: (1) parse raw transaction log ดิบ, (2) join กับ merchant master data, (3) aggregate ยอดต่อ merchant ต่อวัน, (4) คำนวณ rolling feature ย้อนหลัง.\n\n- **บน MapReduce**: แต่ละ stage เป็น MR job แยก — stage 1 เขียน parsed transaction ลง HDFS (3 replica), stage 2 อ่านกลับมา join แล้วเขียน joined result ลง HDFS อีก, ต่อไปเรื่อย ๆ. ทุกช่วงต่อมีรอบ write → replicate → read ที่ transaction หลายพันล้านแถวต้องวิ่งผ่าน disk และ network ซ้ำ.\n- **บน Spark**: ทั้ง 4 stage เป็น operator ใน DAG เดียว. joined transaction ไหลจาก operator หนึ่งไปอีกตัวใน memory ไม่แตะ HDFS จนถึง output สุดท้าย. งานคืนที่เคยรัน 3 ชั่วโมงเหลือหลักสิบนาที.\n- **มุม iterative**: ถ้าต่อด้วยการ train logistic-regression fraud model บน feature matrix เดียวกัน Spark cache matrix ไว้ใน memory แล้ววน gradient หลายสิบ epoch บนนั้น; MapReduce จะต้องโหลด matrix จาก HDFS ใหม่ทุก epoch — ช้ากว่ามหาศาล.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Spark เร็วเพราะเก็บทุกอย่างไว้ใน RAM / ต้อง fit RAM\"** ไม่ตรงนัก. หัวใจของความเร็วคือการ *ไม่* materialize และ replicate ผลกลางลง distributed FS ทุก stage และ schedule DAG รวดเดียว; in-memory cache ช่วยมากเฉพาะงาน iterative ที่ reuse ข้อมูลซ้ำ. Spark spill ลง local disk ได้ ไม่ได้บังคับว่าทุกอย่างต้องอยู่ RAM.\n- **\"ไม่เขียน disk = ไม่มี fault tolerance\"** ผิด. มันทน fault ด้วยการ recompute จาก lineage (บวก checkpoint ตามเลือก) ไม่ใช่ด้วยการ replicate intermediate.\n- **\"dataflow engine ทำให้ MapReduce ตกยุคทุกกรณี\"** ไม่เชิง — ดู trade-off ด้านล่าง; งานบางแบบ materialization ยังเหมาะกว่า.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ materialization ยังดีกว่า)\n\n- **memory pressure**: การ pipeline ใน memory ใช้ RAM มากกว่า. ถ้า working set ใหญ่จน spill บ่อยหรือ GC หนัก ข้อได้เปรียบด้านความเร็วหด. cluster ต้องมี memory มากกว่า MapReduce ที่ทำงานบน disk เป็นหลัก.\n- **recompute ของ long pipeline แพง**: fault recovery แบบ lineage หมายความว่าถ้าข้อมูลกลางที่อยู่ปลาย pipeline หาย ต้อง recompute ย้อนตาม lineage ที่ยาว ซึ่งอาจแพงกว่า MapReduce ที่แค่ re-run task เดียวจาก input ที่ replicate ไว้บน disk อยู่แล้ว. ยิ่ง pipeline ยาวและไม่มี checkpoint ยิ่งเสี่ยง.\n- **ต้อง deterministic**: lineage recomputation ใช้ได้ก็ต่อเมื่อ operator deterministic. ถ้ามี randomness, อ่าน external state, หรืออิง wall clock ต้อง checkpoint ไม่งั้น recompute แล้วได้ผลเพี้ยน.\n- **เมื่อ materialization ยังดีกว่า**: job single-stage ง่าย ๆ ที่ไม่ได้ประโยชน์จาก pipelining, งานที่ใหญ่เกิน memory มากและอยากได้ intermediate ที่ durable, หรือเมื่อ output ของ stage หนึ่งถูกใช้ร่วมโดยหลาย job อิสระจริง ๆ (materialize ครั้งเดียวแล้วใช้ซ้ำได้). MapReduce ที่เขียนทุกอย่างลง disk ช้ากว่าแต่เรียบง่าย ทน fault ระดับ cluster ใหญ่ และรับงานที่เกิน memory ได้สบาย.\n\n## มุมสัมภาษณ์\n\n- \"ทำไม Spark เร็วกว่า MapReduce?\" → ไม่ materialize และ replicate ผลกลางลง HDFS ทุก stage, schedule DAG รวดเดียว, pipeline ใน memory, ไม่ force sort.\n- \"ถ้าไม่ replicate intermediate แล้ว node เจ๊ง ข้อมูลกลางหาย จะกู้ยังไง?\" → recompute จาก lineage ของ operator ที่ deterministic; วาง checkpoint เพื่อจำกัดความยาวที่ต้อง recompute.\n- \"ทำไม iterative job (ML/graph) บน MapReduce ถึงช้ามาก?\" → ทุก iteration เป็น job ใหม่ที่อ่าน dataset เต็มจาก HDFS ซ้ำ; dataflow เก็บ working set ใน memory ข้าม iteration.\n- \"เมื่อไหร่จะ *ไม่* เลือก dataflow engine?\" → คำถามวัด trade-off: memory ไม่พอ, long-lineage recompute แพง, operator non-deterministic, หรือ ต้องการ durable intermediate ที่หลาย job ใช้ร่วมกัน.\n",
+  "recall_checks": [
+    {
+      "q": "อะไรคือความแตกต่างหลักที่ทำให้ dataflow engine เร็วกว่า MapReduce ในงาน multi-stage?",
+      "expected_answer": "ไม่เขียน intermediate state ลง distributed filesystem ระหว่างทุก stage แต่ pipeline ต่อกันใน memory",
+      "type": "mcq",
+      "options": [
+        "ไม่เขียน intermediate state ลง distributed filesystem ระหว่างทุก stage แต่ pipeline ต่อกันใน memory",
+        "บีบอัด output ของทุก stage ด้วย codec ที่เร็วกว่าก่อนเขียนลง HDFS แล้วอ่านกลับแบบขนานหลาย thread",
+        "replicate intermediate state เป็น 5 ชุดแทน 3 ชุด แล้วกระจายอ่านจากหลาย replica พร้อมกันเพื่อลด latency"
+      ]
+    },
+    {
+      "q": "ทำไม iterative algorithm อย่าง ML training จึงช้ามากบน MapReduce แต่เร็วบน dataflow engine?",
+      "expected_answer": "MapReduce start job ใหม่ทุก iteration และอ่าน dataset เต็มจาก HDFS ซ้ำ ส่วน dataflow cache working set ใน memory ข้าม iteration",
+      "type": "mcq",
+      "options": [
+        "MapReduce จำกัดจำนวน iteration ไว้ที่ 10 รอบต่อ job ส่วน dataflow วนได้ไม่จำกัดและ merge ผลอัตโนมัติทุกรอบจน model converge",
+        "MapReduce start job ใหม่ทุก iteration และอ่าน dataset เต็มจาก HDFS ซ้ำ ส่วน dataflow cache working set ใน memory ข้าม iteration",
+        "MapReduce ต้องรัน reduce ก่อน map ทุกรอบ ทำให้ต้องกลับลำดับ ส่วน dataflow จัด operator ใหม่ให้เองทุก iteration โดยไม่ต้องอ่าน HDFS"
+      ]
+    },
+    {
+      "q": "dataflow engine กู้ข้อมูล intermediate ที่หายไปกับ node ที่เจ๊งได้อย่างไร ในเมื่อมันไม่ replicate ผลกลางลง disk?",
+      "expected_answer": "คำนวณใหม่ (recompute) จาก lineage — กราฟที่บันทึกว่าข้อมูลก้อนนั้นสร้างมาจาก operator ใดบน input ใด โดยต้องเป็น deterministic operator; วาง checkpoint เพื่อจำกัดความยาวที่ต้อง recompute",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคือ trade-off ของการทำ fault recovery ด้วย lineage recomputation?",
+      "expected_answer": "ถ้าข้อมูลกลางปลาย pipeline หาย อาจต้อง recompute ย้อน lineage ที่ยาว ซึ่งแพงกว่าการ re-run task เดียวจาก input บน disk",
+      "type": "mcq",
+      "options": [
+        "lineage บันทึกได้เฉพาะ operator แบบ map เท่านั้น ไม่รองรับ join หรือ group จึงต้อง fallback ไปเขียน HDFS ทุกครั้ง",
+        "lineage ต้องถูก replicate 3 ชุดข้าม cluster ทำให้ใช้ disk มากกว่า MapReduce เสมอ และยิ่งช้าลงเมื่อ pipeline สั้น",
+        "ถ้าข้อมูลกลางปลาย pipeline หาย อาจต้อง recompute ย้อน lineage ที่ยาว ซึ่งแพงกว่าการ re-run task เดียวจาก input บน disk"
+      ]
+    },
+    {
+      "q": "ยกหนึ่งกรณีที่การ materialize ผลกลางลง disk แบบ MapReduce ยังเหมาะกว่า dataflow engine",
+      "expected_answer": "เช่น เมื่อ output ของ stage ถูกใช้ร่วมโดยหลาย job อิสระ (materialize ครั้งเดียวใช้ซ้ำ), งานที่ใหญ่เกิน memory มากและต้องการ intermediate ที่ durable, หรือ job single-stage ง่าย ๆ ที่ไม่ได้ประโยชน์จาก pipelining",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 10: Batch Processing (Dataflow Engines)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 10",
+      "why": "อ่านต้นฉบับเปรียบเทียบ MapReduce materialization กับ dataflow engine และ fault tolerance ด้วย recomputation"
+    },
+    {
+      "title": "Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory Cluster Computing",
+      "source": "Zaharia et al., NSDI 2012 (Spark RDD paper)",
+      "why": "อ่านต้นตอแนวคิด RDD, lineage และการกู้ข้อมูลด้วย recomputation แทนการ replicate"
+    },
+    {
+      "title": "Apache Spark — RDD Programming Guide",
+      "source": "spark.apache.org, RDD Programming Guide",
+      "why": "อ่านนิยาม transformation/action, lineage และ persist/checkpoint จากเอกสารทางการ"
+    }
+  ]
+}

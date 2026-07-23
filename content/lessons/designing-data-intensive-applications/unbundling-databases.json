@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "unbundling-databases",
+  "version": 1,
+  "title_en": "Unbundling Databases",
+  "est_minutes": 8,
+  "body_md": "# Unbundling Databases\n\n## ทำไมถึงสำคัญ\n\ndatabase แบบดั้งเดิม **bundle** หลายฟังก์ชันไว้หลังหน้าตาเดียว: durable storage engine, secondary index, materialized view, replication, และ caching โดยตัว database รับผิดชอบให้ทุกส่วนสอดคล้องกันเองภายใน. เมื่อระบบโตขึ้นจะพบว่าไม่มี database ตัวไหน \"เก่งที่สุด\" ในทุกงาน — และคำถามสัมภาษณ์ระดับ senior มักวัดว่าคุณเข้าใจไหมว่า **event log** ต่างหากที่เป็นตัวทำให้ประกอบ component แยกส่วนเข้าด้วยกันได้อย่างปลอดภัย ไม่ใช่แค่ \"เอาหลาย tool มาต่อกัน\".\n\n## แก่นของแนวคิด\n\n- มอง database เป็นการ bundle ของฟังก์ชันย่อย ๆ ที่ *แยกออกเป็น component อิสระได้*: storage engine เก็บ record, **query execution / query API** ที่รับ request แล้วประมวลผลออกมาเป็นคำตอบ, secondary index สำหรับค้นหา, materialized view สำหรับ query สำเร็จรูป, replication สำหรับสำเนา, cache สำหรับ read เร็ว.\n- **Unbundling** = ดึงฟังก์ชันเหล่านี้ออกมาเป็นเครื่องมือเฉพาะทางแต่ละตัว (เช่น Postgres เป็น system of record, Elasticsearch เป็น search index, Redis เป็น cache, columnar warehouse เป็น analytics) แล้ว **wire เข้าด้วยกันผ่าน event log / stream** ที่ propagate ทุก write จาก system of record ไปยัง derived store ทุกตัว เพื่อ maintain ให้ sync กัน.\n- log คือ \"กระดูกสันหลัง\" ของการประสานงาน. Kleppmann เป็นผู้เรียกแนวคิดนี้ว่า **\"unbundling the database\"** และ **\"turning the database inside out\"** — database ที่ถูกกลับด้านออกมา: แทนที่ database จะ update index/view ให้เองภายใน กลับให้ dataflow ภายนอกที่ขับด้วย log ทำแทน. (แนวคิดตั้งต้นเรื่อง log เป็น unifying abstraction ปรากฏก่อนหน้าในบทความ \"The Log\" ของ Jay Kreps ปี 2013 แต่คำว่า unbundling / inside out เป็นของ Kleppmann เอง.)\n- ทำไม log ถึงทำให้ประกอบกันได้ *อย่างปลอดภัย*: เพราะมันให้ single source of truth ที่ **ordered + replayable** — เหมือนปรัชญา Unix \"everything is a stream / pipe\" ที่เอา tool เล็ก ๆ เฉพาะทางมาต่อกันผ่าน interface เดียว. กลไก ordering และ replay ของ log เองอยู่ใน ch.11 (partitioned logs) — ที่นี่สนใจแค่ว่ามันคือ interface กลางที่ทำให้ coupling หลวมได้.\n- derived data (index, cache, materialized view) เป็นของ **disposable**: ลบทิ้งแล้ว replay log สร้างใหม่ได้เสมอ — นี่คือเหตุผลที่การเพิ่ม/สลับ component ทำได้ถูกและปลอดภัย.\n\n## Unbundling vs Federation (คนละ path กัน)\n\nจุดที่คนสับสนบ่อยและเป็นกับดักสัมภาษณ์:\n\n- **Unbundling** จัดการ **write / synchronization path** — write หนึ่งครั้งไหลออกไปอัปเดต derived store ทุกตัวให้ตรงกันได้อย่างไร.\n- **Federation / polystore** จัดการ **read / query path** — วาง query layer เดียว (เช่น Trino/Presto) ทับ store ที่มีอยู่ เพื่อ query หลายที่พร้อมกันโดย *ไม่ต้องย้ายข้อมูล*.\n\nทั้งสองแก้คนละปัญหา: federation รวม read, unbundling รวม write. ระบบจริงมักต้องใช้ทั้งคู่. ส่วนคำถามว่า *ควรรวม derived store ตัวไหนบ้าง* และ trade-off ของ data integration โดยรวม อยู่ใน sibling `data-integration`.\n\n## ตัวอย่าง (payments platform)\n\nsystem of record คือ ledger บน Postgres (ยอดบัญชี / journal entry ที่ถือเป็น authoritative). ระบบยังต้องการ:\n\n- full-text + fuzzy search บน transaction สำหรับทีม fraud/ops → **Elasticsearch**\n- balance lookup ระดับ sub-ms ให้แอป → **Redis cache**\n- reporting เชิงวิเคราะห์และ regulatory → **columnar data warehouse**\n\nถ้าฝืน **bundle** ทุกอย่างไว้ที่ Postgres ตัวเดียว: full-text อ่อน, ไม่มี columnar analytics, cache ที่แปะเพิ่มก็ค้าง (stale) ได้.\n\nแบบ **unbundled**: ทุก write ที่ ledger ปล่อย event เข้า log (ผ่าน CDC — sibling `change-data-capture`). consumer แต่ละตัว build search index, balance cache, และ warehouse ของตัวเองจาก log. อยากเพิ่มโมเดล fraud ใหม่ที่ใช้ index คนละแบบ? เปิด consumer ใหม่ replay log ตั้งแต่ต้น มันสร้าง state ของตัวเองขึ้นมา โดย **ไม่แตะ ledger เลย**. นี่คือ \"database ที่กลับด้านออกมา\": ledger + log + derived store ทั้งหมด รวมกันทำงานเหมือน database หนึ่งตัวที่คุณประกอบ internal ขึ้นเอง.\n\n```mermaid\nflowchart LR\n  subgraph BUNDLED[\"Bundled DB: one engine, one interface\"]\n    Q1[\"App reads and writes\"] --> DB[(\"Monolithic DB: storage + index + view + cache\")]\n  end\n  subgraph UNBUNDLED[\"Unbundled: components joined by a log\"]\n    W2[\"App writes\"] --> SOR[(\"System of record: ledger\")]\n    SOR --> LOG[(\"Event log / stream\")]\n    LOG --> IDX[\"Search index (Elasticsearch)\"]\n    LOG --> CACHE[\"Balance cache (Redis)\"]\n    LOG --> DW[\"Data warehouse (columnar)\"]\n    LOG -. \"replay to rebuild state\" .-> NEW[\"New consumer: own index\"]\n  end\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Unbundling = microservices / database-per-service\"** ผิด. นั่นคือการแบ่ง *service*. Unbundling คือการแยก *ฟังก์ชันของ database* (storage vs index vs view vs cache) แล้วต่อกลับด้วย log — เกิดขึ้นได้แม้ภายในข้อมูลของ service เดียว.\n- **\"Unbundling = federation/polystore\"** ผิด. federation คือ read-side query layer ทับ store เดิม; unbundling คือ write-side dataflow ที่ทำให้ derived store sync. สับสนสองอันนี้คือกับดักคลาสสิก.\n- **\"derived store ต้อง strongly consistent กับ source\"** ผิด. log ทำให้มัน **eventually consistent**; คุณยอมรับ lag แลกกับความสามารถในการประกอบ.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรทำ และแลกด้วยอะไร)\n\nUnbundling ให้ **flexibility** (เลือก tool ที่เหมาะกับแต่ละงาน, พัฒนาแต่ละชิ้นแยกกันได้) แต่คุณต้องรับภาระที่ bundled database เคยทำให้ฟรี:\n\n- **operational burden**: sync/monitor component หลายตัวเอง, จัดการ log, schema evolution ข้าม consumer, deploy และ failure mode มากขึ้น, ต้องมี expertise ทั้ง Kafka + ES + Redis + warehouse แทน Postgres ตัวเดียว.\n- **consistency**: derived store เป็น eventually consistent; ไม่มี cross-component transaction หรือ foreign key — เขียน atomic ข้ามหลาย store พร้อมกันไม่ได้. ถ้า invariant ต้องการ read-your-writes บน search index ทันที unbundling จะเจ็บ.\n- **debugging ยากขึ้น**: bug หนึ่งกระจายข้าม producer + log + consumer หลายตัว ต้องไล่หลายระบบ.\n\n**เมื่อไหร่ไม่ควร**: แอปเล็ก/กลางที่ database ตัวเดียวรับทุก workload ได้สบาย; งานที่ต้องการ strong consistency ข้าม derived data; ทีมที่ยังไม่มี ops maturity พอจะรัน streaming platform. bundled database ตัวเดียวคือ default ที่ถูกต้อง จนกว่าจะมี workload สักตัวโตเกินกว่าที่ engine เดียวทำได้ดี. คำตอบระดับ senior: **unbundle เฉพาะฟังก์ชันที่กำลังเจ็บ** ไม่ใช่ทั้งระบบเพราะเป็นหลักการ.\n\n## มุมสัมภาษณ์\n\n- \"มอง database เป็นสิ่งที่ unbundle ได้หมายความว่าอย่างไร / 'turning the database inside out' คืออะไร?\" → แยก component (storage/index/view/cache) ออกมาแล้วต่อกลับด้วย log.\n- \"Unbundling ต่างจาก federation/polystore ตรงไหน?\" → write/sync path vs read/query path.\n- \"จะเพิ่ม index หรือ derived view ใหม่โดยไม่แตะ source of record ได้อย่างไร?\" → เปิด consumer ใหม่ replay log สร้าง state ของตัวเอง; derived data เป็น disposable/rebuildable.\n- \"แลกอะไรไปบ้าง?\" → cross-component transaction/consistency + operational burden ที่ bundle เคยซ่อนให้.\n",
+  "recall_checks": [
+    {
+      "q": "อะไรคือกลไกที่เชื่อม component ต่าง ๆ ของ unbundled database ให้ sync กัน และทำให้ประกอบกันได้อย่างปลอดภัย?",
+      "expected_answer": "event log / stream (log-based coordination) ที่ ordered + replayable และ propagate ทุก write จาก system of record ไปยัง derived store ทุกตัว",
+      "type": "short_answer"
+    },
+    {
+      "q": "unbundling database ต่างจาก federation/polystore ตรงไหน?",
+      "expected_answer": "unbundling เน้น write/sync path ให้ store sync กัน",
+      "type": "mcq",
+      "options": [
+        "unbundling เน้น write/sync path ให้ store sync กัน",
+        "unbundling เน้น read path ส่วน federation เน้น write",
+        "unbundling กับ federation คือกลไกเดียวกันเป๊ะ"
+      ]
+    },
+    {
+      "q": "derived store (index, cache) ใน unbundled architecture มีลักษณะสำคัญคือ?",
+      "expected_answer": "disposable — replay log เพื่อ rebuild ใหม่ได้เสมอ",
+      "type": "mcq",
+      "options": [
+        "authoritative — เป็น source of truth ที่ replay ไม่ได้",
+        "immutable — สร้างแล้วแก้ไขหรือลบทิ้งไม่ได้เลย",
+        "disposable — replay log เพื่อ rebuild ใหม่ได้เสมอ"
+      ]
+    },
+    {
+      "q": "ทำไม unbundling ถึงแลกความยืดหยุ่นมาด้วย operational burden ที่มากขึ้น?",
+      "expected_answer": "เพราะต้อง sync/monitor component หลายตัวเอง, ไม่มี cross-component transaction, derived store eventually consistent, และ bug กระจายข้าม producer + log + consumer หลายตัวทำให้ debug ยาก",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดเป็นเหตุผลที่ 'ไม่ควร' unbundle database?",
+      "expected_answer": "ต้องการ strong consistency ข้าม derived store",
+      "type": "mcq",
+      "options": [
+        "ต้องรองรับ workload ที่ engine เดียวทำได้ไม่ดีพอ",
+        "ต้องการ strong consistency ข้าม derived store",
+        "ทีมมี ops maturity รัน streaming platform ได้เอง"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 12: The Future of Data Systems (Unbundling Databases)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 12",
+      "why": "อ่านต้นฉบับแนวคิด unbundling และ 'database turned inside out'"
+    },
+    {
+      "title": "Turning the Database Inside-Out with Apache Samza",
+      "source": "Martin Kleppmann, martin.kleppmann.com (2015)",
+      "why": "อ่านที่มาของ metaphor 'database inside out' และบทบาทของ log เป็น coordination spine"
+    },
+    {
+      "title": "The Log: What every software engineer should know about real-time data's unifying abstraction",
+      "source": "Jay Kreps, LinkedIn Engineering blog (2013)",
+      "why": "อ่านว่าทำไม log เป็น abstraction กลางที่ทำให้ unbundle component ได้อย่างปลอดภัย"
+    }
+  ]
+}

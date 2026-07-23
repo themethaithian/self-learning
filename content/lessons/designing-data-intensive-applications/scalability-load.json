@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "scalability-load",
+  "version": 1,
+  "title_en": "Scalability and Load",
+  "est_minutes": 8,
+  "body_md": "# Scalability and Load\n\n## ทำไมถึงสำคัญ\n\n\"ระบบนี้ scale ได้ไหม\" เป็นคำถามที่ยังตอบไม่ได้จนกว่าจะนิยามก่อนว่า *load* ตัวไหนกำลังเพิ่ม. Scalability ไม่ใช่ป้ายไบนารีที่แปะว่าระบบ \"scalable / ไม่ scalable\" แต่คือคำถามว่า \"ถ้า load เพิ่มในลักษณะนี้ เรามีทางเลือกอะไรบ้างเพื่อรับมือ\". หน้าที่แรกของ senior จึงไม่ใช่รีบเลือก architecture แต่คือ **อธิบาย load ให้เป็นตัวเลขก่อน**.\n\n## แก่นของแนวคิด\n\nScalability = ความสามารถของระบบในการรับมือ load ที่เพิ่มขึ้น. เพื่อพูดเรื่องนี้อย่างมีความหมายต้องทำสองขั้นตามลำดับ:\n\n1. **อธิบาย load ด้วย load parameter** — ตัวเลขไม่กี่ตัวที่สรุปว่า \"โหลด\" ของระบบหน้าตาเป็นอย่างไร. ตัวไหนสำคัญ *ขึ้นกับ architecture ของระบบนั้น* ไม่มีชุดมาตรฐานตายตัว เช่น:\n   - requests per second (web server)\n   - ratio ของ read ต่อ write (database)\n   - จำนวน simultaneously active users\n   - hit rate ของ cache\n   - สำหรับบางระบบตัวที่สำคัญคือ *ค่าเฉลี่ย*; สำหรับบางระบบคือ *หางของ distribution* — ไม่กี่รายที่ extreme จนครอบงำพฤติกรรมทั้งระบบ\n2. เมื่อ load ถูกอธิบายชัดแล้ว จึงค่อยถามว่า \"ถ้า parameter ตัวนี้เพิ่ม 10 เท่า จะเกิดอะไรกับ performance\". วิธี *วัด* performance (average เทียบกับ p95/p99 tail latency) เป็นเรื่องของ concept **latency-percentiles**; วิธี *รับมือ* (scale up เทียบกับ scale out, elastic) เป็นเรื่องของ **coping-with-load**. บทนี้โฟกัสเฉพาะขั้นแรกคืออธิบาย load ให้ถูก.\n\nประเด็นสำคัญ: เลือก load parameter ผิด แล้วทุกอย่างหลังจากนั้นผิดตาม — capacity plan, benchmark, และ architecture ล้วน derive มาจากนิยาม load ทั้งสิ้น.\n\n## ตัวอย่าง: Twitter home timeline\n\nตัวอย่าง canonical จาก DDIA. Twitter มีสอง operation หลัก:\n\n- **post tweet**: user โพสต์ tweet (ในตัวอย่างของหนังสือ peak ราว ~12k requests/sec)\n- **home timeline**: user เปิดแอปเพื่ออ่าน tweet ของทุกคนที่ตัวเอง follow (โหลดหนักกว่ามาก ราว ~300k reads/sec)\n\nปัญหาไม่ได้อยู่ที่ปริมาณ tweet (write ค่อนข้างเบา) แต่อยู่ที่ **fan-out**: แต่ละ user follow คนจำนวนมาก และแต่ละคนก็มี follower จำนวนมาก. มีสองวิธีจัดการ:\n\n- **Fan-out-on-read**: เก็บ tweet ไว้ที่เดียว. ตอน user เปิด timeline ค่อย query tweet ของทุกคนที่เขา follow แล้ว merge + sort ตอนนั้น → เขียนถูก อ่านแพง.\n- **Fan-out-on-write**: precompute. ตอนมีคนโพสต์ tweet ให้ push tweet นั้นเข้า \"home timeline cache\" ของ follower ทุกคนทันที; ตอน user เปิด timeline แค่อ่าน cache ของตัวเอง → อ่านถูกมาก เขียนแพง.\n\n```mermaid\nflowchart TD\n  subgraph fow[Fan-out-on-write]\n    T1[Alice posts a tweet] --> L1[Look up all followers]\n    L1 --> W1[Push tweet into each follower timeline cache]\n    RD1[Bob opens app] --> RC1[Read own timeline cache: cheap]\n  end\n  subgraph forr[Fan-out-on-read]\n    T2[Alice posts a tweet] --> ST2[Store tweet once]\n    RD2[Bob opens app] --> QU2[Query tweets of everyone Bob follows]\n    QU2 --> MG2[Merge and sort at read time: expensive]\n  end\n```\n\nTwitter เลือก fan-out-on-write เพราะ read หนักกว่า write มาก จึงคุ้มที่จะย้ายงานไปฝั่ง write. แต่ **load parameter ที่ตัดสินจริง ๆ คือ distribution ของจำนวน follower ต่อ user ไม่ใช่ค่าเฉลี่ย**. ผู้ใช้ทั่วไปมี follower หลักสิบ (ในตัวอย่างเฉลี่ย ~75) — push เข้า 75 cache ไม่แพง. แต่ celebrity ที่มี follower เป็นสิบล้าน การโพสต์ tweet เดียวกลายเป็นสิบล้าน write ทันที ทำให้ fan-out-on-write พังเฉพาะกรณีนี้.\n\nคำตอบจริงจึงเป็น **hybrid**: คนทั่วไปใช้ fan-out-on-write, ส่วน celebrity ไม่ fan-out ตอนเขียน — timeline ของ follower จะดึง tweet ของ celebrity ที่ follow แบบ fan-out-on-read ตอนอ่าน แล้ว merge เข้ากับ cache ที่ precompute ไว้. สังเกตว่า ถ้าไม่เคยอธิบาย load ด้วย \"follower distribution\" มาก่อน จะมองไม่เห็นเลยว่าทำไมต้อง hybrid. (celebrity แบบนี้คือ hot key รูปแบบหนึ่ง เชื่อมกับปัญหา hot spot ใน partitioning — concept **hot-spots-skew** ลงรายละเอียดการกระจาย hot key.)\n\nFintech analogy: ระบบ ledger ที่ merchant รายใหญ่รายเดียวสร้าง transaction เป็นสัดส่วนมหาศาลของทั้งระบบ — load parameter ที่สำคัญไม่ใช่ \"จำนวน transaction เฉลี่ยต่อ merchant\" แต่คือ skew ของ transaction ต่อ merchant. ถ้าดู average แล้ววางแผน capacity จะพลาด hot merchant เสมอ.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Scalable / not scalable เป็นคุณสมบัติแบบไบนารีของระบบ\"** ผิด. ระบบหนึ่ง scale ดีสำหรับ load แบบหนึ่งแต่พังกับอีกแบบ; ต้องถามเสมอว่า \"scale ตาม parameter ไหน\".\n- **\"load parameter ที่ถูกคือค่าเฉลี่ย\"** ผิด. บ่อยครั้ง tail ของ distribution (celebrity, hot merchant) คือสิ่งที่ทำระบบพัง ไม่ใช่ค่ากลาง.\n- **\"fan-out-on-write เร็วกว่าเลยดีกว่าเสมอ\"** ผิด. มันแค่ย้ายงานจาก read ไป write; คุ้มก็ต่อเมื่อ read มากกว่า write มาก และ fan-out ไม่ระเบิด.\n\n## ขีดจำกัด / trade-off\n\n- **fan-out-on-write เทียบ fan-out-on-read คือการแลก write-time work กับ read-time work** ไม่มีคำตอบสากล. เลือกจาก load parameter จริง (read:write ratio, follower distribution): ระบบที่ read หนักเลือก precompute; ระบบที่ write หนักหรือ fan-out ใหญ่เลือกประกอบตอนอ่าน; ระบบจริงมัก hybrid.\n- **ออกแบบเผื่อ scale ล่วงหน้ามากเกินไปเป็น anti-pattern.** architecture ที่ทน load ระดับ Twitter นั้นซับซ้อน แพงในการดูแล และช้าในการพัฒนา. ถ้า load ปัจจุบันยังห่างไกล การ optimize ตอนนี้คือการจ่ายต้นทุน complexity เพื่อปัญหาที่ยังไม่มี — และ load parameter อาจเปลี่ยนหน้าตาก่อนจะถึงจุดนั้น ทำให้ optimize ผิดจุด. DDIA ชี้ว่า architecture ที่ดีที่ load ระดับหนึ่งมักไม่เหมาะกับอีกระดับ ระบบที่โตเร็วจึงต้องคิดใหม่เป็นระยะ ไม่ใช่ over-engineer ครั้งเดียวจบ.\n- **ต้นทุนที่ต้องจ่ายจริง**: fan-out-on-write แลกมาด้วย storage ของ cache ที่ซ้ำซ้อน + งาน write ที่ระเบิดตามจำนวน follower + ความซับซ้อนของ hybrid path; fan-out-on-read แลกมาด้วย read latency สูงและ query ที่แพงตอนมี user active พร้อมกันเยอะ.\n\n## มุมสัมภาษณ์\n\n- โจทย์ \"ออกแบบ Twitter / News feed\" เกือบทุกครั้งจะวนมาที่ fan-out-on-write เทียบ fan-out-on-read. คำตอบที่ดีเริ่มจาก *ถาม load parameter* (read:write ratio, follower distribution) ก่อนเลือก ไม่ใช่รีบวาด architecture.\n- \"จะ scale ระบบนี้ยังไง\" → ตอบกลับด้วยการนิยาม load ก่อน: \"load parameter ที่สำคัญของระบบนี้คืออะไร แล้วมันจะเพิ่มในรูปแบบไหน\". การรีบตอบ \"เพิ่ม server\" โดยไม่นิยาม load เป็นสัญญาณ junior.\n- \"ทำไม fan-out-on-write ถึงพังกับ celebrity\" → เพราะ load parameter จริงคือ distribution ของ follower ไม่ใช่ค่าเฉลี่ย; นำไปสู่คำตอบ hybrid.\n- ระวังกับดัก: interviewer มักถามต่อ \"แล้ว p99 latency ล่ะ\" — นั่นข้ามไปเรื่องการ *วัด* performance ด้วย percentiles ซึ่งเป็นคนละขั้นกับการอธิบาย load (ดู concept latency-percentiles).\n",
+  "recall_checks": [
+    {
+      "q": "Scalability คืออะไร และทำไมต้องนิยาม load parameter ให้ชัดก่อนถึงจะพูดเรื่อง scale ได้อย่างมีความหมาย?",
+      "expected_answer": "scalability = ความสามารถของระบบในการรับมือ load ที่เพิ่มขึ้น; ต้องนิยาม load parameter ก่อนเพราะคำถาม 'scale ได้ไหม' ไม่มีความหมายจนกว่าจะระบุว่า load ตัวไหนกำลังเพิ่มและเพิ่มในรูปแบบไหน",
+      "type": "short_answer"
+    },
+    {
+      "q": "ในตัวอย่าง Twitter home timeline load parameter ตัวไหนที่ทำให้ fan-out-on-write มีปัญหา?",
+      "expected_answer": "การกระจาย (distribution) ของจำนวน follower ต่อ user โดยเฉพาะ celebrity ที่มี follower มหาศาล",
+      "type": "mcq",
+      "options": [
+        "การกระจาย (distribution) ของจำนวน follower ต่อ user โดยเฉพาะ celebrity ที่มี follower มหาศาล",
+        "จำนวน tweet ทั้งหมดที่เคยถูกโพสต์ในระบบ",
+        "ความยาวเฉลี่ยของตัวอักษรใน tweet แต่ละอัน"
+      ]
+    },
+    {
+      "q": "fan-out-on-write ต่างจาก fan-out-on-read อย่างไร?",
+      "expected_answer": "fan-out-on-write precompute timeline ตอนเขียนจึงอ่านถูก ส่วน fan-out-on-read ประกอบ timeline ตอนอ่านจึงเขียนถูกแต่อ่านแพง",
+      "type": "mcq",
+      "options": [
+        "fan-out-on-write ทำงานหนักตอนอ่าน ส่วน fan-out-on-read ทำงานหนักตอนเขียน",
+        "fan-out-on-write precompute timeline ตอนเขียนจึงอ่านถูก ส่วน fan-out-on-read ประกอบ timeline ตอนอ่านจึงเขียนถูกแต่อ่านแพง",
+        "ทั้งสองแบบทำงานเท่ากันทุกจุด ต่างแค่ชื่อเรียก"
+      ]
+    },
+    {
+      "q": "ทำไมการออกแบบเผื่อ scale ล่วงหน้ามากเกินไปจึงเป็น anti-pattern?",
+      "expected_answer": "เพราะ architecture ที่ทน load สูงมักซับซ้อน แพง และช้าในการพัฒนา ซึ่งเกินจำเป็นสำหรับ load ปัจจุบัน อีกทั้ง load parameter อาจเปลี่ยนหน้าตาก่อนจะถึงจุดนั้น ทำให้ optimize ผิดจุด",
+      "type": "short_answer"
+    },
+    {
+      "q": "ในสัมภาษณ์ ถ้าถูกถามว่า 'ควรใช้ fan-out-on-write หรือ fan-out-on-read?' คำตอบระดับ senior ที่ถูกต้องคือข้อใด?",
+      "expected_answer": "ขึ้นกับ load parameter จริง (read:write ratio, follower distribution) และระบบจริงมักใช้ hybrid — คนทั่วไป fan-out-on-write, celebrity fan-out-on-read",
+      "type": "mcq",
+      "options": [
+        "fan-out-on-write ดีกว่าเสมอเพราะอ่านเร็ว",
+        "fan-out-on-read ดีกว่าเสมอเพราะเขียนถูก",
+        "ขึ้นกับ load parameter จริง (read:write ratio, follower distribution) และระบบจริงมักใช้ hybrid — คนทั่วไป fan-out-on-write, celebrity fan-out-on-read"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 1: Scalability (Describing Load)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 1",
+      "why": "อ่านต้นฉบับแนวคิด load parameter และตัวอย่าง Twitter fan-out-on-write vs on-read"
+    },
+    {
+      "title": "Timelines at Scale",
+      "source": "Raffi Krikorian (Twitter), InfoQ / QCon presentation",
+      "why": "ดูรายละเอียดจริงของ Twitter home timeline architecture ที่ DDIA อ้างถึง"
+    },
+    {
+      "title": "Designing Data-Intensive Applications — companion site",
+      "source": "dataintensive.net",
+      "why": "สรุปแต่ละบทและ reference list ของหนังสือ สำหรับต่อยอดเรื่อง scalability"
+    }
+  ]
+}

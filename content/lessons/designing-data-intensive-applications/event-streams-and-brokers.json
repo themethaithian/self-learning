@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "event-streams-and-brokers",
+  "version": 1,
+  "title_en": "Transmitting Event Streams",
+  "est_minutes": 7,
+  "body_md": "# Transmitting Event Streams\n\n## ทำไมถึงสำคัญ\n\nBatch processing ทำงานกับ input ที่มีจุดจบ (bounded) แล้ว job ก็จบ. แต่ข้อมูลจริงในระบบเกิดขึ้น *ต่อเนื่องไม่มีวันจบ* — ทุกการจ่ายเงิน ทุก login ทุกคลิก คือ event ที่ทยอยเข้ามาเรื่อย ๆ. Stream processing จึงต้อง process แบบ incremental ทันทีที่ event มาถึง แทนที่จะรอสะสมเป็นก้อนแล้วรันทีเดียว. คำถามหลักของบทนี้คือ: จะ *ส่ง* event จากคนผลิตไปถึงคนใช้อย่างไรให้ทนทานและ decouple กัน — ซึ่งคือหน้าที่ของ message broker.\n\n## แก่นของแนวคิด\n\n**event คืออะไร** — event คือ record ขนาดเล็ก, immutable (เขียนแล้วไม่แก้), มี timestamp กำกับ, บันทึก \"สิ่งที่เกิดขึ้น ณ เวลาหนึ่ง\" (เช่น `payment.captured` ตอน 10:00:01). ฝั่งที่สร้าง event เรียก **producer** (หรือ publisher), ฝั่งที่รับไปใช้เรียก **consumer** (หรือ subscriber). กลุ่ม event ที่เกี่ยวข้องกันเรียก **topic** หรือ **stream**. เพราะ stream ไม่มีจุดจบ เราจึง process แบบ incremental ไม่ใช่รอ input ครบก่อน.\n\n**ทำไมต้องมี message broker** — ทางที่ง่ายสุดคือให้ producer ยิงตรงถึง consumer (direct messaging เช่น HTTP call) แต่มันเปราะ: ถ้า consumer ช้า, ล่ม, หรือยังไม่ online — event หาย หรือ producer ต้องบล็อกรอ. **Message broker** (หรือ message queue) คือ middleware ที่คั่นกลาง: producer เขียน event เข้า broker แล้วจบหน้าที่, broker เก็บ buffer ไว้จนกว่า consumer พร้อมค่อยดึงไปประมวลผล. ผลคือสองฝั่ง decouple กัน — producer ไม่ต้องรู้จัก consumer, เพิ่ม/ลด consumer ได้อิสระ, และ broker ดูดซับ load ที่พุ่งขึ้นชั่วคราวแทนที่จะให้ระบบพัง.\n\n**JMS/AMQP-style broker (transient)** — broker คลาสสิกอย่าง RabbitMQ, ActiveMQ ทำงานแบบ: message ถูกส่งให้ consumer → consumer ทำเสร็จแล้วส่ง **ack** กลับ → broker **ลบ** message นั้นทิ้ง. โมเดล \"ack-and-delete\" นี้มองคิวเป็นที่พักงานชั่วคราว ไม่ใช่คลังเก็บประวัติ. รองรับสองรูปแบบการกระจายงาน:\n\n- **Load balancing (competing consumers)** — แต่ละ message ส่งไปที่ consumer *ตัวใดตัวหนึ่ง* ในกลุ่ม เพื่อแบ่งงานกันทำแบบขนาน. เหมาะเมื่อ process หนักและอยากเพิ่ม throughput ด้วยการเพิ่ม worker.\n- **Fan-out** — แต่ละ message ส่ง *สำเนาให้ทุก* consumer ที่ subscribe. เหมาะเมื่อหลายระบบต้องเห็น event เดียวกันโดยอิสระ (เช่น ledger กับ notification ต่างก็ต้องรู้ว่ามีการจ่ายเงิน).\n- ทั้งสองผสมกันได้: fan-out ไปหลายกลุ่ม แล้วในแต่ละกลุ่ม load-balance กันภายใน.\n\n**ข้อควรระวังเรื่องลำดับ** — เมื่อ consumer ประมวลผล message ไม่สำเร็จและส่ง **nack**, broker จะ redeliver message นั้นใหม่ — แต่ระหว่างนั้น message ถัดไปอาจถูก consume ไปแล้ว ทำให้ลำดับที่ consumer เห็นจริง *สลับ* จากลำดับที่ producer ส่ง. ถ้า business ต้องการ ordering เป๊ะ ต้องออกแบบเพิ่ม (เช่น จำกัดให้ message ของ key เดียวไปที่ consumer เดียว).\n\n```mermaid\nflowchart LR\n  P[\"Payment service (producer)\"] -->|\"publish: payment.captured\"| B{{\"Message broker\"}}\n  B -->|\"load balance: one of N\"| W1[\"Fraud worker A\"]\n  B -->|\"load balance: one of N\"| W2[\"Fraud worker B\"]\n  B -->|\"fan-out: copy to all\"| L[\"Ledger consumer\"]\n  B -->|\"fan-out: copy to all\"| N[\"Notification consumer\"]\n  subgraph LBG[\"Consumer group: share work\"]\n    W1\n    W2\n  end\n```\n\n## ตัวอย่าง (payment events)\n\nระบบจ่ายเงิน: เมื่อ capture สำเร็จ payment service (producer) publish event `payment.captured` เข้า broker แล้วจบ — ไม่ต้องรอใคร. ฝั่ง consumer:\n\n- **Fraud check** รันเป็นกลุ่ม worker หลายตัวแบบ **load balancing**: event แต่ละตัวไปหา worker ว่างตัวเดียว เพื่อเช็คทันเวลาแม้ volume พุ่งขึ้น.\n- **Ledger** และ **Notification** เป็นคนละระบบ ต่างต้องเห็น *ทุก* event → ใช้ **fan-out**: broker ส่งสำเนา `payment.captured` ให้ทั้งสองระบบอิสระจากกัน. ledger ไป posting บัญชี, notification ไปส่ง SMS.\n\nถ้า notification service ล่มไป 5 นาที, event ไม่หาย — broker buffer ไว้ในคิวของมัน พอ service กลับมาก็ดึงต่อ. payment service ไม่รู้และไม่สนว่ามีใคร consume อยู่กี่ราย.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"broker รับประกันว่าไม่มี duplicate และเรียงลำดับเป๊ะเสมอ\"** ผิด. redelivery หลัง nack ทำให้เกิดทั้ง duplicate และ reorder ได้; ต้องออกแบบ consumer ให้ idempotent เอง (เรื่อง exactly-once อยู่ใน sibling ท้ายบท).\n- **\"message queue เก็บ event ไว้ให้อ่านย้อนหลังได้\"** ผิดสำหรับ transient broker. พอ ack แล้ว message หายไปเลย — ไม่มี history ให้ replay หรือให้ consumer ใหม่มาอ่านของเก่า.\n- **\"pub/sub แปลว่า fan-out เท่านั้น\"** ไม่จำเป็น. broker เดียวทำได้ทั้ง load-balance และ fan-out ขึ้นกับ config ของ queue/subscription.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\nTransient (JMS/AMQP-style) broker เก่งกับงานแบบ **task queue / RPC-like**: message ถูก consume ครั้งเดียวแล้วลืมได้ (ส่งอีเมล, resize รูป, ยิง webhook). แต่มันไม่ได้ออกแบบมาเก็บประวัติ — ทันทีที่ ack, message หาย. นั่นแปลว่า: (1) consumer ใหม่ที่เพิ่งเพิ่มเข้ามา อ่าน event ที่เกิดก่อนหน้าไม่ได้เลย, (2) reprocess/replay ย้อนหลัง (เช่นมี bug ใน consumer แล้วอยากรันใหม่) ทำไม่ได้, (3) เมื่อ consumer ตามไม่ทันและคิวบวมขึ้นเรื่อย ๆ ต้องเลือกระหว่างปล่อยให้ memory/disk เต็มจนพัง หรือ **drop message** ทิ้ง — ทั้งสองทางเจ็บ. ต้นทุนที่จ่ายเพื่อ decoupling คือคุณสูญเสีย \"ความจำ\" ของ stream ไป.\n\nถ้าต้องการให้ event เก็บถาวร, อ่านซ้ำได้, และหลาย consumer group อ่าน log เดียวกันอิสระ — นั่นคือหน้าที่ของ **log-based / partitioned-log broker (Kafka-style)** ซึ่งเก็บ event เรียงลำดับลง log แทนการลบทิ้งหลัง ack — ครอบคลุมใน sibling `partitioned-logs`. งานของ senior คือแยกให้ออกว่างานตรงหน้าเป็น \"consume-once task\" (ใช้ transient) หรือ \"durable event stream ที่ต้อง replay\" (ใช้ log-based).\n\n## มุมสัมภาษณ์\n\n- \"ทำไมต้องมี message broker แทนที่จะให้ service ยิง HTTP หากันตรง ๆ?\" → decoupling + buffering: ทน consumer ช้า/ล่ม, scale สองฝั่งอิสระ.\n- \"load balancing กับ fan-out ต่างกันยังไง เลือกอันไหนเมื่อไหร่?\" → load-balance = 1 message ไป 1 consumer (แบ่งงาน), fan-out = 1 message ไปทุก consumer (หลายระบบเห็นเหมือนกัน).\n- \"ถ้า consumer ตามไม่ทัน broker ทำอะไรได้บ้าง?\" → buffer จนเต็ม แล้วต้องเลือก drop หรือ block/backpressure — จุดนี้มักต่อไปเรื่อง log-based broker ที่เก็บลง disk ได้เยอะกว่า.\n- \"message queue ธรรมดากับ Kafka ต่างกันตรงไหน?\" → transient ack-and-delete ไม่เก็บ history; log-based เก็บ log ถาวร replay ได้ (สะพานไป `partitioned-logs`).\n",
+  "recall_checks": [
+    {
+      "q": "event ในความหมายของ stream processing มีคุณสมบัติหลักอะไรบ้าง?",
+      "expected_answer": "record ขนาดเล็ก, immutable, มี timestamp กำกับ ที่ producer สร้างขึ้นต่อเนื่อง",
+      "type": "short_answer"
+    },
+    {
+      "q": "message broker แก้ปัญหาอะไรเทียบกับการให้ producer ส่งตรงถึง consumer?",
+      "expected_answer": "buffer event เมื่อ consumer ช้าหรือหลุดไป",
+      "type": "mcq",
+      "options": [
+        "การันตี event ทุกตัวถึง consumer โดยไม่ซ้ำกันเลย",
+        "buffer event เมื่อ consumer ช้าหรือหลุดไป",
+        "เปลี่ยน batch job ให้เป็น stream job อัตโนมัติ"
+      ]
+    },
+    {
+      "q": "ในโหมด load balancing ของ broker แต่ละ message ถูกส่งไปที่ใคร?",
+      "expected_answer": "ไปที่ consumer เพียงตัวเดียวในกลุ่ม",
+      "type": "mcq",
+      "options": [
+        "ไปที่ consumer เพียงตัวเดียวในกลุ่ม",
+        "ไปที่ consumer ทุกตัวในกลุ่มพร้อมกัน",
+        "ไปที่ producer ตัวถัดไปในคิว"
+      ]
+    },
+    {
+      "q": "ทำไม transient (JMS/AMQP-style) broker จึงไม่รองรับให้ consumer ใหม่มาอ่าน event เก่า?",
+      "expected_answer": "เพราะ message ถูกลบทิ้งหลัง ack (ack-and-delete) ไม่เก็บ history ให้ replay ต้องใช้ log-based broker (partitioned-logs) แทน",
+      "type": "short_answer"
+    },
+    {
+      "q": "อะไรทำให้ message ใน JMS/AMQP-style broker อาจเห็นลำดับสลับจากที่ producer ส่ง?",
+      "expected_answer": "เพราะ message ที่ถูก nack จะถูก redeliver ทีหลัง",
+      "type": "mcq",
+      "options": [
+        "เพราะ broker เรียง message ตาม timestamp ใหม่เสมอ",
+        "เพราะ producer ส่ง event ไม่เรียงมาตั้งแต่ต้น",
+        "เพราะ message ที่ถูก nack จะถูก redeliver ทีหลัง"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 11: Stream Processing — Transmitting Event Streams / Messaging Systems",
+      "source": "Martin Kleppmann, DDIA (O'Reilly, 2017), ch. 11",
+      "why": "อ่านต้นฉบับเรื่อง event stream, message broker, load balancing vs fan-out"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 11 — Message Brokers Compared to Databases",
+      "source": "Martin Kleppmann, DDIA (O'Reilly, 2017), ch. 11",
+      "why": "อ่านต่อว่าทำไม transient broker แบบ ack-and-delete ต่างจาก database/log ที่เก็บถาวร"
+    },
+    {
+      "title": "RabbitMQ Tutorials — Work Queues และ Publish/Subscribe",
+      "source": "rabbitmq.com/tutorials",
+      "why": "เห็นตัวอย่างจริงของ load balancing (work queue) กับ fan-out (pub/sub) บน AMQP broker"
+    }
+  ]
+}

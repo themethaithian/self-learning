@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "maintainability",
+  "version": 1,
+  "title_en": "Maintainability",
+  "est_minutes": 8,
+  "body_md": "# Maintainability\n\n## ทำไมถึงสำคัญ\n\nต้นทุนส่วนใหญ่ของ software ไม่ได้อยู่ที่การเขียนครั้งแรก แต่อยู่ที่การดูแลต่อเนื่องหลังจากนั้น — แก้ bug, รักษาให้ระบบยังทำงาน, สืบสวนปัญหา production, และปรับให้เข้ากับ requirement ใหม่. ทีมส่วนใหญ่เกลียดการดูแล legacy system เพราะมันสะสมความยุ่งเหยิงจนแตะอะไรก็พัง. Maintainability คือการออกแบบตั้งแต่ต้นเพื่อให้คนที่มาดูแลระบบในอนาคต (ซึ่งมักไม่ใช่คนที่เขียนมันขึ้นมา) ทำงานได้โดยไม่เจ็บปวด.\n\n## แก่นของแนวคิด\n\nDDIA แยก maintainability ออกเป็น 3 หลักการออกแบบ:\n\n**1) Operability — ทำให้ทีม operations ดูแลระบบให้ทำงานต่อเนื่องได้ง่าย**\n\n- ระบบที่ operability สูงเปิด visibility ให้มองเข้าไปดู health ได้ (monitoring, metrics, log), รองรับ automation และเครื่องมือมาตรฐาน, มีพฤติกรรม predictable (เซอร์ไพรส์น้อย), มี default ที่ดีแต่ยัง override ได้, และไม่ผูกกับเครื่องใดเครื่องหนึ่ง.\n- ประเด็นคือ ระบบดีแค่ไหนก็ยังต้องมีคนคอยดูแล; งานออกแบบคือทำให้ operation งานประจำเป็นเรื่องง่าย เพื่อให้ทีมเอาเวลาไปทำงานที่มีคุณค่าสูงกว่า.\n\n**2) Simplicity — จัดการ complexity**\n\n- แยกให้ออกระหว่าง **essential complexity** (ความซับซ้อนที่ติดมากับตัวปัญหาที่ระบบต้องแก้จริง ๆ ในมุมของผู้ใช้) กับ **accidental complexity** (ความซับซ้อนที่ไม่ได้ติดมากับปัญหา แต่งอกจาก implementation เอง — เช่น state ที่พันกัน, coupling แน่น, naming ที่ไม่สม่ำเสมอ, hack เพื่อ performance).\n- เครื่องมือที่ดีที่สุดในการกำจัด accidental complexity คือ **good abstraction** — ซ่อน detail ของ implementation ไว้หลัง facade ที่สะอาดและ reuse ได้ (เช่น high-level language ซ่อน machine code, SQL ซ่อน data structure บน disk).\n- ระบบที่ปล่อยให้ accidental complexity สะสมจะกลายเป็น **big ball of mud** — เข้าใจยาก, ประเมิน effort ผิด, และแก้ทีเสี่ยงสร้าง bug ที.\n\n**3) Evolvability — ทำให้เปลี่ยนแปลงได้ง่าย**\n\n- Requirement เปลี่ยนตลอด; ระบบต้องรองรับ use case ที่ไม่ได้คาดไว้ตอนออกแบบ. Evolvability คือความง่ายในการปรับระบบเมื่อความเข้าใจหรือความต้องการเปลี่ยน.\n- ผูกแน่นกับ simplicity: ระบบที่เรียบง่ายและมี abstraction ดี มักแก้ง่ายกว่าระบบที่ซับซ้อน และการมี test ครอบทำให้กล้า refactor.\n\n> maintainability เป็นหนึ่งใน 3 concern หลักของ DDIA ch.1 คู่กับ **reliability** (ระบบทำงานถูกต้องแม้เจอ fault — ดู sibling concept) และ **scalability** (รับมือ load ที่โตขึ้น — ดู sibling concept); บทนี้โฟกัสเฉพาะ maintainability.\n\n## ตัวอย่าง (fintech: fee calculation)\n\n**Essential complexity** ของระบบคิดค่าธรรมเนียม: merchant แต่ละ tier มี fee schedule ต่างกัน, แต่ละ payment method (card, QR, bank transfer) คิดคนละแบบ, และมี promotion ซ้อนกัน. ความซับซ้อนนี้ *ติดมากับตัวปัญหา* — เขียนสวยแค่ไหนก็หนีไม่พ้น.\n\n**Accidental complexity** คือส่วนที่งอกจาก implementation: logic คิดค่าธรรมเนียมถูกกระจายอยู่ใน 3 service กับ 12 stored procedure, ใช้ magic status code (`status = 7` แปลว่าอะไรไม่มีใครจำได้), และกฎเดียวกันถูก copy ไว้หลายที่. ผลคือเวลาจะเพิ่ม payment method ใหม่ ต้องไล่แก้ทุกจุด และแก้ที่หนึ่งมักทำอีกที่พังเงียบ ๆ — นี่คือ accidental complexity ที่ฆ่า evolvability.\n\nGood abstraction แก้ตรงนี้: รวมกฎไว้ใน `FeeSchedule` / pricing policy object เดียวที่รับ payment context แล้วคืน fee — service อื่นเรียกผ่าน interface เดียว. การเพิ่ม payment method กลายเป็นแก้ที่เดียว. essential complexity ยังอยู่ (กฎยังซับซ้อนเท่าเดิม) แต่ accidental complexity หายไป.\n\nด้าน operability: settlement batch job ที่รันทุกคืน ถ้า operability ดี จะมี dashboard บอก lag ต่อ merchant, alert เมื่อ batch ช้า, และ re-run ได้แบบ idempotent เมื่อ fail; ถ้า operability แย่ job fail เงียบ ๆ จนกว่า merchant จะโทรมาถามว่าเงินอยู่ไหน.\n\n```mermaid\nflowchart TD\n  M[Maintainability] --> OP[Operability]\n  M --> S[Simplicity]\n  M --> EV[Evolvability]\n  OP --> OP1[Good monitoring and visibility]\n  OP --> OP2[Automation and predictable behavior]\n  S --> ESS[\"Essential complexity: inherent in problem\"]\n  S --> ACC[\"Accidental complexity: from implementation\"]\n  ACC -. removed by .-> ABS[Good abstraction]\n  ABS --> EV\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Simplicity = เขียนโค้ดน้อยบรรทัด หรือระบบเล็ก\"** ผิด. Simplicity คือการกำจัด accidental complexity ออก ไม่ใช่ตัดฟีเจอร์หรือย่อโค้ดจนอ่านไม่รู้เรื่อง; ระบบใหญ่ก็ simple ได้ถ้า abstraction ดี.\n- **\"essential complexity ลดได้ถ้าเก่งพอ\"** ผิด. essential complexity ติดมากับตัวปัญหา ลดไม่ได้ ทำได้แค่ห่อด้วย abstraction ให้จัดการง่ายขึ้น; สิ่งที่ลดได้จริงคือ accidental complexity เท่านั้น.\n- **\"operability เป็นเรื่องของทีม ops ไม่เกี่ยวกับคนออกแบบ\"** ผิด. monitoring, predictable behavior, automation ต้องถูกออกแบบเข้าไปในระบบตั้งแต่ต้น เป็นความรับผิดชอบร่วมของ dev ด้วย.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรลงทุนหนัก\n\nการลงทุนกับ maintainability ไม่ฟรีและไม่คุ้มเสมอไป. สร้าง abstraction, เขียน test, ทำ monitoring/automation ล้วนกิน effort วันนี้ แลกกับ velocity ที่ช้าลงในระยะสั้น — สำหรับ prototype, throwaway script, หรือฟีเจอร์ที่จะตายใน 3 เดือน การลงแรงระดับนี้คือ overkill. อันตรายกว่านั้นคือ **wrong abstraction**: abstraction ที่ห่อผิดจุดหรือมัดสิ่งที่ควรแยก จะ *เพิ่ม* complexity แทนที่จะลด (มักแพงกว่าปล่อยให้ duplicate ด้วยซ้ำ) — การรีบ abstract ตั้งแต่ยังไม่เข้าใจปัญหาจึงมักย้อนกลับมากัด. ทักษะของ senior คือรู้ว่าจะลงทุนตรงไหน: core system ที่อยู่ยาวและถูกแก้บ่อยคุ้มที่จะลงหนัก, ส่วน glue code หรือ subsystem ที่นิ่งแล้วอาจไม่คุ้ม. เกณฑ์ตัดสินคือ อายุคาดหมายของโค้ด คูณกับ ความถี่ในการเปลี่ยน ไม่ใช่ทาสูตรเดียวกันทั้งระบบ.\n\n## มุมสัมภาษณ์\n\n- \"อธิบายความต่างระหว่าง essential กับ accidental complexity พร้อมตัวอย่าง\" → essential ติดมากับปัญหา ลดไม่ได้; accidental งอกจาก implementation ลดได้ด้วย abstraction. คำถามนี้แยกคนที่เข้าใจจริงออกจากคนท่องจำ.\n- \"ระบบนี้ maintain ยากขึ้นเรื่อย ๆ จะเริ่มแก้ตรงไหน?\" → หา accidental complexity (coupling, duplication, magic value) แล้วค่อย ๆ ใส่ abstraction; หลีกเลี่ยง big rewrite.\n- \"จะรู้ได้ยังไงว่าเมื่อไหร่ควรลงทุน abstraction เมื่อไหร่ไม่ควร?\" → ตอบด้วย trade-off ด้านบน: อายุโค้ด คูณ ความถี่เปลี่ยน; และระวัง premature / wrong abstraction.\n- \"operability ที่ดีมีอะไรบ้าง?\" → monitoring/visibility, automation, predictable behavior, good default ที่ override ได้, และไม่ผูกกับเครื่องเดียว.\n",
+  "recall_checks": [
+    {
+      "q": "DDIA แยก maintainability ออกเป็น 3 หลักการออกแบบอะไรบ้าง?",
+      "expected_answer": "operability, simplicity, evolvability",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคือ accidental complexity (ไม่ใช่ essential complexity)?",
+      "expected_answer": "ความซับซ้อนที่งอกจาก implementation เอง ไม่ได้ติดมากับตัวปัญหา",
+      "type": "mcq",
+      "options": [
+        "ความซับซ้อนที่งอกจาก implementation เอง ไม่ได้ติดมากับตัวปัญหา",
+        "ความซับซ้อนที่ติดมากับตัวปัญหาที่ผู้ใช้ต้องการแก้จริง ๆ",
+        "ความซับซ้อนที่ผู้ใช้มองเห็นและต้องการโดยตรง"
+      ]
+    },
+    {
+      "q": "เครื่องมือที่ดีที่สุดในการกำจัด accidental complexity คืออะไร?",
+      "expected_answer": "สร้าง good abstraction ที่ซ่อน detail ของ implementation ไว้หลัง facade ที่สะอาด",
+      "type": "mcq",
+      "options": [
+        "เพิ่ม comment ในโค้ดให้มากที่สุด",
+        "เขียน documentation ให้ละเอียดที่สุด",
+        "สร้าง good abstraction ที่ซ่อน detail ของ implementation ไว้หลัง facade ที่สะอาด"
+      ]
+    },
+    {
+      "q": "operability ในบริบท maintainability หมายถึงอะไร?",
+      "expected_answer": "ทำให้ทีม operations ดูแลระบบให้ทำงานต่อเนื่องได้ง่าย ผ่าน monitoring และ automation",
+      "type": "mcq",
+      "options": [
+        "ทำให้ระบบรับ load ที่เพิ่มขึ้นได้ (scalability)",
+        "ทำให้ทีม operations ดูแลระบบให้ทำงานต่อเนื่องได้ง่าย ผ่าน monitoring และ automation",
+        "ทำให้ระบบยังทำงานถูกต้องแม้เจอ fault (reliability)"
+      ]
+    },
+    {
+      "q": "ทำไม accidental complexity ถึงทำให้ระบบ evolve ยากในระยะยาว?",
+      "expected_answer": "เพราะมันทำให้เข้าใจระบบยาก เพิ่มความเสี่ยงเกิด bug ตอนแก้ และ coupling ทำให้แก้ที่หนึ่งกระทบหลายที่",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 1: Reliable, Scalable, and Maintainable Applications (Maintainability section)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 1",
+      "why": "อ่านต้นฉบับของ 3 หลักการ operability / simplicity / evolvability"
+    },
+    {
+      "title": "No Silver Bullet — Essence and Accident in Software Engineering",
+      "source": "Frederick P. Brooks, Jr. (1986), reprinted in The Mythical Man-Month, anniversary ed.",
+      "why": "อ่านต้นตอของแนวคิด essential vs accidental complexity"
+    },
+    {
+      "title": "Out of the Tar Pit",
+      "source": "Ben Moseley and Peter Marks (2006), technical paper",
+      "why": "อ่านต่อว่า state และ complexity ที่ควบคุมไม่ดีสร้าง accidental complexity อย่างไร"
+    }
+  ]
+}

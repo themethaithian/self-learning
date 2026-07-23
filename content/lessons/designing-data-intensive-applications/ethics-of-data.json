@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "ethics-of-data",
+  "version": 1,
+  "title_en": "Doing the Right Thing: Ethics of Data Systems",
+  "est_minutes": 9,
+  "body_md": "# Doing the Right Thing: Ethics of Data Systems\n\n## ทำไมถึงสำคัญ\n\nวิศวกรที่สร้าง data system รับผิดชอบต่อ *ผลกระทบต่อคน* ไม่ใช่แค่ว่าระบบทำงานถูกต้องหรือเปล่า. เมื่อ algorithmic decision ตัดสินเรื่องสินเชื่อ ประกัน หรือการจ้างงานในสเกลใหญ่ ความผิดพลาดเชิงจริยธรรมกระทบคนจำนวนมากพร้อมกัน โดยเหยื่อมักไม่รู้ตัวและไม่มีช่องอุทธรณ์. \"ระบบรันได้\" ไม่เท่ากับ \"ระบบควรมีอยู่\" — และคำถามนี้เป็นของวิศวกรผู้ออกแบบ schema, retention, และ model โดยตรง ไม่ใช่ของฝ่ายกฎหมายอย่างเดียว.\n\n## แก่นของแนวคิด\n\n- **Algorithmic decision-making & bias**: model เรียนจากข้อมูลในอดีต ถ้าอดีตมี discrimination ฝังอยู่ model จะเรียนรู้และผลิตซ้ำมันในสเกลใหญ่. แม้ลบ protected attribute (เชื้อชาติ, เพศ) ออก model ก็หา proxy ได้ (รหัสไปรษณีย์, ชื่อ, พฤติกรรมการใช้จ่าย) → ผลลัพธ์ยังลำเอียง แต่ดู \"เป็นกลาง\" เพราะมันเป็นตัวเลขจากคอมพิวเตอร์.\n- **Feedback loop**: predictive system หลายตัว *สร้าง* ผลลัพธ์ที่มันทำนายเอง. ถ้า model ทำนายว่าย่านหนึ่งเสี่ยง fraud สูง → ตรวจเข้มย่านนั้น → เจอเคสมากขึ้นเพราะดูมากขึ้น → ข้อมูลใหม่ยิ่งยืนยัน bias → วนซ้ำ. ตัวเลขดูแม่นขึ้นทั้งที่ความจริงเป็น self-fulfilling prophecy.\n- **Surveillance & data as liability**: การเก็บข้อมูลจำนวนมากถูกมองเป็น \"asset\" แต่มันคือ liability พร้อมกัน — ยิ่งเก็บมาก ยิ่งเป็นเป้าของ data breach และยิ่งเสียหายหนักเมื่อรั่ว. ข้อมูลที่ไม่ได้เก็บ รั่วไม่ได้.\n- **Consent & freedom of choice**: privacy policy ที่ยาวและ take-it-or-leave-it ไม่ใช่ consent จริง. ผู้ใช้ไม่มีอำนาจต่อรอง อ่านไม่ไหว และมักไม่มีทางเลือกอื่นที่ใช้งานได้ — การกด \"Agree\" จึงไม่ใช่การยินยอมอย่างมีข้อมูลและอิสระ.\n- **Privacy, data retention, right to be forgotten**: เก็บข้อมูลนานเกินความจำเป็นเพิ่มความเสี่ยงโดยไม่เพิ่มคุณค่า. ควรมี retention policy ที่ลบข้อมูลเมื่อหมดวัตถุประสงค์ และเคารพสิทธิ์ให้ผู้ใช้ขอลบข้อมูลของตัวเองได้.\n\nจุดยืนของบทนี้: **collect less, โปร่งใส, และถือว่าข้อมูลผู้ใช้คือสิ่งที่ถือไว้ใน trust** ไม่ใช่ทรัพย์สินที่เจ้าของระบบเอาไปทำอะไรก็ได้. เชื่อมกับเรื่อง correctness: ข้อมูลที่ integrate มาผิดหรือเก่า (ดู designing-for-correctness) ยิ่งทำให้ decision ที่กระทบคนเพี้ยนหนักขึ้น.\n\n## ตัวอย่าง (fintech: credit scoring / fraud model)\n\nทีมสร้าง credit-risk model โดยเทรนจากประวัติอนุมัติสินเชื่อย้อนหลัง 10 ปี. ในอดีตเจ้าหน้าที่ปฏิเสธลูกค้าจากบางย่านมากเป็นพิเศษ. ทีมลบ field เชื้อชาติออก \"เพื่อความเป็นธรรม\" แต่ model ยังใช้รหัสไปรษณีย์ + ร้านค้าที่ใช้จ่ายเป็น proxy → ปฏิเสธคนกลุ่มเดิมในอัตราสูงกว่าโดยไม่มีเหตุผลเชิง credit จริง. คนที่ถูกปฏิเสธไม่รู้ว่าทำไม (model เป็น black box) และไม่มีช่องอุทธรณ์.\n\nแย่กว่านั้น: เมื่อคนกลุ่มนี้ถูกปฏิเสธจากระบบ พวกเขาหันไปกู้นอกระบบ ผิดนัดมากขึ้น ข้อมูลใหม่ยิ่ง \"พิสูจน์\" ว่ากลุ่มนี้เสี่ยง — feedback loop ปิดวงและ bias ฝังลึกขึ้นทุกรอบเทรน.\n\n```mermaid\nflowchart LR\n  D[\"Biased historical data\"] --> M[\"Predictive model\"]\n  M --> DEC[\"Decision: flag or deny\"]\n  DEC --> O[\"Real-world outcome for a group\"]\n  O --> ND[\"New data records the outcome\"]\n  ND -. reinforces bias .-> D\n```\n\n(บันทึกไว้: การลบ protected attribute ออกไม่ได้แก้ bias เพราะ proxy — นี่คือกับดักที่ interview ชอบถาม.)\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ลบ field เชื้อชาติ/เพศออกแล้ว model จะเป็นกลาง\"** ผิด — proxy attribute ดึง bias กลับเข้ามาทางอ้อม; ต้องวัด disparate impact ต่อกลุ่ม ไม่ใช่ดูแค่ว่ามี field ไหน.\n- **\"ผู้ใช้กด Agree แล้ว = consent ครบถ้วน ทำอะไรกับข้อมูลก็ได้\"** ผิด — take-it-or-leave-it ไม่ใช่การยินยอมที่อิสระและมีข้อมูล.\n- **\"ข้อมูลยิ่งเก็บเยอะยิ่งดี เพราะเป็น asset\"** ผิด — ข้อมูลที่เก็บไว้เป็น liability พร้อมกัน เพราะเป็นเป้า breach และภาระตามกฎหมาย.\n- **\"จริยธรรมเป็นเรื่องของ legal/compliance ไม่ใช่ของวิศวกร\"** ผิด — คนออกแบบ schema, retention policy, และ model คือคนที่ตัดสินใจเชิงจริยธรรมตั้งแต่ต้นทาง.\n\n## ขีดจำกัด / trade-off (can we vs should we)\n\nหัวใจของ senior interview อยู่ตรงนี้: การเก็บข้อมูลมากขึ้นและทำนายมากขึ้น *มัก* ทำให้ product ดีขึ้นและรายได้เพิ่ม — personalization แม่นขึ้น, fraud detection จับได้มากขึ้น, analytics ลึกขึ้น. แต่ทุกจุดที่เพิ่ม data + prediction ก็เพิ่ม ethical risk และ liability ตามมา: privacy, ความไว้วางใจของผู้ใช้ (เสียแล้วเรียกคืนยาก), และความเสียหายมหาศาลเมื่อ breach.\n\n**\"can we?\" ไม่เท่ากับ \"should we?\"**. บางครั้งคำตอบที่ถูกทางวิศวกรรมคือ *ไม่เก็บ* field นั้นตั้งแต่แรก, *ไม่สร้าง* feature นั้น, หรือใส่ retention ให้ข้อมูลลบตัวเองแม้จะทำให้ model แม่นน้อยลงเล็กน้อย. ต้นทุนของการ \"เก็บไว้ก่อนเผื่อได้ใช้\" คือ liability ที่สะสมเงียบ ๆ จนถึงวันที่รั่ว. งานของ senior คือทำให้ trade-off นี้ *ชัดและเป็นการตัดสินใจอย่างตั้งใจ* ไม่ใช่ default ไปทาง \"เก็บทุกอย่าง\" เพียงเพราะ storage ถูกลง.\n\n- **เมื่อ \"เก็บมากขึ้น\" พอมีเหตุผล**: value ต่อผู้ใช้ชัด, ได้ consent จริง, มี retention limit, และผลกระทบเมื่อผิดพลาดต่ำ.\n- **เมื่อควรถอยหรือไม่เก็บ**: decision กระทบสิทธิ์คน (credit, จ้างงาน, ประกัน), ไม่มีช่องอุทธรณ์, model เป็น black box, หรือ consent เป็นแค่พิธีกรรม.\n\n## มุมสัมภาษณ์\n\n- \"model คุณ discriminate ไหม ทั้งที่ไม่ได้ใส่ field เชื้อชาติ?\" → อธิบาย proxy attribute และวิธีตรวจ (วัด disparate impact ต่อกลุ่ม ไม่ใช่ดูแค่ว่ามี field ไหน).\n- \"feedback loop ในระบบทำนายคืออะไร ยกตัวอย่าง\" → fraud targeting / predictive policing ที่สร้างข้อมูลยืนยันตัวเอง (self-fulfilling).\n- \"consent ผ่าน privacy policy ถือว่าเพียงพอไหม?\" → ไม่ ถ้าเป็น take-it-or-leave-it; แยก consent จริงออกจากการกดยอมรับ.\n- \"storage ถูกลง ทำไมยังต้องมี retention policy / ลบข้อมูล?\" → data เป็น liability, breach risk, right to be forgotten — \"can\" ไม่ใช่ \"should\".\n",
+  "recall_checks": [
+    {
+      "q": "feedback loop ในระบบ predictive สร้างปัญหาอะไร และยกตัวอย่างสั้น ๆ",
+      "expected_answer": "ระบบสร้างผลลัพธ์ที่มันทำนายเอง (self-fulfilling) เช่น ตรวจเข้มย่านที่ถูกทำนายว่าเสี่ยง fraud → เจอเคสมากขึ้นเพราะดูมากขึ้น → ข้อมูลใหม่ยิ่งยืนยัน bias",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมการลบ field เชื้อชาติออกจึงไม่รับประกันว่า model จะไม่ discriminate?",
+      "expected_answer": "เพราะ model หา proxy attribute แทนได้",
+      "type": "mcq",
+      "options": [
+        "เพราะ dataset ยังมีขนาดที่เล็กเกินไปมาก",
+        "เพราะ model หา proxy attribute แทนได้",
+        "เพราะ storage วันนี้มีราคาถูกลงมาก"
+      ]
+    },
+    {
+      "q": "ทำไม consent ผ่าน privacy policy แบบ take-it-or-leave-it จึงไม่ใช่ consent ที่แท้จริง?",
+      "expected_answer": "เพราะผู้ใช้ไม่มีทางเลือกอื่นที่ใช้ได้จริง",
+      "type": "mcq",
+      "options": [
+        "เพราะ policy เขียนยาวเกินจนไม่มีใครอ่านจบ",
+        "เพราะกฎหมายบังคับให้ต้องมี policy อยู่แล้ว",
+        "เพราะผู้ใช้ไม่มีทางเลือกอื่นที่ใช้ได้จริง"
+      ]
+    },
+    {
+      "q": "ทำไมมุมมอง 'ข้อมูลเป็น asset' จึงอันตราย และควรมองแทนอย่างไร?",
+      "expected_answer": "ข้อมูลที่เก็บไว้เป็น liability พร้อมกัน เพราะเป็นเป้าของ data breach และภาระตามกฎหมาย; ควร collect less และถือว่าเป็นข้อมูลที่ถือไว้ใน trust",
+      "type": "short_answer"
+    },
+    {
+      "q": "ประโยคใดสรุป trade-off หลักของบทนี้ได้ตรงที่สุด?",
+      "expected_answer": "'can we' ไม่ใช่ 'should we' บางครั้งไม่ควรเก็บ",
+      "type": "mcq",
+      "options": [
+        "'can we' ไม่ใช่ 'should we' บางครั้งไม่ควรเก็บ",
+        "เก็บข้อมูลยิ่งมากยิ่งดีเพราะ model จะยิ่งแม่นขึ้น",
+        "จริยธรรมเป็นหน้าที่ของทีม legal เท่านั้นเอง"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 12: The Future of Data Systems — Doing the Right Thing",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 12",
+      "why": "อ่านต้นฉบับแนวคิด bias, feedback loop, surveillance, consent, และ data as liability"
+    },
+    {
+      "title": "Weapons of Math Destruction",
+      "source": "Cathy O'Neil, Weapons of Math Destruction (Crown, 2016)",
+      "why": "อ่านลึกว่า algorithmic model เข้ารหัส bias และสร้าง feedback loop ที่ทำร้ายคนในสเกลใหญ่ได้อย่างไร"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 12: Privacy and Tracking",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 12",
+      "why": "อ่านต่อเรื่อง data retention, right to be forgotten, และเหตุผลว่าทำไมควร collect less"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "concept_id": "data-integration",
+  "version": 1,
+  "topic": "designing-data-intensive-applications",
+  "title_en": "Data Integration",
+  "est_minutes": 9,
+  "body_md": "# Data Integration\n\n## ทำไมถึงสำคัญ\n\nแทบไม่มีเครื่องมือเดียวที่ตอบทุก use case ได้ — งานเดียวกันมักต้องการทั้ง OLTP database, search index, cache, และ data warehouse เพราะแต่ละตัวถูกออกแบบมาเก่งคนละด้าน. พอมีหลายระบบถือข้อมูลชุดเดียวกัน ปัญหาที่แท้จริงไม่ใช่ \"จะเลือก tool ไหน\" แต่คือ \"จะทำยังไงให้ทุกระบบเห็นข้อมูลตรงกันโดยไม่ drift\". Data integration คือศาสตร์ของการทำให้ระบบเฉพาะทางหลายตัวสอดคล้องกัน โดยไม่ต้องไล่ update ทุกตัวเองแบบมือ.\n\n## แก่นของแนวคิด\n\n- ต้นตอของความไม่ตรงกันคือ **dual writes**: application เขียนตรงเข้าทุกระบบพร้อมกัน (เขียน DB, เขียน search, เขียน cache). วิธีนี้สร้างความสัมพันธ์ many-to-many ที่เปราะ — ถ้าเขียนสำเร็จบางระบบ ล้มเหลวบางระบบ (partial failure) หรือสอง write มาถึงคนละลำดับในแต่ละระบบ ข้อมูลจะเริ่มแยกจากกันทันที และไม่มีใครรู้ว่าเวอร์ชันไหนถูก.\n- ทางออกคือกำหนด **source of truth** หนึ่งเดียว แล้วบันทึกทุกการเปลี่ยนแปลงเป็น **ordered log** — total order ของ write ทั้งหมด. จากนั้นทุกระบบที่เหลือกลายเป็น **derived data**: search index, cache, materialized view, warehouse ล้วนถูกสร้างจากการ \"เล่น\" log เดียวกันนี้.\n- แก่นเชิงคณิตศาสตร์: เมื่อทุก derived system เป็น **deterministic function ของ input ชุดเดียวกัน (log)** มันจะ drift จากกันไม่ได้ — ถ้าสองระบบเห็น log เดียวกันถึง offset เดียวกัน มันต้องได้สถานะเดียวกันเสมอ. ความต่างที่เหลือคือแค่ \"ใครตามหลัง log อยู่กี่ก้าว\" ไม่ใช่ \"ใครถูกใครผิด\".\n- **ข้อมูลไหลทางเดียว** (source of truth → derived) เท่านั้น. ไม่มี derived system ไหนเขียนย้อนกลับไปแก้ source โดยตรง — นี่คือสิ่งที่กำจัด many-to-many coupling ทิ้ง เหลือแค่ fan-out จากจุดเดียว.\n- การสร้างและดูแล derived view ใช้ **batch และ stream ร่วมกัน**: stream processing คอย apply ทุก write ใหม่แบบต่อเนื่องเพื่อให้ทันเหตุการณ์ ส่วน batch processing ใช้ reprocess log ทั้งชุดเมื่อต้องสร้าง view ใหม่ เปลี่ยน schema ของ index หรือ rebuild หลัง bug. ความสามารถ **replay** log เพื่อสร้างระบบขึ้นใหม่คือของแถมที่ได้ฟรีจากการมี ordered log.\n- change source ที่ป้อน log นี้มักมาจาก **Change Data Capture (CDC)** ที่ดักทุก write ของ source database — กลไก CDC อยู่ใน ch.11 (stream processing).\n\n```mermaid\nflowchart TD\n  TX[\"Transactions (writes)\"] --> LEDGER[\"Ledger: source of truth\"]\n  LEDGER --> LOG[\"Ordered change log: total order of writes\"]\n  LOG -->|stream| IDX[\"Search index (derived)\"]\n  LOG -->|stream| CACHE[\"Cache (derived)\"]\n  LOG -->|batch| DW[\"Data warehouse (derived)\"]\n  LOG -->|batch| ANL[\"Analytics / reports (derived)\"]\n```\n\n- การมอง database เป็นชิ้นส่วน (storage engine, index, replication) ที่ถอดประกอบแล้วต่อผ่าน stream ได้ คือ sibling concept `unbundling-databases`. ส่วนการตัดสินใจว่าจะรวมผล batch+stream แบบ Lambda หรือใช้ stream อย่างเดียวแบบ Kappa คือ sibling concept `lambda-kappa`.\n\n## ตัวอย่าง (fintech / ledger)\n\nระบบ payments มี **ledger** เป็น source of truth — ทุก `JournalEntry` (debit/credit/posting) เขียนลง ledger append-only ตัวเดียว และนี่คือความจริงเรื่องยอดเงินที่เถียงไม่ได้. แต่ทีมต้องรองรับหลาย query ที่ ledger ตัวเดียวทำได้ไม่ดี:\n\n- ลูกค้าค้นหา \"transaction ที่มีคำว่า coffee เดือนที่แล้ว\" → ต้องมี **search index** (เช่น Elasticsearch)\n- แสดงยอดคงเหลือปัจจุบันเร็ว ๆ บน dashboard → ต้องมี **cache** (เช่น Redis)\n- ทีม finance รันรายงานรายเดือนและ fraud analytics → ต้องมี **data warehouse** (columnar)\n\nถ้าให้ application เขียนตรงเข้าทั้ง 4 ที่ (dual write) วันหนึ่ง cache จะโชว์ยอดหนึ่งแต่ ledger มีอีกยอด เพราะ write เข้า cache ล้มไปเงียบ ๆ. แทนที่จะทำแบบนั้น: ledger ปล่อย ordered change log ออกมา แล้ว search index, cache, warehouse ทั้งหมด subscribe log เดียวกัน — search กับ cache ตามแบบ stream (near real-time) ส่วน warehouse โหลดแบบ batch เป็นรอบ. ทุก view เป็นภาพสะท้อนของ ledger ณ offset ใด offset หนึ่งเสมอ ถ้า index พังก็ลบทิ้งแล้ว replay log สร้างใหม่ได้โดยไม่แตะ ledger.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"เขียนเข้าทุกระบบพร้อมกัน (dual write) ก็ทำให้ sync กันได้\"** ผิด. dual write ไม่มีใครกำหนด total order และเจอ partial failure ได้ — มันคือต้นตอของ drift ที่ data integration พยายามกำจัด ไม่ใช่วิธีแก้.\n- **\"derived system ต้อง consistent กับ source แบบทันที\"** ผิด. โดยธรรมชาติมันเป็น eventually consistent — มี lag ตามหลัง log; การออกแบบต้องยอมรับ lag นี้ ไม่ใช่พยายามลบมันทิ้ง.\n- **\"ต้องเลือกระหว่าง batch หรือ stream อย่างใดอย่างหนึ่ง\"** ผิด. integration จริงใช้ทั้งคู่ — stream ให้ความสด, batch ให้ความสามารถ reprocess/rebuild ทั้งชุด.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\nการรวมทุก write ผ่าน ordered log เดียวให้ของดีสองอย่าง: **global consistency** (ทุก derived เป็น function ของ log เดียว drift ไม่ได้) และ **replay/rebuild** (สร้าง view ใหม่หรือกู้จาก bug ได้จาก log). แต่มีราคาที่ต้องจ่าย:\n\n- **derived system เป็น eventually consistent เสมอ** — มี lag. use case ที่ต้อง read-your-own-write ข้ามระบบทันที (เขียน ledger แล้วต้องเห็นใน search เดี๋ยวนั้น) จะเจอ window ที่ยังไม่ตรง ต้องออกแบบเผื่อ.\n- **ordered log กลายเป็น critical infrastructure** — มันคือคอขวดและ single point ที่ต้อง operate เอง: จัดการ retention (log ต้องเก็บนานพอที่จะ replay ได้), ordering guarantee, scaling, monitoring. log ล่ม = ทุก derived หยุดอัปเดต.\n- **derivation ต้อง deterministic จริง ๆ** — ถ้า transform มี randomness, อ่าน clock, หรือเรียก external service ที่ให้ผลไม่คงที่ การ replay จะได้ผลไม่เหมือนเดิม พลังของโมเดลนี้หายทันที.\n- **ไม่คุ้มกับระบบเล็ก** — ถ้า Postgres ตัวเดียวรับทุก query ได้สบาย การเพิ่ม log + stream/batch pipeline คือการเพิ่ม operational surface มหาศาลโดยไม่ได้ประโยชน์. โมเดลนี้จ่ายคืนเมื่อคุณ *ต้องมี* หลายระบบเฉพาะทางจริง ๆ เท่านั้น.\n\nงานของ senior คือรู้ว่าเมื่อไหร่ความเจ็บปวดของ dual-write แพงกว่าต้นทุนการ operate log — ก่อนถึงจุดนั้น การมี source of truth เดียวแบบเรียบง่ายก็เพียงพอ.\n\n## มุมสัมภาษณ์\n\n- **\"มีทั้ง DB, search index, cache — ทำยังไงไม่ให้ข้อมูลไม่ตรงกัน?\"** → อย่า dual-write; เลือก source of truth เดียว ปล่อย ordered log แล้ว derive ทุกระบบจาก log นั้นแบบ one-way.\n- **\"ทำไม dual-write ถึงไม่ดี?\"** → partial failure + ไม่มี total order → แต่ละระบบ diverge และไม่มี ground truth ว่าใครถูก.\n- **\"batch กับ stream เลือกอันไหน?\"** → ใช้ทั้งคู่ — คำถามนี้มักต่อยอดไป Lambda/Kappa (`lambda-kappa`).\n- **\"รู้ได้ยังไงว่า derived view ถูก?\"** → มันเป็น deterministic function ของ log เดียว; ลบทิ้งแล้ว replay ต้องได้ผลเดิม — นี่คือที่มาของการ rebuild ได้.\n",
+  "recall_checks": [
+    {
+      "q": "แนวคิดหลักที่ทำให้หลายระบบเฉพาะทาง (DB, search, cache, warehouse) consistent กันโดยไม่ drift คืออะไร?",
+      "expected_answer": "กำหนด source of truth เดียว ปล่อยเป็น ordered log (total order ของ write) แล้ว derive ทุกระบบจาก log นั้นแบบ one-way",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมการทำ dual-write ไปหลายระบบพร้อมกันถึงเปราะบาง?",
+      "expected_answer": "เพราะเจอ partial failure และไม่มี total order ข้อมูลแต่ละระบบเลย drift",
+      "type": "mcq",
+      "options": [
+        "เพราะ storage engine ของแต่ละระบบไม่รองรับ ACID transaction",
+        "เพราะเจอ partial failure และไม่มี total order ข้อมูลแต่ละระบบเลย drift",
+        "เพราะ stream processing มี latency สูงกว่า batch เสมอจึงตามข้อมูลไม่ทัน"
+      ]
+    },
+    {
+      "q": "derived system อย่าง search index และ cache มี consistency แบบใดเทียบกับ source of truth?",
+      "expected_answer": "eventually consistent มี lag ตามหลัง log อยู่เสมอ",
+      "type": "mcq",
+      "options": [
+        "strongly consistent ตรงกับ source ทุก write ทันที",
+        "consistent เฉพาะช่วงที่ batch job กำลังรันอยู่เท่านั้น",
+        "eventually consistent มี lag ตามหลัง log อยู่เสมอ"
+      ]
+    },
+    {
+      "q": "การใช้ batch และ stream processing ร่วมกันใน data integration ทำหน้าที่อะไร?",
+      "expected_answer": "stream apply write ใหม่ต่อเนื่องให้ derived view สด ส่วน batch reprocess/replay log ทั้งชุดเพื่อ rebuild view ใหม่",
+      "type": "short_answer"
+    },
+    {
+      "q": "ต้นทุนหลักของการ funnel ทุก write ผ่าน ordered log เดียวคืออะไร?",
+      "expected_answer": "log กลายเป็น critical infrastructure ที่ต้อง operate เอง",
+      "type": "mcq",
+      "options": [
+        "log กลายเป็น critical infrastructure ที่ต้อง operate เอง",
+        "derived system ทุกตัวจะกลายเป็น strongly consistent อัตโนมัติ",
+        "ทุก read query ต้องวิ่งผ่าน log ทำให้ query โดยรวมช้าลงมาก"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 12: The Future of Data Systems",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 12",
+      "why": "อ่านต้นฉบับแนวคิด derived data, source of truth และการ integrate หลายระบบผ่าน ordered log"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 11: Stream Processing",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 11",
+      "why": "อ่านว่า CDC และ event log ป้อนการเปลี่ยนแปลงเข้า derived system อย่างไร"
+    },
+    {
+      "title": "Turning the database inside-out with Apache Samza",
+      "source": "martin.kleppmann.com/2015/03/04/turning-the-database-inside-out.html",
+      "why": "อ่านแนวคิด log-centric integration และ derived views จากผู้เขียนหนังสือเอง"
+    }
+  ]
+}
