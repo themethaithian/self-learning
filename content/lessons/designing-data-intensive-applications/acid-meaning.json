@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "acid-meaning",
+  "version": 1,
+  "title_en": "The Meaning of ACID",
+  "est_minutes": 8,
+  "body_md": "# The Meaning of ACID\n\n## ทำไมถึงสำคัญ\n\n\"ACID\" เป็นคำที่ทุกคนพูดถึงแต่ความหมายหลวมกว่าที่คิด — vendor แต่ละเจ้าใช้ทำการตลาดโดยไม่บอกว่า guarantee จริง ๆ อยู่ระดับไหน. งานของ senior คือแยกออกว่าคำ 4 ตัวนี้แต่ละตัวสัญญาอะไร และ *ตัวไหนที่ database ไม่ได้การันตีให้เอง* เพราะถ้าเข้าใจผิดแล้วไปพึ่ง guarantee ที่ระบบไม่เคยให้ ยอดเงินในระบบ fintech จะเพี้ยนโดยที่ transaction ทุกอันดู commit สำเร็จ.\n\n## แก่นของแนวคิด — A / C / I / D แยกทีละตัว\n\nคำว่า ACID ถูกตั้งขึ้นปี 1983 ให้ \"สะกดเป็นคำได้และฟังดูดี\" มากกว่าจะเป็นนิยามที่คมชัด. ระบบที่โฆษณาว่า ACID จึงหมายความไม่เหมือนกัน — ต้องดู implementation จริง โดยเฉพาะ **isolation level ที่ระบบให้จริง** (มีหลายระดับ รายละเอียดอยู่ใน `read-committed` / `snapshot-isolation-mvcc` / `serializability` — ไม่สอนซ้ำที่นี่). ฝั่งตรงข้ามของ ACID มีคำการตลาดอีกคำคือ **BASE** (Basically Available, Soft state, Eventually consistent) ที่จงใจนิยามหลวมยิ่งกว่า จริง ๆ แล้วมันแปลว่า \"ไม่ใช่ ACID\" มากกว่าจะบอกอะไรชัดเจน.\n\n**Atomicity (A) — all-or-nothing.** transaction ที่มีหลาย write ถ้าล้มกลางคัน (error, crash, network fail) ระบบต้อง rollback ทุก write กลับเหมือนไม่เคยเริ่ม. Atomicity ไม่ได้เกี่ยวกับ concurrency เลย — มันเกี่ยวกับความสามารถ abort แล้วทิ้งงานที่ทำค้างไว้ได้อย่างปลอดภัย (คนละเรื่องกับ \"atomic operation\" ในการทำ multithreading).\n\n**Consistency (C) — invariant ของข้อมูลถูกรักษา.** นี่คือจุดที่คนเข้าใจผิดมากที่สุด: C ตัวจริงเป็นหน้าที่ของ **application** ไม่ใช่ database. *คุณ* เป็นคนนิยาม invariant (เช่น \"ผลรวมของขา debit กับ credit ในการโอนต้องเท่ากัน\" หรือ \"balance ห้ามติดลบ\"); database ช่วยได้แค่บาง invariant ผ่าน constraint (foreign key, unique, check) เท่าที่คุณประกาศไว้. invariant ทางธุรกิจส่วนใหญ่ database ไม่รู้จัก — ถ้า application logic เขียน write ที่ละเมิด invariant, A/I/D ทำงานถูกทุกตัวและ transaction ก็ commit ตามปกติ. Kleppmann ชี้ใน DDIA ch.7 ว่า C ถูกยัดเข้ามาให้คำสะกดเป็น ACID ได้ ต่างจาก A/I/D ที่เป็น property ของ database จริง ๆ — ตัวอักษร C เข้ากับ acronym มากกว่าที่แนวคิดจะเข้ากับตัว guarantee.\n\n**Isolation (I) — transaction ที่รันพร้อมกันไม่รบกวนกัน.** เป้าหมายในอุดมคติคือ serializability (ผลเหมือนรันเรียงทีละตัว) แต่ในทางปฏิบัติมีหลายระดับที่ผ่อนลงมาเพื่อ performance — เรื่องระดับต่าง ๆ เป็นของ sibling concepts ที่กล่าวถึงข้างบน ไม่ลงรายละเอียดที่นี่.\n\n**Durability (D) — commit แล้วไม่หาย.** เมื่อ transaction commit สำเร็จ ข้อมูลต้องรอดแม้ hardware ล่มหรือไฟดับ ปกติทำผ่าน write-ahead log ลง non-volatile storage และ/หรือ replication. Durability ก็ไม่ใช่การรับประกันสัมบูรณ์ — ถ้า disk เสียหรือ replica พังพร้อมกันหมดก็ยังหายได้ มันคือการรับประกันเชิงปฏิบัติ ไม่ใช่คำมั่นทางคณิตศาสตร์.\n\nจำสั้น ๆ: **A / I / D เป็นสิ่งที่ database มอบให้; C เป็นสิ่งที่ application ต้องรักษาเอง โดยใช้ A และ I เป็นเครื่องมือช่วย.**\n\n```mermaid\nflowchart TD\n  B[BEGIN transaction] --> D[debit sender -100]\n  D --> C[credit receiver +100]\n  C --> Chk{all writes ok?}\n  Chk -- yes --> Com[COMMIT: durable and visible]\n  Chk -- no or crash --> RB[ROLLBACK: as if never started]\n  RB --> S0[balances unchanged]\n```\n\n## ตัวอย่าง (fintech transfer)\n\nโอน 100 บาทจากบัญชี A ไป B = สอง write: `A.balance -= 100` และ `B.balance += 100`.\n\n- **Atomicity**: ถ้า debit A สำเร็จแล้ว process ตายก่อนจะ credit B — ต้อง rollback ทั้งคู่ ไม่งั้นเงิน 100 บาทหายไปในอากาศ.\n- **Consistency (invariant ของ app)**: invariant คือ \"debit เท่ากับ credit เสมอ\". database ไม่รู้กฎนี้ — ถ้าโค้ดคุณ credit เป็น +90 เพราะ bug คำนวณค่าธรรมเนียมผิด, A/I/D ทำงานถูกหมด transaction commit สวยงาม แต่ระบบ inconsistent เพราะ *application* ละเมิด invariant เอง.\n- **Isolation**: ถ้ามีการหักออกจาก A พร้อมกันสองรายการ ต้องไม่เกิดกรณีอ่าน balance เดิมทั้งคู่แล้วหักซ้อน (lost update). ระดับการป้องกันขึ้นกับ isolation level ที่ระบบให้จริง.\n- **Durability**: พอ commit และตอบลูกค้าว่า \"โอนสำเร็จ\" ต่อให้ไฟดับทันทีในวินาทีถัดมา ยอดต้องยังอยู่.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ACID = database รับประกันความถูกต้องทางธุรกิจให้ทั้งหมด\"** ผิด. C (ความถูกต้องตาม invariant) เป็นงานของ application; database รับประกันแค่ A/I/D บวก constraint เท่าที่คุณประกาศ.\n- **\"ระบบไหนเขียนว่า ACID ก็ปลอดภัยระดับ serializable\"** ผิด. หลายระบบ default ที่ isolation อ่อนกว่า serializable — คำว่า \"ACID\" ไม่ได้บอก level ต้องไปดูของจริง.\n- **\"Atomicity = concurrency safety\"** ผิด. Atomicity คือ all-or-nothing ตอน abort; ส่วนความปลอดภัยเวลารันพร้อมกันเป็นหน้าที่ของ Isolation คนละตัวกัน.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ต้องใช้ ACID เต็ม\n\nACID เต็มรูปแบบ (โดยเฉพาะ serializable isolation กับ synchronous durable commit) มีต้นทุนจริง: coordination และ locking ทำให้ throughput ตก, การ fsync ลง disk และรอ replica ack ดัน latency สูงขึ้น, และการ scale ข้ามหลาย node/partition ยากขึ้นมากเพราะต้องพึ่ง distributed transaction / two-phase commit. งานที่ไม่ต้องการ ACID เต็ม เช่น analytics, event/activity logging, cache, metric counter, หรือ feed ที่ยอมรับ eventual consistency ได้ — การผ่อน guarantee (แนว BASE) แลกมาด้วย availability และ throughput ที่สูงกว่ามาก. หลักคือ: ใช้ ACID เต็มตรงที่ invariant ผิดแล้วเสียเงินจริง (ledger, balance, order state) และผ่อนตรงที่ผิดแล้วแค่ข้อมูลเก่าไปชั่วคราว. senior ไม่ตอบว่า \"ใช้ ACID เสมอ\" แต่ตอบว่า \"แลก guarantee กับต้นทุนตรงไหน และทำไม\".\n\n## มุมสัมภาษณ์\n\n- **\"C ใน ACID กับ consistency ใน CAP theorem ต่างกันยังไง?\"** → คนละเรื่องกันเลย; C ใน ACID = invariant ของ application, ส่วน consistency ใน CAP = linearizability (ทุก node เห็นข้อมูลตรงกัน). คำถามนี้จับคนที่ท่องนิยามมาโดยไม่เข้าใจ.\n- **\"ใครรับผิดชอบ Consistency?\"** → application รักษา invariant, database ช่วยด้วย A/I/D บวก constraint.\n- **\"ระบบบอกว่าเป็น ACID พอไหมที่จะเชื่อ?\"** → ไม่พอ ต้องถาม isolation level จริงและ durability model (sync หรือ async replication).\n- **\"ทำไมบางระบบยอมทิ้ง ACID?\"** → เพื่อ throughput / availability / scale; คำถามนี้มักเป็นสะพานไปคุยเรื่อง BASE และ trade-off ต่อ.\n",
+  "recall_checks": [
+    {
+      "q": "ในบรรดา A/C/I/D ตัวไหนเป็นหน้าที่ของ application ไม่ใช่สิ่งที่ database การันตีให้เอง และเพราะอะไร?",
+      "expected_answer": "Consistency (C) — application เป็นคนนิยามและรักษา invariant ทางธุรกิจ; database ช่วยได้แค่ A/I/D และ constraint ที่ประกาศไว้เท่านั้น",
+      "type": "short_answer"
+    },
+    {
+      "q": "Atomicity รับประกันอะไร?",
+      "expected_answer": "ถ้า transaction ล้มกลางคัน จะ rollback ทุก write เหมือนไม่เคยเริ่ม (all-or-nothing)",
+      "type": "mcq",
+      "options": [
+        "ถ้า transaction ล้มกลางคัน จะ rollback ทุก write เหมือนไม่เคยเริ่ม (all-or-nothing)",
+        "transaction ที่รันพร้อมกันจะไม่รบกวนกัน",
+        "ข้อมูลที่ commit แล้วจะไม่หายแม้ไฟดับ"
+      ]
+    },
+    {
+      "q": "ข้อความใดถูกต้องเกี่ยวกับ Consistency (C) ใน ACID?",
+      "expected_answer": "เป็นหน้าที่ของ application ในการรักษา invariant; database การันตีให้เองไม่ได้ทั้งหมด",
+      "type": "mcq",
+      "options": [
+        "เป็นหน้าที่ของ application ในการรักษา invariant; database การันตีให้เองไม่ได้ทั้งหมด",
+        "database รับประกัน invariant ทางธุรกิจทุกข้อให้อัตโนมัติ",
+        "มันคือ linearizability แบบเดียวกับ consistency ใน CAP theorem"
+      ]
+    },
+    {
+      "q": "ทำไมการที่ระบบโฆษณาว่าเป็น ACID จึงยังไม่พอจะบอกว่ามันปลอดภัยแค่ไหน?",
+      "expected_answer": "เพราะ ACID เป็นคำการตลาดที่หลวม ต้องดู implementation จริง โดยเฉพาะ isolation level ที่ให้จริง (read committed/snapshot/serializable) และ durability model (sync หรือ async replication)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ต้นทุนหลักของการรับประกัน ACID เต็มรูปแบบคืออะไร?",
+      "expected_answer": "throughput ต่ำลงและ latency สูงขึ้นจาก coordination/locking, fsync และการ scale ข้าม node ที่ยากขึ้น",
+      "type": "mcq",
+      "options": [
+        "throughput ต่ำลงและ latency สูงขึ้นจาก coordination/locking, fsync และการ scale ข้าม node ที่ยากขึ้น",
+        "ใช้ disk น้อยลงเพราะไม่ต้องเก็บ log",
+        "ทำให้ระบบ available มากขึ้นเสมอ"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 7: Transactions",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 7",
+      "why": "อ่านต้นฉบับนิยาม ACID และประเด็นสำคัญว่า Consistency เป็นงานของ application"
+    },
+    {
+      "title": "Principles of Transaction-Oriented Database Recovery (ที่มาของคำ ACID)",
+      "source": "Theo Harder & Andreas Reuter, ACM Computing Surveys 15(4), 1983",
+      "why": "อ่านที่มาว่าทำไม ACID ถูกตั้งเป็นคำที่สะกดได้มากกว่าจะเป็นนิยามที่คมชัด"
+    },
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 9: Consistency and Consensus (Linearizability)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 9",
+      "why": "อ่านต่อเพื่อแยก consistency ใน CAP (linearizability) ออกจาก C ใน ACID"
+    }
+  ]
+}
