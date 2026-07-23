@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "serializability",
+  "version": 1,
+  "title_en": "Serializability",
+  "est_minutes": 9,
+  "body_md": "# Serializability\n\n## ทำไมถึงสำคัญ\n\nSerializable คือ isolation level ที่แข็งแรงที่สุด: มันการันตีว่าแม้ transaction หลายตัวจะรันพร้อมกันจริง ผลลัพธ์สุดท้ายจะ*เหมือน*กับว่ารันเรียงกันทีละตัว (serial) ในลำดับใดลำดับหนึ่ง. นี่คือระดับเดียวที่ปิด race condition ได้ *ทุกชนิด* รวมถึง write skew ที่ weaker level อย่าง snapshot isolation ยังปล่อยผ่าน. senior ต้องตอบได้ว่ามันการันตีอะไร และทำไมของแบบนี้ถึงไม่ฟรี — ทุก implementation แลกด้วย throughput เสมอ.\n\n(บทนี้ OWN นิยาม serializable + สาม implementation. ตัว anomaly เช่น lost update / write skew ที่มันปิดได้ อธิบายไว้ใน sibling concepts แล้ว — ที่นี่แค่อ้างว่ามันปิดครบ. ส่วน SSI ต่อยอดจาก snapshot isolation/MVCC — ดู sibling `snapshot-isolation-mvcc`.)\n\n## แก่นของแนวคิด: \"equivalent to serial\"\n\nSerializable *ไม่ได้*แปลว่ารันทีละตัวจริง ๆ. มันแปลว่า outcome ที่ observe ได้ต้องตรงกับ serial schedule *บางอัน* — DB จะเลือกลำดับไหนก็ได้ (T1 ก่อน T2 หรือ T2 ก่อน T1) ขอแค่มีลำดับหนึ่งที่อธิบายผลลัพธ์ที่เกิดขึ้นได้. เพราะ serial execution ไม่มี concurrency มันจึงไม่มี race condition โดยนิยาม; ถ้าผลของการรันพร้อมกัน \"แยกไม่ออก\" จาก serial อันใดอันหนึ่ง แสดงว่า anomaly ทุกชนิดถูกปิด.\n\nมีสามวิธีหลักในการ implement:\n\n```mermaid\nflowchart TD\n  S[Serializable isolation] --> A[1. Literal serial execution]\n  S --> B[2. Two-phase locking 2PL]\n  S --> C[3. Serializable Snapshot Isolation SSI]\n  A --> A1[\"single thread, one txn at a time<br/>Redis, VoltDB\"]\n  B --> B1[\"pessimistic: lock before access<br/>release at commit\"]\n  C --> C1[\"optimistic: run on snapshot<br/>detect conflict at commit\"]\n```\n\n### 1. Literal serial execution\nรัน transaction ทีละตัวจริง ๆ บน single thread — ไม่มี lock, ไม่มี concurrency, จึงไม่มี anomaly โดยกำเนิด. ใช้ได้เมื่อ (ก) dataset ทั้งหมดเข้า memory (ไม่ต้องรอ disk I/O ระหว่างรัน) และ (ข) แต่ละ transaction สั้นและเร็ว (ห้ามมี txn ที่ค้างรอ user input). ได้ throughput สูงถ้าเงื่อนไขครบ เพราะตัด overhead ของ locking/coordination ทิ้งหมด. ใช้ใน Redis, VoltDB, Datomic. ข้อจำกัดชัด: ผูกกับ single CPU core ต่อ partition — scale ได้แค่ด้วยการ partition data แล้วถ้า txn ข้าม partition ต้อง coordinate ซึ่งช้าลงมาก.\n\n### 2. Two-phase locking (2PL)\nวิธี pessimistic คลาสสิก. อ่าน = ขอ shared lock, เขียน = ขอ exclusive lock; reader block writer และ writer block reader (ต่างจาก snapshot isolation ที่ reader ไม่เคย block writer). \"two-phase\" = phase ขยาย (acquire lock เพิ่มเรื่อย ๆ ระหว่างรัน) แล้ว phase หด (ปล่อย lock ทั้งหมดตอน commit/abort ทีเดียว). ถูกต้องแน่นอนแต่แพง: throughput ต่ำเพราะ concurrency ถูกบีบ, เกิด deadlock ได้ (ต้อง detect แล้ว abort ตัวหนึ่ง), และ latency ผันผวนสูง (tail latency แย่) เพราะ transaction ต้องรอ lock ในคิวยาว.\n\n### 3. Serializable Snapshot Isolation (SSI)\nวิธี optimistic — ใหม่กว่า (Cahill et al. 2008), ใช้ใน PostgreSQL (SERIALIZABLE mode) และ FoundationDB. ให้ transaction รันเต็มที่บน snapshot (ต่อยอดจาก snapshot isolation/MVCC) โดยไม่ block ใคร แล้วตอนจะ commit ค่อยเช็คว่า \"การตัดสินใจที่ทำไปตั้งอยู่บน premise ที่ยังจริงอยู่ไหม\" — ถ้ามี transaction อื่น commit ทับ premise นั้น (serialization conflict) → abort แล้วให้ retry. ข้อดี: reader/writer ไม่ block กัน scale ได้ดีกว่า 2PL เมื่อ contention ต่ำ. ข้อเสีย: เมื่อ contention สูง abort rate พุ่ง งานถูกทำทิ้งแล้ว retry ซ้ำ ๆ.\n\n## ตัวอย่าง (fintech: กฎ \"ต้องมีบัญชี active อย่างน้อย 1\")\n\nธนาคารมีกฎ compliance: ลูกค้าหนึ่งรายต้องมีบัญชี active อย่างน้อย 1 บัญชีเสมอ (ห้ามปิดหมด). ลูกค้ามีสองบัญชี A, B ที่ active ทั้งคู่. เกิดคำขอปิดบัญชีพร้อมกันสองคำขอ:\n\n- **T1**: ปิด A → อ่านเห็นว่ายังมี B active อยู่ → กฎผ่าน → ปิด A\n- **T2**: ปิด B → อ่านเห็นว่ายังมี A active อยู่ → กฎผ่าน → ปิด B\n\nภายใต้ snapshot isolation ทั้งสอง txn อ่านจาก snapshot ตอนเริ่ม (A และ B ยัง active ทั้งคู่) ต่างฝ่ายต่างเห็นว่า \"อีกบัญชียัง active\" → ทั้งคู่ commit → ลูกค้าเหลือ 0 บัญชี active = ผิดกฎ. นี่คือ **write skew**: ไม่มี lost update (เขียนคนละ row) แต่ premise ที่ใช้ตัดสินโดน txn อื่นทำให้กลายเป็นเท็จหลังอ่าน.\n\nSerializable ปิดเคสนี้ ไม่ว่า implement แบบไหน ผลต้องเท่ากับ serial:\n\n- **2PL**: T1 ถือ lock บน row A และ predicate ที่มันอ่าน (เงื่อนไข active) → T2 ต้องรอจน T1 commit → T2 อ่านใหม่เห็นว่า A ปิดแล้ว → กฎ fail → ปฏิเสธ.\n- **SSI**: ทั้งคู่รันบน snapshot แต่ตอน commit SSI ตรวจพบว่า premise (\"อีกบัญชี active\") ของ T2 ถูก T1 ทำให้เป็นเท็จ → abort T2 → retry → เห็นสถานะจริง → ปฏิเสธ.\n\nผลสุดท้ายเหมือนกัน: อย่างมากหนึ่งบัญชีถูกปิด ตรงกับ serial order บางอัน.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Serializable = รัน transaction ทีละตัวจริง ๆ\"** ผิด (ยกเว้นวิธี literal serial execution). โดยทั่วไปมันรันพร้อมกันเต็มที่ แค่การันตีว่า*ผลลัพธ์*เทียบเท่า serial order บางอัน.\n- **\"Snapshot isolation ก็คือ serializable\"** ผิด — snapshot isolation ปิด lost update ได้ (ในบาง DB) แต่ยังปล่อย write skew; คำว่า \"Serializable Snapshot Isolation\" ต่างจาก \"Snapshot Isolation\" ตรงที่เพิ่ม conflict detection เข้าไป.\n- **\"PostgreSQL REPEATABLE READ = serializable\"** ผิด — REPEATABLE READ ใน PostgreSQL คือ snapshot isolation; ต้องเลือก SERIALIZABLE (SSI) ต่างหากถึงจะกัน write skew.\n- **\"2PL กับ SSI ให้ correctness ต่างระดับกัน\"** ผิด — ทั้งคู่ให้ serializable เท่ากัน; ต่างกันที่ *กลไก* (pessimistic vs optimistic) และ performance profile ไม่ใช่ระดับ guarantee.\n\n## ขีดจำกัด / เมื่อไหร่ไม่คุ้มใช้ serializable\n\nแก่นที่สัมภาษณ์เจาะ: serializable ปลอดภัยสุดแต่ *แลก throughput เสมอ* — คำถามคือแลกแบบไหน และแต่ละวิธีเจ็บคนละจุด:\n\n| วิธี | คอขวด | เจ็บเมื่อ |\n|---|---|---|\n| Serial execution | CPU-bound, single core ต่อ partition | dataset ไม่เข้า memory, txn ยาว, หรือ txn ข้าม partition |\n| 2PL | lock contention, deadlock, tail latency | write เยอะ, hot row, txn ยาวถือ lock นาน |\n| SSI | abort/retry rate | contention สูง → retry พายุ, งานถูกทำทิ้ง |\n\n**เมื่อไหร่ไม่ควรใช้:**\n\n- workload อ่านหนักที่ tolerate ค่า stale เล็กน้อยได้ (dashboard, analytics, feed) — จ่าย serializable ไม่คุ้ม ใช้ read committed / snapshot ก็พอ.\n- ระบบ throughput สูงมากที่ contention บน hot key สูง — SSI จะ abort ถล่ม, 2PL จะ block ยาว; ทางแก้มักคือออกแบบ data model ใหม่ให้ contention ลด แทนที่จะดัน isolation ให้แข็งขึ้น.\n- ระบบ distributed ข้าม partition/node — serializable ข้าม node ต้องการ distributed coordination (2PC/consensus) ทำให้ latency พุ่งและ availability ตก.\n\n**หลักตัดสิน:** อย่าเปิด serializable ทั้งระบบเป็น default. ระบุ transaction ที่ correctness สำคัญจริง (แตะเงิน, invariant ข้าม row แบบ write skew) แล้วยกเฉพาะจุดนั้นเป็น serializable; ที่เหลือใช้ level ที่เบากว่า. senior มอง serializable เป็น *เครื่องมือเฉพาะจุด* ไม่ใช่สวิตช์เปิดทิ้งทั้งระบบ.\n\n## มุมสัมภาษณ์\n\n- \"serializable การันตีอะไร?\" → ผลลัพธ์เทียบเท่า serial schedule บางอัน ปิด anomaly ทุกชนิดรวม write skew.\n- \"2PL กับ SSI ต่างกันยังไง?\" → 2PL pessimistic (lock ก่อนแตะ, block, เกิด deadlock ได้), SSI optimistic (รันบน snapshot, detect conflict ตอน commit, abort+retry); correctness เท่ากัน แต่ 2PL เจ็บที่ lock contention, SSI เจ็บที่ abort rate เมื่อ contention สูง.\n- \"ทำไมไม่เปิด serializable ทั้งระบบไปเลย?\" → แลก throughput เสมอ; เปิดเฉพาะ transaction ที่ต้องการ invariant จริง.\n- \"PostgreSQL REPEATABLE READ กัน write skew ไหม?\" → ไม่ (มันคือ snapshot isolation) ต้องใช้ SERIALIZABLE; คำถามนี้มักเป็นสะพานไปเรื่อง SSI.\n- \"serial execution เร็วได้ยังไงทั้งที่รันทีละตัว?\" → ตัด lock/coordination overhead ทิ้ง + ข้อมูลอยู่ใน memory; แต่ผูก single core และต้อง partition.\n",
+  "recall_checks": [
+    {
+      "q": "Serializable isolation การันตีอะไรเกี่ยวกับผลลัพธ์ของ transaction ที่รันพร้อมกัน?",
+      "expected_answer": "ผลลัพธ์ต้องเทียบเท่า (equivalent) กับการรัน transaction เรียงกันทีละตัวแบบ serial ในลำดับใดลำดับหนึ่ง ทำให้ปิด anomaly ทุกชนิดรวมถึง write skew",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดอธิบายความต่างระหว่าง 2PL กับ SSI ได้ถูกต้อง?",
+      "expected_answer": "2PL เป็น pessimistic (lock ก่อนแตะข้อมูล), SSI เป็น optimistic (รันบน snapshot แล้ว detect conflict ตอน commit)",
+      "type": "mcq",
+      "options": [
+        "2PL เป็น pessimistic (lock ก่อนแตะข้อมูล), SSI เป็น optimistic (รันบน snapshot แล้ว detect conflict ตอน commit)",
+        "2PL เป็น optimistic (รันบน snapshot), SSI เป็น pessimistic (lock ก่อนแตะข้อมูล)",
+        "ทั้งคู่เป็น optimistic เหมือนกัน ต่างกันแค่ชื่อ"
+      ]
+    },
+    {
+      "q": "Literal serial execution ใช้ได้ผลดีเมื่อเงื่อนไขใดเป็นจริง?",
+      "expected_answer": "dataset ทั้งหมดเข้า memory และแต่ละ transaction สั้น/เร็ว",
+      "type": "mcq",
+      "options": [
+        "dataset ทั้งหมดเข้า memory และแต่ละ transaction สั้น/เร็ว",
+        "dataset ใหญ่เกิน memory และมี transaction ที่รอ user input นาน",
+        "มี transaction ข้าม partition จำนวนมาก"
+      ]
+    },
+    {
+      "q": "เมื่อ contention สูง SSI มีปัญหาด้าน performance ที่จุดใดเป็นหลัก?",
+      "expected_answer": "abort/retry rate พุ่งสูง งานถูกทำทิ้งแล้ว retry ซ้ำ ๆ",
+      "type": "mcq",
+      "options": [
+        "abort/retry rate พุ่งสูง งานถูกทำทิ้งแล้ว retry ซ้ำ ๆ",
+        "deadlock เกิดถี่ขึ้นจนต้อง detect และ abort",
+        "ทุก transaction ถูกบังคับให้รันทีละตัวบน single core"
+      ]
+    },
+    {
+      "q": "PostgreSQL REPEATABLE READ กัน write skew ได้ไหม เพราะอะไร?",
+      "expected_answer": "ไม่ได้ เพราะ REPEATABLE READ ใน PostgreSQL คือ snapshot isolation ซึ่งยังปล่อย write skew; ต้องใช้ระดับ SERIALIZABLE (SSI) จึงจะกันได้",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 7: Transactions (Serializability / Serial execution / Two-Phase Locking / Serializable Snapshot Isolation)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 7",
+      "why": "อ่านต้นฉบับนิยาม serializable และเปรียบเทียบสามวิธี serial/2PL/SSI พร้อม trade-off"
+    },
+    {
+      "title": "Serializable Isolation for Snapshot Databases",
+      "source": "Michael J. Cahill, Uwe Rohm, Alan D. Fekete, ACM SIGMOD 2008",
+      "why": "อ่านที่มาของ SSI โดยตรง: ทำไม optimistic conflict detection บน snapshot ให้ serializable ได้"
+    },
+    {
+      "title": "PostgreSQL Documentation: Transaction Isolation (Repeatable Read vs Serializable / SSI)",
+      "source": "PostgreSQL official docs — chapter 'Concurrency Control: Transaction Isolation'",
+      "why": "อ่านว่า production DB map REPEATABLE READ = snapshot, SERIALIZABLE = SSI อย่างไร และเมื่อไหร่ txn ถูก abort"
+    }
+  ]
+}

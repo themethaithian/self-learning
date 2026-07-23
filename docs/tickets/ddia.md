@@ -46,8 +46,8 @@ lesson-writer → lesson-verifier ทีละ concept. ทุก lesson มี 
 (topic slug = folder name, บังคับโดย `LoadLesson`), import ด้วย `cmd/import-lessons`.
 
 - **batch 1 — ch.5 Replication (5 lessons):** single-leader, replication-lag-problems,
-  multi-leader, leaderless-dynamo-style, quorum-consistency. verifier PASS ครบ 5.
-  → **branch `content/ddia-replication`, PR รอ merge.**
+  multi-leader, leaderless-dynamo-style, quorum-consistency. → **PR #20 merged.**
 - **batch 2 — ch.7 Transactions (5 lessons):** acid-meaning, read-committed,
-  snapshot-isolation-mvcc, lost-updates-and-write-skew, serializability. (NEXT)
+  snapshot-isolation-mvcc, lost-updates-and-write-skew, serializability. verifier PASS
+  ครบ 5 (acid-meaning แก้ 1 รอบ: ลบการอ้าง Hellerstein ที่กุ). → **branch `content/ddia-transactions`, PR รอ merge.**
 - ที่เหลืออีก 10 บท ตาม tree ใน `content/curriculum/ddia.json`.

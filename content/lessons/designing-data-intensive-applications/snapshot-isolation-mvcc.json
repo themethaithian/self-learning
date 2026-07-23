@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "snapshot-isolation-mvcc",
+  "version": 1,
+  "title_en": "Snapshot Isolation and MVCC",
+  "est_minutes": 8,
+  "body_md": "# Snapshot Isolation and MVCC\n\n## ทำไมถึงสำคัญ\n\nนึกถึง transaction ยาว ๆ ที่ไล่อ่านหลายแถวข้ามหลายวินาที เช่น การ generate รายงานยอดรวมทั้งพอร์ต หรือ backup ทั้งฐานข้อมูล. ถ้าระหว่างที่มันอ่านทีละบัญชี มีคนโอนเงินจาก A ไป B พร้อมกัน รายงานอาจเห็นเงินหักออกจาก A แล้ว แต่ยังอ่าน B ก่อนเงินเข้า — ยอดรวมหายไปดื้อ ๆ (read skew). Read committed (ดู sibling `read-committed`) กัน dirty read ได้ แต่ไม่กันปัญหานี้ เพราะแต่ละ query เห็น snapshot คนละจุดเวลา. Snapshot isolation แก้ตรงนี้: ทั้ง transaction เห็นข้อมูล ณ \"จุดเวลาเดียว\" ตลอด.\n\n## แก่นของแนวคิด\n\nSnapshot isolation: ทุก transaction อ่านจาก **consistent snapshot** ของฐานข้อมูล — เป็นภาพของ committed data ทั้งหมด ณ ตอนที่ transaction เริ่ม. ระหว่างที่มันรัน คนอื่นจะ commit การเปลี่ยนแปลงอะไรทับก็ตาม transaction นี้จะ **ไม่เห็น** สิ่งที่ commit ทีหลัง — มันเห็นภาพเดิมเสมอ. ผลคืออ่านแถวเดิมซ้ำกี่รอบก็ได้ค่าเดิม จึงกัน read skew / non-repeatable read.\n\nกลไก implement คือ **MVCC (Multi-Version Concurrency Control)**:\n\n- เมื่อ update ฐานข้อมูล **ไม่ทับค่าเก่า** แต่เก็บ **หลาย version ของแถวเดียวกัน** ไว้พร้อมกัน แต่ละ version ติด metadata ว่าถูกสร้างโดย transaction id ไหน (created_by) และถูกแทนที่/ลบโดย transaction id ไหน (deleted_by).\n- ทุก transaction มี **transaction id (txid)** ที่เพิ่มขึ้นเรื่อย ๆ. ตอนเริ่ม transaction จะจดว่า ณ ตอนนั้นมี txid ไหน commit ไปแล้วบ้างและตัวไหนยัง in-progress — นี่คือ snapshot.\n- **Visibility rule** (แบบย่อ): version หนึ่ง visible ต่อเราก็ต่อเมื่อ (1) txid ที่สร้างมัน commit ไปแล้ว *ก่อน* snapshot ของเราถูกถ่าย และ (2) มันยังไม่ถูกลบ หรือถูกลบโดย txid ที่ ณ snapshot ของเรายัง uncommitted. พูดง่าย ๆ: เราเห็นเฉพาะ version ที่ commit แล้ว ณ จุดที่เราเริ่ม และมองข้าม version ที่ txid ใหม่กว่า snapshot ของเรา.\n\nหลักการทองของ MVCC: **readers ไม่ block writers และ writers ไม่ block readers**. เพราะ writer สร้าง version ใหม่แทนการเขียนทับ reader ที่ถือ snapshot เก่าจึงยังอ่าน version เก่าได้โดยไม่ต้องรอ lock — read กับ write เดินขนานกันเต็มที่. (writer ยังต้อง block writer อื่นบนแถวเดียวกันอยู่ นั่นคนละเรื่องกับ read.)\n\n```mermaid\nsequenceDiagram\n  participant T50 as Txn50 report (snapshot at start)\n  participant Row as Row accountA.balance\n  participant T55 as Txn55 transfer\n  Note over Row: version created_by=42 value=1000\n  T50->>Row: read -> sees v42 (1000)\n  T55->>Row: update -> new version created_by=55 value=800\n  Note over Row: two versions coexist\n  T50->>Row: read again -> still v42 (1000)\n  T55->>Row: commit\n  T50->>Row: read again -> STILL v42 (1000)\n```\n\n## ตัวอย่าง (fintech: รายงานสิ้นวัน)\n\nธนาคารรัน batch สรุปยอดรวมทั้งระบบตอนสิ้นวัน (txid 50, long-running) ระหว่างนั้นลูกค้าโอน 200 จากบัญชี A ไป B (txid 55).\n\n- ก่อนโอน: A=1000, B=500 → ยอดรวม 1500.\n- txid 50 ถ่าย snapshot ตอน A=1000, B=500.\n- txid 55 update: สร้าง version ใหม่ A=800, B=700 แล้ว commit.\n- แม้ report จะอ่าน A ก่อน (เห็น 1000) แล้วค่อยอ่าน B *หลัง* txid 55 commit ไปแล้ว — visibility rule ทำให้ report **ยังเห็น B=500** เพราะ version B=700 ถูกสร้างโดย txid 55 ที่ใหม่กว่า snapshot ของ report.\n- ผลรวมที่ report ได้ = 1000 + 500 = 1500 ถูกต้อง. ถ้าเป็นแค่ read committed: report อาจอ่าน A=1000 (ก่อนโอน) + B=700 (หลังโอน) = 1700 — เงินโผล่มา 200 จากอากาศ. นั่นคือ read skew ที่ snapshot isolation ปิดได้.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **Naming confusion — \"repeatable read\":** หลาย DB (PostgreSQL, MySQL InnoDB, Oracle) เรียก snapshot isolation ด้วยชื่อ level ว่า \"repeatable read\" หรือแม้แต่ \"serializable\" ที่ไม่ตรงนิยาม. แต่ REPEATABLE READ ใน SQL standard เป็นคนละนิยาม (พูดถึงแค่การกัน non-repeatable read ไม่ครอบ snapshot semantics). ผลคือ isolation level ชื่อเดียวกันข้าม vendor ให้ guarantee ไม่เท่ากัน — senior ต้องเช็คว่า DB จริง ๆ ให้อะไร ไม่ใช่เชื่อชื่อ level.\n- **\"snapshot isolation = อ่านค่าล่าสุดเสมอ\":** ผิด. มันจงใจอ่านค่า ณ จุดเริ่ม transaction ซึ่งอาจ \"เก่า\" กว่าค่าล่าสุดที่ commit ไปแล้ว.\n- **\"reader ไม่ block writer แปลว่าไม่มี lock เลย\":** ผิด. writer ยัง block writer อื่นบนแถวเดียวกัน เฉพาะ read เท่านั้นที่ lock-free.\n\n## ขีดจำกัด / trade-off\n\n1. **Storage + garbage collection:** เก็บหลาย version กินพื้นที่มากขึ้น และต้องมี background process (เช่น PostgreSQL `VACUUM`) มาเก็บกวาด version เก่าที่ไม่มี snapshot ไหนมองเห็นแล้ว. footgun ที่เจอจริงบ่อย: ถ้ามี long-running read transaction ค้างอยู่ (report รันเป็นชั่วโมง หรือ connection leak) มันจะ \"ปักหมุด\" ให้ GC ลบ version เก่าไม่ได้ → version สะสมบวม (table/index bloat) กระทบ performance ทั้งระบบ.\n\n2. **ยังมี write anomaly ที่หลุด:** snapshot isolation กัน read anomaly (read skew, non-repeatable read) ได้ดี แต่ **ไม่กัน lost update และ write skew** — สอง transaction ที่อ่าน snapshot เดียวกันแล้วต่างคน write ทับ invariant ข้ามแถวได้ พังเงียบ ๆ. อย่าเข้าใจผิดว่า snapshot isolation = ปลอดภัยทุกอย่าง. ทำไมและกันยังไงอยู่ใน sibling `lost-updates-and-write-skew`; ถ้าต้องกันครบต้องขยับไป serializable (sibling `serializability`) ที่แพงกว่า.\n\nเมื่อไหร่ไม่พอ: ถ้า business ทน anomaly ข้ามแถวไม่ได้เลยและต้องการ correctness สูงสุด snapshot isolation ไม่พอ ต้อง serializable. กลับกัน ถ้าไม่มี long read ค้างและไม่มี invariant ข้ามแถว snapshot isolation คือ sweet spot ระหว่าง performance กับ correctness.\n\n## มุมสัมภาษณ์\n\n- \"snapshot isolation ต่างจาก read committed ตรงไหน?\" → read committed เห็น snapshot ใหม่ต่อ query; snapshot isolation freeze ทั้ง transaction ที่จุดเริ่ม → กัน read skew.\n- \"MVCC ทำให้ reader กับ writer ไม่ block กันได้ยังไง?\" → writer สร้าง version ใหม่แทนการเขียนทับ reader ถือ snapshot อ่าน version เก่าต่อได้ ไม่ต้องรอ lock.\n- \"ทำไม PostgreSQL ต้อง VACUUM / long transaction อันตรายยังไง?\" → dead version สะสม, long read ปักหมุด GC → bloat.\n- \"REPEATABLE READ ของ MySQL คือ serializable ไหม?\" → ไม่ใช่ มันคือ snapshot isolation ยังหลุด write skew — สะพานไปเรื่อง naming confusion และ serializability.\n",
+  "recall_checks": [
+    {
+      "q": "หลักการทองของ MVCC ที่ทำให้ reader กับ writer ไม่ขวางกันคืออะไร และทำได้ยังไง?",
+      "expected_answer": "readers ไม่ block writers และ writers ไม่ block readers — เพราะ writer สร้าง version ใหม่แทนการเขียนทับ reader จึงอ่าน version เก่าจาก snapshot ต่อได้โดยไม่ต้องรอ lock",
+      "type": "short_answer"
+    },
+    {
+      "q": "ระหว่างที่ long-running report (ถือ snapshot เก่า) กำลังอ่าน มี transaction อื่น update แถวเดียวกันแล้ว commit จะเกิดอะไรกับ report?",
+      "expected_answer": "report ยังอ่านค่า version เดิมจาก snapshot ของตัวเองต่อได้ ไม่ต้องรอ writer",
+      "type": "mcq",
+      "options": [
+        "report ยังอ่านค่า version เดิมจาก snapshot ของตัวเองต่อได้ ไม่ต้องรอ writer",
+        "report ต้อง block รอจนกว่า writer จะ commit เสร็จก่อนถึงอ่านต่อได้",
+        "report เห็นค่าใหม่ทันทีที่ writer commit"
+      ]
+    },
+    {
+      "q": "ทำไมชื่อ isolation level \"repeatable read\" ถึงชวนสับสน?",
+      "expected_answer": "หลาย DB ใช้ \"repeatable read\" เรียก snapshot isolation ซึ่งให้ guarantee ต่างจากนิยาม REPEATABLE READ ใน SQL standard",
+      "type": "mcq",
+      "options": [
+        "หลาย DB ใช้ \"repeatable read\" เรียก snapshot isolation ซึ่งให้ guarantee ต่างจากนิยาม REPEATABLE READ ใน SQL standard",
+        "เพราะ repeatable read เป็นชื่อเดียวกับ serializable ในทุก vendor",
+        "เพราะ repeatable read ไม่มีจริงใน DB ใด ๆ"
+      ]
+    },
+    {
+      "q": "ทำไม long-running read transaction ที่ค้างนานจึงเป็น operational footgun ใน MVCC?",
+      "expected_answer": "มันปักหมุดไม่ให้ garbage collection ลบ version เก่าที่ยังมองเห็นได้ ทำให้ version สะสมบวม (bloat)",
+      "type": "mcq",
+      "options": [
+        "มันปักหมุดไม่ให้ garbage collection ลบ version เก่าที่ยังมองเห็นได้ ทำให้ version สะสมบวม (bloat)",
+        "มันทำให้ writer ทุกตัว block จนระบบค้างทั้งหมด",
+        "มันลบ version ใหม่ทิ้งทำให้ข้อมูลที่เพิ่ง commit หายไป"
+      ]
+    },
+    {
+      "q": "snapshot isolation กัน anomaly กลุ่มไหนได้ และ anomaly ไหนที่ยังหลุด?",
+      "expected_answer": "กัน read anomaly เช่น read skew / non-repeatable read ได้ แต่ยังหลุด lost update และ write skew (ดู sibling lost-updates-and-write-skew)",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 7: Transactions",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 7 (Weak Isolation Levels — Snapshot Isolation and Repeatable Read)",
+      "why": "อ่านต้นฉบับแนวคิด snapshot isolation, MVCC visibility และ naming confusion"
+    },
+    {
+      "title": "PostgreSQL Documentation — Concurrency Control (MVCC)",
+      "source": "postgresql.org/docs/current/mvcc.html",
+      "why": "อ่านว่า MVCC จริง ๆ implement ยังไงและทำไม reader ไม่ block writer ใน production DB"
+    },
+    {
+      "title": "A Critique of ANSI SQL Isolation Levels",
+      "source": "Berenson, Bernstein, Gray, Melton, O'Neil, O'Neil (ACM SIGMOD, 1995)",
+      "why": "อ่านเปเปอร์ที่นิยาม snapshot isolation เป็นทางการและชี้ช่องว่างของ isolation level ตาม SQL standard"
+    }
+  ]
+}

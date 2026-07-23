@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "lost-updates-and-write-skew",
+  "version": 1,
+  "title_en": "Lost Updates and Write Skew",
+  "est_minutes": 9,
+  "body_md": "# Lost Updates and Write Skew\n\n## ทำไมถึงสำคัญ\n\nSnapshot isolation (sibling `snapshot-isolation-mvcc`) กัน read anomaly ได้เกือบหมด แต่มัน \"ไม่กัน\" write anomaly สองตัวที่ทำให้เงินหายหรือ invariant พังเงียบ ๆ คือ lost update และ write skew. ในระบบ fintech ที่หลาย transaction แข่งกันแก้ยอดเดียวกันหรือเช็คเงื่อนไขข้ามแถว การไม่รู้จักสองตัวนี้แปลว่ายอดติดลบหรือจองซ้ำเกิดได้แม้ทุก transaction ดู \"ถูกต้อง\" ทีละตัว. งานของ senior คือบอกได้ว่า anomaly ไหนกันด้วยเครื่องมืออะไร โดยไม่กระโดดไป serializable ทุกครั้ง (บทเรียนนี้สมมติว่าคุณรู้ snapshot isolation แล้ว).\n\n## Lost update\n\nLost update เกิดจาก read-modify-write cycle: transaction อ่านค่า → แก้ใน application → เขียนกลับ. ถ้าสอง transaction ทำ cycle นี้บนค่าเดียวกันพร้อมกัน ตัวที่เขียนทีหลังจะทับ ตัวแรกหายไปทั้งที่ต่างก็อ่าน-เขียนถูกต้องของตัวเอง.\n\nตัวอย่างคลาสสิก: counter increment เริ่มที่ 42. สอง txn ต่างอ่าน 42, ต่างบวก 1, ต่างเขียน 43 → ผลควรเป็น 44 แต่ได้ 43. หนึ่ง increment หายไป.\n\n```mermaid\nsequenceDiagram\n  participant A as Txn A\n  participant DB as counter (=42)\n  participant B as Txn B\n  A->>DB: read counter -> 42\n  B->>DB: read counter -> 42\n  A->>DB: write counter = 43\n  B->>DB: write counter = 43\n  Note over DB: result 43, one increment lost (should be 44)\n```\n\nวิธีกัน (เรียงจากถูก/ปลอดภัยสุด ไปยุ่งขึ้น):\n\n- **Atomic write operation** — ยกการ modify ไปทำในฐานข้อมูลเลย: `UPDATE counters SET value = value + 1 WHERE id = ?`. ไม่มี read-modify-write ใน application อีก DB จัดการ concurrency ให้เอง. ดีที่สุดเมื่อ operation เขียนเป็น expression ได้.\n- **Explicit lock** — `SELECT ... FOR UPDATE` ล็อกแถวตอนอ่าน บังคับ txn อื่นรอ. ใช้เมื่อ logic ซับซ้อนเกินกว่าจะเป็น atomic expression.\n- **Compare-and-set (CAS)** — `UPDATE ... SET value = new WHERE id = ? AND value = old`. ถ้าค่าถูกเปลี่ยนไปแล้ว update จะกระทบ 0 แถว → application รู้ว่าชนแล้ว retry. ระวัง: ต้องแน่ใจว่า WHERE เทียบกับค่าปัจจุบันจริง ไม่ใช่ค่าจาก snapshot ที่ stale.\n- **Automatic detection** — บาง DB (เช่น PostgreSQL, Oracle บน snapshot isolation) ตรวจ lost update ให้อัตโนมัติแล้ว abort txn ที่ชน ให้ application retry. แต่ MySQL InnoDB ไม่ตรวจให้ ต้องใช้วิธีข้างบนเอง.\n\n## Write skew — anomaly ที่ทั่วไปกว่า\n\nWrite skew ต่างจาก lost update ตรงที่สอง transaction **ไม่ได้เขียนแถวเดียวกัน**. แต่ทั้งคู่ต่างอ่าน overlapping data ชุดเดียวกัน, เช็ค condition/invariant เดียวกัน, แล้วต่างเขียนคนละแถว. แต่ละ txn เห็นว่า invariant ยังจริงบน snapshot ของตัวเอง เลยเขียน แต่พอ commit ทั้งคู่ invariant ที่ครอบหลายแถวกลับถูกละเมิด.\n\nตัวอย่างตำรา (doctor on-call): invariant คือ \"ต้องมีหมออยู่เวรอย่างน้อย 1 คน\". Alice กับ Bob อยู่เวรทั้งคู่ ต่างขอออกเวรพร้อมกัน. แต่ละ txn เช็ค \"ยังมีคนอื่นอยู่เวร (นับได้ 2) → ออกได้\" แล้ว set ตัวเองออก. commit ทั้งคู่ → เหลือ 0 คน invariant พัง.\n\nตัวอย่าง fintech (daily withdrawal limit) — ขับด้วย phantom: invariant คือยอดถอนรวมต่อวันของบัญชีต้องไม่เกิน 10,000 และวันนี้ถอนไปแล้ว 4,000.\n\n```mermaid\nsequenceDiagram\n  participant A as Txn A (withdraw 5000)\n  participant DB as withdrawals (sum today = 4000)\n  participant B as Txn B (withdraw 4000)\n  A->>DB: SELECT SUM(amount) -> 4000\n  B->>DB: SELECT SUM(amount) -> 4000\n  A->>DB: 4000+5000<=10000 ok, INSERT 5000\n  B->>DB: 4000+4000<=10000 ok, INSERT 4000\n  Note over DB: total 13000 > 10000, limit violated\n```\n\nสังเกตว่าสองแถวที่ถูก insert \"ไม่ทับกัน\" เลย — atomic increment หรือ CAS ที่กัน lost update ไม่ช่วยเลยที่นี่ เพราะไม่มีแถวร่วมให้ชนกัน.\n\n### Phantom\n\nในหลายเคสของ write skew — โดยเฉพาะเคสที่เกี่ยวกับการ INSERT แถวใหม่ — ตัวการคือ **phantom**: txn หนึ่งเขียนแถวที่ทำให้ผลของ query (WHERE / SUM / COUNT) ของอีก txn เปลี่ยน แต่แถวนั้น \"ยังไม่มี\" ตอนอีก txn อ่าน จึงล็อกไม่ติด. (write skew ไม่จำเป็นต้องมี phantom เสมอ — doctor on-call ข้างบนเป็น write skew ที่ไม่มี phantom เพราะทั้งสองแถวมีอยู่แล้วและถูกแค่ UPDATE.) `SELECT ... FOR UPDATE` ล็อกได้เฉพาะแถวที่มีอยู่แล้ว ผลของแถวใหม่ที่จะถูก insert ต่อ aggregate/condition คือ phantom — เห็นได้ภายหลัง กันด้วย row lock ธรรมดาไม่ได้.\n\nวิธีกัน write skew:\n\n- **Explicit lock บน read set** — `SELECT ... FOR UPDATE` ทุกแถวที่ condition พึ่งพา. ได้ผล *เมื่อไม่มี phantom* (เช่น doctor on-call ที่แถวหมอมีอยู่จริงแล้ว).\n- **Materializing conflicts** — สร้างแถว lock ขึ้นมาแทน phantom ที่ยังไม่มี เช่น ตารางล็อก 1 แถวต่อ time-slot หรือต่อบัญชี ให้ txn `SELECT ... FOR UPDATE` แถวนั้นก่อนเสมอ. Kleppmann เรียกว่าเป็น last resort — ยุ่ง, ผิดพลาดง่าย, และทำให้ domain logic รั่วลงไปใน locking scheme.\n- **Serializable isolation** — ทางออกที่ถูกต้องและครอบทุกกรณี ปล่อยให้ DB จัดการ conflict และ phantom ให้เอง. รายละเอียด 2PL / SSI อยู่ใน sibling `serializability` (ไม่ลงลึกที่นี่).\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Snapshot isolation กัน write anomaly ได้หมด\"** ผิด. มันกัน dirty write และ read anomaly แต่ปล่อย lost update (บาง DB detect ให้ บางตัวไม่) และ write skew ผ่านฟรี.\n- **\"Write skew ก็แค่ lost update แบบหนึ่ง กันด้วย CAS ได้\"** ผิด. lost update ชนบนแถวเดียว; write skew เขียนคนละแถว CAS/atomic per-row จึงไม่เห็น conflict เลย.\n- **\"`SELECT ... FOR UPDATE` กัน write skew ได้เสมอ\"** ผิดเมื่อมี phantom — ล็อกได้เฉพาะแถวที่มีอยู่ตอนอ่าน แถวที่จะถูก insert ล็อกไม่ติด.\n\n## ขีดจำกัด / เมื่อไหร่ต้องขยับไป serializable\n\nการกัน write skew ให้ครบต้องจ่ายแพงกว่า snapshot isolation ล้วน ๆ: ต้องล็อก read set (ลด concurrency, เพิ่ม contention) หรือขยับไป serializable isolation ที่ throughput ต่ำกว่าและมี abort/retry เมื่อ conflict. อย่าเหมาเปิด serializable ทั้งระบบ — ถ้า transaction ไม่มี invariant ข้ามแถวที่ concurrent txn ละเมิดได้ snapshot isolation ก็เพียงพอและถูกกว่า. สำหรับ lost update ล้วน ๆ atomic operation หรือ CAS แก้ได้ในราคาถูกมากโดยไม่ต้องแตะ isolation level เลย. ต้นทุนของการกระโดดไป serializable คือ throughput ที่หายไปบวกกับต้องเขียน retry loop รับ serialization failure; ต้นทุนของ materializing conflicts คือ complexity และ domain logic ที่รั่วลง locking table. งานของ senior คือแยกให้ออกว่า workload มี cross-row invariant จริงไหม แล้วเลือกเครื่องมือที่เบาที่สุดที่ยังกัน anomaly ที่มีจริงได้.\n\n## มุมสัมภาษณ์\n\n- \"lost update กับ write skew ต่างกันยังไง?\" → lost update = สอง txn เขียน**แถวเดียวกัน**ทับกัน; write skew = อ่าน overlapping, เขียน**คนละแถว**, ละเมิด invariant ข้ามแถว.\n- \"ทำไม `SELECT ... FOR UPDATE` บางครั้งกัน write skew ไม่ได้?\" → เพราะ phantom: ล็อกได้เฉพาะแถวที่มีอยู่ แถวที่จะ insert ล็อกไม่ติด.\n- \"จะกัน lost update ยังไงโดยไม่ล็อกทั้งแถว?\" → atomic `x = x + 1` หรือ CAS (`WHERE value = old`) แล้ว retry เมื่อกระทบ 0 แถว.\n- \"ยกตัวอย่าง write skew ในระบบเงิน\" → daily limit หรือ overdraft ที่สองการถอน concurrent ต่างเช็ค SUM แล้วต่าง insert จนเกิน limit (phantom).\n- คำถามมักต่อด้วย \"แล้วจะกันให้ครบต้องทำไง?\" → serializable isolation → สะพานไป sibling `serializability`.\n",
+  "recall_checks": [
+    {
+      "q": "lost update กับ write skew ต่างกันตรงไหน?",
+      "expected_answer": "lost update คือสอง transaction เขียนแถวเดียวกันทับกัน; write skew คือต่างเขียนคนละแถวแต่ละเมิด invariant ที่ครอบหลายแถว",
+      "type": "short_answer"
+    },
+    {
+      "q": "snapshot isolation ปล่อย write anomaly ใดผ่านได้บ้าง?",
+      "expected_answer": "lost update และ write skew",
+      "type": "mcq",
+      "options": [
+        "lost update และ write skew",
+        "dirty write และ dirty read",
+        "non-repeatable read เท่านั้น"
+      ]
+    },
+    {
+      "q": "ทำไม SELECT ... FOR UPDATE ถึงกัน write skew ไม่ได้ในบางกรณี?",
+      "expected_answer": "เพราะมี phantom: มันล็อกได้เฉพาะแถวที่มีอยู่ตอนอ่าน แถวที่จะถูก insert ทีหลังล็อกไม่ติด",
+      "type": "mcq",
+      "options": [
+        "เพราะมี phantom: มันล็อกได้เฉพาะแถวที่มีอยู่ตอนอ่าน แถวที่จะถูก insert ทีหลังล็อกไม่ติด",
+        "เพราะ FOR UPDATE ทำงานเฉพาะบน read committed",
+        "เพราะมันล็อกทั้งตารางจึง deadlock เสมอ"
+      ]
+    },
+    {
+      "q": "วิธีกัน lost update ที่ถูกที่สุดสำหรับ counter increment คืออะไร?",
+      "expected_answer": "atomic write operation เช่น UPDATE counters SET value = value + 1 (ให้ DB modify แทน read-modify-write ใน application)",
+      "type": "short_answer"
+    },
+    {
+      "q": "materializing conflicts ใช้แก้ปัญหาอะไร และเป็นทางเลือกระดับไหน?",
+      "expected_answer": "สร้างแถว lock แทน phantom เพื่อกัน write skew เมื่อ FOR UPDATE ล็อกไม่ติด เป็น last resort ที่ยุ่งและผิดง่าย",
+      "type": "mcq",
+      "options": [
+        "สร้างแถว lock แทน phantom เพื่อกัน write skew เมื่อ FOR UPDATE ล็อกไม่ติด เป็น last resort ที่ยุ่งและผิดง่าย",
+        "เก็บหลาย version ของแถวเพื่อให้ reader ไม่ block writer",
+        "รวมหลาย transaction ให้ commit เป็น batch เดียวเพื่อเพิ่ม throughput"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 7: Transactions",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 7",
+      "why": "อ่านต้นฉบับ lost update, write skew, phantom และวิธีกันแต่ละแบบ"
+    },
+    {
+      "title": "PostgreSQL Documentation — Transaction Isolation",
+      "source": "postgresql.org/docs/current/transaction-iso.html",
+      "why": "อ่านว่า repeatable read (snapshot isolation) ตรวจ lost update ให้ แต่ยังปล่อย write skew อย่างไร และ serializable ต่างกันตรงไหนจริง ๆ"
+    },
+    {
+      "title": "A Critique of ANSI SQL Isolation Levels",
+      "source": "Berenson, Bernstein, Gray, Melton, O'Neil, O'Neil (ACM SIGMOD 1995)",
+      "why": "อ่านนิยามเชิงรูปนัยของ anomaly แต่ละตัว รวมถึง phantom และที่มาของ snapshot isolation"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "topic": "designing-data-intensive-applications",
+  "concept_id": "read-committed",
+  "version": 1,
+  "title_en": "Read Committed Isolation",
+  "est_minutes": 8,
+  "body_md": "# Read Committed Isolation\n\n## ทำไมถึงสำคัญ\n\nRead committed คือ isolation level ที่เป็น default ในหลาย database (PostgreSQL, Oracle, SQL Server) — เป็นเส้นแบ่งขั้นต่ำที่ทำให้ concurrent transaction ไม่เห็นข้อมูลขยะของกันและกัน. หน้าที่ของ senior คือรู้ว่ามันรับประกัน *แค่ไหน* และปล่อยช่องอะไรไว้ให้ level ที่สูงกว่าปิด; เข้าใจขอบเขตนี้ผิดเมื่อไหร่ คุณจะเขียน report หรือ transfer ที่อ่านข้อมูลไม่ตรงโดยไม่รู้ตัว. (Isolation คือตัว \"I\" ใน ACID — ดู `acid-meaning`; read committed เป็นหนึ่งใน isolation level ที่อ่อนสุดแต่ก็ถูกสุด.)\n\n## แก่นของแนวคิด\n\nRead committed รับประกันสองอย่าง — ไม่มากกว่านั้น:\n\n1. **No dirty reads** — transaction อ่านได้เฉพาะข้อมูลที่ commit แล้ว. ถ้า transaction อื่นเขียนค่าใหม่แต่ยังไม่ commit คุณจะไม่เห็นค่านั้น (เห็นค่าเก่าที่ commit ไว้แทน). ประโยชน์: ถ้า transaction นั้น rollback ค่าที่ไม่เคยมีจริงจะไม่หลุดไปให้ใครเห็น และคุณไม่เห็นสภาวะครึ่ง ๆ กลาง ๆ ของ transaction ที่กำลังเขียนหลาย row.\n2. **No dirty writes** — transaction เขียนทับได้เฉพาะข้อมูลที่ commit แล้ว. ถ้า transaction อื่นเขียน row นั้นค้างไว้และยังไม่ commit การเขียนของคุณจะ *รอ* จนมัน commit/rollback ก่อน — กันไม่ให้การเขียนของสอง transaction ที่ยังไม่จบมาสลับกันจนข้อมูลปนกัน.\n\n### กลไก\n\n- **Write ใช้ row-level lock**: transaction ที่จะเขียน row ต้อง acquire lock ของ row นั้นและถือไว้จน commit/rollback → นี่คือสิ่งที่กัน dirty write. (ถ้า transaction อีกตัวจะเขียน row เดียวกันต้องเข้าคิว.)\n- **Read มักไม่ lock แต่ \"จำค่าเก่า\"**: ถ้าจะกัน dirty read ด้วย lock ฝั่ง read reader ตัวเดียวจะบล็อก reader ทุกตัวตลอดที่ writer ถือ lock ยาว ๆ ซึ่งแย่ต่อ latency มาก. แทนที่จะ lock, database จะเก็บทั้ง **old committed value** และ new uncommitted value ไว้; ระหว่างที่ writer ยังถือค่าใหม่ที่ยังไม่ commit reader จะได้อ่านค่าเก่าที่ commit แล้ว → กัน dirty read โดยที่ read กับ write ไม่บล็อกกัน.\n\n### สิ่งที่มัน \"ยังไม่\" ป้องกัน\n\nรับประกันเป็นราย read แต่ละครั้ง ไม่ใช่ตลอดทั้ง transaction. ดังนั้นอ่าน row เดิม *สองครั้ง* ใน transaction เดียวอาจได้คนละค่า ถ้ามี transaction อื่น commit คั่นระหว่างสอง read — เรียกว่า **non-repeatable read** (หรือ read skew เมื่อเกิดข้าม row หลายตัว).\n\n```mermaid\nsequenceDiagram\n  participant T1 as Txn 1 (reader)\n  participant DB as Row balance=1000\n  participant T2 as Txn 2 (writer)\n  T1->>DB: read balance -> 1000\n  T2->>DB: write balance=800 (uncommitted)\n  T1->>DB: read balance -> 1000 (old value, NO dirty read)\n  T2->>DB: COMMIT balance=800\n  T1->>DB: read balance -> 800 (non-repeatable read LEAKS)\n```\n\n## ตัวอย่าง (fintech)\n\nบัญชี A ยอด 1000 บาท.\n\n**Dirty read ที่ถูกกัน:** Transaction ฝั่งโอนเงินหัก A เป็น 800 แล้วยังไม่ commit (กำลังรอฝั่งปลายทางสำเร็จ). ระหว่างนั้น dashboard ยิง query อ่านยอด A — read committed การันตีว่า dashboard เห็น **1000** ไม่ใช่ 800. ถ้าการโอน rollback ตัวเลข 800 ที่ไม่เคยเกิดจริงจะไม่เคยโผล่บนจอลูกค้าเลย.\n\n**Non-repeatable read ที่ยังหลุด:** Transaction สรุปยอดสิ้นวันอ่านยอด A ตอนต้น = 1000, ประมวลผลไปสักพัก, ระหว่างนั้น transaction จ่ายบิลหัก A เหลือ 800 และ **commit**, แล้ว transaction สรุปยอดอ่าน A ซ้ำ = 800. อ่าน row เดียวกันใน transaction เดียวได้ 1000 แล้ว 800 — report ที่รวมยอดจากหลายจุดในเวลาต่างกันจะไม่ตรง. อาการนี้ read committed ไม่ปิดให้; ต้องใช้ snapshot isolation (อ่านทุกอย่างจาก consistent snapshot ณ เวลาเริ่ม transaction) — เป็นเรื่องของ sibling `snapshot-isolation-mvcc`.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"Read committed ทำให้ read ทั้งหมดใน transaction เห็นภาพเดียวกัน\"** ผิด. รับประกันเป็นราย read ว่าเห็นแต่ข้อมูลที่ commit แล้ว ณ ตอนอ่านนั้น ไม่ได้ freeze ภาพตลอด transaction.\n- **\"No dirty read แปลว่าอ่านค่าล่าสุดเสมอ\"** ผิด. ระหว่างที่ writer ถือค่าใหม่ที่ยังไม่ commit คุณ *ตั้งใจ* ให้เห็นค่าเก่าที่ commit แล้ว — เก่าแต่ถูกต้อง.\n- **\"อ่านก็ต้อง lock เหมือนเขียน\"** ผิดในทางปฏิบัติ. read committed ส่วนใหญ่ให้ read อ่านค่าเก่าโดยไม่ lock เพื่อไม่ให้ reader กับ writer บล็อกกัน.\n\n## ขีดจำกัด / เมื่อไหร่ไม่พอ\n\nRead committed จ่าย overhead ต่ำ (lock เฉพาะฝั่ง write, read ไม่บล็อก) จึงเหมาะเป็น default ของงาน OLTP ทั่วไป — แต่นั่นแลกมาด้วยการเปิดช่องให้ทั้ง non-repeatable read / read skew, lost update, และ write skew / phantom. เมื่อไหร่ที่มันไม่พอ: (1) **รายงานหรือ analytical query ที่กวาดหลาย row/หลายตาราง** แล้วต้องเห็นภาพ ณ จุดเวลาเดียว — read committed ทำให้ผลรวมคลาดเพราะข้อมูลขยับระหว่างสแกน → ยกไป snapshot isolation. (2) **read-modify-write บน row เดียว** เช่น อ่านยอดแล้วบวก (counter, ยอดคงเหลือ) — read committed ไม่กัน lost update เพราะสอง transaction อ่านค่าเดิมแล้วต่างเขียนทับ; ต้องใช้ atomic update, `SELECT ... FOR UPDATE`, หรือ compare-and-set. (3) **ตัดสินใจจากเงื่อนไขที่อ่านมา** (เช่น เช็คว่าเตียง/ที่นั่งว่างก่อนจอง) — เจอ write skew ที่แม้ snapshot isolation ยังไม่ปิด ต้องขึ้น serializable. ต้นทุนของ level ที่สูงกว่าคือ overhead (MVCC เก็บหลาย version, หรือ lock/abort ถี่ขึ้น) และ throughput ที่ลดลง — งานของ senior คือเลือก level ให้พอดีกับ anomaly ที่ระบบนั้นแพ้ไม่ได้ ไม่ใช่ตั้ง serializable ทิ้งไว้กับทุกอย่าง.\n\n## มุมสัมภาษณ์\n\n- \"Read committed การันตีอะไรบ้าง?\" → no dirty reads + no dirty writes เท่านั้น; ตอบให้ครบสองอย่างและไม่เกินนั้น.\n- \"มันกัน non-repeatable read ไหม?\" → ไม่; อธิบายได้ว่าทำไม (รับประกันราย read ไม่ใช่ตลอด transaction) แล้วชี้ไป snapshot isolation เป็นตัวปิด.\n- \"ทำไม read ไม่ lock แต่ write lock?\" → ถ้า lock ฝั่ง read reader จะบล็อกกันหมดตอน writer ถือ lock ยาว จึงใช้วิธีจำ old committed value แทน.\n- \"read committed กับ lost update ต่างกันยังไง?\" → read committed ไม่กัน lost update; เป็นสะพานไปเรื่อง atomic write / SELECT FOR UPDATE / serializable.\n",
+  "recall_checks": [
+    {
+      "q": "Read committed รับประกันอะไรบ้าง (ตอบให้ครบและไม่เกิน)?",
+      "expected_answer": "สองอย่าง: no dirty reads (อ่านเฉพาะข้อมูลที่ commit แล้ว) และ no dirty writes (เขียนทับเฉพาะข้อมูลที่ commit แล้ว)",
+      "type": "short_answer"
+    },
+    {
+      "q": "อ่าน row เดิมสองครั้งใน transaction เดียวภายใต้ read committed ได้ค่าต่างกันได้ไหม?",
+      "expected_answer": "ได้ ถ้ามี transaction อื่น commit คั่นกลาง เพราะ read committed ไม่กัน non-repeatable read",
+      "type": "mcq",
+      "options": [
+        "ได้ ถ้ามี transaction อื่น commit คั่นกลาง เพราะ read committed ไม่กัน non-repeatable read",
+        "ไม่ได้ read committed freeze ภาพตลอดทั้ง transaction",
+        "ไม่ได้ เพราะ read ทุกครั้งถูก lock ไว้"
+      ]
+    },
+    {
+      "q": "เพื่อกัน dirty read โดยไม่ให้ reader ถูกบล็อก database ส่วนใหญ่ทำอย่างไรฝั่ง read?",
+      "expected_answer": "จำ old committed value ไว้ให้ reader อ่าน ระหว่างที่ writer ยังถือค่าใหม่ที่ยังไม่ commit แทนการใช้ lock",
+      "type": "mcq",
+      "options": [
+        "จำ old committed value ไว้ให้ reader อ่าน ระหว่างที่ writer ยังถือค่าใหม่ที่ยังไม่ commit แทนการใช้ lock",
+        "ใช้ read lock บน row ตลอดที่ writer ถือ lock อยู่",
+        "ปฏิเสธ read ทั้งหมดจนกว่า writer จะ commit"
+      ]
+    },
+    {
+      "q": "กลไกที่ read committed ใช้กัน dirty write คืออะไร?",
+      "expected_answer": "row-level lock ฝั่ง write ที่ถือจน commit — transaction อื่นที่จะเขียน row เดียวกันต้องรอ",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคืออาการที่ read committed 'ไม่' ป้องกัน?",
+      "expected_answer": "non-repeatable read / read skew (และ lost update)",
+      "type": "mcq",
+      "options": [
+        "non-repeatable read / read skew (และ lost update)",
+        "dirty read",
+        "dirty write"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 7: Transactions (Weak Isolation Levels: Read Committed)",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 7",
+      "why": "อ่านต้นฉบับนิยาม read committed, dirty read/write และกลไก row lock + remembered value"
+    },
+    {
+      "title": "PostgreSQL Documentation: Transaction Isolation — Read Committed Isolation Level",
+      "source": "postgresql.org/docs/current/transaction-iso.html",
+      "why": "อ่านว่า read committed ทำงานจริงอย่างไรใน production database และ anomaly ที่ยังหลุด"
+    },
+    {
+      "title": "A Critique of ANSI SQL Isolation Levels",
+      "source": "Berenson, Bernstein, Gray et al. (Microsoft Research, 1995)",
+      "why": "อ่านนิยามเชิงรูปนัยของ dirty read / non-repeatable read และช่องโหว่ของ isolation level มาตรฐาน"
+    }
+  ]
+}
