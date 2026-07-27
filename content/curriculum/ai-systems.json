@@ -1,0 +1,403 @@
+{
+  "track": "ai-systems",
+  "slug": "ai-and-llm-systems",
+  "title": "AI & LLM Systems",
+  "position": 7,
+  "chapters": [
+    {
+      "slug": "llm-foundations",
+      "title": "LLM Foundations",
+      "position": 1,
+      "concepts": [
+        {
+          "slug": "what-is-an-llm",
+          "title": "What Is an LLM",
+          "outline": "อธิบายว่า LLM คือโมเดลที่ทำนาย token ถัดไปจาก context แบบ probabilistic ไม่ใช่ระบบที่ค้นข้อมูลจาก database\nยกตัวอย่างว่าทำไมโมเดลถึงตอบมั่นใจแม้เนื้อหาผิด เพราะเป้าหมายคือ token ที่ likely ที่สุด ไม่ใช่ความจริง\nเตือนว่าความเข้าใจนี้เป็นพื้นฐานที่อธิบาย hallucination และ prompt engineering ทุกอย่างที่ตามมา",
+          "position": 1
+        },
+        {
+          "slug": "tokens-and-context-window",
+          "title": "Tokens and Context Window",
+          "outline": "อธิบายว่าข้อความถูกแปลงเป็น token ก่อนเข้าโมเดล และ context window คือขีดจำกัดจำนวน token ที่โมเดลเห็นได้ในครั้งเดียว\nยกตัวอย่างผลกระทบเมื่อเอกสารยาวเกิน window ต้องตัดหรือสรุปก่อนส่ง\nเชื่อมโยงว่า token คือหน่วยที่ provider คิดค่าใช้จ่าย ยิ่งส่ง context เยอะยิ่งแพงและช้าขึ้น",
+          "position": 2
+        },
+        {
+          "slug": "sampling-and-temperature",
+          "title": "Sampling and Temperature",
+          "outline": "อธิบายความแตกต่างระหว่าง greedy decoding (เลือก token ที่ likely สุดเสมอ) กับ sampling ที่สุ่มตาม probability\nอธิบาย temperature และ top-p ว่าคุมความสุ่มยังไง ค่าต่ำ = deterministic ค่าสูง = creative แต่เสี่ยง hallucinate มากขึ้น\nยกตัวอย่างว่าเมื่อไหร่ควรตั้ง temperature ต่ำ (extraction, code) เทียบกับสูง (brainstorm, creative writing)",
+          "position": 3
+        },
+        {
+          "slug": "capabilities-and-limits",
+          "title": "Capabilities and Limits",
+          "outline": "อธิบายจุดแข็งของ LLM เช่น language understanding, summarization, code generation กว้างครอบคลุมหลาย domain\nอธิบายข้อจำกัดสำคัญ: hallucination, ไม่รู้เหตุการณ์ real-time หลัง training cutoff, และคำนวณเลขซับซ้อนผิดพลาดง่าย\nเตือนว่า production system ต้อง design รอบข้อจำกัดเหล่านี้ เช่นใช้ tool calling แทนให้โมเดลคำนวณเอง",
+          "position": 4
+        },
+        {
+          "slug": "cost-latency-tradeoffs",
+          "title": "Cost and Latency Trade-offs",
+          "outline": "อธิบายว่าโมเดลใหญ่ขึ้นมักฉลาดขึ้นแต่ช้าและแพงขึ้นตามจำนวน parameter และ token ที่ประมวลผล\nยกตัวอย่างการเลือกโมเดลเล็กสำหรับงานง่าย (classification) และโมเดลใหญ่สำหรับงานซับซ้อน (reasoning)\nเชื่อมโยงกับ trade-off ที่โปรเจกต์นี้ใช้จริง: self-grade ใน v1 เพื่อเลี่ยงต้นทุน แล้วค่อย opt-in LLM grading ทีหลัง",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "prompting-and-context",
+      "title": "Prompting & Context Engineering",
+      "position": 2,
+      "concepts": [
+        {
+          "slug": "message-roles",
+          "title": "Message Roles",
+          "outline": "อธิบาย 3 roles หลักใน conversation API: system (กำหนดพฤติกรรม/persona), user (input จากผู้ใช้), assistant (คำตอบโมเดล)\nยกตัวอย่างการใช้ system prompt กำหนดขอบเขตงานให้โมเดล เช่น ตอบเป็น JSON เท่านั้น\nเชื่อมโยงว่า role structure นี้เป็นพื้นฐานของทุก API call ไม่ว่าจะเป็น single-turn หรือ multi-turn",
+          "position": 1
+        },
+        {
+          "slug": "prompt-engineering-basics",
+          "title": "Prompt Engineering Basics",
+          "outline": "อธิบายหลักพื้นฐานของ prompt ที่ดี: ชัดเจน เจาะจง ให้ context ที่จำเป็น และแยก instruction จาก data\nยกตัวอย่างการ iterate prompt ทีละน้อยแล้ววัดผลลัพธ์ แทนการเดาครั้งเดียว\nเตือนว่า prompt ที่กำกวมทำให้ output ไม่ stable แม้ใช้โมเดลเดียวกัน",
+          "position": 2
+        },
+        {
+          "slug": "few-shot-and-structured-output",
+          "title": "Few-Shot and Structured Output",
+          "outline": "อธิบาย few-shot prompting คือการให้ตัวอย่าง input-output ใน prompt เพื่อ guide รูปแบบคำตอบ\nอธิบายวิธีบังคับ output เป็น JSON หรือ schema ที่กำหนด เพื่อให้ app parse ต่อได้ง่าย\nยกตัวอย่างว่าทำไม structured output สำคัญมากเมื่อโมเดลต้องคุยกับโค้ด ไม่ใช่คุยกับคน",
+          "position": 3
+        },
+        {
+          "slug": "context-management",
+          "title": "Context Management",
+          "outline": "อธิบายว่าต้องเลือกใส่เฉพาะ context ที่เกี่ยวข้องกับ task ไม่ใช่ dump ทุกอย่างเข้า prompt\nยกตัวอย่างเทคนิค summarize ประวัติการสนทนาเก่าเมื่อใกล้เต็ม context window\nเชื่อมโยงกับ cost และ latency ว่า context ที่ยาวเกินจำเป็นทำให้ทั้งช้าและแพงขึ้นโดยไม่ช่วยคุณภาพ",
+          "position": 4
+        },
+        {
+          "slug": "prompt-injection-intro",
+          "title": "Introduction to Prompt Injection",
+          "outline": "อธิบายว่า input จากภายนอก (user, เว็บ, tool result) ที่ไม่น่าเชื่อถือ อาจแฝงคำสั่งที่ hijack พฤติกรรมโมเดลได้\nยกตัวอย่างสถานการณ์ง่าย ๆ เช่น ข้อความจากผู้ใช้สั่งให้โมเดล \"ลืม instruction เดิม\"\nเตือนว่านี่เป็นแค่จุดเริ่มต้น รายละเอียดการป้องกันจะอยู่ใน chapter guardrails-and-safety",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "tool-and-function-calling",
+      "title": "Tool & Function Calling",
+      "position": 3,
+      "concepts": [
+        {
+          "slug": "how-function-calling-works",
+          "title": "How Function Calling Works",
+          "outline": "อธิบาย flow ของ function calling: โมเดลตัดสินใจว่าต้องเรียก tool ไหนพร้อม argument แล้วส่งกลับให้ app รัน ไม่ได้รันเองโดยตรง\nยกตัวอย่างว่า app เป็นคนรัน tool จริง แล้วส่งผลลัพธ์กลับเข้า conversation ให้โมเดลตอบต่อ\nเชื่อมโยงว่านี่คือกลไกที่ทำให้ LLM เชื่อมกับระบบภายนอกได้โดยไม่ต้อง fine-tune",
+          "position": 1
+        },
+        {
+          "slug": "tool-schemas",
+          "title": "Tool Schemas",
+          "outline": "อธิบายว่า tool ต้องนิยามผ่าน schema (ชื่อ, parameter, type) แบบเดียวกับ JSON schema เพื่อให้โมเดลเข้าใจวิธีเรียกใช้\nเน้นว่า description ของแต่ละ parameter มีผลต่อความแม่นยำที่โมเดลจะเรียก tool ถูกต้อง\nยกตัวอย่างการออกแบบ tool ให้ scope แคบและชัดเจน แทนที่จะทำ tool อเนกประสงค์ตัวเดียว",
+          "position": 2
+        },
+        {
+          "slug": "agentic-tool-loop",
+          "title": "The Agentic Tool Loop",
+          "outline": "อธิบาย loop พื้นฐานของ agent: โมเดลเรียก tool → app รันแล้วคืนผล → โมเดลใช้ผลตัดสินใจขั้นต่อไป จนกว่างานจะเสร็จ\nยกตัวอย่างงานที่ต้องใช้หลายรอบ tool call ก่อนได้คำตอบสุดท้าย เช่น ค้นข้อมูลแล้วคำนวณต่อ\nเตือนว่าต้องมี termination condition ชัดเจน ไม่งั้น loop อาจวนไม่จบและเปลืองต้นทุน",
+          "position": 3
+        },
+        {
+          "slug": "parallel-and-sequential-tools",
+          "title": "Parallel vs Sequential Tool Calls",
+          "outline": "อธิบายว่าโมเดลบางตัวเรียกหลาย tool พร้อมกันได้ (parallel) เมื่องานเป็นอิสระต่อกัน\nเปรียบเทียบกับ sequential ที่ tool ถัดไปต้องรอผลลัพธ์ของ tool ก่อนหน้า\nยกตัวอย่างการเลือกแบบใดแบบหนึ่งตามความสัมพันธ์ของ data dependency ระหว่าง tool",
+          "position": 4
+        },
+        {
+          "slug": "tool-error-handling",
+          "title": "Tool Error Handling",
+          "outline": "อธิบายว่า tool call ล้มเหลวได้เสมอ (network, invalid arg, business rule) ต้อง handle ไม่ปล่อยให้ agent ค้าง\nยกตัวอย่างการส่ง error message กลับเข้า conversation ให้โมเดลลองใหม่หรือปรับ argument\nเตือนเรื่อง side effect: tool ที่มีผลจริง (เช่นส่ง email) ต้องระวัง retry ซ้ำโดยไม่ตั้งใจ",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "retrieval-augmented-generation",
+      "title": "Retrieval-Augmented Generation (RAG)",
+      "position": 4,
+      "concepts": [
+        {
+          "slug": "embeddings-and-semantic-search",
+          "title": "Embeddings and Semantic Search",
+          "outline": "อธิบายว่า embedding คือการแปลงข้อความเป็น vector ที่สะท้อนความหมาย ให้เทียบ similarity ทางคณิตศาสตร์ได้\nเปรียบเทียบ semantic search (หาความหมายใกล้เคียง) กับ keyword search แบบเดิมที่หาคำตรงตัว\nยกตัวอย่างการใช้ cosine similarity วัดว่าข้อความสองชิ้นใกล้เคียงกันแค่ไหน",
+          "position": 1
+        },
+        {
+          "slug": "vector-databases",
+          "title": "Vector Databases",
+          "outline": "อธิบายว่า vector database ใช้เก็บ embedding จำนวนมากและค้นหาตัวที่ใกล้เคียงที่สุดได้เร็วด้วย ANN (approximate nearest neighbor)\nยกตัวอย่างการ index เอกสารเป็น vector แล้ว query ด้วย vector ของคำถาม\nเตือนว่า approximate search แลกความแม่นยำเล็กน้อยเพื่อความเร็วในข้อมูลขนาดใหญ่",
+          "position": 2
+        },
+        {
+          "slug": "chunking-strategies",
+          "title": "Chunking Strategies",
+          "outline": "อธิบายว่าต้องตัดเอกสารเป็น chunk ก่อนทำ embedding เพราะเอกสารเต็มมักยาวเกิน context ที่มีประโยชน์\nอธิบายผลของขนาด chunk และ overlap ต่อคุณภาพการค้นคืน chunk เล็กไปเสีย context ใหญ่ไปเจือจาง relevance\nยกตัวอย่างการแนบ metadata (หัวข้อ, แหล่งที่มา) ติดไปกับ chunk เพื่อช่วยกรองผลลัพธ์",
+          "position": 3
+        },
+        {
+          "slug": "rag-pipeline-and-grounding",
+          "title": "RAG Pipeline and Grounding",
+          "outline": "อธิบาย pipeline ของ RAG: retrieve เอกสารที่เกี่ยวข้อง → inject เข้า prompt → ให้โมเดล generate คำตอบโดยอ้างอิงเอกสารจริง\nเน้นว่า grounding ด้วยแหล่งอ้างอิงช่วยลด hallucination เพราะโมเดลตอบจากข้อมูลที่ให้ ไม่ใช่ความจำล้วน\nยกตัวอย่างการใส่ citation ในคำตอบเพื่อให้ผู้ใช้ตรวจสอบแหล่งที่มาได้",
+          "position": 4
+        },
+        {
+          "slug": "rag-vs-finetune-vs-long-context",
+          "title": "RAG vs Fine-Tuning vs Long Context",
+          "outline": "เปรียบเทียบสามแนวทางเมื่อโมเดลต้องรู้ข้อมูลเพิ่ม: RAG เหมาะกับความรู้ที่เปลี่ยนบ่อยหรือข้อมูลใหญ่เกิน context\nfine-tune เหมาะกับการปรับ behavior/format/style ของโมเดล ไม่ใช่ยัดข้อมูลใหม่\nlong-context เหมาะเมื่อต้องการให้โมเดลเห็นเอกสารทั้งฉบับในครั้งเดียวและเอกสารพอดีกับ window",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "streaming-and-realtime",
+      "title": "Streaming & Real-Time Responses",
+      "position": 5,
+      "concepts": [
+        {
+          "slug": "token-streaming-sse",
+          "title": "Token Streaming with SSE",
+          "outline": "อธิบายว่า token streaming ส่งผลลัพธ์ทีละ token ผ่าน Server-Sent Events (SSE) แทนที่จะรอคำตอบเต็มก่อนส่ง\nยกตัวอย่างผลต่อ perceived latency: ผู้ใช้เห็นคำตอบเริ่มขึ้นทันที แม้ total time เท่าเดิม\nเชื่อมโยงกับการ implement ฝั่ง backend ด้วย net/http ธรรมดาโดยไม่ต้องพึ่ง framework พิเศษ",
+          "position": 1
+        },
+        {
+          "slug": "streaming-ux-partial-output",
+          "title": "Streaming UX and Partial Output",
+          "outline": "อธิบายการออกแบบ UI ให้ render partial output ระหว่าง stream รวมถึง event พิเศษ เช่น tool call กำลังทำงาน\nยกตัวอย่างการแสดง loading state ที่ต่างกันระหว่าง \"กำลังคิด\" กับ \"กำลังเรียก tool\"\nเตือนว่า UI ต้อง handle กรณี stream ขาดกลางคันอย่าง graceful ไม่ใช่ค้างเฉย ๆ",
+          "position": 2
+        },
+        {
+          "slug": "cancellation-and-backpressure",
+          "title": "Cancellation and Backpressure",
+          "outline": "อธิบายว่าผู้ใช้อาจยกเลิก stream กลางคัน ต้อง cleanup connection และหยุดเรียก LLM ต่อเพื่อไม่เปลืองต้นทุน\nอธิบาย backpressure เมื่อ client รับ token ช้ากว่าที่ server ส่ง ต้องมีกลไกชะลอหรือ buffer\nยกตัวอย่างการใช้ context cancellation ใน Go เพื่อ propagate การยกเลิกไปถึง LLM call",
+          "position": 3
+        },
+        {
+          "slug": "latency-optimization",
+          "title": "Latency Optimization",
+          "outline": "อธิบายความต่างระหว่าง TTFT (time to first token) กับ total response time และทำไมทั้งคู่สำคัญกับ UX\nยกตัวอย่างเทคนิคลด latency: prompt caching, เลือกโมเดลเล็กลงสำหรับงานง่าย, ทำ tool call แบบ parallel\nเตือนว่าการ optimize latency ต้องไม่แลกความถูกต้องของคำตอบทิ้งไปแบบไม่รู้ตัว",
+          "position": 4
+        }
+      ]
+    },
+    {
+      "slug": "ai-agents-and-orchestration",
+      "title": "AI Agents & Orchestration",
+      "position": 6,
+      "concepts": [
+        {
+          "slug": "agent-loop-react",
+          "title": "The Agent Loop (ReAct)",
+          "outline": "อธิบายรูปแบบ ReAct: reason (คิดขั้นตอนต่อไป) → act (เรียก tool) → observe (ดูผลลัพธ์) วนจนกว่างานจะเสร็จ\nนิยามว่า agent คือ LLM + tools + loop ที่ตัดสินใจเองว่าต้องทำอะไรต่อ ไม่ใช่ script ตายตัว\nยกตัวอย่างงานที่เหมาะกับ agent loop เทียบกับงานง่ายที่ single prompt-response ก็พอ",
+          "position": 1
+        },
+        {
+          "slug": "planning-and-decomposition",
+          "title": "Planning and Decomposition",
+          "outline": "อธิบายการแตกงานใหญ่เป็นขั้นตอนย่อยก่อนลงมือทำ (plan-then-execute) แทนการ react ทีละก้าวอย่างเดียว\nยกตัวอย่าง reflection: ให้โมเดลตรวจสอบผลงานตัวเองแล้วปรับแผนใหม่ถ้าจำเป็น\nเตือนว่าการวางแผนที่ซับซ้อนเกินไปเพิ่มทั้ง latency และโอกาสผิดพลาดสะสม",
+          "position": 2
+        },
+        {
+          "slug": "agent-memory-and-state",
+          "title": "Agent Memory and State",
+          "outline": "อธิบายความต่างระหว่าง short-term memory (context ในการสนทนาปัจจุบัน) กับ long-term memory (เก็บถาวรนอก context window)\nยกตัวอย่างการใช้ scratchpad เก็บความคิดระหว่างขั้นตอนของ agent\nเชื่อมโยงว่า long-term memory มักต้องพึ่ง storage ภายนอก เช่น database หรือ vector store",
+          "position": 3
+        },
+        {
+          "slug": "single-vs-multi-agent",
+          "title": "Single-Agent vs Multi-Agent",
+          "outline": "เปรียบเทียบ agent เดี่ยวที่ทำทุกอย่างเอง กับระบบ multi-agent ที่แบ่งบทบาทเฉพาะทางและมี orchestrator ควบคุม\nอธิบายว่า multi-agent ช่วยเมื่องานแยกส่วนได้ชัดเจนและแต่ละส่วนต้องการ context ต่างกันมาก\nเตือนว่า multi-agent เพิ่ม complexity และ cost ของการสื่อสารระหว่าง agent มาก ไม่ควรใช้ถ้า single agent พอ",
+          "position": 4
+        },
+        {
+          "slug": "agent-frameworks-landscape",
+          "title": "Agent Frameworks Landscape",
+          "outline": "อธิบายภาพรวมว่า framework agent ให้อะไร เช่น abstraction สำหรับ tool loop, memory, multi-agent orchestration\nเปรียบเทียบข้อดี (เร็วในการเริ่ม) กับข้อเสีย (ผูกติด abstraction, debug ยากกว่าโค้ดที่เขียนเอง)\nเชื่อมโยงกับแนวทางโปรเจกต์นี้ที่เลือกเขียน client เองด้วย net/http แทนพึ่ง framework",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "conversational-and-agent-assist",
+      "title": "Conversational Systems & Agent-Assist",
+      "position": 7,
+      "concepts": [
+        {
+          "slug": "session-state-machines",
+          "title": "Session State Machines",
+          "outline": "อธิบายว่าการสนทนาสามารถมองเป็น state machine ที่มี state และ transition ชัดเจน เช่น greeting → collecting-info → resolving\nยกตัวอย่างการเก็บ slot (ข้อมูลที่ต้องได้จากผู้ใช้) ต่อ session เพื่อรู้ว่าขาดอะไรอยู่\nเชื่อมโยงว่าการออกแบบ state ชัดเจนช่วยให้ debug และ test conversation flow ได้ง่ายกว่าปล่อยให้โมเดลตัดสินใจเองทั้งหมด",
+          "position": 1
+        },
+        {
+          "slug": "agent-assist-copilot-patterns",
+          "title": "Agent-Assist and Copilot Patterns",
+          "outline": "อธิบายรูปแบบที่ AI ช่วย human agent แทนที่จะคุยกับลูกค้าตรง ๆ เช่น ร่าง reply, สรุปบทสนทนา, แนะนำ next action\nยกตัวอย่าง use case ใน contact center ที่ AI เตรียมคำตอบให้ agent เลือกใช้หรือแก้ก่อนส่ง\nเน้นว่ารูปแบบนี้ลดความเสี่ยงจาก AI ผิดพลาดเพราะยังมีคนตรวจก่อนออกไปถึงลูกค้า",
+          "position": 2
+        },
+        {
+          "slug": "human-in-the-loop",
+          "title": "Human-in-the-Loop",
+          "outline": "อธิบายว่า human-in-the-loop คือการใส่ approval gate ให้คนตรวจสอบก่อน action สำคัญเกิดขึ้นจริง\nยกตัวอย่าง action ที่ควรมี gate เช่น การส่ง refund หรือลบข้อมูล เทียบกับ action ความเสี่ยงต่ำที่ปล่อยอัตโนมัติได้\nเตือนว่าการเลือกจุดที่ต้อง gate ต้องชั่งน้ำหนักระหว่างความปลอดภัยกับความเร็วของ workflow",
+          "position": 3
+        },
+        {
+          "slug": "handoff-orchestration",
+          "title": "Handoff Orchestration",
+          "outline": "อธิบายกลไก handoff จาก AI ไปหา human agent และย้อนกลับ พร้อมส่งต่อ context การสนทนาให้ครบ ไม่ให้ลูกค้าต้องพูดซ้ำ\nยกตัวอย่างเงื่อนไขที่ควร escalate เช่น ความมั่นใจต่ำ ลูกค้าโมโห หรือคำขอนอกขอบเขตที่ AI จัดการได้\nเตือนว่า handoff ที่ไม่ราบรื่นทำลาย experience มากกว่าการที่ AI ตอบไม่ได้ตั้งแต่แรก",
+          "position": 4
+        },
+        {
+          "slug": "contact-center-flows",
+          "title": "Contact Center Flows",
+          "outline": "อธิบาย flow ทั่วไปของ contact center: intake รับเรื่อง → triage จัดลำดับ/หมวดหมู่ → resolve แก้ปัญหา → handoff ถ้าจำเป็น\nยกตัวอย่างการ routing ตามประเภทคำถามไปยัง agent หรือ AI ที่เหมาะสม\nเชื่อมโยงกับ deflection: สัดส่วนเคสที่ AI แก้ได้เองโดยไม่ต้องถึงมือ human agent",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "guardrails-and-safety",
+      "title": "Guardrails & Safety",
+      "position": 8,
+      "concepts": [
+        {
+          "slug": "input-output-validation",
+          "title": "Input and Output Validation",
+          "outline": "อธิบายว่าต้อง validate ทั้ง input ก่อนส่งเข้าโมเดลและ output ก่อนนำไปใช้จริง ไม่เชื่อผลลัพธ์ดิบ ๆ\nยกตัวอย่างการเช็ค output ตรงกับ schema ที่กำหนดก่อนส่งต่อให้ระบบอื่นหรือ execute action\nเตือนว่าการข้าม validation เพราะ \"โมเดลฉลาดพอ\" คือสาเหตุทั่วไปของ production incident",
+          "position": 1
+        },
+        {
+          "slug": "hallucination-mitigation",
+          "title": "Hallucination Mitigation",
+          "outline": "อธิบายเทคนิคลด hallucination: grounding ด้วยข้อมูลจริง (RAG), ให้ citation, และสอนให้โมเดลตอบ \"ไม่รู้\" แทนการเดา\nยกตัวอย่างการตรวจสอบคำตอบย้อนกลับกับแหล่งอ้างอิงก่อนนำไปแสดงผล\nเตือนว่าไม่มีวิธีใดกำจัด hallucination ได้ 100% ต้องออกแบบระบบให้ทนต่อความผิดพลาดที่หลงเหลือ",
+          "position": 2
+        },
+        {
+          "slug": "pii-and-moderation",
+          "title": "PII and Content Moderation",
+          "outline": "อธิบายความจำเป็นในการตรวจจับและ redact ข้อมูลส่วนบุคคล (PII) ก่อนส่งเข้าหรือออกจากโมเดล\nยกตัวอย่างการทำ content moderation กรองเนื้อหาที่ไม่เหมาะสมทั้งฝั่ง input และ output\nเชื่อมโยงกับข้อกำหนด compliance ที่ระบบต้องทำตามเมื่อจัดการข้อมูลลูกค้าจริง",
+          "position": 3
+        },
+        {
+          "slug": "prompt-injection-defense",
+          "title": "Prompt Injection Defense",
+          "outline": "อธิบายหลักการป้องกัน prompt injection: แยก instruction กับ data ให้ชัดเจน ไม่ให้ input ภายนอกมีน้ำหนักเท่า system prompt\nยกตัวอย่างการใช้ allow-list จำกัดว่า tool ไหนเรียกได้ และให้ tool มีสิทธิ์น้อยที่สุดเท่าที่จำเป็น (least privilege)\nเตือนว่าต้อง filter output ก่อนใช้งานต่อด้วย เพราะ injection อาจแฝงมาทาง tool result ไม่ใช่แค่ user input",
+          "position": 4
+        },
+        {
+          "slug": "confidence-and-fallback",
+          "title": "Confidence and Fallback",
+          "outline": "อธิบายแนวคิดการประเมิน confidence ของคำตอบ เช่น จาก log-prob หรือ heuristic ของระบบ\nยกตัวอย่างการตั้ง threshold แล้ว fallback ไปหา human หรือ rule-based logic เมื่อ confidence ต่ำ\nเตือนว่าการปล่อยให้ AI ตอบมั่นใจเกินจริงในเคสที่ไม่แน่ใจ อันตรายกว่าการยอมรับว่าไม่รู้",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "llm-evaluation",
+      "title": "Evaluating LLM Systems",
+      "position": 9,
+      "concepts": [
+        {
+          "slug": "why-llm-eval-is-hard",
+          "title": "Why LLM Evaluation Is Hard",
+          "outline": "อธิบายว่าทำไมการ evaluate LLM ยากกว่า software ทั่วไป: output เป็น non-deterministic, open-ended, และมักไม่มีคำตอบถูกเดียว\nยกตัวอย่างงานที่ประเมินยาก เช่น การเขียนสรุปที่ \"ดี\" มีได้หลายแบบพร้อมกัน\nเชื่อมโยงว่าเพราะเหตุนี้จึงต้องผสมทั้ง automated metric และ human judgment",
+          "position": 1
+        },
+        {
+          "slug": "golden-sets-and-offline-eval",
+          "title": "Golden Sets and Offline Evaluation",
+          "outline": "อธิบายว่า golden set คือชุดเคสที่คัดสรรพร้อมพฤติกรรมที่คาดหวัง ใช้เป็น regression test เมื่อเปลี่ยน prompt หรือโมเดล\nยกตัวอย่างการรัน offline eval ก่อน deploy ทุกครั้งที่แก้ system prompt\nเตือนว่า golden set ต้องครอบคลุม edge case ไม่ใช่แค่ happy path ไม่งั้นจะจับ regression ไม่ได้",
+          "position": 2
+        },
+        {
+          "slug": "llm-as-judge",
+          "title": "LLM-as-Judge",
+          "outline": "อธิบายเทคนิค LLM-as-judge: ใช้โมเดลอีกตัวให้คะแนนคำตอบตาม rubric ที่กำหนด แทนการให้คนอ่านทุกเคส\nยกตัวอย่าง rubric เช่น ความถูกต้อง ความสมบูรณ์ ความสุภาพ ให้คะแนนแยกแต่ละมิติ\nเตือนข้อจำกัด: judge model มี bias ของตัวเอง (เช่นชอบคำตอบยาว) ต้อง calibrate กับ human rating เป็นระยะ",
+          "position": 3
+        },
+        {
+          "slug": "online-eval-and-ab-testing",
+          "title": "Online Evaluation and A/B Testing",
+          "outline": "อธิบายการวัดผลใน production จริงผ่าน metric การใช้งาน เช่น user feedback, completion rate, thumbs up/down\nยกตัวอย่างการทำ A/B test เทียบ prompt หรือโมเดลสองแบบกับ user จริงบางส่วน\nเชื่อมโยงกับการทำ canary release ก่อน roll out เต็มรูปแบบ เพื่อจำกัดความเสียหายถ้าแย่ลง",
+          "position": 4
+        },
+        {
+          "slug": "eval-metrics-groundedness",
+          "title": "Evaluation Metrics and Groundedness",
+          "outline": "อธิบาย metric หลักที่ใช้วัดคุณภาพ LLM: accuracy, groundedness/faithfulness (คำตอบตรงกับแหล่งอ้างอิงแค่ไหน), hallucination rate\nยกตัวอย่างวิธีวัด groundedness เช่น เช็คว่าทุกประโยคในคำตอบมี evidence รองรับจาก context ที่ให้ไปหรือไม่\nเตือนว่า metric เดียวไม่พอ ต้องดูหลายมิติร่วมกันเพื่อเห็นภาพคุณภาพจริง",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "production-llm-systems",
+      "title": "Production LLM Systems",
+      "position": 10,
+      "concepts": [
+        {
+          "slug": "llm-gateway-and-routing",
+          "title": "LLM Gateway and Routing",
+          "outline": "อธิบายว่า LLM gateway คือ layer กลางหน้า provider ต่าง ๆ ทำหน้าที่ route request ไปยังโมเดลที่เหมาะสม\nยกตัวอย่างการ route ตาม cost หรือ capability เช่น งานง่ายไปโมเดลเล็ก งานซับซ้อนไปโมเดลใหญ่\nเชื่อมโยงว่า gateway ยังเป็นจุดรวมสำหรับ logging, rate limiting และ policy control",
+          "position": 1
+        },
+        {
+          "slug": "caching-and-cost-control",
+          "title": "Caching and Cost Control",
+          "outline": "อธิบายเทคนิค caching ลดต้นทุน เช่น prompt caching (cache ส่วน system prompt ที่ไม่เปลี่ยน) และ response caching สำหรับ query ซ้ำ\nยกตัวอย่างการตั้ง token budget ต่อ request เพื่อคุมค่าใช้จ่ายไม่ให้บานปลาย\nเตือนว่าต้อง monitor cost แบบ real-time ไม่ใช่รู้ตัวหลัง bill มาแล้ว",
+          "position": 2
+        },
+        {
+          "slug": "retries-fallback-multi-provider",
+          "title": "Retries, Fallback, and Multi-Provider Setups",
+          "outline": "อธิบายการ handle error จาก LLM API เช่น rate limit หรือ timeout ด้วย retry แบบ backoff ไม่ retry รัวจนโดน throttle หนักขึ้น\nยกตัวอย่างการตั้ง fallback ไปโมเดลหรือ provider อื่นเมื่อตัวหลักล่มหรือช้าผิดปกติ\nเตือนว่า retry ต้องระวัง request ที่มี side effect ซ้ำได้ เช่นการเรียก tool ที่ไม่ idempotent",
+          "position": 3
+        },
+        {
+          "slug": "prompt-versioning",
+          "title": "Prompt Versioning",
+          "outline": "อธิบายว่า prompt ควรถูกจัดการเป็น versioned artifact เหมือนโค้ด ไม่ใช่ string ที่แก้ตรงไหนก็ได้\nยกตัวอย่างการทดสอบ prompt เวอร์ชันใหม่กับ golden set ก่อนปล่อยใช้งานจริง\nเชื่อมโยงกับความสามารถ rollback กลับ prompt เวอร์ชันก่อนหน้าเมื่อพบว่าคุณภาพแย่ลง",
+          "position": 4
+        },
+        {
+          "slug": "llm-observability",
+          "title": "LLM Observability",
+          "outline": "อธิบายความจำเป็นในการ log และ trace ทุก LLM call: token ที่ใช้, latency, cost, และ tool call ที่เกิดขึ้น\nยกตัวอย่างการใช้ trace เพื่อ debug ว่าทำไม agent ตอบผิดในเคสหนึ่ง ๆ ย้อนดูขั้นตอนทั้งหมด\nเตือนว่าไม่มี observability เท่ากับ debug production issue แบบเดาสุ่ม",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "slug": "crm-and-support-ai",
+      "title": "CRM & Support-Ops AI",
+      "position": 11,
+      "concepts": [
+        {
+          "slug": "ai-in-crm-and-ticketing",
+          "title": "AI in CRM and Ticketing",
+          "outline": "อธิบายว่า AI เข้าไปเสริมระบบ CRM/ticketing ที่มีอยู่ได้อย่างไร เช่น Salesforce Service Cloud โดยอ่านและเขียน case ผ่าน API\nยกตัวอย่างการให้ AI ดึงประวัติลูกค้าจาก CRM มาประกอบ context ก่อนตอบ\nเชื่อมโยงว่า AI ในบริบทนี้เป็นส่วนเสริมของ workflow เดิม ไม่ใช่ระบบใหม่ที่มาแทนที่ CRM",
+          "position": 1
+        },
+        {
+          "slug": "triage-routing-deflection",
+          "title": "Triage, Routing, and Deflection",
+          "outline": "อธิบายการใช้ AI จัดหมวดหมู่และ route ticket อัตโนมัติไปยังทีมหรือ agent ที่เหมาะสม\nยกตัวอย่างการ deflect ปัญหาที่พบบ่อย (เช่น reset password) ให้ AI แก้เองโดยไม่ถึงมือ human\nเตือนว่าต้องมี fallback ไป human เมื่อ AI ไม่มั่นใจในการจัดหมวดหมู่หรือ deflect ผิดเรื่อง",
+          "position": 2
+        },
+        {
+          "slug": "measuring-support-productivity",
+          "title": "Measuring Support Productivity",
+          "outline": "อธิบาย metric วัดผลของ AI ใน support: resolution time, deflection rate, CSAT (ความพึงพอใจลูกค้า), และเวลาที่ agent ประหยัดได้\nยกตัวอย่างการเทียบ metric ก่อน-หลังใช้ AI เพื่อพิสูจน์ ROI ของระบบ\nเตือนว่า deflection rate สูงไม่ได้แปลว่าดีเสมอไป ถ้าลูกค้าต้องกลับมาถามซ้ำ",
+          "position": 3
+        },
+        {
+          "slug": "integrating-ai-with-support-stack",
+          "title": "Integrating AI with the Support Stack",
+          "outline": "อธิบายการ orchestrate AI ให้เชื่อมกับ CRM, ticketing, และ internal API หลายตัวพร้อมกันในงานเดียว\nยกตัวอย่างการลด \"swivel chair\" ที่ agent ต้องสลับหน้าจอหลายระบบเอง ให้ AI ดึงข้อมูลรวมมาให้ในที่เดียว\nเชื่อมโยงกับความสำคัญของ tool calling (chapter 3) ในการต่อ AI เข้ากับระบบเหล่านี้จริง",
+          "position": 4
+        }
+      ]
+    }
+  ]
+}
