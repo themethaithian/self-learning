@@ -1,0 +1,67 @@
+{
+  "concept_id": "agent-frameworks-landscape",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Agent Frameworks Landscape",
+  "est_minutes": 8,
+  "body_md": "# Agent Frameworks Landscape\n\n## ทำไมถึงสำคัญ\n\nทุกทีมที่สร้าง agent ต้องเขียนชิ้นส่วนเดิมซ้ำ ๆ — tool integration, agent loop, memory, retrieval, tracing. Agent framework รวมชิ้นส่วนพวกนี้เป็น library สำเร็จรูปให้ประกอบเร็ว. แต่คำถามระดับ senior ไม่ใช่ \"framework ไหนดีที่สุด\" — มันคือ \"เมื่อไหร่ควรใช้ framework เมื่อไหร่ควรเขียนเอง\" เพราะ abstraction ที่ช่วยตอน prototype อาจกลายเป็นกำแพงตอน debug production.\n\n## framework ห่ออะไรให้บ้าง\n\nสิ่งที่ framework มีให้ ล้วนเป็น primitive ที่ chapter ก่อน ๆ สอนไปแล้ว — framework แค่ห่อมันเป็น API สำเร็จรูป:\n\n- **Tool integration / function calling** — จับ tool schema + parse tool call ให้ (primitive อยู่ที่ chapter tool & function calling)\n- **Agent loop / orchestration** — reason → act → observe วนให้อัตโนมัติ (primitive: `agent-loop-react`)\n- **Memory & state** — เก็บ short/long-term memory ให้ (primitive: `agent-memory-and-state`)\n- **Retrieval / RAG** — chunking + vector search + grounding สำเร็จรูป (primitive: `rag-pipeline-and-grounding`)\n- **Multi-agent orchestration** — จัดบทบาทและ handoff ระหว่าง agent (primitive: `single-vs-multi-agent`)\n- **Tracing / observability** — log ทุก step ของ loop ให้ debug ได้ (primitive: `llm-observability`)\n\nตัวอย่าง framework (จำเป็นแค่รู้ว่าแต่ละตัวเน้นอะไร ไม่ต้องท่อง API): LangChain/LangGraph เน้น loop + graph orchestration, LlamaIndex เน้น retrieval/RAG, CrewAI เน้น multi-agent แบบแบ่ง role, ส่วน OpenAI/Anthropic Agents SDK เป็น layer บาง ๆ ใกล้ provider. รายชื่อและ API เปลี่ยนทุกไตรมาส — สิ่งที่ต้องจำคือ *มันห่อ primitive อะไร* ไม่ใช่ syntax ของตัวใดตัวหนึ่ง.\n\n## ตัวอย่าง (prototype เร็ว vs production ที่ต้องคุมแน่น)\n\nสมมติทำ support bot ของ fintech ที่ตอบคำถามบัญชีและออก refund ได้:\n\n- **ตอน prototype / demo:** หยิบ framework มาต่อ tool loop + memory + RAG ได้ภายในบ่ายเดียว เพื่อโชว์ stakeholder ว่า flow ไปได้. คุ้มมาก เพราะเป้าหมายคือความเร็ว ไม่ใช่ความเป๊ะ.\n- **ตอนขึ้น production จริง:** loop ที่ออก refund ต้องคุมทุกจุด — termination condition ที่ชัด, retry ที่ไม่ยิงซ้ำ side effect, human-in-the-loop gate ก่อนโอนเงิน, และ log ที่ audit ได้เป๊ะ. จุดพวกนี้ framework มักซ่อนไว้ใต้ abstraction ทีมเลย \"ตกลงมา\" เขียน core loop เองด้วย raw provider API เพื่อคุมพฤติกรรมทุก step (อาจยังใช้ framework เฉพาะส่วน retrieval ที่ไม่ต้อง custom).\n\nโปรเจกต์นี้เองก็เลือก **hand-write LLM client ด้วย `net/http` ไม่พึ่ง SDK/framework** — เป็นตัวอย่างของ build-your-own เพื่อ control และเพื่อเป้าหมายการเรียนรู้ (เข้าใจ primitive ตรง ๆ แทนที่จะเรียน API ของ framework).\n\n```mermaid\nflowchart LR\n  subgraph BYO[\"Build-your-own\"]\n    B[Your app code] --> LOOP[\"Your loop: reason; act; observe\"]\n    LOOP --> RAW[Raw provider API]\n  end\n  subgraph FW[\"Framework\"]\n    A[Your app code] --> ABS[Framework abstraction]\n    ABS --> T[Tool integration]\n    ABS --> O[\"Loop | memory | tracing\"]\n    T --> API[Raw provider API]\n    O --> API\n  end\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ต้องใช้ framework ถึงจะสร้าง agent ได้\"** ผิด. agent = LLM + tools + loop; เขียน loop เองด้วย raw API ก็เป็น agent เต็มตัว. framework ทำให้เร็วขึ้น ไม่ได้ทำให้เป็นไปได้.\n- **\"framework = production-ready by default\"** ผิด. batteries-included ถูกออกแบบมาเพื่อ prototype; production ต้องการ control ที่ abstraction มักซ่อนไว้ (retry, termination, ordering).\n- **\"เลือก framework ที่ดาวเยอะสุดแล้วจบ\"** ผิด. ecosystem นี้ churn สูงมาก — สิ่งที่คุ้มค่าเรียนคือ concept/primitive ไม่ใช่ผูกชีวิตกับ library เดียว.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ framework\n\nฝั่ง framework แลกมาด้วยต้นทุนจริงสี่อย่าง: (1) **abstraction/indirection** — bug ซ่อนใต้ internals ของ framework, stack trace ลึกและอ่านยากกว่าโค้ดที่เขียนเอง; (2) **learning curve** — สุดท้ายไปเรียน API ของ framework แทนที่จะเข้าใจ primitive ที่มันห่อ; (3) **dependency / lock-in** — อัปเกรดเจอ breaking change, ผูกกับ vendor และ pattern ของมัน; (4) **control น้อยลงเหนือ loop จริง** — จุดที่กำหนด reliability (เมื่อไหร่หยุด, retry ยังไง, ลำดับ tool) ถูก framework ตัดสินใจแทน.\n\nฝั่ง build-your-own ได้ control เต็มและไม่มี lock-in แต่แลกกับ **งานที่มากขึ้น** — คุณต้องเขียนและ maintain glue code เอง (loop, retry, tracing) ที่ framework แถมให้ฟรี. และ framework churn เร็ว โค้ดที่พึ่ง API วันนี้อาจ deprecated ในอีกปี.\n\nสรุปการตัดสินใจ: **ใช้ framework** เมื่อทำ prototype, งานมาตรฐานที่ batteries ตรงกับ need พอดี, หรือทีมเล็กที่ไม่อยาก maintain glue เอง. **เขียนเอง (raw API)** เมื่อเป็น core loop ของ production ที่ต้องการ reliability/debuggability/audit สูง หรือเมื่อทีมยังไม่เข้าใจ primitive — เพราะ framework จะซ่อนสิ่งที่ควรเข้าใจก่อน. งานของ senior คือรู้จุดที่ควรลากเส้นแบ่งนี้ ไม่ใช่เชียร์ข้างใดข้างหนึ่งตายตัว.\n\n## มุมสัมภาษณ์\n\n- \"จะใช้ LangChain หรือเขียนเอง?\" → ตอบด้วย decision framework ไม่ใช่ชื่อ library: prototype/งานมาตรฐาน → framework; core production loop ที่ต้องคุมแน่น → raw API. ตอบชื่อ library เฉย ๆ = สอบตก.\n- \"ข้อเสียของ agent framework ใน production คืออะไร?\" → abstraction/indirection, lock-in, และ control เหนือ loop ที่น้อยลง ทำให้ debug/audit ยาก.\n- \"ทำไมบางทีม (หรือโปรเจกต์นี้) ถึงเขียน LLM client เอง?\" → เพื่อ control ทุก step ของ loop และเป็น learning goal ที่เข้าใจ primitive ตรง ๆ.\n- probe ต่อ: \"framework churn เร็ว จัดการยังไงไม่ให้ codebase ตายตามมัน?\" → เรียน concept ไม่ใช่ syntax, keep core loop ให้บาง และ isolate framework ไว้หลัง interface ของตัวเอง.\n",
+  "recall_checks": [
+    {
+      "q": "ชิ้นส่วน (primitive) หลัก ๆ ที่ agent framework ห่อไว้ให้มีอะไรบ้าง?",
+      "expected_answer": "tool integration, agent loop/orchestration, memory & state, retrieval/RAG, multi-agent orchestration, และ tracing/observability",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคือข้อเสียที่แท้จริงของการใช้ agent framework แทนการเขียน core loop เองด้วย raw API?",
+      "expected_answer": "ควบคุม core loop ได้น้อยลงและ lock-in กับ abstraction",
+      "type": "mcq",
+      "options": [
+        "ควบคุม core loop ได้น้อยลงและ lock-in กับ abstraction",
+        "ค่าใช้จ่ายต่อ token สูงขึ้นเสมอเพราะ framework overhead",
+        "โมเดลตอบผิดบ่อยขึ้นเพราะ framework แทรกแซง prompt"
+      ]
+    },
+    {
+      "q": "ตามแนวทางของบทเรียน สิ่งที่ควรทำก่อนหยิบ framework มาใช้คืออะไร?",
+      "expected_answer": "เข้าใจ primitive ของ agent ก่อนแล้วค่อยเลือก framework",
+      "type": "mcq",
+      "options": [
+        "เลือก framework ที่ดาวเยอะสุดบน GitHub ไว้ก่อน",
+        "เขียนทุกอย่างเองจาก raw API ทุกกรณีโดยไม่ต้องเรียน primitive",
+        "เข้าใจ primitive ของ agent ก่อนแล้วค่อยเลือก framework"
+      ]
+    },
+    {
+      "q": "ทำไมโปรเจกต์นี้ถึงเลือกเขียน LLM client เองด้วย net/http แทนพึ่ง framework/SDK?",
+      "expected_answer": "เพื่อ control ทุก step ของ loop และเป็น learning goal ที่เข้าใจ primitive ตรง ๆ",
+      "type": "short_answer"
+    },
+    {
+      "q": "เพราะ agent framework เปลี่ยนเร็ว (churn สูง) สิ่งที่ควรลงทุนเรียนคืออะไร?",
+      "expected_answer": "เรียน concept/primitive มากกว่าผูกกับ library เดียว",
+      "type": "mcq",
+      "options": [
+        "ควรรอจน framework นิ่งสนิทก่อนแล้วค่อยเริ่มเรียนทีหลัง",
+        "เรียน concept/primitive มากกว่าผูกกับ library เดียว",
+        "ควรใช้ทุก framework พร้อมกันเพื่อไม่ตกเทรนด์ใหม่"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Building Effective Agents",
+      "source": "Anthropic Engineering, anthropic.com/engineering/building-effective-agents",
+      "why": "อ่านว่าทำไมหลายกรณีควรเริ่มจาก building block ตรง ๆ ก่อนพึ่ง framework"
+    },
+    {
+      "title": "LangGraph Documentation (official)",
+      "source": "LangChain — LangGraph docs",
+      "why": "อ่านว่า framework ห่อ agent loop/orchestration เป็น graph ยังไง เพื่อเห็นรูปธรรมของ abstraction"
+    },
+    {
+      "title": "LlamaIndex Documentation",
+      "source": "docs.llamaindex.ai",
+      "why": "อ่านตัวอย่าง framework ที่เน้น retrieval/RAG เพื่อเทียบว่าแต่ละตัวห่อ primitive ต่างกัน"
+    }
+  ]
+}

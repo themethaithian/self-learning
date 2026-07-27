@@ -1,0 +1,62 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "single-vs-multi-agent",
+  "version": 1,
+  "title_en": "Single-Agent vs Multi-Agent",
+  "est_minutes": 7,
+  "body_md": "# Single-Agent vs Multi-Agent\n\n## ทำไมถึงสำคัญ\n\nงานหนึ่งจะให้ agent ตัวเดียวถือ tool หลายตัวทำเองทั้งหมด หรือแตกเป็นหลาย agent เฉพาะทางที่มี orchestrator คอยแจกงาน — เป็นการตัดสินใจ architecture ที่กระทบ cost, latency, และความยากในการ debug ตั้งแต่วันแรก. เลือกทาง multi-agent เร็วเกินไปคือ over-engineer ที่จ่าย coordination overhead โดยไม่ได้อะไรกลับมา. สิ่งที่ senior ต้องตอบได้คือ *เริ่มจาก single agent ก่อนเสมอ* แล้วค่อยแยกเมื่อมีเหตุผลจริง.\n\n## แก่นของแนวคิด\n\n- **Single agent** = LLM หนึ่งตัว + tool หลายตัว + loop เดียว (ReAct loop, ดู `agent-loop-react`). ทุก decision อยู่ใน context เดียว โมเดลเห็นทั้งงานตั้งแต่ต้นจนจบ.\n- **Multi-agent** = แตกงานเป็น agent เฉพาะทางหลายตัว แต่ละตัวมี system prompt + toolset ของตัวเอง โดยมี **orchestrator** (router / supervisor) เป็นคนรับงาน, ตัดสินใจว่าจะส่งให้ agent ไหน, แล้วรวมผลกลับ.\n- ประโยชน์ของ multi-agent:\n  - **Separation of concerns** — แต่ละ agent มี prompt สั้นและ toolset แคบ โฟกัสงานเดียว แทน prompt ยักษ์ที่พยายามครอบคลุมทุกกรณี\n  - **Focused context** — agent เฉพาะทางเห็นเฉพาะ context/tool ที่เกี่ยวกับงานตัวเอง ลด noise และลดโอกาสเรียก tool ผิด\n  - **Parallelism** — งานย่อยที่เป็นอิสระต่อกันรันพร้อมกันได้ (เช่น สืบค้นหลายแหล่งพร้อมกัน)\n- แต่ประโยชน์เหล่านี้ไม่ฟรี — ราคาอยู่ในหัวข้อ trade-off ด้านล่าง.\n- เกณฑ์ตัดสิน: แยกเป็น multi-agent เมื่อ (1) prompt/toolset ของ single agent เริ่มบวมจนโมเดลสับสน หรือ (2) มีงาน specialized/parallel ที่ชัดเจนและแยกขาดจากกันจริง ๆ. ถ้ายังไม่เข้าเงื่อนไข → single agent ชนะด้วยความเรียบง่าย.\n\n## ตัวอย่าง (customer support)\n\nสมมติระบบ support ของ fintech ต้องตอบเรื่อง billing (ทวงยอด/refund), technical (แอปล่ม/login), และ account (แก้ข้อมูล/ปิดบัญชี).\n\n- **แบบ single agent**: agent ตัวเดียวถือ tool ครบ — `lookup_invoice`, `issue_refund`, `reset_password`, `update_profile` — โมเดลอ่านคำถามแล้วเลือก tool เอง. เขียนง่าย, debug ง่าย (มี trace เดียว), เหมาะจนกว่าจำนวน tool และกฎเฉพาะทางจะเยอะเกินจน prompt เดียวคุมไม่อยู่.\n- **แบบ multi-agent**: มี **orchestrator** จำแนกเจตนาของลูกค้าแล้ว route ไปหา **billing agent** / **tech agent** / **account agent** ที่แต่ละตัวมี prompt + tool เฉพาะของตัวเอง. คุ้มเมื่อแต่ละสายมีนโยบายซับซ้อนต่างกันมาก (เช่น billing มีกฎ refund/compliance ยาว ๆ ที่ tech agent ไม่ต้องรู้เลย).\n\nโมเดล single agent ของตัวอย่างนี้ยังพอไหว — ถ้ารีบกระโดดไป multi-agent ตั้งแต่มี tool แค่ 4 ตัว คือ over-engineering.\n\n```mermaid\nflowchart TD\n  subgraph SA[\"Single-agent\"]\n    U1[User request] --> A1[Support agent]\n    A1 --> T1[Billing tool]\n    A1 --> T2[Ticket tool]\n    A1 --> T3[Account tool]\n  end\n  subgraph MA[\"Multi-agent\"]\n    U2[User request] --> OR[Orchestrator router]\n    OR --> BA[Billing agent]\n    OR --> TA[Tech agent]\n    OR --> AA[Account agent]\n    BA --> OR\n    TA --> OR\n    AA --> OR\n    OR --> FR[Final reply]\n  end\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"multi-agent ฉลาดกว่า single agent เสมอ\"** ผิด. หลาย agent ที่คุยกันผ่าน context ที่ถูกตัดเป็นท่อน ๆ มักได้ผลแย่กว่า single agent ที่เห็นภาพรวมทั้งงาน. จำนวน agent ไม่ใช่ตัววัดความสามารถ.\n- **\"orchestrator = แค่ if/else route คำถาม\"** ไม่เสมอไป. orchestrator มักเป็น LLM อีกตัวที่ต้อง reason เรื่อง routing เอง → นั่นคือ LLM call เพิ่มและจุดผิดพลาดเพิ่ม.\n- **\"แยก agent แล้ว debug ง่ายขึ้นเพราะเป็นส่วน ๆ\"** มักตรงข้าม. bug ข้าม agent (agent A ส่ง output เพี้ยนให้ agent B) ไล่ยากกว่า เพราะต้องตาม trace ข้ามหลายตัว.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ multi-agent\n\nMulti-agent จ่ายราคาจริง 4 อย่าง:\n\n- **Coordination / communication overhead** — ต้องออกแบบ protocol ว่า agent ส่งอะไรหากัน, ใครสรุป, จบเมื่อไหร่ (termination condition — เชื่อมกับ `agentic-tool-loop`). ทุก hop คือ context ที่ต้องแพ็กและแกะใหม่.\n- **Error propagation** — ถ้า agent ต้นน้ำเข้าใจผิดหรือ hallucinate, agent ปลายน้ำรับความผิดนั้นต่อและขยายมันขึ้น. ยิ่งต่อ agent ยาว error ยิ่งสะสม (compounding error, เชื่อมกับ `planning-and-decomposition`).\n- **Cost & latency** — แต่ละ agent บวก orchestrator คือ LLM call เพิ่ม; หลายรอบ routing/สรุป = token และเวลามากขึ้น. single call เดียวมักถูกและเร็วกว่าเสมอ.\n- **Debuggability** — trace กระจายข้ามหลาย agent, reproduce ยาก, จุดที่พังไม่ชัด.\n\nเพราะฉะนั้น: **default = single agent**. ไปต่อ multi-agent เฉพาะเมื่อ prompt/toolset ของ single agent บวมจนคุมไม่อยู่ หรือมีงาน parallel/specialized ที่คุ้มกับ overhead จริง ๆ. อย่าเพิ่ม agent เพราะมันดูเท่ — ความซับซ้อนที่เพิ่มมาต้องจ่ายด้วยผลลัพธ์ที่ดีขึ้นแบบวัดได้.\n\n> framework ที่ทำ multi-agent orchestration ให้ (abstraction สำหรับ routing/memory) ดูใน `agent-frameworks-landscape`. ส่วนการส่งงานจาก AI ไปหา *คน* (human handoff) เป็นคนละเรื่อง อยู่ใน chapter conversational-and-agent-assist.\n\n## มุมสัมภาษณ์\n\n- \"จะเลือก single หรือ multi-agent ยังไง?\" → ตอบ *start single*, ยก trade-off (overhead/error propagation/cost) แล้วให้เงื่อนไขที่ทำให้ multi-agent คุ้ม (prompt บวม หรืองาน parallel-specialized). พูดลอย ๆ ว่า \"multi-agent ดีกว่า\" คือธงแดง.\n- \"orchestrator ทำหน้าที่อะไร และเพิ่มความเสี่ยงตรงไหน?\" → รับ + route + รวมผล; เพิ่ม LLM call, routing error, และ single point ที่ตัดสินใจผิดได้.\n- \"ทำไม multi-agent ถึง debug ยากกว่า?\" → error propagation ข้าม agent + trace กระจาย + reproduce ยาก.\n- \"agent เดียวมี tool 20 ตัว ควรแยกไหม?\" → อาจใช่ ถ้า prompt/toolset บวมจนโมเดลเลือก tool ผิดบ่อย; แต่เริ่มจากพิจารณา sub-agent เฉพาะกลุ่ม tool ก่อน ไม่ใช่แตกสุดโต่ง.\n",
+  "recall_checks": [
+    {
+      "q": "เมื่อออกแบบระบบ agent ใหม่ แนวทางที่แนะนำตั้งต้นคืออะไร และค่อยแยกเป็น multi-agent เมื่อไหร่?",
+      "expected_answer": "เริ่มด้วย single agent ก่อนเสมอ แล้วค่อยแยกเป็น multi-agent เมื่อ prompt/toolset ของ single agent บวมจนคุมไม่อยู่ หรือมีงาน parallel/specialized ที่คุ้มกับ overhead จริง ๆ",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคือ 'ราคา' จริงของการใช้ multi-agent?",
+      "expected_answer": "เพิ่ม coordination + error propagation",
+      "type": "mcq",
+      "options": [
+        "ลด coordination overhead ระหว่าง agent",
+        "เพิ่ม coordination + error propagation",
+        "ทำให้ debug ง่ายและ deterministic ขึ้น"
+      ]
+    },
+    {
+      "q": "orchestrator (router/supervisor) ในระบบ multi-agent ทำหน้าที่อะไร?",
+      "expected_answer": "รับงาน route ไป agent แล้วรวมผล",
+      "type": "mcq",
+      "options": [
+        "รับงาน route ไป agent แล้วรวมผล",
+        "รันทุก tool call แทน agent อื่น",
+        "เก็บ long-term memory ให้ทุก agent"
+      ]
+    },
+    {
+      "q": "multi-agent เหมาะกับสถานการณ์ใดมากที่สุด?",
+      "expected_answer": "งานที่แยกส่วนชัดและ context ต่างกันมาก",
+      "type": "mcq",
+      "options": [
+        "งานเล็กที่ single agent จัดการได้สบายมาก",
+        "ทุกงานเพื่อลด latency และต้นทุนลง",
+        "งานที่แยกส่วนชัดและ context ต่างกันมาก"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Building Effective Agents",
+      "source": "Anthropic Engineering, anthropic.com/engineering/building-effective-agents",
+      "why": "อ่านหลัก start-simple และเมื่อไหร่ควรใช้ orchestrator-workers/multi-agent แทน single agent"
+    },
+    {
+      "title": "Large Language Model based Multi-Agents: A Survey of Progress and Challenges",
+      "source": "Guo et al., arXiv, 2024",
+      "why": "อ่านภาพรวม pattern และ challenge ของ multi-agent (coordination, error propagation)"
+    },
+    {
+      "title": "AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation",
+      "source": "Wu et al., arXiv:2308.08155, 2023",
+      "why": "อ่านตัวอย่างระบบ multi-agent conversation จริง (ตัว framework ดูใน agent-frameworks-landscape)"
+    }
+  ]
+}

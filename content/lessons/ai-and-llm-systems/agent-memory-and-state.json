@@ -1,0 +1,67 @@
+{
+  "concept_id": "agent-memory-and-state",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Agent Memory and State",
+  "est_minutes": 8,
+  "body_md": "# Agent Memory and State\n\n## ทำไมถึงสำคัญ\n\nLLM แต่ละ call เป็น **stateless** — โมเดลไม่จำอะไรจาก call ก่อนหน้าเลย สิ่งที่ดูเหมือน \"ความจำ\" ของ agent คือสิ่งที่ *ระบบของคุณ* ประกอบขึ้นแล้วป้อนกลับเข้าไปเองทุกครั้ง. งานของ senior คือตัดสินใจว่าจะ **keep / summarize / retrieve** อะไรเข้า context เพราะ window มีจำกัด. เข้าใจผิดตรงนี้จะได้ agent ที่ \"ลืม\" กลางทาง หรือจ่าย token แพงโดยเปล่าประโยชน์.\n\n## แก่นของแนวคิด\n\n- **Statelessness**: API เห็นเฉพาะสิ่งที่คุณส่งใน request นั้น ไม่มี hidden session ฝั่ง provider. ทุก turn คุณต้องส่งประวัติที่อยากให้โมเดลเห็นกลับไปใหม่ทั้งหมด — ที่ chatbot \"จำ\" บทสนทนาได้ ก็เพราะ client แนบประวัติกลับเข้าไปทุกครั้ง ไม่ใช่โมเดลจำเอง.\n- **Short-term / working memory** = สิ่งที่อยู่ใน context window ตอนนี้: ประวัติการสนทนา + **scratchpad** (ที่จดผลลัพธ์ระหว่างขั้นตอนของงานเดียว เช่น ตัวเลขที่ tool คืนมา, ข้อสรุปกลางทาง). หายทันทีเมื่อจบ session หรือถูกตัดออกเพราะ window เต็ม.\n- **Long-term memory** = ข้อมูลที่ persist ไว้ *นอก* window (relational DB, key-value, vector store) แล้ว **retrieve** กลับเข้ามาเมื่อเกี่ยวข้อง. นี่คือ RAG ที่เอามาใช้กับ \"ความจำ\" — กลไก embedding/vector store อยู่ใน chapter RAG; บทนี้สนใจแค่ *นโยบาย* ว่าจะเก็บอะไรและดึงอะไร.\n- **State ของงาน/session** = รู้ว่าตอนนี้อยู่ขั้นไหน ทำอะไรไปแล้ว เหลืออะไร (เช่น plan ที่ยัง execute ไม่ครบ). แยกจากตัว knowledge: state บอก \"อยู่ตรงไหน\", memory บอก \"รู้อะไร\".\n- **Decision ที่ต้องทำเสมอ** เมื่อ window ใกล้เต็ม: *keep* (ใส่ทั้งดุ้น), *summarize* (บีบให้สั้น แลกกับรายละเอียด), หรือ *retrieve* (เก็บไว้นอก แล้วดึงเฉพาะที่ตรง).\n\n> ขอบเขต: token/context window ทำงานและคิดเงินยังไงอยู่ใน chapter LLM Foundations (ch.1) และ Prompting (ch.2); conversation flow ที่มองเป็น state machine อยู่ใน chapter Conversational Systems (ch.7) — บทนี้โฟกัสที่ตัว memory เอง.\n\n```mermaid\nflowchart TD\n  U[\"User turn\"] --> CTX\n  subgraph WM[\"Short-term memory: context window\"]\n    CTX[\"Conversation so far\"]\n    SP[\"Scratchpad: this task's findings\"]\n  end\n  CTX --> M([\"LLM call: stateless\"])\n  SP --> M\n  M -->|\"reply + new facts\"| CTX\n  M -->|\"persist keep-worthy facts\"| LTS[(\"Long-term store: DB / vector store\")]\n  LTS -->|\"retrieve relevant into context\"| CTX\n```\n\n## ตัวอย่าง (support agent — fintech)\n\nลูกค้าเก่าเปิดแชทเข้ามาใหม่: \"ปัญหาโอนเงินค้างเหมือนเดิม\". agent จัดการ memory สามชั้น:\n\n- **Short-term**: ประวัติแชท turn นี้ + scratchpad ที่จด finding ของ session นี้ — `ticket #4471 status = pending`, `โอนล่าสุด 12,000 THB reference X`. ค่าพวกนี้อยู่ใน context ปัจจุบันเพื่อให้ขั้นถัดไปใช้ต่อ.\n- **Long-term**: ก่อนตอบ ระบบ **retrieve** ประวัติ ticket เก่าของลูกค้าคนนี้จาก store (เคยแจ้งปัญหาเดียวกันเมื่อ 3 เดือนก่อน แก้ด้วยการ re-KYC) แล้ว inject แค่ 2–3 รายการที่ตรง เข้า context — *ไม่ dump* ทั้งประวัติ 200 tickets.\n- **จบ session**: สิ่งที่เรียนรู้ใหม่ (`ยืนยันตัวตนผ่านแล้ว`, `escalate ไปทีม settlement`) ถูก persist กลับเข้า long-term store เพื่อให้ session หน้าใช้ต่อ.\n\nโมเดลเองจำอะไรไม่ได้เลยระหว่าง session — **ระบบเป็นคนพาความจำข้ามเวลา** ด้วยการ persist แล้ว retrieve.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"โมเดลจำการสนทนาได้เอง\"** ผิด — ที่ดูเหมือนจำ เพราะ client ส่งประวัติกลับเข้าไปทุก turn; ถ้าไม่ส่ง มันลืมสนิท.\n- **\"ยัดทุกอย่างเข้า context ให้ agent ฉลาดสุด\"** ผิด — context ยาวขึ้น = แพงขึ้น ช้าลง และเจอ **lost-in-the-middle** (โมเดลมองข้ามข้อมูลที่อยู่กลาง ๆ ของ context ยาว).\n- **\"long-term memory ต้องใช้ vector store เสมอ\"** ผิด — ถ้ารู้ key ชัด (user id → profile facts) การ lookup ตรง ๆ จาก DB เร็วและแม่นกว่า semantic search; vector store จำเป็นเมื่อต้องหาแบบ \"คล้ายความหมาย\".\n\n## ขีดจำกัด / trade-offs\n\n- **เก็บ memory ใน context เยอะ**: จ่าย token ทุก turn (in-context memory ไม่ฟรี) + เสี่ยง lost-in-the-middle + อาจดัน content สำคัญตกขอบ window.\n- **Long-term store**: ได้ scalability แต่แลกกับ (1) *retrieval quality* — ดึงผิด/ไม่ครบ = agent ตอบจากข้อมูลผิด; (2) *staleness* — fact เก่าค้างใน store (ลูกค้าเปลี่ยนที่อยู่แล้วแต่ยังดึงอันเดิม); (3) *privacy/compliance* — เก็บบทสนทนา/PII ลูกค้าไว้ถาวรต้องมี retention policy, consent, สิทธิ์ลบ ซึ่ง fintech โดน regulate หนัก.\n- **Summarize เพื่อประหยัด window**: ทุกการสรุปคือการทิ้งรายละเอียด และเป็น lossy ย้อนกลับไม่ได้ — รายละเอียดที่ทิ้งวันนี้อาจเป็นสิ่งที่ turn หน้าต้องใช้.\n- **เมื่อไหร่ไม่ต้องลงทุน**: งาน single-turn หรือ task สั้นที่จบใน context เดียว ไม่ต้องมี long-term memory เลย — การเพิ่ม store + retrieval + eviction policy คือ complexity ที่ไม่คุ้ม. ความจำถาวรคุ้มก็ต่อเมื่อ agent ต้องรู้จักผู้ใช้ *ข้าม session* จริง ๆ.\n\n## มุมสัมภาษณ์\n\n- \"ทำไม LLM ถึง stateless และมันกระทบการออกแบบ agent ยังไง?\" → provider ไม่เก็บ state ให้; ระบบต้องส่งประวัติกลับทุก call และเป็นเจ้าของ memory เอง.\n- \"แยก short-term กับ long-term memory ยังไง แต่ละอันเก็บที่ไหน?\" → short-term = ใน context window (conversation + scratchpad) หายเมื่อจบ session; long-term = นอก window ใน DB/vector store ดึงกลับเมื่อเกี่ยวข้อง.\n- \"context เริ่มเต็มจะทำยังไง?\" → เลือกระหว่าง summarize (lossy), evict ส่วนเก่า, หรือย้ายไป long-term store แล้ว retrieve เฉพาะที่ตรง — คำถามนี้มักต่อไปเรื่อง cost/latency trade-off.\n- \"จะเก็บบทสนทนาลูกค้าเป็น long-term memory ต้องระวังอะไร?\" → retention/consent/สิทธิ์ลบ (privacy), staleness ของ fact, และ retrieval ที่ดึงผิดทำให้ตอบผิด.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม LLM แต่ละ call ถึงเป็น stateless และ agent \"จำ\" การสนทนาได้ยังไง?",
+      "expected_answer": "โมเดลไม่เก็บ state ระหว่าง call; ระบบ/client ต้องส่งประวัติกลับเข้า context ทุก turn เอง",
+      "type": "short_answer"
+    },
+    {
+      "q": "short-term (working) memory ของ agent เก็บอยู่ที่ไหน?",
+      "expected_answer": "ใน context window ของ call ปัจจุบัน",
+      "type": "mcq",
+      "options": [
+        "ใน vector store ภายนอกเสมอ",
+        "ใน context window ของ call ปัจจุบัน",
+        "ใน session ที่ provider เก็บให้อัตโนมัติ"
+      ]
+    },
+    {
+      "q": "ข้อใดอธิบาย long-term memory ของ agent ได้ถูกต้อง?",
+      "expected_answer": "เก็บนอก window แล้วดึงกลับเมื่อเกี่ยวข้อง",
+      "type": "mcq",
+      "options": [
+        "เก็บนอก window แล้วดึงกลับเมื่อเกี่ยวข้อง",
+        "ประวัติแชทที่ยังอยู่ใน context window",
+        "state ที่ provider เก็บจำให้เองข้ามทุก call"
+      ]
+    },
+    {
+      "q": "scratchpad ใน short-term memory มีไว้ทำอะไร?",
+      "expected_answer": "จดผลลัพธ์/ข้อสรุประหว่างขั้นตอนของงานเดียว (intermediate results) ไว้ใน context ปัจจุบัน",
+      "type": "short_answer"
+    },
+    {
+      "q": "การ summarize ประวัติเพื่อประหยัด context window มี trade-off อะไร?",
+      "expected_answer": "ทิ้งรายละเอียดบางส่วนอย่างถาวร",
+      "type": "mcq",
+      "options": [
+        "สรุปได้แม่นยำแบบ lossless เสมอ",
+        "ผูก agent กับ provider รายเดียว",
+        "ทิ้งรายละเอียดบางส่วนอย่างถาวร"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "MemGPT: Towards LLMs as Operating Systems (Packer et al., 2023)",
+      "source": "arXiv:2310.08560",
+      "why": "อ่านแนวคิด paging ข้อมูลระหว่าง context กับ external store เพื่อทำ long-term memory"
+    },
+    {
+      "title": "Generative Agents: Interactive Simulacra of Human Behavior (Park et al., 2023)",
+      "source": "arXiv:2304.03442",
+      "why": "อ่านตัวอย่าง memory stream + retrieval/reflection ของ agent ที่ต้องจำข้ามเวลา"
+    },
+    {
+      "title": "Lost in the Middle: How Language Models Use Long Contexts (Liu et al., 2023)",
+      "source": "arXiv:2307.03172",
+      "why": "อ่านหลักฐานว่าทำไม context ยาวเกินทำให้โมเดลมองข้อมูลกลาง ๆ พลาด (trade-off ของ in-context memory)"
+    }
+  ]
+}

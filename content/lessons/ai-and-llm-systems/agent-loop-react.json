@@ -1,0 +1,67 @@
+{
+  "concept_id": "agent-loop-react",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "The Agent Loop (ReAct)",
+  "est_minutes": 8,
+  "body_md": "# The Agent Loop (ReAct)\n\n## ทำไมถึงสำคัญ\n\nAgent คือ LLM ที่ตัดสินใจ \"ขั้นตอนถัดไป\" ของตัวเองในลูป โดยเรียก tool ไปเรื่อย ๆ จนกว่างานจะสำเร็จ — ต่างจาก workflow ที่ developer เขียน path ไว้ตายตัว. ReAct (Reason + Act) เป็น pattern พื้นฐานที่ทำให้ reasoning ของโมเดล \"เห็นได้\" และปรับก้าวตามผลลัพธ์จริง แทนที่จะเดาทั้งหมดในครั้งเดียว. เข้าใจ pattern นี้คือเส้นแบ่งระหว่าง \"เรียก LLM หนึ่งครั้ง\" กับ \"สร้างระบบที่ LLM ขับเคลื่อนหลายขั้นตอนเอง\".\n\n## แก่นของแนวคิด\n\nReAct interleave สามอย่างวนกัน:\n\n- **Thought** — โมเดล reason ออกมาเป็นข้อความว่า \"ตอนนี้รู้อะไร ยังขาดอะไร ขั้นต่อไปควรทำอะไร\"\n- **Action** — โมเดลเลือก tool + argument (เช่น `lookup_order(id=...)`)\n- **Observation** — app รัน tool แล้วป้อนผลลัพธ์กลับเข้า context ให้โมเดลอ่าน\n\nแล้ววน Thought → Action → Observation → Thought … จนโมเดลตัดสินว่าข้อมูลพอแล้วจึงออก **Final answer**. จุดสำคัญคือ thought ที่ generate ออกมาเป็น text ทำให้ reasoning explicit — โมเดลใช้ผลของ observation จริงมากำหนดก้าวถัดไป ไม่ใช่ commit แผนทั้งหมดตั้งแต่ยังไม่เห็นข้อมูล.\n\nนิยาม agent = LLM + tools + loop ที่ **โมเดลเลือก path เอง**. เทียบกับ fixed workflow ที่ path ถูก hardcode โดย developer (step 1 → step 2 → step 3 เสมอ). เส้นแบ่งอยู่ที่ *ใคร* เป็นคนตัดสินว่า \"ทำอะไรต่อ\": ถ้าเป็นโค้ด = workflow, ถ้าเป็นโมเดลตาม observation = agent.\n\n> กลไกการรัน tool จริง (โมเดลคืน tool call → app รัน → ป้อนผลกลับ) คือ agentic tool loop ใน ch.3 สมมติว่ารู้แล้ว — lesson นี้คือชั้น *reasoning* ที่วางทับบนกลไกนั้น. การวางแผนล่วงหน้าแบบ plan-then-execute อยู่ใน sibling `planning-and-decomposition`; การเก็บความจำข้ามขั้นตอนอยู่ใน sibling `agent-memory-and-state`.\n\n## ตัวอย่าง (support / payments)\n\nลูกค้าถาม: \"ออเดอร์ #A-1023 ของฉันได้เงินคืนหรือยัง?\" — agent ที่ต่อกับ tool ทำงานแบบนี้:\n\n- **Thought**: ต้องรู้สถานะออเดอร์ก่อน ยังไม่มีข้อมูล → เรียก lookup_order\n- **Action**: `lookup_order(id=\"A-1023\")`\n- **Observation**: `{ status: \"refund_pending\", payment_id: \"P-77\" }`\n- **Thought**: refund ยังค้าง ต้องเช็คสถานะ refund จริงจาก payment\n- **Action**: `get_refund_status(payment_id=\"P-77\")`\n- **Observation**: `{ state: \"settled\", settled_at: \"2026-07-25\" }`\n- **Thought**: refund เข้าบัญชีแล้ว → พอตอบได้\n- **Final answer**: \"เงินคืนของออเดอร์ #A-1023 โอนเข้าเรียบร้อยแล้วเมื่อ 25 ก.ค.\"\n\nสังเกตว่า agent ไม่รู้ล่วงหน้าว่าต้องเรียกสอง tool — มันรู้หลังเห็น observation แรกว่า status เป็น `refund_pending`. ถ้า observation แรกบอก `delivered` มันจะไม่เรียก `get_refund_status` เลย. path เกิดจากข้อมูล ไม่ใช่จาก script.\n\nเทียบกับงานง่ายอย่าง \"แปลประโยคนี้เป็นอังกฤษ\" หรือ \"สรุปย่อหน้านี้\" — พวกนี้เป็น single prompt → response จบในครั้งเดียว ไม่มีขั้นตอนที่ต้องขึ้นกับผลของ tool จึงไม่ต้องมี loop เลย. เก็บ agent ไว้ใช้เฉพาะงานหลาย step ที่ path ขึ้นกับข้อมูลระหว่างทาง (เช่น refund lookup ข้างบน).\n\n```mermaid\nflowchart TD\n  G[Goal / user request] --> T[\"Thought: reason next step\"]\n  T --> A[\"Action: call a tool\"]\n  A --> O[\"Observation: tool result\"]\n  O --> D{Goal met?}\n  D -- no --> T\n  D -- yes --> Ans[Final answer]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ReAct = โมเดลวางแผนทุกขั้นล่วงหน้าแล้วรันตาม\"** ผิด — หัวใจของ ReAct คือ react ต่อ observation ทีละก้าว; การวางแผนเต็มรูปล่วงหน้าเป็นอีก pattern (plan-then-execute).\n- **\"มี tool = เป็น agent แล้ว\"** ผิด — ถ้า path การเรียก tool ถูก developer fix ไว้ นั่นคือ workflow ที่บังเอิญใช้ LLM ไม่ใช่ agent. agent ต้องให้โมเดล *ตัดสินใจ* เองว่าจะทำอะไรต่อ.\n- **\"thought เป็นแค่ log สวย ๆ\"** ผิด — thought คือ token ที่โมเดล generate จริงและมีผลต่อ action ถัดไป มันเป็นส่วนหนึ่งของ reasoning ไม่ใช่ comment.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ agent\n\nAgent ยืดหยุ่นแต่แลกมาด้วยของหลายอย่างที่ senior ต้องชั่งน้ำหนัก:\n\n- **คาดเดายาก / test ยาก** — path เปลี่ยนตาม input และความ non-deterministic ของโมเดล; fixed workflow ให้ผลซ้ำได้และเขียน unit test ตรงไปตรงมากว่ามาก.\n- **ยิ่งวนยิ่งแพงและช้า** — ทุกรอบ Thought→Action→Observation คือ LLM call เพิ่ม + latency เพิ่ม; งานที่ workflow ทำจบใน 1 call อาจกลายเป็น 5–6 call ในมือ agent.\n- **error compounding** — ถ้าแต่ละก้าวถูก 90% ผ่าน 5 ก้าวเหลือความถูกต้องรวม ~59% (0.9^5); ความผิดพลาดสะสมทวีคูณตามความยาว loop.\n- **ต้องมี termination ชัด** — ไม่มีเงื่อนไขจบหรือลิมิตจำนวนรอบ loop อาจวนไม่จบและเผาต้นทุน (รายละเอียด termination อยู่ใน `agentic-tool-loop`).\n\nเมื่อไหร่ workflow ชนะ: งานที่ path รู้แน่ล่วงหน้า (extract → validate → save), งานที่ต้องการผลซ้ำได้/ตรวจสอบได้ (เช่น flow การเงินที่ compliance สนใจ audit trail), หรืองานที่ latency/cost สำคัญ. กฎง่าย ๆ: ใช้ agent เฉพาะเมื่อ path *ต้อง* ขึ้นกับข้อมูลที่จะรู้ระหว่างทางเท่านั้น — ถ้าเขียน flow ตรง ๆ ได้ ให้เขียน workflow.\n\n## มุมสัมภาษณ์\n\n- \"อธิบาย ReAct loop\" → Thought (reason) → Action (tool) → Observation (ผล) วนจนตอบได้; thought ทำให้ reasoning explicit และปรับก้าวตาม observation.\n- \"agent ต่างจาก workflow ยังไง?\" → ใครเลือก path: โมเดล (agent) vs โค้ด (workflow).\n- \"เมื่อไหร่ *ไม่* ควรใช้ agent?\" → เมื่อ path รู้แน่ล่วงหน้า / ต้องการ deterministic / cost-latency สำคัญ — คำถามนี้วัดว่าเข้าใจ trade-off ไม่ใช่แค่ hype.\n- \"จะกัน agent วนไม่จบยังไง?\" → termination condition + max iteration (ต่อยอดไป `agentic-tool-loop`).\n",
+  "recall_checks": [
+    {
+      "q": "สามส่วนที่ ReAct loop สลับกันวนคืออะไรบ้าง?",
+      "expected_answer": "Thought (reason) → Action (เรียก tool) → Observation (ผลลัพธ์ของ tool)",
+      "type": "short_answer"
+    },
+    {
+      "q": "อะไรคือเส้นแบ่งที่ทำให้ระบบเป็น agent ไม่ใช่ fixed workflow?",
+      "expected_answer": "โมเดลเป็นคนเลือก path เอง",
+      "type": "mcq",
+      "options": [
+        "โค้ดกำหนด path ไว้ล่วงหน้าเสมอ",
+        "โมเดลเป็นคนเลือก path เอง",
+        "ระบบมีการเรียก tool"
+      ]
+    },
+    {
+      "q": "งานแบบใดที่ fixed workflow เหมาะกว่า agent?",
+      "expected_answer": "งานที่ path รู้แน่ล่วงหน้า",
+      "type": "mcq",
+      "options": [
+        "งานที่ path ขึ้นกับ observation",
+        "งานที่ต้อง reasoning หลายชั้น",
+        "งานที่ path รู้แน่ล่วงหน้า"
+      ]
+    },
+    {
+      "q": "นอกจาก cost และ latency แล้ว ทำไม loop ที่ยาวขึ้นถึงเสี่ยงมากขึ้น?",
+      "expected_answer": "error compounding — ความผิดพลาดของแต่ละก้าวสะสมทวีคูณตามจำนวนรอบ ทำให้ความถูกต้องรวมลดลงเร็ว",
+      "type": "short_answer"
+    },
+    {
+      "q": "Observation ใน ReAct loop คืออะไร?",
+      "expected_answer": "ผลลัพธ์จาก tool ที่ป้อนกลับ",
+      "type": "mcq",
+      "options": [
+        "ผลลัพธ์จาก tool ที่ป้อนกลับ",
+        "ข้อความ reasoning ของโมเดลเอง",
+        "คำสั่งเรียก tool ของโมเดล"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+      "source": "Yao et al., 2022, arXiv:2210.03629",
+      "why": "อ่านต้นฉบับของ ReAct pattern และหลักฐานว่าการ interleave reasoning กับ acting ดีกว่าทำอย่างใดอย่างหนึ่งเดี่ยว ๆ"
+    },
+    {
+      "title": "Building Effective AI Agents",
+      "source": "Anthropic Engineering blog, anthropic.com/engineering/building-effective-agents",
+      "why": "อ่านความต่างระหว่าง agent กับ workflow และคำแนะนำว่าเมื่อไหร่ควรเลือกอันไหนในงานจริง"
+    },
+    {
+      "title": "LLM Powered Autonomous Agents",
+      "source": "Lilian Weng, lilianweng.github.io/posts/2023-06-23-agent/",
+      "why": "อ่านภาพรวมองค์ประกอบของ agent (loop, planning, memory, tools) เพื่อวาง ReAct ในบริบทที่ใหญ่ขึ้น"
+    }
+  ]
+}
