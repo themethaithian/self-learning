@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "few-shot-and-structured-output",
+  "version": 1,
+  "title_en": "Few-Shot and Structured Output",
+  "est_minutes": 8,
+  "body_md": "# Few-Shot and Structured Output\n\n## ทำไมถึงสำคัญ\n\nในระบบจริง output ของโมเดลส่วนใหญ่ไม่ได้ไปให้คนอ่าน แต่ไปเข้าโค้ดต่อ — โค้ดต้อง parse ค่าออกมาใช้ ถ้ารูปแบบไม่คงที่ pipeline พังทันที. few-shot prompting (แนบตัวอย่าง input→output ไว้ใน prompt) ทำให้โมเดลเลียนแบบ *รูปแบบ* คำตอบได้แม่นกว่าการสั่งด้วยคำอธิบายเปล่า ๆ ส่วน structured output (บังคับให้ตอบเป็น JSON ตาม schema) ทำให้ผลลัพธ์ machine-parseable. สองเทคนิคนี้คือสะพานที่เปลี่ยน \"โมเดลที่คุยกับคน\" ให้กลายเป็น \"โมเดลที่เป็น component ในระบบ\".\n\n## แก่นของแนวคิด\n\n**Few-shot prompting**\n\n- zero-shot = ให้แค่ instruction; few-shot = แนบตัวอย่าง input→output จริงไม่กี่คู่ (เช่น 2–5 คู่) ให้โมเดลเห็น pattern แล้วเลียนแบบ. (การเขียน instruction/prompt ที่ดีเป็นเรื่องของ prompt-engineering-basics — สมมติว่ารู้แล้ว).\n- ดีเมื่อ: อยากคุม format/style/โทน หรือสอน edge case ที่อธิบายเป็นคำยาก (เช่น \"ข้อความกำกวมแบบนี้ให้ตอบ null\").\n- ตัวอย่างต้อง representative และ consistent: ถ้าตัวอย่างขัดกันเอง หรือ format ในแต่ละคู่ไม่ตรงกัน โมเดลจะสับสนและ output ไม่นิ่ง. ตัวอย่างที่เอียงไปทางเคสเดียว (เช่น urgency=high ทุกอัน) จะ bias ให้โมเดลตอบตามนั้น.\n- few-shot ชี้ *รูปแบบการตอบ* ไม่ใช่ยัด knowledge ใหม่เข้าโมเดล (การเพิ่มความรู้เป็นเรื่องของ RAG/fine-tune — ch.4).\n\n**Structured output**\n\n- เป้าหมาย: บังคับให้ output เป็นโครงสร้างที่โค้ด parse ได้ตรง ๆ — ปกติคือ JSON ที่ match schema ที่กำหนด (field, type, ค่าที่อนุญาต).\n- ใช้หลายชั้นประกอบกัน: (1) บรรยาย schema ให้ชัดใน prompt (ชื่อ field + type + enum ที่ยอมรับ), (2) ให้ตัวอย่าง output ที่ถูก format — จุดนี้คือที่ few-shot กับ structured output มาบรรจบกัน, (3) ใช้กลไกของ provider ถ้ามี เช่น \"JSON mode\" / constrained decoding / output prefill (เติมต้น output ด้วย `{` เพื่อกันโมเดลพูดนำ), (4) **validate + retry**: parse ผลลัพธ์แล้วตรวจกับ schema ถ้าพัง ส่ง error กลับให้โมเดลแก้แล้วลองใหม่.\n- tool/function calling ก็คืน argument เป็น structured JSON เหมือนกัน แต่เป็นคนละกลไก (โมเดล *เลือก* เรียกฟังก์ชัน) — ดู ch.3 how-function-calling-works.\n\n```mermaid\nflowchart TD\n  SP[\"System prompt + schema\"] --> A[\"Assemble prompt\"]\n  FS[\"Few-shot examples: input to output\"] --> A\n  U[\"User message\"] --> A\n  A --> M[\"LLM\"]\n  M --> O[\"Raw output (JSON)\"]\n  O --> V{\"Valid against schema?\"}\n  V -->|\"pass\"| D[\"Downstream code consumes it\"]\n  V -->|\"fail\"| R[\"Retry with error feedback\"]\n  R --> M\n```\n\n## ตัวอย่าง (support triage)\n\nต้องการดึงข้อมูลจากข้อความลูกค้าออกมาเป็น JSON ให้ระบบ ticket routing ใช้ต่อ. schema:\n\n```\n{ \"intent\":  \"billing\" | \"technical\" | \"account\" | \"other\",\n  \"urgency\": \"low\" | \"medium\" | \"high\",\n  \"product\": string | null }\n```\n\nfew-shot ใน prompt (ย่อ):\n\n- `โดนตัดเงินซ้ำสองรอบในบัตร ต้องได้เงินคืนวันนี้!` → `{\"intent\":\"billing\",\"urgency\":\"high\",\"product\":\"card\"}`\n- `แอปเปิดไม่ขึ้นตั้งแต่อัปเดต` → `{\"intent\":\"technical\",\"urgency\":\"medium\",\"product\":\"mobile app\"}`\n- `อยากรู้ว่าเปลี่ยนอีเมลยังไง` → `{\"intent\":\"account\",\"urgency\":\"low\",\"product\":null}`\n\nข้อความใหม่: `ทำไมโอนเงินไม่ได้ ขึ้น error ตลอด เดือดร้อนมาก` → โมเดลเลียน pattern ตอบ `{\"intent\":\"technical\",\"urgency\":\"high\",\"product\":\"transfer\"}`. ฝั่ง backend `json.Unmarshal` เข้า struct แล้วตรวจว่า `intent`/`urgency` อยู่ใน enum ที่รับ — ถ้าใช่ route เข้า queue; ถ้า parse ไม่ผ่านหรือ enum เพี้ยน (เช่นโมเดลตอบ `urgent`) → retry หนึ่งครั้งพร้อมแนบ error message, ยังพังอีก → fallback ให้ human triage. สังเกตว่า schema, ตัวอย่าง few-shot, และ validation ทำงานร่วมกันเป็นชุดเดียว.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ใช้ JSON mode / schema แล้วไม่ต้อง validate\"** ผิด. กลไกพวกนี้การันตีแค่ว่าเป็น *JSON ที่ parse ได้ (syntactic)* ไม่การันตีว่า *ค่าถูกต้องตาม business (semantic)* — enum เพี้ยน, field ขาด, หรือค่าที่โมเดลแต่ง/hallucinate ยังหลุดมาได้.\n- **\"few-shot ยิ่งเยอะยิ่งดี\"** ผิด. ตัวอย่างทุกคู่ถูกส่ง (และคิดเงิน) เป็น token ทุก request; เกินจำเป็นหรือไม่ representative ทำให้ทั้งแพงและ bias.\n- **\"few-shot สอนความรู้ใหม่ให้โมเดล\"** ผิด. มันชี้รูปแบบ/สไตล์การตอบ ไม่ใช่เพิ่มข้อเท็จจริงใหม่ (นั่นคือ RAG/fine-tune).\n\n## ขีดจำกัด / trade-off\n\n- **Few-shot มีต้นทุน token เสมอ**: ทุกตัวอย่างคือ token ที่ส่งซ้ำทุก request → ยาวขึ้น = แพงขึ้น + ช้าขึ้น (ดู tokens-and-context-window, context-management). และตัวอย่างที่เลือกไม่ดีจะ *bias* output ไปตาม distribution ของตัวอย่าง. เมื่อ instruction ชัดพออยู่แล้ว zero-shot อาจคุ้มกว่า.\n- **Structured output ไม่เคยชัวร์ 100%**: แม้มี constrained decoding โมเดลก็ยังพลาด format ได้เป็นครั้งคราว (JSON ไม่ปิด, ใส่ข้อความนำหน้า, ค่านอก enum) และยิ่ง schema ซับซ้อน/ซ้อนลึกยิ่งพังบ่อย. ดังนั้น **validate + retry ต้องมีเสมอ** และต้องมี fallback เมื่อ retry แล้วยังพัง — นี่คือเหตุผลที่ output validation เป็น guardrail บังคับใน production (ดู ch.8 input-output-validation).\n- **การบีบ schema แข็งเกินไปทำให้ reasoning ตก**: บาง task การบังคับให้ตอบ JSON เป๊ะ ๆ ทำให้โมเดลไม่มีที่ \"คิดดัง ๆ\" คุณภาพคำตอบเลยแย่ลง. เทคนิคแก้: ใส่ field สำหรับ reasoning ก่อน field คำตอบ หรือแยกเป็นสองขั้น. อย่าบังคับ structure ในงานที่เนื้อแท้ต้องการ free-form.\n\n## มุมสัมภาษณ์\n\n- \"zero-shot กับ few-shot ต่างกันยังไง เลือกเมื่อไหร่?\" → few-shot แนบตัวอย่าง input→output เพื่อคุม format/edge case แลกด้วย token; ถ้า instruction ชัดพอก็ zero-shot.\n- \"จะบังคับให้โมเดลตอบ JSON ที่ parse ได้ยังไง?\" → บรรยาย schema + ให้ตัวอย่าง output + ใช้ provider JSON mode/prefill + validate & retry.\n- \"ใช้ JSON mode แล้วยังต้อง validate อีกไหม เพราะอะไร?\" → ต้อง; mode การันตีแค่ syntactic JSON ไม่ใช่ semantic correctness (enum/field/ค่า hallucinate).\n- \"few-shot มีข้อเสียอะไร?\" → กิน token ทุก call + bias output ไปตามตัวอย่างที่ให้.\n- ต่อยอด: \"structured output ต่างจาก tool calling ตรงไหน?\" (ch.3) — tool calling ก็คืน argument เป็น structured JSON แต่โมเดลเป็นฝ่ายเลือกเรียกฟังก์ชันเอง.\n",
+  "recall_checks": [
+    {
+      "q": "few-shot prompting คืออะไร และต่างจาก zero-shot ตรงไหน?",
+      "expected_answer": "few-shot แนบตัวอย่าง input→output ไม่กี่คู่ไว้ใน prompt ให้โมเดลเลียน pattern; zero-shot ให้แค่ instruction ไม่มีตัวอย่าง",
+      "type": "short_answer"
+    },
+    {
+      "q": "ตั้ง JSON mode / schema แล้ว ทำไมยังต้อง validate output อยู่?",
+      "expected_answer": "การันตีแค่ว่าเป็น JSON ที่ parse ได้ ไม่การันตีค่า",
+      "type": "mcq",
+      "options": [
+        "JSON mode ทำให้ latency สูงขึ้นจนต้องตรวจสอบก่อนเสมอ",
+        "การันตีแค่ว่าเป็น JSON ที่ parse ได้ ไม่การันตีค่า",
+        "โมเดลปิด schema เองเมื่อ input ยาวเกินไปบ่อย ๆ"
+      ]
+    },
+    {
+      "q": "ข้อใดคือข้อเสียของ few-shot prompting?",
+      "expected_answer": "กิน token เพิ่มทุก call และ bias ตามตัวอย่าง",
+      "type": "mcq",
+      "options": [
+        "กิน token เพิ่มทุก call และ bias ตามตัวอย่าง",
+        "ทำให้โมเดลลืม knowledge เดิมจากการ train ทันที",
+        "บังคับ output เป็น JSON แม้ตอนไม่ได้สั่งเช่นนั้น"
+      ]
+    },
+    {
+      "q": "structured output ใช้เทคนิคอะไรบ้างเพื่อให้ได้ JSON ที่เชื่อถือได้?",
+      "expected_answer": "บรรยาย schema ให้ชัด + ให้ตัวอย่าง output + ใช้ provider JSON mode/prefill + validate & retry เมื่อผลลัพธ์พัง",
+      "type": "short_answer"
+    },
+    {
+      "q": "few-shot prompting เหมาะกับการทำสิ่งใดมากที่สุด?",
+      "expected_answer": "คุมรูปแบบ output และสอน edge case ที่อธิบายยาก",
+      "type": "mcq",
+      "options": [
+        "สอนความรู้ใหม่ที่โมเดลไม่เคยเห็นตอน train มาก่อน",
+        "เพิ่มความเร็วในการ generate token ให้ไวขึ้นมาก",
+        "คุมรูปแบบ output และสอน edge case ที่อธิบายยาก"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Language Models are Few-Shot Learners (GPT-3)",
+      "source": "Brown et al., NeurIPS 2020 — arxiv.org/abs/2005.14165",
+      "why": "อ่านต้นทางของ few-shot / in-context learning ว่าตัวอย่างใน prompt ทำงานอย่างไร"
+    },
+    {
+      "title": "Structured Outputs guide",
+      "source": "OpenAI Platform docs — platform.openai.com/docs/guides/structured-outputs",
+      "why": "ดูตัวอย่างจริงของการบังคับ output ตาม JSON schema จาก provider (แนวคิดเดียวกันข้าม provider)"
+    },
+    {
+      "title": "JSON Schema specification",
+      "source": "json-schema.org/specification",
+      "why": "ใช้เป็นภาษากลาง define + validate โครงสร้าง output ก่อนนำไปใช้ต่อในโค้ด"
+    },
+    {
+      "title": "Prompt engineering guide (Few-shot / examples section)",
+      "source": "OpenAI Platform docs — Prompt engineering guide",
+      "why": "อ่านคำแนะนำ official เรื่องการใส่ตัวอย่าง (few-shot) และการคุมรูปแบบ output"
+    }
+  ]
+}
