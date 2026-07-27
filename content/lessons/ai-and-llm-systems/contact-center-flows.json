@@ -1,0 +1,67 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "contact-center-flows",
+  "version": 1,
+  "title_en": "Contact Center Flows",
+  "est_minutes": 8,
+  "body_md": "# Contact Center Flows\n\n## ทำไมถึงสำคัญ\n\nContact center flow คือ pipeline ปลายทางถึงปลายทางของงาน support — ตั้งแต่ลูกค้าทักเข้ามาจนปิดเคส — และเป็น \"โครง\" ที่ AI ทุกชิ้นในบทนี้ (state machine, agent-assist, HITL, handoff) มาเสียบรวมกันเป็นระบบเดียว. เข้าใจ flow นี้คือเข้าใจว่า AI สร้างมูลค่า *ตรงจุดไหน* ของ support ไม่ใช่แค่ \"มี chatbot ตัวหนึ่ง\". ในระบบจริง (AI-CRM / contact-center platform) การออกแบบ flow พลาดจุดเดียว เช่น classify ที่ต้นน้ำ ทำให้ทั้ง pipeline พังตาม.\n\n## แก่นของแนวคิด\n\nflow มาตรฐานมี 5 stage ที่ AI เสริมได้ทุกจุด:\n\n- **Intake** — ลูกค้าเข้ามาทางช่องทางใดช่องทางหนึ่ง (in-app chat, LINE, email, เว็บ). ระบบ capture ข้อความ + context ที่มีอยู่แล้ว (user id, order, channel, ภาษา). *AI ช่วย*: normalize ข้อความหลายภาษา, ดึงข้อมูลลูกค้าจาก CRM มาแนบ.\n- **Triage / classify** — จำแนก **intent** (ต้องการอะไร), **category** (หมวดปัญหา), **urgency/priority**, และ sentiment. *AI ช่วย*: auto-classify แทน manual tagging — นี่คือจุดที่ตัดสินทุกอย่างที่ตามมา.\n- **Route** — เอาผล classify ไปตัดสินปลายทาง: ส่งเข้า **AI flow** (แต่ละ flow เป็น state machine — sibling `session-state-machines`), เข้า **queue/team** ตาม skill (skill-based routing), หรือส่งตรงหา **human**.\n- **Resolve** — สามทางเลือก: (a) **AI auto-resolve = deflection** — ตอบจาก KB/RAG หรือทำ action ผ่าน tool จนจบโดยไม่ถึง human; (b) **assist** — AI ร่าง reply / สรุปให้ human agent เลือกใช้หรือแก้ก่อนส่ง (sibling `agent-assist-copilot-patterns`); (c) **escalate** เมื่อแก้เองไม่ได้.\n- **Handoff + Close** — เมื่อต้องส่งต่อ human ทำ **warm handoff** ส่ง context ทั้งหมดไปด้วยเพื่อไม่ให้ลูกค้าเล่าซ้ำ (sibling `handoff-orchestration`); จบด้วยปิดเคส, บันทึกลง CRM, ส่ง follow-up/CSAT.\n\n**Deflection** = สัดส่วนเคสที่จบใน stage resolve ด้วย AI เองโดยไม่ถึงมือ human — เป็น outcome ที่ flow นี้พยายามเพิ่มอย่างปลอดภัย. action ที่มีผลจริงและเสี่ยง (เช่น refund) ต้องผ่าน approval gate ก่อน — นั่นคือ human-in-the-loop (sibling `human-in-the-loop`) ไม่ใช่ปล่อยให้ AI ยิงเอง.\n\n> การต่อ flow นี้เข้ากับ CRM/ticketing จริง และการวัด productivity (deflection rate, CSAT, resolution time) เป็นเรื่องของ ch.11 `crm-and-support-ai` — lesson นี้เป็นตัว *orchestration* ที่ประกอบชิ้นส่วนเข้าด้วยกัน ไม่ใช่การ integrate หรือวัดผล.\n\n```mermaid\nflowchart TD\n  I[\"Intake: chat / message\"] --> T[\"Triage: classify intent, urgency\"]\n  T --> R{\"Route by category\"}\n  R -->|\"FAQ / common\"| D[\"Resolve: AI deflect via KB\"]\n  R -->|\"needs an agent\"| AS[\"Assist: copilot drafts reply\"]\n  R -->|\"out of scope / angry\"| H[\"Handoff to human\"]\n  D --> RES{\"Resolved?\"}\n  RES -->|yes| C[\"Close + follow-up\"]\n  RES -->|no| H\n  AS --> C\n  H --> C\n```\n\n## ตัวอย่าง (LMWN-style / payments)\n\nลูกค้าส่งข้อความใน in-app chat: \"จ่ายค่าอาหารไปแล้ว แต่แอปยังขึ้นว่ายังไม่จ่าย โดนตัดเงินซ้ำหรือเปล่า\"\n\n1. **Intake** — channel = in-app chat; ระบบแนบ user_id + order #A-1023 + ภาษา th อัตโนมัติ.\n2. **Triage** — classify: category = `payment issue`, urgency = high (แตะเงินลูกค้า + อาจ double charge), sentiment = worried.\n3. **Route** — payment issue เป็นเคสพบบ่อยและมี KB + tool ตรวจสถานะ → ส่งเข้า **AI deflection flow** ก่อน (ไม่ใช่ human ทันที). ถ้า sentiment โกรธจัดหรือ classify confidence ต่ำ ให้ route ตรงไป human.\n4. **Resolve (ลอง deflect)** — AI เรียก tool `get_payment_status(order=\"A-1023\")` → ผล `pending_settlement` (ตัดครั้งเดียว รอ clear ใน 24 ชม.). AI ตอบพร้อม timeline ชัดเจน → **deflected** ปิดเคส. แต่ถ้า tool คืน `double_charged` (ตัดซ้ำจริง ต้อง refund) — refund เป็น action ที่ต้องผ่าน HITL gate หรือ human; AI *ไม่* ยิง refund เอง → เข้าสู่ handoff.\n5. **Handoff** — AI ทำ warm handoff ไปหา agent skill = payments พร้อมสรุป: ข้อความลูกค้า, order, ผล `double_charged`, สิ่งที่ AI ตรวจแล้ว. ลูกค้าไม่ต้องเล่าซ้ำ.\n6. **Close** — agent อนุมัติ refund, ปิดเคส, บันทึก CRM, ระบบส่ง CSAT survey.\n\nจุดสำคัญ: เคสเดียวกันจบต่างกันขึ้นกับผล tool — `pending` → deflect จบเอง; `double_charged` → handoff. path เกิดจากข้อมูล ไม่ใช่ script ตายตัว.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"deflection rate ยิ่งสูงยิ่งดี\"** ผิด — ถ้า AI ปิดเคสทั้งที่ยังไม่ได้แก้จริง ลูกค้ากลับมาถามซ้ำ (repeat contact) นั่นคือ deflection ปลอมที่ดันตัวเลขสวยแต่ประสบการณ์แย่ลง. ต้องดู resolution จริง + repeat-contact rate คู่กัน (วัดผลอยู่ใน ch.11).\n- **\"contact center flow ก็คือ chatbot หนึ่งตัว\"** ผิด — flow คือ orchestration หลาย stage; chatbot เป็นแค่ตัวเลือกใน stage resolve เท่านั้น. classify / route / handoff เป็นคนละชิ้นที่ AI เสริมแยกกัน.\n- **\"classify ผิดนิดหน่อยไม่เป็นไร เดี๋ยว stage หลังแก้ได้\"** ผิด — error ที่ triage เป็น error ต้นน้ำที่แพร่ทั้ง pipeline (route ผิด → flow ผิด → handoff ผิดทีม); แก้ที่ปลายน้ำแพงกว่ามาก.\n\n## ขีดจำกัด / trade-off\n\nAggressive deflection มีต้นทุนที่ senior ต้องชั่งน้ำหนัก:\n\n- **False deflection แพงกว่าที่ประหยัด** — ถ้า AI classify ผิดหรือแก้ผิดแล้วปิดเคส ลูกค้าติดใน **bot loop** วนตอบไม่ตรงจนหงุดหงิดแล้ว churn; ความเสียหายต่อ brand มักมากกว่าค่า human agent ที่ประหยัดได้.\n- **Mis-classification ที่ triage แพร่ทั้ง pipeline** — เพราะทุก stage หลัง route พึ่งผล classify; เคส urgent ที่ถูกตีเป็น low priority อาจค้างนาน. ต้องมี confidence threshold + fallback เมื่อไม่มั่นใจ.\n- **ต้องมี escape-to-human เสมอ** — ให้ลูกค้าขอคุยกับคนได้ตลอด ไม่ขังใน bot; หัวใจคือ balance ระหว่าง automation (ประหยัด) กับ escape hatch (กันความหงุดหงิด).\n- **บาง segment ไม่ควร deflect** — เคส high-value, regulated, หรือ emotional (ร้องเรียนหนัก, dispute เงินก้อนใหญ่) ควร route ตรงไป human; deflection ที่นี่เสี่ยงมากกว่าคุ้ม.\n- **ต้นทุนดูแลต่อเนื่อง** — classifier, KB, และ routing rules ต้อง monitor เรื่อง mis-route + drift ตลอด ไม่ใช่ set-and-forget; นี่คือ cost ที่มักถูกลืมตอนขายระบบ.\n\n## มุมสัมภาษณ์\n\n- **\"ออกแบบ AI ให้ contact center — flow เป็นยังไง?\"** → intake → triage/classify → route → resolve (deflect/assist) → handoff → close; ระบุว่า AI เสริมตรงไหนของแต่ละ stage.\n- **\"deflection rate 80% ถือว่าดีไหม?\"** → ถามกลับว่า repeat-contact rate + CSAT เท่าไหร่; deflection สูงคู่ repeat สูง = ปลอม (คำถามวัด trade-off ไม่ใช่ตัวเลขเดี่ยว).\n- **\"ถ้า triage classify ผิดจะเกิดอะไร?\"** → error ต้นน้ำแพร่ทั้ง pipeline; ต้องมี confidence threshold + escape-to-human.\n- **\"AI แก้เคสไม่ได้ควรทำยังไง?\"** → warm handoff ส่ง context ครบ (ต่อยอด `handoff-orchestration`); handoff ที่พังทำ experience แย่กว่าตอบไม่ได้ตั้งแต่แรก.\n",
+  "recall_checks": [
+    {
+      "q": "เรียงลำดับ stage หลักของ contact center flow ที่ AI เข้าไปเสริม",
+      "expected_answer": "intake → triage/classify → route → resolve/deflect → handoff → close",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม deflection rate สูงเพียงอย่างเดียวยังไม่พอบอกว่าดี?",
+      "expected_answer": "ลูกค้าอาจกลับมาถามซ้ำเพราะยังไม่ได้แก้จริง",
+      "type": "mcq",
+      "options": [
+        "ลูกค้าอาจกลับมาถามซ้ำเพราะยังไม่ได้แก้จริง",
+        "human agent จะทำงานช้าลงเมื่อต้องคอยตรวจงาน AI",
+        "โมเดลที่ใหญ่ขึ้นจะทำให้ต้นทุนต่อเคสสูงขึ้นมาก"
+      ]
+    },
+    {
+      "q": "ถ้า classify ผิดตั้งแต่ stage triage จะเกิดอะไรกับ pipeline?",
+      "expected_answer": "เคสถูก route ผิดที่ และ error แพร่ทั้ง pipeline",
+      "type": "mcq",
+      "options": [
+        "โมเดลจะ retry เองจนกว่าจะ classify ได้ถูกต้องเสมอ",
+        "เคสถูก route ผิดที่ และ error แพร่ทั้ง pipeline",
+        "ระบบข้าม stage อื่นแล้วปิดเคสให้อัตโนมัติทันทีเลย"
+      ]
+    },
+    {
+      "q": "deflection ในบริบท contact center flow หมายถึงอะไร?",
+      "expected_answer": "สัดส่วนเคสที่ AI แก้จบเองไม่ถึง human",
+      "type": "mcq",
+      "options": [
+        "สัดส่วนเคสที่ระบบ route ไปผิดทีมที่รับผิดชอบ",
+        "สัดส่วนเคสที่ human agent เป็นคนปิดเคสเองทั้งหมด",
+        "สัดส่วนเคสที่ AI แก้จบเองไม่ถึง human"
+      ]
+    },
+    {
+      "q": "เมื่อ AI แก้เคสไม่ได้ ควรทำอะไรเพื่อไม่ให้ลูกค้าต้องเล่าซ้ำ?",
+      "expected_answer": "ทำ warm handoff ไป human พร้อมส่ง context/สรุปบทสนทนาต่อให้ครบ (รายละเอียดใน handoff-orchestration)",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Dialogflow CX — Flows (concept)",
+      "source": "Google Cloud docs, cloud.google.com/dialogflow/cx/docs/concept/flow",
+      "why": "อ่านว่าแพลตฟอร์มจริงโมเดล conversation flow เป็น state machine ที่ route ตาม intent อย่างไร"
+    },
+    {
+      "title": "Amazon Connect Administrator Guide — Flows",
+      "source": "docs.aws.amazon.com (Amazon Connect, Flows / routing concepts)",
+      "why": "อ่านโครง intake → routing → queue → agent ของ contact-center platform จริงเพื่อเทียบกับ pipeline ในบทนี้"
+    },
+    {
+      "title": "The User Experience of Chatbots",
+      "source": "Nielsen Norman Group, nngroup.com (บทความ chatbots / conversational UI)",
+      "why": "อ่านฝั่ง UX ว่าทำไม bot loop และการไม่มี escape-to-human ทำลายประสบการณ์ ซึ่งเป็นหัวใจของ trade-off เรื่อง deflection"
+    }
+  ]
+}

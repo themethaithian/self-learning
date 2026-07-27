@@ -1,0 +1,67 @@
+{
+  "concept_id": "session-state-machines",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Session State Machines",
+  "est_minutes": 8,
+  "body_md": "# Session State Machines\n\n## ทำไมถึงสำคัญ\n\nระบบสนทนาที่ปล่อยให้ LLM คุยแบบ free-form ล้วน ๆ จะ \"เดินหลง\" ได้ง่าย — ข้ามขั้นตอน verify, ถามข้อมูลซ้ำ, หรือทำ action สำคัญทั้งที่เงื่อนไขยังไม่ครบ. การ model การสนทนาเป็น **state machine** ที่มี state และ transition ชัดเจน ให้คุณควบคุม, test, และ audit flow ได้ ขณะที่ยังปล่อยให้ LLM จัดการภาษาที่เป็นธรรมชาติภายในแต่ละ state. หัวใจคือ: **โครงของบทสนทนาถูก define ล่วงหน้า ไม่ใช่ปล่อยให้โมเดลด้นสด**.\n\n## แก่นของแนวคิด\n\n- มอง flow เป็นชุด **state** (เช่น greeting → verify-identity → collect-issue → resolve → close) เชื่อมด้วย **transition** ที่มีเงื่อนไขชัด — คล้าย finite state machine ของ workflow ทั่วไป ไม่ใช่แนวคิดเฉพาะ LLM.\n- ทุก session ถือสองอย่าง: **state** (อยู่ขั้นไหน) และ **slots** (ข้อเท็จจริงที่เก็บได้แล้ว เช่น phone, order_id, ประเภทปัญหา). slot บอกว่ายัง \"ขาดอะไร\" ก่อนจะ transition ต่อได้ — pattern นี้ในวรรณกรรม dialogue เรียกว่า slot-filling / frame-based dialogue.\n- **แบ่งงานกันระหว่าง state machine กับ LLM**: state machine คุมว่า \"ตอนนี้อยู่ขั้นไหน ไปต่อได้เมื่อไหร่\" ส่วน LLM คุม \"จะพูดยังไงภายในขั้นนี้\" — เข้าใจภาษาผู้ใช้, ถามหา slot ที่ขาด, extract ค่าจากประโยคอิสระ. นี่คือสถาปัตยกรรม hybrid.\n- **critical path ต้อง deterministic**: ขั้นที่ regulated หรือมีผลจริง — auth, payment, ลบข้อมูล — ควรเป็น state ตายตัวที่มี guardrail (เงื่อนไขชัด, ตรวจสอบได้, log ครบ) ไม่ใช่ปล่อยให้ LLM ตัดสินใจเองว่าผ่านหรือไม่ผ่าน. LLM อาจถูก prompt-injection หลอก หรือ \"ใจดี\" ข้ามขั้นได้ — บน path พวกนี้เรายอมแลกความยืดหยุ่นเพื่อความปลอดภัยและ auditability.\n- ผลลัพธ์: flow ที่ **test ได้** (แต่ละ transition เขียนเป็นเคส test ได้), **debug ได้** (รู้เสมอว่า session ค้างที่ state ไหน เพราะ slot ไหนขาด), และ **ปลอดภัยขึ้น** บนขั้นตอนสำคัญ.\n\n## ตัวอย่าง: support flow ของ food-delivery (rider / merchant / user)\n\nรับเรื่องจากผู้ใช้ที่ขอเงินคืนจาก order ที่ไม่ได้รับ. ก่อน bot จะแตะข้อมูลบัญชีหรือ order ใด ๆ ต้องผ่าน **verify-identity state** ก่อนเสมอ (auth เป็น deterministic state):\n\n```mermaid\nstateDiagram-v2\n    [*] --> Greeting\n    Greeting --> VerifyIdentity: account request\n    VerifyIdentity --> CollectIssue: identity confirmed\n    VerifyIdentity --> Escalate: failed 3 times\n    CollectIssue --> Resolve: required slots filled\n    CollectIssue --> Escalate: out of scope\n    Resolve --> Close: issue solved\n    Resolve --> Escalate: low confidence\n    Close --> [*]\n    Escalate --> [*]\n```\n\n- **Greeting**: LLM ทักทายเป็นธรรมชาติ, จับ intent คร่าว ๆ (\"ขอเงินคืน\" → account request) แล้ว transition.\n- **VerifyIdentity** (deterministic + guardrail): ต้องได้ phone + OTP ที่ระบบตรวจจริง ไม่ใช่ให้ LLM \"เชื่อ\" ว่าเป็นเจ้าของ. slot: `phone`, `otp_verified`. ล้มเหลว 3 ครั้ง → Escalate. โค้ดฝั่ง app เป็นคนเช็ค OTP ส่วน LLM แค่ถามและอ่านค่า.\n- **CollectIssue**: LLM ยืดหยุ่นได้เต็มที่ — ผู้ใช้พิมพ์อะไรมาก็ extract `order_id`, `issue_type`, `description` ลง slot. ยังไม่ครบก็อยู่ state เดิม ถามต่อ. เกินขอบเขต (เช่นเรื่องกฎหมาย) → Escalate.\n- **Resolve**: ตัดสิน action ตาม policy (เช่น refund อัตโนมัติถ้ายอด < X). ถ้า action มีผลเงินจริงและต้องคนอนุมัติ นั่นคือ **human-in-the-loop** ซึ่งเป็นคนละ concept (ดู sibling).\n- **Close**: สรุปและปิดเรื่อง.\n\nสังเกตว่า Escalate ในไดอะแกรมเป็นแค่ *จุดตัดสินใจว่าจะส่งต่อ* — กลไก handoff จริง (ส่ง context ให้ human agent, ย้ายกลับ) อยู่ที่ sibling `handoff-orchestration` และ `human-in-the-loop`. ส่วน AI ที่ช่วย *human agent* ร่างคำตอบ (ไม่ได้คุยกับลูกค้าตรง ๆ) เป็นคนละ pattern อยู่ที่ `agent-assist-copilot-patterns`. การเก็บ working/long-term memory ของ agent อยู่ที่ `agent-memory-and-state` (ch.6) — บทนี้โฟกัสแค่ state + slots ต่อ session.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"มี LLM แล้วไม่ต้องมี state machine — ให้โมเดลจำเองว่าคุยถึงไหน\"** ผิดสำหรับ flow ที่มี critical path. โมเดลไม่มี guarantee ว่าจะไม่ข้ามขั้น auth หรือทำ action ซ้ำ; state ที่ implicit อยู่ใน context ตรวจสอบและ test ไม่ได้.\n- **\"state machine แปลว่าต้อง scripted ทุกประโยค บทสนทนาจะแข็งทื่อ\"** ผิด. state คุมแค่ *โครง*; ภายใน state ยังให้ LLM คุมภาษาได้อิสระ. ความแข็งทื่อเกิดจากออกแบบ state ละเอียดเกินไป ไม่ใช่จากตัวแนวคิด.\n- **\"slot คือ log ของบทสนทนา\"** ผิด. slot คือ *ข้อเท็จจริงแบบ structured* ที่ transition ใช้ตัดสินใจ (เช่น `otp_verified=true`) ไม่ใช่ประวัติข้อความดิบ.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\n- **state machine แข็งเกินไป จับ intent นอกกรอบไม่ได้**: ผู้ใช้ชอบ \"กระโดด\" — อยู่ collect-issue แต่ถามเรื่อง billing, หรือถาม 2 เรื่องในประโยคเดียว. ถ้า transition ไม่ครอบคลุม บทสนทนาจะรู้สึกหุ่นยนต์และ dead-end. ต้องออกแบบ global transition / re-route เผื่อ และยอมรับว่าไม่มีทางครอบคลุมทุก path.\n- **ยิ่งหลาย state ยิ่งแพงในการดูแล**: state และ transition โตแบบ combinatorial; แต่ละเส้นคือโค้ด + test + edge case ที่ต้อง maintain. เพิ่ม feature ทีต้องแตะหลาย transition พร้อมกัน.\n- **pure free-form LLM ก็ไม่ใช่คำตอบ**: ได้ความเป็นธรรมชาติแต่เสีย control, predictability, auditability. ทางปฏิบัติจึงเป็น hybrid — ใช้ state machine เฉพาะ path ที่สำคัญ/ต้องคุม แล้วปล่อย free-form ตรงที่ stakes ต่ำ.\n- **เมื่อไหร่ไม่ต้องมี state machine เต็มรูปแบบ**: งาน single-turn Q&A, FAQ deflection, chit-chat ที่ไม่มี multi-step และไม่มี action ที่มีผลจริง — การใส่ state machine คือ over-engineering. ต้นทุนของมัน (การ define + maintain flow) คุ้มก็ต่อเมื่อบทสนทนามีหลายขั้น, มี slot ที่ต้องสะสม, หรือมี critical path ที่ต้องคุม.\n\n## มุมสัมภาษณ์\n\n- \"จะทำ chatbot ให้ไม่ข้ามขั้น auth ก่อนดูข้อมูลบัญชียังไง?\" → ทำ auth เป็น deterministic state, guardrail ฝั่ง app เป็นคนเช็ค, transition ออกได้ก็ต่อเมื่อ slot `otp_verified` เป็นจริงเท่านั้น.\n- \"state machine กับปล่อย LLM คุยเอง เลือกยังไง?\" → hybrid: state คุมโครงและ critical path, LLM คุมภาษาใน state; ชั่งระหว่าง control กับความเป็นธรรมชาติตาม stakes ของแต่ละขั้น.\n- \"session เก็บอะไรบ้าง?\" → current state + slots; อธิบายว่า slot บอกว่า \"ขาดอะไรก่อน transition\".\n- \"ข้อเสียของ state machine ในบทสนทนาคืออะไร?\" → แข็ง, จับ intent นอกกรอบยาก, maintain แพงเมื่อ state เยอะ — ตอบ trade-off ไม่ใช่แค่ข้อดี.\n",
+  "recall_checks": [
+    {
+      "q": "แต่ละ session ในการ model บทสนทนาเป็น state machine ถือข้อมูลอะไรบ้าง (2 อย่าง)?",
+      "expected_answer": "state (กำลังอยู่ขั้นตอนไหน) และ slots (ข้อเท็จจริงที่เก็บได้แล้ว)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม path อย่าง auth หรือ payment ควรเป็น deterministic state แทนที่จะให้ LLM ตัดสินใจเอง?",
+      "expected_answer": "ต้องการ control และ audit บน path ที่ regulated",
+      "type": "mcq",
+      "options": [
+        "ต้องการ control และ audit บน path ที่ regulated",
+        "ต้องการให้บทสนทนาดูเป็นธรรมชาติและยืดหยุ่นมากขึ้น",
+        "ต้องการลดจำนวน state ทั้งหมดใน machine ลง"
+      ]
+    },
+    {
+      "q": "ในสถาปัตยกรรมแบบ hybrid, LLM รับผิดชอบส่วนไหน?",
+      "expected_answer": "จัดการภาษาที่ยืดหยุ่นภายใน state ปัจจุบัน",
+      "type": "mcq",
+      "options": [
+        "ตัดสินใจ transition ระหว่าง state แทน machine",
+        "จัดการภาษาที่ยืดหยุ่นภายใน state ปัจจุบัน",
+        "เก็บ state และ slot ของ session ลง database"
+      ]
+    },
+    {
+      "q": "ข้อเสียหลักของการปล่อยให้ LLM คุยแบบ free-form ล้วน ๆ บน critical path คืออะไร?",
+      "expected_answer": "เสีย control และ predictability, audit ยาก ทำให้ path ที่ต้องคุมเสี่ยงข้ามขั้น",
+      "type": "short_answer"
+    },
+    {
+      "q": "งานแบบใดที่การใส่ state machine เต็มรูปแบบมักเป็น over-engineering?",
+      "expected_answer": "single-turn FAQ ที่ตอบจบในคำถามเดียว",
+      "type": "mcq",
+      "options": [
+        "auth flow ที่ต้อง verify ก่อนเข้าถึงบัญชี",
+        "payment flow ที่มี guardrail หลายขั้นตอน",
+        "single-turn FAQ ที่ตอบจบในคำถามเดียว"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Speech and Language Processing (3rd ed. draft) — Chatbots & Dialogue Systems",
+      "source": "Jurafsky & Martin, web.stanford.edu/~jurafsky/slp3/",
+      "why": "อ่านต้นตำรับ frame-based / slot-filling และ dialogue-state architecture"
+    },
+    {
+      "title": "POMDP-based Statistical Spoken Dialog Systems: A Review",
+      "source": "Young, Gašić, Thomson, Williams — Proceedings of the IEEE, 2013",
+      "why": "อ่านมุมวิชาการของ dialogue state และการจัดการ slot ในระบบจริง"
+    },
+    {
+      "title": "Rasa Docs — Forms & Dialogue Policies",
+      "source": "rasa.com/docs (Forms / slot filling)",
+      "why": "อ่านว่า slot-filling + state ถูก implement จริงยังไงใน framework production"
+    }
+  ]
+}

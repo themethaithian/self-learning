@@ -1,0 +1,67 @@
+{
+  "concept_id": "agent-assist-copilot-patterns",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Agent-Assist and Copilot Patterns",
+  "est_minutes": 8,
+  "body_md": "# Agent-Assist and Copilot Patterns\n\n## ทำไมถึงสำคัญ\n\nAgent-assist (หรือ copilot) คือรูปแบบที่ AI ช่วย **human support agent** ให้ทำงานเร็วขึ้น แทนที่จะคุยกับลูกค้าเองโดยตรง — AI ร่างคำตอบ, สรุป thread, แนะนำ next action แล้ว \"คน\" เป็นผู้ตรวจ แก้ และกดส่ง. เพราะคนยังคุมและรับผิดชอบผลลัพธ์ AI จึงมีประโยชน์ได้ทันทีแม้ยัง \"ไม่น่าเชื่อถือพอ\" ที่จะปล่อยให้ act เองตามลำพัง. นี่คือเส้นทาง adoption ที่ความเสี่ยงต่ำและ ROI สูงกว่าการทำ full automation และเป็นสิ่งที่ทีม support-productivity ปล่อยของจริง.\n\n## แก่นของแนวคิด\n\nPattern หลักของ copilot (คนอยู่ในการควบคุมทุกอัน):\n\n- **Draft a suggested reply** — AI ร่างคำตอบ 1 ฉบับให้ agent แก้แล้วส่ง (คนกดส่ง ไม่ใช่ AI)\n- **Summarize** — ย่อ conversation / ticket history ยาว ๆ ให้ agent จับใจความใน 5 วินาที (มีค่ามากตอนรับ ticket ต่อจากคนอื่น)\n- **Recommend next action / KB article** — เดา action ถัดไป หรือชี้ KB article / macro ที่ตรงกับปัญหา\n- **Auto-fill** — เติม field / form (category, tag, refund amount) ให้ agent ยืนยัน\n- **Surface context** — ดึงข้อมูลลูกค้า / ประวัติที่เกี่ยวข้องมาวางไว้ข้างหน้าจอ\n\nเส้นแบ่งสำคัญที่สัมภาษณ์ชอบถาม: **assist vs autonomous**\n\n- **Assist (copilot)**: AI *เสนอ* → **คน** ตัดสินใจและกดส่ง → **คน** รับผิดชอบผลลัพธ์\n- **Autonomous (agent)**: AI ตัดสินใจและ act ถึงลูกค้าเอง → ต้องเชื่อถือได้ในระดับที่สูงกว่ามาก\n\nเพราะ output ของ copilot เป็นแค่ \"ข้อเสนอ\" ไม่ใช่ \"การกระทำ\" ความผิดของ AI จึง**มัก**ถูกดักด้วยสายตาคนก่อนถึงลูกค้า (แต่ไม่ใช่การประกันแบบสมบูรณ์ — ดู automation bias ด้านล่าง) — นี่คือเหตุผลว่าทำไมมันปลอดภัยพอจะ ship ก่อน แม้โมเดลจะยัง hallucinate เป็นครั้งคราว.\n\n```mermaid\nflowchart TD\n  C[\"Customer message: rider complaint\"] --> AI[AI copilot]\n  AI --> D[Draft suggested reply]\n  AI --> S[\"Summarize thread; ticket history\"]\n  AI --> R[\"Recommend KB article | next action\"]\n  D --> H{Human agent reviews}\n  S --> H\n  R --> H\n  H -->|edit / accept| SEND[Send to customer]\n  H -->|reject| X[Discard draft]\n  SEND --> C\n```\n\n## ตัวอย่าง (contact center — ไรเดอร์ร้องเรียน สไตล์ LMWN)\n\nไรเดอร์ทักเข้ามาเรื่องออเดอร์ที่ร้านยกเลิกเองแต่ไรเดอร์ถูกหักค่าปรับ. thread ยาว 20 ข้อความ ข้ามหลายกะ. เมื่อ agent คนใหม่เปิด ticket:\n\n1. Copilot **สรุป** thread: \"ไรเดอร์ #4821 ร้องเรียนค่าปรับ 50 บาทจากออเดอร์ที่ร้านยกเลิก; ขอเงินคืน; เคยติดต่อมาแล้ว 2 ครั้ง\"\n2. Copilot **แนะนำ**: KB article \"การคืนค่าปรับเมื่อร้านเป็นฝ่ายยกเลิก\" + next action = ตรวจสถานะออเดอร์ในระบบ\n3. Copilot **ร่าง reply**: ข้อความขอโทษ + ยืนยันคืนเงิน 50 บาทภายใน 3 วัน\n4. Agent **อ่าน, แก้** (ปรับยอด / น้ำเสียง / ตัดประโยคที่อ้าง policy ผิด) แล้ว **กดส่งเอง**\n\nAI ไม่เคยส่งเอง และไม่เคยกดคืนเงินเอง — มันแค่เตรียมของให้คนตัดสิน. ถ้า draft อ้าง policy ผิด agent จับได้ก่อนถึงไรเดอร์. สิ่งที่ทีมได้คือ agent ปิดเคสเร็วขึ้น ไม่ใช่ตัด agent ทิ้ง.\n\nเชื่อมกับ concept ข้างเคียง (แตะบรรทัดเดียว):\n\n- กลไกทั่วไปแบบ \"บังคับให้คนอนุมัติก่อน action มีผล\" → ดู sibling `human-in-the-loop`.\n- ตอน copilot สรุปแล้วเคสเกินมือ ต้องโยนต่อให้คน / ทีมอื่น → ดู sibling `handoff-orchestration`.\n- การวัดว่า copilot เพิ่ม productivity จริงแค่ไหน (AHT, deflection rate) → ch.11.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"assist ก็คือ autonomous ที่มีปุ่มยืนยัน\"** ผิด. แก่นของ assist คือ \"คน\" เป็นผู้ตัดสินและรับผิดชอบ ไม่ใช่แค่กดผ่าน; ถ้าคนกดผ่านทุกอันโดยไม่อ่าน มันกลายเป็น autonomous ที่ซ่อนอยู่ (automation bias).\n- **\"มีคนตรวจแล้ว เลยไม่ต้องมี guardrails\"** ผิด. draft ที่ดูดีแต่ผิด policy อันตรายกว่า draft ที่ผิดชัด ๆ เพราะคนมักเชื่อมันง่ายกว่า — ยังต้องมี validation / policy check.\n- **\"copilot จะแทนคนได้เลย\"** ผิด. โมเดลนี้ *ต้อง* มีคนในลูปเป็นเงื่อนไข มันเร่งคน ไม่ใช่ลบคน.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรใช้ และต้นทุนคืออะไร)\n\n- **ยังต้องมีคนในลูป → ไม่ตัด headcount ทั้งหมด.** assist ยก throughput ต่อคนให้สูงขึ้น (คนคนเดียวปิดเคสได้มากขึ้น) แต่ไม่ทำให้จำนวนคนเป็นศูนย์แบบ full automation; ผู้บริหารที่หวังตัดทั้งทีมจะผิดหวัง.\n- **Automation bias / over-reliance.** เมื่อ draft ดูดี 95% ของเวลา คนเริ่ม rubber-stamp โดยไม่อ่าน → 5% ที่ผิดหลุดถึงลูกค้าพร้อมตรา \"คนตรวจแล้ว\". ยิ่ง copilot เก่งเท่าไร ความเสี่ยงนี้ยิ่งสูง (paradox ของ human-in-the-loop).\n- **ยังต้องมี guardrails.** คนในลูปไม่ใช่ safety net ที่สมบูรณ์; ต้องเสริมด้วย validation, policy check, และ audit trail ว่าใครส่งอะไร.\n- **ต้นทุนเชิงระบบ.** ต้อง integrate เข้ากับ agent desktop / CRM จริง, คุม latency (agent รอ draft นานไม่ได้), และ train agent ให้ \"แก้ก่อนส่ง\" ไม่ใช่ \"เชื่อแล้วส่ง\".\n- **เมื่อไหร่ควรข้ามไป autonomous แทน**: งาน volume มหาศาล + ความเสี่ยงต่ำ + คำตอบ deterministic (เช่น reset password, เช็คสถานะออเดอร์) การให้คนตรวจทุกอันกลับกลายเป็นคอขวดที่แพงโดยเปล่าประโยชน์.\n\n## มุมสัมภาษณ์\n\n- \"assist กับ autonomous ต่างกันยังไง เลือกอันไหนเมื่อไหร่?\" → assist เมื่อความผิดพลาดแพงและโมเดลยังไม่น่าเชื่อถือพอ; autonomous เมื่อ volume สูง เสี่ยงต่ำ และ deterministic.\n- \"จะ ship AI feature แรกในทีม support ยังไงให้เสี่ยงต่ำ?\" → เริ่มที่ copilot (draft / summarize) เพราะคนดักก่อนถึงลูกค้า, วัดผล, แล้วค่อยขยับบาง flow ไป autonomous เมื่อพิสูจน์แล้ว.\n- \"risk ที่ซ่อนอยู่ของ agent-assist คืออะไร?\" → automation bias — คน rubber-stamp draft ที่ผิด; ต้องมี guardrails + audit ไม่ใช่พึ่งสายตาคนอย่างเดียว.\n- \"ทำไม copilot ถึงมีประโยชน์แม้โมเดลยัง hallucinate?\" → เพราะ output เป็น \"ข้อเสนอ\" ไม่ใช่ \"action\"; คนแก้ก่อนส่ง ความผิดถูกดักในลูปก่อนถึงลูกค้า.\n",
+  "recall_checks": [
+    {
+      "q": "แจกแจง pattern หลักของ agent-assist / copilot มาอย่างน้อย 3 อย่าง",
+      "expected_answer": "draft a suggested reply, summarize conversation/history, recommend next action / KB article, auto-fill fields (ตอบมา 3 อย่างขึ้นไป)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ในรูปแบบ agent-assist ใครเป็นผู้ตัดสินใจและส่งข้อความถึงลูกค้า?",
+      "expected_answer": "human agent ตรวจ แก้ แล้วกดส่งเอง",
+      "type": "mcq",
+      "options": [
+        "human agent ตรวจ แก้ แล้วกดส่งเอง",
+        "AI ส่งให้ลูกค้าเองทันทีโดยไม่มีคนตรวจ",
+        "ลูกค้าเลือกจากคำตอบสำเร็จรูป"
+      ]
+    },
+    {
+      "q": "ข้อใดคือ 'ความเข้าใจผิด' เกี่ยวกับ agent-assist?",
+      "expected_answer": "มีคนตรวจแล้ว จึงไม่ต้องมี guardrails",
+      "type": "mcq",
+      "options": [
+        "human agent ยังต้องรับผิดชอบผลลัพธ์ที่ส่งออกไปเสมอ",
+        "มีคนตรวจแล้ว จึงไม่ต้องมี guardrails",
+        "AI draft อาจผิด จึงต้องให้คนตรวจก่อนเสมอ"
+      ]
+    },
+    {
+      "q": "trade-off สำคัญของ agent-assist เทียบกับ full automation คืออะไร?",
+      "expected_answer": "ยังมี human ในลูป จึงไม่ตัด headcount ทั้งหมด",
+      "type": "mcq",
+      "options": [
+        "ลดต้นทุนและ headcount ได้มากกว่าแบบ autonomous เต็มรูปแบบ",
+        "ตอบลูกค้าได้เร็วและแม่นยำกว่าทุกกรณีเสมอ",
+        "ยังมี human ในลูป จึงไม่ตัด headcount ทั้งหมด"
+      ]
+    },
+    {
+      "q": "ทำไม copilot ถึงมีประโยชน์ได้แม้โมเดลยังไม่น่าเชื่อถือพอที่จะทำงานเอง?",
+      "expected_answer": "เพราะ output เป็นแค่ข้อเสนอ (draft) ไม่ใช่ action; มีคนตรวจ/แก้ก่อนส่ง ความผิดจึงถูกดักในลูปก่อนถึงลูกค้า",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Google Cloud — Agent Assist documentation",
+      "source": "cloud.google.com/agent-assist/docs",
+      "why": "อ่าน pattern จริงของ copilot: smart reply / draft, summarization, และ knowledge (KB) assist"
+    },
+    {
+      "title": "Amazon Q in Connect — Contact Center agent assistance",
+      "source": "docs.aws.amazon.com/connect (Amazon Q in Connect)",
+      "why": "อ่านตัวอย่าง copilot ใน contact center จริง: real-time recommendations + generated responses ที่ agent เอาไปแก้ก่อนส่ง"
+    },
+    {
+      "title": "Complacency and Bias in Human Use of Automation: An Attentional Integration",
+      "source": "Parasuraman & Manzey, Human Factors 52(3), 2010",
+      "why": "อ่านรากของ automation bias ซึ่งเป็น trade-off หลักที่ทำให้ 'มีคนตรวจ' ไม่ใช่ safety net ที่สมบูรณ์"
+    }
+  ]
+}
