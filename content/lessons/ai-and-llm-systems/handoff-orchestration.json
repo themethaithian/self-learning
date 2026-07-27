@@ -1,0 +1,67 @@
+{
+  "concept_id": "handoff-orchestration",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Handoff Orchestration",
+  "est_minutes": 8,
+  "body_md": "# Handoff Orchestration\n\n## ทำไมถึงสำคัญ\n\nHandoff คือการโอนบทสนทนาจาก AI ไปให้ human agent (และบางครั้งโอนกลับ). ในระบบ support จริง AI ปิดงานได้ไม่ทุกเคส — คำถามที่แท้จริงคือ *ตอนที่มันไปต่อไม่ได้ มันส่งไม้ต่อได้ราบรื่นแค่ไหน*. handoff ที่พัง (cold transfer, context หาย, ลูกค้าต้องเล่าเรื่องใหม่ตั้งแต่ต้น) ทำลาย experience หนักกว่าการที่ AI บอกตรง ๆ ว่า \"ช่วยไม่ได้\" ตั้งแต่แรกเสียอีก.\n\n## แก่นของแนวคิด\n\nHandoff มีสองส่วนที่ต้องออกแบบแยกกัน: **เมื่อไหร่จะ escalate** (trigger) และ **ส่งต่อยังไงให้ดี** (warm handoff).\n\n**เมื่อไหร่จะ escalate** — trigger ที่พบบ่อย:\n\n- **Low confidence** — โมเดลไม่มั่นใจในคำตอบ (วิธีวัด confidence อยู่ใน ch.8)\n- **Out of scope** — intent อยู่นอกสิ่งที่ AI ถูกออกแบบให้จัดการ (เช่น เรื่องกฎหมาย, dispute เงิน)\n- **Negative sentiment** — ลูกค้าเริ่มหงุดหงิด/โมโห (ความหงุดหงิดที่ลูกค้าแสดงออกในบทสนทนา)\n- **Explicit request** — ลูกค้าพิมพ์ \"ขอคุยกับคน\" ตรง ๆ — ต้องเคารพเสมอ อย่าวนถามต่อ\n- **Policy / risk rule** — กฎบังคับ เช่น ยอดเกิน threshold หรือเคสที่มีความเสี่ยงทางการเงิน ต้องให้คนตัดสิน\n\n**Warm handoff (ทำให้ดี)** — หัวใจคือ *ส่ง context ให้ครบ* เพื่อให้ human ไม่ต้องเริ่มจากศูนย์ และลูกค้าไม่ต้องพูดซ้ำ. สิ่งที่ต้องแนบไปกับสาย:\n\n1. **สรุปบทสนทนา** — ปัญหาคืออะไร ลูกค้าต้องการอะไร\n2. **สิ่งที่ AI ลองไปแล้ว** — เพื่อ human ไม่ทำซ้ำขั้นตอนเดิม\n3. **Identity / details ที่ verify แล้ว** — ใคร, order ไหน, บัญชีไหน\n\nCold handoff (โยนสายเปล่า ๆ context หาย) เป็นสาเหตุอันดับต้น ๆ ของความหงุดหงิดลูกค้า. นอกจาก AI→human ยังมี handoff ระหว่าง AI agent/queue ด้วยกัน (routing ไปทีมที่ถูก) — หลักการ warm handoff เดียวกัน: ส่ง context ไปพร้อมสายเสมอ.\n\nRelated แต่คนละเรื่อง: **HITL** (`human-in-the-loop`) = ให้คน *อนุมัติ action* ก่อนทำ โดยคนไม่ได้เข้ามาคุยแทน; ส่วน handoff = *โอนบทสนทนา* ทั้งเส้นให้คนรับช่วง. ภาพรวม flow ของ support ทั้งระบบอยู่ใน `contact-center-flows`.\n\n## ตัวอย่าง (contact-center / rider dispute)\n\nRider ของแพลตฟอร์มส่งอาหารทัก bot ว่า \"ทำไมโดนหักเงินสองรอบสำหรับ order เดียว\". bot ลองแล้ว: ดึงประวัติ transaction, อธิบายความต่างของ pre-auth กับ capture, เสนอ FAQ. Rider ตอบ \"ไม่ใช่ ยอดมันเบิ้ลจริง ๆ ผมมี slip\" — bot อ่าน sentiment เป็นลบ + intent = payment dispute (นอกขอบเขตที่ bot ปิดเองได้) → escalate.\n\nตอน handoff bot ไม่ได้แค่โยนสายให้ agent แต่แพ็ก context ไปด้วย:\n\n- **Summary**: \"Rider แจ้งโดนหักซ้ำ order #88213, ยืนยันว่ามี slip\"\n- **AI tried**: \"ดึง transaction history แล้ว, อธิบาย pre-auth/capture แล้ว, rider ปฏิเสธคำอธิบาย\"\n- **Verified identity**: rider id, เบอร์ที่ยืนยัน OTP แล้ว, order id\n\nAgent เปิดหน้าจอมาเห็นทุกอย่างทันที คุยต่อได้เลยว่า \"ผมเห็น order #88213 นะครับ เดี๋ยวเช็ค double capture ให้\" — rider ไม่ต้องเล่าใหม่. เมื่อ agent แก้จบ อาจ handoff กลับให้ bot ทำ post-resolution survey หรือปิดเคส.\n\n```mermaid\nflowchart TD\n  AI[AI handles conversation] --> T{Escalation trigger?}\n  T -->|No| AI\n  T -->|\"Low confidence / frustration / explicit\"| PKG[Package context]\n  PKG --> S[\"Summary of conversation\"]\n  PKG --> TR[\"What AI already tried\"]\n  PKG --> ID[\"Verified identity and details\"]\n  S --> R[Route to human agent]\n  TR --> R\n  ID --> R\n  R --> H[Human resolves]\n  H -.->|\"Optional: back to AI\"| AI\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"handoff = แค่โอนสายให้คน\"** ผิด. การโอนสายคือส่วนที่ง่ายที่สุด; งานจริงคือการ *แพ็ก context* ไปด้วย. ถ้า context หาย นั่นคือ cold transfer ซึ่งแย่กว่าไม่มี bot ตั้งแต่แรก.\n- **\"escalate ให้เร็วที่สุดเข้าไว้ ปลอดภัยดี\"** ผิด. escalate ทุกเคสที่ยากนิดหน่อย = deflection rate ต่ำ, เปลืองเวลา human, ลบล้างเหตุผลที่มี AI ตั้งแต่ต้น.\n- **\"handoff กับ HITL คือเรื่องเดียวกัน\"** ผิด. HITL = คนอนุมัติ action; handoff = คนรับช่วงบทสนทนาต่อ.\n\n## ขีดจำกัด / trade-off\n\nTrigger ที่จูนผิดมีราคาสองทาง: **escalate เร็วเกิน** → human ถูกดึงมาทำเคสที่ AI จัดการได้เอง, deflection rate ตก, ต้นทุนคนพุ่ง, และ AI ดู \"ไร้ประโยชน์\"; **escalate ช้าเกิน** → ลูกค้าวนอยู่กับ bot ที่ช่วยไม่ได้จนหัวเสีย แล้วค่อยได้คน (กลายเป็นสายที่โกรธมาแล้ว). การตั้ง threshold ให้พอดีเป็นงานยาก ต้องอาศัยข้อมูลจริงและปรับต่อเนื่อง ไม่ใช่ค่าคงที่ที่ตั้งครั้งเดียวจบ.\n\nWarm handoff เองก็มีต้นทุน: การสรุปบทสนทนา + แนบ identity เพิ่ม engineering work (ต้อง generate summary, carry state ข้ามระบบ, integrate กับ agent desk ของ contact center) และถ้า summary ผิดหรือตกหล่น อาจพา agent ไปผิดทาง. เมื่อ traffic น้อยหรือ use case แคบมาก การลงทุน warm handoff เต็มรูปแบบอาจไม่คุ้ม — ปุ่ม \"คุยกับคน\" ที่แนบแค่ transcript ดิบก็อาจพอ. งานของ senior คือรู้ว่าจุดคุ้มทุนของ context transfer อยู่ตรงไหน.\n\n## มุมสัมภาษณ์\n\n- \"ออกแบบ trigger ให้ bot รู้ว่าเมื่อไหร่ควร escalate ยังไง?\" → ตอบเป็นชุด: low confidence, out of scope, negative sentiment, explicit request, policy rule — แล้วพูดถึง trade-off เร็ว/ช้า.\n- \"ทำไม warm handoff ถึงสำคัญกว่าตัวการ escalate เอง?\" → เพราะ cold transfer (context หาย ลูกค้าพูดซ้ำ) คือสาเหตุหลักของความหงุดหงิด; ต้องส่ง summary + สิ่งที่ลองแล้ว + identity ไปด้วย.\n- \"จะวัดว่า handoff strategy ดีไหม ดูอะไร?\" → deflection rate (AI ปิดเองได้กี่ %), CSAT หลัง handoff, จำนวนครั้งที่ลูกค้าต้องพูดซ้ำ, เวลา agent ใช้ทำความเข้าใจเคส.\n- \"escalate เร็วไปกับช้าไป อันไหนแย่กว่า?\" → เป็นคำถามชั่งน้ำหนัก; แย่คนละแบบ — ต้องพูดถึงการวัดผลและจูนด้วยข้อมูลจริง ไม่ใช่ตอบข้างเดียว.\n",
+  "recall_checks": [
+    {
+      "q": "เงื่อนไข (trigger) ที่ควร escalate จาก AI ไปหา human agent มีอะไรบ้าง (ตอบอย่างน้อย 3)?",
+      "expected_answer": "low confidence, out of scope, negative sentiment, explicit request, และ policy/risk rule",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม warm handoff (ส่ง context ให้ครบตอนโอนสาย) ถึงสำคัญ?",
+      "expected_answer": "เพราะ human ไม่ต้องเริ่มใหม่ และลูกค้าไม่ต้องพูดซ้ำ",
+      "type": "mcq",
+      "options": [
+        "เพราะทำให้ AI มั่นใจในคำตอบมากขึ้นก่อนโอนสายให้คน",
+        "เพราะ human ไม่ต้องเริ่มใหม่ และลูกค้าไม่ต้องพูดซ้ำ",
+        "เพราะช่วยลดจำนวน token ที่ต้องส่งให้ provider จึงถูกลง"
+      ]
+    },
+    {
+      "q": "handoff ต่างจาก HITL (human-in-the-loop) อย่างไร?",
+      "expected_answer": "handoff = โอนบทสนทนาให้คน; HITL = ให้คนอนุมัติ action",
+      "type": "mcq",
+      "options": [
+        "handoff = โอนบทสนทนาให้คน; HITL = ให้คนอนุมัติ action",
+        "handoff = ให้คนอนุมัติ action; HITL = โอนบทสนทนาให้คน",
+        "handoff และ HITL เป็นชื่อเรียกกลไกเดียวกันทุกอย่าง"
+      ]
+    },
+    {
+      "q": "การ escalate เร็วเกินไป (โอนให้คนทุกเคสที่ยากนิดหน่อย) มีผลเสียหลักคืออะไร?",
+      "expected_answer": "deflection rate ตก และเปลืองเวลา human agent",
+      "type": "mcq",
+      "options": [
+        "ลูกค้าหงุดหงิดเพราะต้องวนอยู่กับ bot นานเกินไป",
+        "context หายระหว่างโอนสายให้ agent รับช่วงต่อ",
+        "deflection rate ตก และเปลืองเวลา human agent"
+      ]
+    },
+    {
+      "q": "Warm handoff ควรแนบ context 3 อย่างอะไรไปกับสายให้ human agent?",
+      "expected_answer": "สรุปบทสนทนา, สิ่งที่ AI ลองไปแล้ว, และ identity/details ที่ verify แล้ว",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Zendesk - Handoff / escalation to a human agent (AI agents & bots docs)",
+      "source": "support.zendesk.com - Zendesk AI agents / bot handoff documentation",
+      "why": "อ่านวิธี trigger การ escalate และการส่ง conversation context จาก bot ไป human ในระบบจริง"
+    },
+    {
+      "title": "Intercom - Route conversations from Fin AI Agent to a human team (Help Center)",
+      "source": "intercom.com/help - Fin AI Agent handover / routing to a teammate",
+      "why": "อ่านตัวอย่าง warm handoff + routing rules ระหว่าง AI กับ human team ในแพลตฟอร์ม support"
+    },
+    {
+      "title": "Google Cloud - Human agent handoff in Dialogflow / CCAI",
+      "source": "cloud.google.com/dialogflow/docs - human agent handoff",
+      "why": "อ่านสถาปัตยกรรมการโอนบทสนทนาจาก virtual agent ไป live agent พร้อมส่ง context"
+    }
+  ]
+}

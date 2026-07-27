@@ -1,0 +1,57 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "human-in-the-loop",
+  "version": 1,
+  "title_en": "Human-in-the-Loop",
+  "est_minutes": 8,
+  "body_md": "# Human-in-the-Loop\n\n## ทำไมถึงสำคัญ\n\nLLM ตอบผิดแบบมั่นใจได้เสมอ และบาง action ที่ AI สั่ง (คืนเงิน, ปิด account, ลบข้อมูล) ย้อนกลับไม่ได้หรือแพงมากถ้าผิด. Human-in-the-loop (HITL) คือการวางจุดที่คนต้องอนุมัติคั่นก่อน action สำคัญจะมีผลจริง — แลก throughput บางส่วนเพื่อกันความเสียหายที่กู้คืนไม่ได้. นี่คือวิธีที่ทำให้ deploy AI ในงาน customer-facing หรือ regulated ได้อย่างรับผิดชอบ.\n\n## แก่นของแนวคิด\n\nHITL ไม่ใช่การให้คนดูทุกอย่าง แต่คือการเลือก *เฉพาะ* action ที่ high-risk / irreversible / low-confidence ให้ผ่านสายตาคนก่อน commit. กลไกหลักที่ใช้จริง:\n\n- **Approval gate**: AI *เสนอ* action แต่ยังไม่ทำ — คนกด confirm ก่อนถึงจะ commit (เช่น ก่อนออก refund หรือปิด ticket). AI เตรียมงานให้เกือบเสร็จ คนแค่ตัดสินใจว่าจะ commit หรือไม่.\n- **Review-before-send**: AI ร่างคำตอบหรือเอกสาร แล้ว draft ถูกส่งไปให้คนตรวจ/แก้ก่อนออกไปถึงลูกค้าจริง.\n- **Confidence threshold routing**: เคสที่โมเดลมั่นใจสูง → auto-handle; เคส confidence ต่ำ → route ไปหาคน. นี่คือหัวใจของการ scale — ไม่ให้คนกลายเป็นคอขวดของทุกเคส.\n- **Sampling / QA review**: action ส่วนใหญ่ทำอัตโนมัติ แต่สุ่มดึงมาให้คนตรวจย้อนหลังเพื่อจับ quality drift — เป็น safety net ไม่ใช่ gate ที่บล็อกทุกครั้ง.\n\nจุดสำคัญ: HITL คือ *การตัดสินใจเรื่องความเสี่ยง* ว่า action ไหนต้องมีคน ไม่ใช่ feature ของโมเดล.\n\nเกี่ยวข้องแต่แยกกัน (ไม่ทวนที่นี่): รูปแบบ product ที่ AI คอยร่าง/แนะนำให้ human agent (copilot) อยู่ที่ sibling `agent-assist-copilot-patterns`; กลไกส่งต่อบทสนทนา AI→human พร้อม context อยู่ที่ sibling `handoff-orchestration`; ส่วนวิธี *ประเมิน* confidence เองและออกแบบ fallback ในฐานะ guardrail อยู่ที่ ch.8 `confidence-and-fallback` — บทนี้โฟกัสแค่ตรงไหนต้องให้คนอนุมัติ.\n\n## ตัวอย่าง (support / refund)\n\nระบบ support ของ payments app รับคำถามหลากหลาย และวาง gate ตามระดับความเสี่ยง:\n\n- ถามยอดเงินเข้าเมื่อไหร่ หรือ FAQ ที่มีคำตอบตายตัว → AI ตอบเองอัตโนมัติ (low-risk, พิมพ์แก้ทีหลังได้).\n- ขอ refund **ไม่เกิน** วงเงินที่นโยบายอนุมัติอัตโนมัติได้ → AI ทำได้เอง.\n- ขอ refund **เกิน** วงเงิน หรือขอเปลี่ยนข้อมูล account (เบอร์, email ที่ผูก MFA) → **approval gate**: AI เตรียมคำขอ + เหตุผล + จำนวนเงินให้ครบ แต่ต้องให้ human agent กดอนุมัติก่อนเงินออกจริง.\n- โมเดลไม่มั่นใจว่าลูกค้าต้องการอะไร (confidence ต่ำ) → route ไปหาคนแทนที่จะเดา.\n\n```mermaid\nflowchart TD\n  P[AI proposes action] --> D{High-risk or low-confidence}\n  D -->|no| A[Auto-commit and reply]\n  D -->|yes| G[Route to human review]\n  G --> H{Human decision}\n  H -->|approve or edit| C[Commit action]\n  H -->|reject| X[Discard or escalate]\n```\n\nผลลัพธ์: FAQ ปริมาณมากไหลผ่านอัตโนมัติ (throughput สูง) ส่วน action ที่เสียหายแล้วกู้ยากถูกกันไว้ด้วยคนเพียงไม่กี่เคส.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **HITL = ให้คนตรวจทุก output ของ AI** ผิด และเป็นกับดัก — ถ้า gate ทุกอย่าง คนกลายเป็นคอขวด, throughput ตก, และคนจะเริ่มกด approve แบบไม่ดู (rubber-stamp) จน gate ไร้ค่า. HITL ที่ดีคือ gate *น้อยจุดแต่ตรงจุด*.\n- **มี human อยู่ใน loop แล้วปลอดภัยแน่นอน** ผิด — คนที่ถูกถล่มด้วยงานหรือเห็นแต่คำตอบที่ดูโอเคก็ผิดพลาดและ rubber-stamp ได้; safety มาจากการออกแบบ gate บวกภาระที่คนรับไหว ไม่ใช่แค่การมีคน.\n- **approval gate ทำให้ AI ไร้ประโยชน์ในงานนั้น** ผิด — AI ยังทำงานหนักเกือบทั้งหมด (ร่าง, ดึงข้อมูล, เตรียมเหตุผล) คนแค่รับภาระ *การตัดสินใจ commit* ซึ่งเร็วกว่าทำเองทั้งงานมาก.\n\n## ขีดจำกัด / เมื่อไหร่ต้องชั่งน้ำหนัก\n\nHITL ซื้อความปลอดภัยและคุณภาพด้วยราคาที่จับต้องได้: throughput ลดลง (ทุก gate คือจุดรอคน), latency เพิ่ม (เคสต้องค้างรออนุมัติ ไม่ใช่ตอบทันที), และต้นทุนแรงคนที่ไม่ scale เชิงเส้นตามปริมาณงาน. ถ้าใส่ gate มากเกินไปจะเจอ failure mode ที่แย่ที่สุด — คน overload แล้วกด approve รัว ๆ โดยไม่อ่าน ได้ทั้งความช้าและความเสี่ยงพร้อมกัน (worst of both worlds). ในทางกลับกัน action ที่ reversible ราคาถูก ปริมาณสูง และผิดแล้วแก้ง่าย (เช่น จัดหมวดหมู่ ticket, ตอบ FAQ) การ gate คือการเผาเวลาคนโดยไม่ได้ safety คุ้มค่า. งานของ senior คือเลือก *ตำแหน่ง* ของ gate ให้ผูกกับความ irreversible และต้นทุนของความผิดพลาด ไม่ใช่ gate เพราะกลัวไว้ก่อน — แล้วปรับ confidence threshold ให้คนได้ดูเฉพาะเคสที่คุ้มจะดู.\n\n## มุมสัมภาษณ์\n\n- \"จะ deploy AI ที่ทำ action มีผลจริง (เช่น refund) ยังไงให้ปลอดภัย?\" → วาง approval gate เฉพาะ action ที่ irreversible/high-value, ให้ AI เตรียมงาน คนแค่ commit.\n- \"action ไหนควร gate ไหนปล่อย auto?\" → เกณฑ์คือ irreversibility + cost of error + confidence; reversible และ low-cost ปล่อย, irreversible/high-value/low-confidence gate.\n- \"ใส่ human review แล้วทำไมยังพลาด?\" → rubber-stamping จาก overload; ต้องคุมปริมาณ gate ให้คนดูไหว ไม่ใช่แค่มีคนอยู่ใน loop.\n- \"จะ scale HITL ยังไงไม่ให้คนเป็นคอขวด?\" → confidence threshold routing + sampling QA แทนการ gate 100% (เชื่อมไป `confidence-and-fallback`).\n",
+  "recall_checks": [
+    {
+      "q": "Human-in-the-loop (HITL) ต่างจากการปล่อยให้ AI ทำงานอัตโนมัติเต็มรูปแบบตรงไหน?",
+      "expected_answer": "บังคับให้มีคนตรวจสอบหรืออนุมัติก่อน action สำคัญจะมีผลจริง",
+      "type": "short_answer"
+    },
+    {
+      "q": "action แบบใดควรมี approval gate มากที่สุด?",
+      "expected_answer": "การคืนเงิน refund เกินวงเงินที่อนุมัติ",
+      "type": "mcq",
+      "options": [
+        "การตอบคำถาม FAQ ทั่วไปที่ลูกค้าถามซ้ำบ่อย",
+        "การคืนเงิน refund เกินวงเงินที่อนุมัติ",
+        "การจัดหมวดหมู่ ticket ก่อน route"
+      ]
+    },
+    {
+      "q": "ถ้าใส่ approval gate มากเกินไปในแทบทุก action ผลเสียหลักคืออะไร?",
+      "expected_answer": "human overload จนกด approve แบบ rubber-stamp",
+      "type": "mcq",
+      "options": [
+        "human overload จนกด approve แบบ rubber-stamp",
+        "cost การเรียก LLM เพิ่มขึ้นแบบทวีคูณตามจำนวน gate",
+        "โมเดลจะ hallucinate บ่อยขึ้นเมื่อรอ human นาน"
+      ]
+    },
+    {
+      "q": "confidence threshold routing ช่วยให้ HITL scale ได้อย่างไร?",
+      "expected_answer": "ให้เคสที่โมเดลมั่นใจสูงทำอัตโนมัติ ส่วนเคส confidence ต่ำจึง route ไปหาคน คนจะได้ไม่เป็นคอขวดของทุกเคส",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "People + AI Guidebook — Feedback + Control",
+      "source": "pair.withgoogle.com/guidebook",
+      "why": "อ่าน pattern การออกแบบให้ผู้ใช้ตรวจ แก้ และคุม action ของ AI ก่อนมีผลจริง"
+    },
+    {
+      "title": "Guidelines for Human-AI Interaction (Amershi et al., CHI 2019)",
+      "source": "ACM CHI 2019, Microsoft Research — 18 human-AI interaction guidelines",
+      "why": "อ่านงานวิจัยว่าเมื่อไหร่ควรให้คนแก้ ยับยั้ง หรือควบคุมผลลัพธ์ของ AI"
+    },
+    {
+      "title": "Designing Machine Learning Systems",
+      "source": "Chip Huyen, Designing Machine Learning Systems (O'Reilly, 2022), บท deployment/monitoring",
+      "why": "อ่านว่าทำไม high-stakes decision ต้องมีคนอยู่ใน loop และวาง fallback อย่างไร"
+    }
+  ]
+}
