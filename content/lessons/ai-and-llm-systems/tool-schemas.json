@@ -1,0 +1,67 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "tool-schemas",
+  "version": 1,
+  "title_en": "Tool Schemas",
+  "est_minutes": 8,
+  "body_md": "# Tool Schemas\n\n## ทำไมถึงสำคัญ\n\nโมเดลไม่เคยเห็นโค้ดของ tool — มันเห็นแค่ **schema** ที่เราเขียนบรรยายไว้ แล้วตัดสินจากตรงนั้นล้วน ๆ ว่าจะเรียก tool ตัวไหนและกรอก argument อะไร. เพราะฉะนั้น schema ที่เขียนไม่ดี = โมเดลเรียกผิดตัวหรือกรอก arg มั่ว โดยที่โค้ด backend ไม่ได้พังเลยสักบรรทัด. คุณภาพของ tool use จึงขึ้นกับ \"คำบรรยาย\" มากกว่าตัว engine — นี่คือ lever หลักที่ developer คุมได้โดยตรง.\n\n## แก่นของแนวคิด\n\nTool หนึ่งตัวถูกนิยามด้วย schema สามส่วน:\n\n- **name** — ชื่อ action สั้น ชัด เป็นกริยา เช่น `create_ticket`, `get_balance`. โมเดลใช้ชื่อเป็น signal แรกว่า tool นี้ทำอะไร.\n- **description** — บอกว่า tool ทำอะไร และ *เมื่อไหร่ควรใช้* (บางทีรวมถึงเมื่อไหร่ไม่ควรใช้). นี่คือส่วนที่มีน้ำหนักที่สุดต่อการเลือกถูก เพราะเมื่อมีหลาย tool ที่ดูคล้ายกัน โมเดลแยกด้วย description เป็นหลัก.\n- **parameters** — โครงของ argument เขียนเป็น JSON Schema: type ของแต่ละ field, field ไหน required, enum ที่จำกัดค่าที่รับได้, และ description ต่อ field. (พื้นฐาน JSON Schema อยู่ใน ch.2 structured output — ที่นี่โฟกัสว่าจะ *ออกแบบ* มันยังไงให้ tool use แม่น ไม่ใช่ไวยากรณ์ของ schema.)\n\nโมเดลอ่าน schema ของ tool ทุกตัวที่เราส่งไปพร้อม prompt แล้วตัดสินสามอย่าง: (1) ต้องใช้ tool ไหม, (2) ใช้ตัวไหน, (3) กรอก argument อะไร. ส่วนกลไก request/execute จริง (โมเดลไม่ได้รัน tool เอง แต่ส่ง intent กลับให้ app รันแล้วป้อนผลกลับ) อยู่ใน sibling `how-function-calling-works` — ที่นี่สมมติว่ารู้แล้ว.\n\nหัวใจของบทนี้: **description ที่คมและ parameter schema ที่รัดกุม คือ lever หลักที่สุดต่อคุณภาพ tool use**. description กำกวมทำให้โมเดลเลือก tool ผิด; parameter ที่หลวม (type กว้าง, ไม่มี enum, ไม่ mark required) ทำให้กรอก arg ผิดหรือขาด.\n\nBest practice ตั้งต้น:\n\n- ชื่อเป็น action ชัดเจน หนึ่ง tool = หนึ่งหน้าที่ อย่าทำ tool อเนกประสงค์ตัวเดียวที่รับ `action: string` แล้วแตกงานภายใน — space ของ argument จะกว้างจนโมเดลกรอกผิดง่าย.\n- description บอก \"ใช้เมื่อไหร่\" ไม่ใช่แค่ \"ทำอะไร\" และถ้ามี tool ใกล้เคียง ให้บอกด้วยว่าต่างกันตรงไหน.\n- บีบ parameter ด้วย enum และ required ให้มากเท่าที่ความหมายจริงอนุญาต — ยิ่งจำกัด space ของ arg ยิ่งพลาดยาก.\n- ให้ toolset เล็กและโฟกัส อย่ายัด tool ที่ไม่จำเป็นเข้ามาทุกตัว.\n\n## ตัวอย่าง (support / ticketing)\n\nTool สำหรับเปิด ticket ในระบบ support:\n\n```\ncreate_ticket(\n  subject:  string                          (required),\n  priority: enum[\"low\", \"medium\", \"high\"]   (required),\n  body:     string                          (required)\n)\n```\n\ndescription แบบแย่ (vague):\n\n> \"Creates a ticket.\"\n\nปัญหา: ไม่บอกว่า *เมื่อไหร่* ควรเรียก. ถ้าใน toolset มี `search_kb` (ค้นคำตอบจาก knowledge base) อยู่ด้วย โมเดลอาจเปิด ticket ทั้งที่คำถามตอบได้จาก KB เลย หรือกลับกัน ปล่อยลูกค้ารอทั้งที่ควรเปิด ticket จริง.\n\ndescription แบบดี:\n\n> \"Open a new support ticket **only when** the customer's issue cannot be resolved from the knowledge base and needs a human agent. Do not use for general questions — call `search_kb` first. `priority` must reflect customer impact: `high` = service down or money at risk; `low` = cosmetic or informational.\"\n\nต่างกันตรงที่ตัวหลังบอก *เงื่อนไขการเลือก* และ *ความหมายของค่า enum* ให้โมเดล จึงเลือกถูกและกรอก `priority` ได้สมเหตุผล. สังเกตว่า enum `[\"low\",\"medium\",\"high\"]` เองก็ทำงานเป็น guardrail — โมเดลกรอก `\"urgent\"` หรือ `\"P1\"` ไม่ได้ เพราะไม่อยู่ใน enum ระบบจึงไม่ต้องมา normalize ทีหลัง.\n\n**narrow-scope vs catch-all:** เทียบ tool อเนกประสงค์ตัวเดียว `manage_ticket(action: \"create\" | \"close\" | \"update_priority\", ...)` กับการแยกเป็นสามตัวโฟกัส `create_ticket`, `close_ticket`, `update_priority`. แบบ catch-all บังคับให้โมเดลกรอก `action` ให้ถูกก่อน แล้วเดาต่อว่า field ไหน required สำหรับ action นั้น (เช่น `subject` ต้องมีตอน create แต่ไม่ต้องตอน close) — schema เดียวเลยพูด \"ต้องการอะไรเมื่อไหร่\" ไม่ได้ชัด. พอแยกเป็น tool เล็ก แต่ละตัวมี name/description/required ที่ตรงกับงานเดียว ทำให้ทั้งการ *เลือก* และการ *กรอก arg* ของโมเดลแม่นขึ้น และ validate ฝั่งโค้ดง่ายกว่ามาก.\n\nหมายเหตุ fintech: ถ้า tool มี side effect จริงเช่น `issue_refund` การออกแบบ schema ให้รัดกุมยิ่งสำคัญขึ้น เพราะกรอกผิด = เงินออกจริง — เรื่อง error และ retry ของ side effect อยู่ใน sibling `tool-error-handling`.\n\n```mermaid\nflowchart TD\n  subgraph Schema[\"Tool schema\"]\n    N[\"name: create_ticket\"]\n    D[\"description: what it does + when to use\"]\n    P[\"parameters: JSON Schema | types, enum, required\"]\n  end\n  Schema --> M[\"Model reads all tool schemas\"]\n  M --> Q1{\"Need a tool?\"}\n  Q1 -->|no| A[\"Answer directly\"]\n  Q1 -->|yes| Q2{\"Which tool fits?\"}\n  Q2 --> F[\"Fill arguments per parameter schema\"]\n  F --> C[\"Emit tool call intent\"]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"description เขียนให้คนอ่านเข้าใจก็พอ\"** — ผิด. description คือ prompt ที่โมเดลใช้ *ตัดสินใจ* ไม่ใช่ doc สำหรับ dev อ่าน; ต้องเขียนเพื่อ guide การเลือกของโมเดล (บอกเงื่อนไข, เทียบกับ tool อื่น).\n- **\"ยิ่งใส่ tool เยอะยิ่งเก่ง\"** — ผิด. tool เยอะขึ้น = โอกาสเลือกผิดสูงขึ้น + กิน token มากขึ้นทุก request. (การจัดการ toolset ใหญ่และการ select tool ที่ scale เป็นอีกหัวข้อหนึ่ง แตะไว้เท่านี้ก่อน.)\n- **\"ให้ parameter เป็น string ทั้งหมด เดี๋ยวโมเดลกรอกเอง\"** — ผิด. ไม่มี enum/type/required = โมเดลอิสระที่จะกรอกมั่ว; schema ที่รัดกุมช่วยทั้ง accuracy ของโมเดลและ validation ฝั่งโค้ด.\n\n## ขีดจำกัด / trade-off\n\nSchema เป็น lever ที่ทรงพลัง แต่มีสองด้าน — senior interview จะจิ้มตรงนี้ ไม่ใช่ตรงข้อดี:\n\n- **มาก/หลวมเกินไป:** ทุก tool ที่เพิ่มเข้า toolset ถูกส่งเข้า prompt ทุกครั้ง → กิน token (แพงขึ้น + เหลือ context น้อยลง) และเพิ่ม surface ให้เลือกผิด. tool สองตัวที่ description คล้ายกันคือสูตรสำเร็จของ mis-selection. \"เพิ่ม tool\" จึงไม่เคยฟรี.\n- **รัดเกินไป:** ถ้า over-constrain — enum แคบเกินความจริง, บังคับ required field ที่บางเคสไม่มีข้อมูล, หรือ type เข้มจนกรอกเคสปกติไม่ได้ — โมเดลจะทำงานไม่สำเร็จ หรือถูกบีบให้กรอกค่าปลอมเพื่อให้ผ่าน schema. constraint ควรสะท้อนความจริงของ domain ไม่ใช่เข้มไว้ก่อน.\n- **description ยาวเกิน:** เขียนละเอียดช่วย accuracy แต่ยาวมาก = token ต่อ tool สูงขึ้น คูณจำนวน tool คูณทุก request. มี sweet spot ระหว่างชัดเจนกับกระชับ.\n\nสรุป trade-off: การออกแบบ schema คือการจูนระหว่าง *ความแม่นในการเลือก/กรอก* กับ *ต้นทุน token และความยืดหยุ่น*. ไม่ใช่ \"ยิ่งเข้มยิ่งดี\" และไม่ใช่ \"ยิ่งเยอะยิ่งดี\".\n\n## มุมสัมภาษณ์\n\n- \"โมเดลตัดสินใจเรียก tool ถูกตัวจากอะไร?\" → จาก schema ล้วน โดยเฉพาะ name + description; โมเดลไม่เห็น implementation ของ tool เลย.\n- \"tool ถูกเรียกผิดบ่อย จะแก้ที่ไหนก่อน?\" → คมที่ description (ใส่เงื่อนไขการใช้ + เทียบกับ tool ใกล้เคียง) และรัด parameter (enum/required) ก่อนไปแตะ prompt หรือเปลี่ยนโมเดล.\n- \"ทำไมไม่ทำ tool เดียวรับทุก action?\" → space ของ argument กว้างเกิน โมเดลกรอกผิดง่าย; แยกเป็น tool เล็กที่โฟกัสดีกว่า.\n- \"เพิ่ม tool เข้าไปเรื่อย ๆ มีต้นทุนอะไร?\" → token ต่อ request สูงขึ้น + mis-selection สูงขึ้นเมื่อ tool ที่คล้ายกันเยอะขึ้น.\n",
+  "recall_checks": [
+    {
+      "q": "โมเดลใช้อะไรตัดสินว่าจะเรียก tool ตัวไหนและกรอก argument อย่างไร?",
+      "expected_answer": "จาก schema ของแต่ละ tool ล้วน ๆ โดยเฉพาะ name และ description (โมเดลไม่เห็น implementation)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม description ของ tool จึงเป็น lever หลักต่อคุณภาพ tool use?",
+      "expected_answer": "เพราะโมเดลใช้ description ตัดสินว่าจะเลือก tool ตัวไหน",
+      "type": "mcq",
+      "options": [
+        "เพราะ description ถูก compile เป็นโค้ดที่รัน tool จริง",
+        "เพราะโมเดลใช้ description ตัดสินว่าจะเลือก tool ตัวไหน",
+        "เพราะ description ถูกเก็บไว้ใน tool registry ฝั่ง server"
+      ]
+    },
+    {
+      "q": "ข้อใดคือ trade-off ของการเพิ่ม tool เข้า toolset จำนวนมาก?",
+      "expected_answer": "กิน token มากขึ้นและเสี่ยงเลือก tool ผิดมากขึ้น",
+      "type": "mcq",
+      "options": [
+        "กิน token มากขึ้นและเสี่ยงเลือก tool ผิดมากขึ้น",
+        "ทำให้ tool ทุกตัวรันช้าลงเพราะต้องแย่งกันใช้ CPU",
+        "ทำให้โมเดลตอบเป็นภาษาอื่นโดยไม่ได้ตั้งใจในบางครั้ง"
+      ]
+    },
+    {
+      "q": "การ over-constrain parameter schema (enum แคบเกิน, บังคับ required เกินจำเป็น) ทำให้เกิดอะไร?",
+      "expected_answer": "โมเดลทำงานไม่สำเร็จ หรือถูกบีบให้กรอกค่าปลอม",
+      "type": "mcq",
+      "options": [
+        "โมเดลจะเลือก tool ได้แม่นยำขึ้นเสมอในทุก ๆ เคสงาน",
+        "ระบบจะประหยัด token ลงอย่างมากในแทบทุก request",
+        "โมเดลทำงานไม่สำเร็จ หรือถูกบีบให้กรอกค่าปลอม"
+      ]
+    },
+    {
+      "q": "ทำไมจึงควรทำ tool เล็กที่โฟกัสหน้าที่เดียว แทน tool อเนกประสงค์ตัวเดียวที่รับ action เป็น string?",
+      "expected_answer": "เพราะ tool อเนกประสงค์ทำให้ space ของ argument กว้าง โมเดลกรอกผิดง่าย ส่วน tool เล็กที่โฟกัสมี schema ชัด เลือกและกรอกได้แม่นกว่า",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "JSON Schema Specification",
+      "source": "json-schema.org — Specification",
+      "why": "อ่านโครง type/enum/required ที่ใช้เขียน parameters ของ tool"
+    },
+    {
+      "title": "Function calling guide",
+      "source": "OpenAI Platform docs — \"Function calling\" guide",
+      "why": "อ่านตัวอย่างการนิยาม tool schema จริงและ best practice ของ description/parameters"
+    },
+    {
+      "title": "Tool use (function calling)",
+      "source": "Anthropic docs — \"Tool use\" documentation",
+      "why": "อ่านมุมอีก provider เรื่องการนิยาม tool และคำแนะนำในการเขียน description ที่ดี"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "concept_id": "tool-error-handling",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Tool Error Handling",
+  "est_minutes": 7,
+  "body_md": "# Tool Error Handling\n\n## ทำไมถึงสำคัญ\n\ntool call ล้มเหลวได้เสมอ — โมเดลอาจสร้าง argument ผิดหรือ hallucinate field ที่ไม่มีจริง, external API timeout หรือล่ม, เจอ not-found, หรือโดน rate limit. ถ้าปล่อยให้ error หลุดขึ้นไป crash ทั้ง loop ผู้ใช้จะเจอ agent ที่ค้างหรือพังกลางงาน. หัวใจของบทนี้คือทำให้ความล้มเหลวกลายเป็น *ข้อมูลที่โมเดลแก้เองได้* ไม่ใช่ exception ที่ทำให้ทั้งระบบตาย — และในเวลาเดียวกันต้องกัน tool ที่ขยับเงินจริงไม่ให้ทำงานซ้ำโดยไม่ตั้งใจ.\n\n## แก่นของแนวคิด\n\nการรัน tool ที่โมเดลสั่ง (loop ที่ป้อนผลกลับเข้าบทสนทนาอยู่ใน `agentic-tool-loop`) ต้องห่อด้วยการจัดการ error สี่ชั้น:\n\n- **Validate argument ก่อน execute.** โมเดลเป็นแค่ text generator — มันสร้าง argument ที่ผิด type, เกิน range, อ้าง id ที่ไม่มี, หรือแต่งชื่อ field ขึ้นมาเองได้. ตรวจ argument กับ schema/business rule *ก่อน* ยิงเข้า downstream เสมอ อย่าเชื่อว่า \"โมเดลฉลาดพอ\" (การ validate เป็น guardrail แบบกว้างอยู่ใน `input-output-validation` ch.8 — ที่นี่โฟกัสเฉพาะ argument ของ tool call).\n- **คืน error กลับเป็น tool result ไม่ใช่ throw.** เมื่อ validate ไม่ผ่านหรือ tool รันแล้ว fail ให้ประกอบข้อความ error ที่ *อ่านรู้เรื่อง* (\"amount must be positive, got -50\") แล้วส่งกลับเข้า conversation เป็นผลของ tool call นั้น. โมเดลจะเห็น error แล้วแก้ argument, ลอง tool อื่น, หรือถามผู้ใช้ได้เอง — นี่คือกลไก self-correction ที่ทำให้ agent ทน error โดยไม่ต้องเขียน branch ดักทุกกรณีเอง.\n- **Retry + timeout สำหรับ transient failure.** network blip, timeout, 503, rate limit เป็นความล้มเหลวชั่วคราวที่ retry แล้วได้ผล. ตั้ง timeout ต่อ tool เพื่อไม่ให้ค้างรอตลอดกาล และ retry แบบ backoff — แต่ **cap จำนวน retry** ไว้เสมอ ไม่งั้นทั้ง tool level และ agent loop จะวนไม่จบและเผา token (retry/backoff ระดับ LLM provider เป็นอีกชั้นหนึ่ง อยู่ใน `retries-fallback-multi-provider` ch.10).\n- **Guard tool ที่มี side effect.** tool ที่อ่านอย่างเดียว retry ได้อิสระ; แต่ tool ที่ *เปลี่ยนสถานะจริง* (issue refund, ส่ง email, ลบข้อมูล) การ retry ซ้ำ = ทำซ้ำของจริง. ป้องกันด้วย **idempotency key** (ส่ง key เดียวกันในทุก retry เพื่อให้ downstream รู้ว่าเป็น request เดิม ไม่ทำซ้ำ) และใส่ **confirmation gate** ให้ action ที่ย้อนกลับไม่ได้ต้องผ่านการยืนยันก่อน (human-in-the-loop เป็นรูปแบบที่กว้างกว่านี้ อยู่ใน ch.7).\n\n## ตัวอย่าง (support: issue_refund)\n\nagent ช่วยทีม support ตอบเคสคืนเงิน มี tool `issue_refund(order_id, amount)`. เกิดเหตุการณ์เรียงกัน:\n\n1. โมเดลเรียก `issue_refund(order_id=\"A-100\", amount=-4500)` — เครื่องหมายผิด. **Validate จับได้** ว่า amount ต้อง > 0 แล้วคืน error `\"amount must be positive\"` กลับเข้า conversation → โมเดลแก้เป็น `amount=4500` เอง โดยที่ยังไม่มีเงินขยับเลย.\n2. ยิงจริงครั้งแรก payment API **timeout** — แต่จริง ๆ refund อาจสำเร็จไปแล้วที่ฝั่ง provider. ถ้า blind retry จะเสี่ยง *คืนเงินซ้ำสองรอบ*. เพราะ `issue_refund` แนบ **idempotency key** (เช่น hash ของ order_id+amount) การ retry จึงถูก downstream มองเป็น request เดิม — คืนเงินครั้งเดียว.\n3. refund ก้อนใหญ่เกิน threshold → เข้า **confirmation gate**: agent ไม่ execute เอง แต่แสดงให้ human agent กดอนุมัติก่อน. เงินขยับก็ต่อเมื่อมีคนยืนยัน.\n\nจุดสำคัญ: money-moving tool ห้าม \"เงียบ ๆ retry\" — ทุก retry ต้องปลอดภัยด้วย idempotency และทุก action ที่ย้อนไม่ได้ต้องมี gate.\n\n```mermaid\nflowchart TD\n  M[\"Model emits tool call\"] --> V{\"Validate args\"}\n  V -->|\"invalid\"| E[\"Return error to model\"]\n  V -->|\"valid\"| SE{\"Side-effecting?\"}\n  SE -->|\"read-only\"| XR[\"Execute (read-only, safe to retry)\"]\n  SE -->|\"irreversible: refund\"| G{\"Confirmation gate\"}\n  G -->|\"rejected\"| E\n  G -->|\"approved\"| X[\"Execute with idempotency key\"]\n  XR -->|\"success\"| R[\"Return result to model\"]\n  XR -->|\"transient error\"| RR{\"Retries left?\"}\n  RR -->|\"yes\"| XR\n  RR -->|\"no\"| E\n  X -->|\"success\"| R\n  X -->|\"transient error\"| RX{\"Retries left?\"}\n  RX -->|\"yes\"| X\n  RX -->|\"no\"| E\n  XR -->|\"business error\"| E\n  X -->|\"business error\"| E\n  E --> M\n  R --> M\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"tool fail แล้วต้อง throw exception ให้ loop หยุด\"** ผิดสำหรับ recoverable error. คืน error เป็น tool result ให้โมเดลแก้เองดีกว่า — สงวน crash ไว้ให้ error ที่แก้ไม่ได้จริง ๆ เท่านั้น.\n- **\"retry ทุก error เหมือนกันหมด\"** ผิด. transient (timeout, 503) retry ได้; แต่ error ถาวร (validation, not-found, permission) retry ไปก็ fail เหมือนเดิม เปลืองเวลาเปล่า — ควรคืนให้โมเดลตัดสินใจแทน.\n- **\"retry เป็นเรื่องปลอดภัยเสมอ\"** ผิด. กับ tool ที่มี side effect การ retry โดยไม่มี idempotency key คือการทำ action ซ้ำของจริง (คืนเงินสองรอบ, ส่ง email สองฉบับ).\n\n## ขีดจำกัด / trade-off\n\n- **คืน error ให้โมเดลช่วย recovery แต่เปลือง turn.** ทุกครั้งที่ส่ง error กลับ = อีกหนึ่ง round-trip ที่กิน token + latency และโมเดลอาจแก้ผิดทางจนวน error ซ้ำ. ต้องมี cap: ถ้า tool เดิม fail ซ้ำ N ครั้ง ให้ยอมแพ้แล้ว escalate ให้คน แทนวนไม่จบ.\n- **error message ยิ่งละเอียดยิ่งช่วยโมเดล แต่ยิ่งเสี่ยงรั่วข้อมูล.** อย่าส่ง stack trace หรือ internal detail ดิบกลับเข้า context — ให้ message ที่พอให้โมเดลแก้ได้ แต่ไม่เปิดช่องข้อมูลภายใน.\n- **idempotency + confirmation มีต้นทุน.** idempotency key ต้องให้ downstream รองรับ (เก็บ key ที่เคยเห็น) ซึ่งไม่ใช่ทุก API ทำได้; confirmation gate เพิ่ม friction และ latency ให้ workflow. จึงใส่ให้ *เฉพาะ* tool ที่ irreversible/money-moving ไม่ใช่ทุก tool — read-only tool ที่ถูก gate ทุกครั้งคือ over-engineering ที่ทำให้ agent ช้าโดยเปล่าประโยชน์.\n\n## มุมสัมภาษณ์\n\n- \"โมเดลส่ง argument ผิดมาให้ tool จะทำยังไง?\" → validate ก่อน execute, คืน error message กลับเข้า conversation ให้โมเดลแก้เอง ไม่ crash loop.\n- \"tool ที่คืนเงินจริง จะ handle retry ตอน timeout ยังไงให้ไม่จ่ายซ้ำ?\" → idempotency key + ไม่ blind retry; action ก้อนใหญ่ผ่าน confirmation gate.\n- \"แยก error แบบไหน retry แบบไหนไม่ retry?\" → transient (timeout/503/rate limit) retry แบบ backoff มี cap; error ถาวร (validation/not-found) คืนให้โมเดลตัดสินใจ.\n- \"จะกัน agent loop ไม่ให้วนแก้ error ไม่จบยังไง?\" → cap จำนวน retry/turn ต่อ tool แล้ว escalate ให้ human เมื่อเกิน.\n",
+  "recall_checks": [
+    {
+      "q": "เมื่อโมเดลส่ง argument ผิดมาให้ tool ควรทำอะไรก่อน execute และจัดการ error อย่างไร?",
+      "expected_answer": "validate argument กับ schema/business rule ก่อน execute แล้วคืน error message ที่อ่านรู้เรื่องกลับเข้า conversation ให้โมเดลแก้เอง ไม่ throw จน loop crash",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม tool ที่คืนเงินจริง (side effect) จึงห้าม blind retry ตอน timeout แต่ต้อง guard ก่อน?",
+      "expected_answer": "retry ซ้ำจะคืนเงินซ้ำจริง ต้องมี idempotency key",
+      "type": "mcq",
+      "options": [
+        "retry ซ้ำจะทำให้ tool schema ของโมเดลเพี้ยนถาวรทันที",
+        "retry ซ้ำจะคืนเงินซ้ำจริง ต้องมี idempotency key",
+        "retry ซ้ำจะรีเซ็ต context window ของโมเดลทิ้งหมด"
+      ]
+    },
+    {
+      "q": "error แบบไหนที่ควร retry (transient) ต่างจากแบบที่ควรคืนให้โมเดลตัดสินใจ?",
+      "expected_answer": "timeout / 503 / rate limit ควร retry แบบ backoff มี cap",
+      "type": "mcq",
+      "options": [
+        "timeout / 503 / rate limit ควร retry แบบ backoff มี cap",
+        "validation error ควร retry ซ้ำไปเรื่อย ๆ จนกว่าจะผ่านเอง",
+        "not-found ควร retry รัว ๆ ได้เลยไม่ต้อง cap จำนวน"
+      ]
+    },
+    {
+      "q": "จะกัน agent loop ไม่ให้วนแก้ error ไม่จบได้อย่างไร?",
+      "expected_answer": "cap จำนวน retry/turn ต่อ tool ไว้ ถ้า tool เดิม fail ซ้ำเกินจำนวนที่กำหนด ให้ยอมแพ้แล้ว escalate ให้ human แทนวนต่อ",
+      "type": "short_answer"
+    },
+    {
+      "q": "การคืน error message กลับเข้า conversation ให้โมเดลแก้เอง มี trade-off อะไร?",
+      "expected_answer": "เปลือง turn เพิ่ม token + latency ทุกรอบที่ส่ง error",
+      "type": "mcq",
+      "options": [
+        "โมเดลจะหยุดเรียก tool ทุกตัวและปิด session ทันที",
+        "context window จะขยายขนาดของตัวเองโดยอัตโนมัติทุกครั้ง",
+        "เปลือง turn เพิ่ม token + latency ทุกรอบที่ส่ง error"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Idempotent requests",
+      "source": "Stripe API documentation — Idempotent requests (docs.stripe.com/api/idempotent_requests)",
+      "why": "อ่านวิธี guard tool ที่ขยับเงินจริงด้วย idempotency key ให้ retry ซ้ำได้อย่างปลอดภัย"
+    },
+    {
+      "title": "Timeouts, retries, and backoff with jitter",
+      "source": "Amazon Builders Library — Marc Brooker (aws.amazon.com/builders-library)",
+      "why": "อ่านหลักการตั้ง timeout + retry แบบ backoff/jitter และเหตุผลที่ต้อง cap ไม่ให้ retry รัวจนล่มหนักขึ้น"
+    },
+    {
+      "title": "Building effective agents",
+      "source": "Anthropic Engineering — Building effective agents",
+      "why": "อ่านแนวคิดการวน feedback loop ของ agent และการป้อนผล/ข้อผิดพลาดจาก tool กลับให้โมเดลตัดสินใจต่อ"
+    }
+  ]
+}
