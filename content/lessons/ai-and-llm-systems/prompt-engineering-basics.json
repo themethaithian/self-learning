@@ -1,0 +1,67 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "prompt-engineering-basics",
+  "version": 1,
+  "title_en": "Prompt Engineering Basics",
+  "est_minutes": 8,
+  "body_md": "# Prompt Engineering Basics\n\n## ทำไมถึงสำคัญ\n\nModel เดียวกัน คำถามความหมายเดียวกัน แต่เขียน prompt คนละแบบ ให้ output คนละคุณภาพและคนละความ stable. Prompt engineering คือการควบคุมสิ่งเดียวที่คุณควบคุมได้จริง — input — เพื่อให้ output reliable โดยไม่ต้องแตะ model. หัวใจที่ senior interview เจาะคือ mindset: มันคือ *engineering* ไม่ใช่คาถา — คุณต้องวัดผลกับ test case จริง ไม่ใช่แก้แล้วรู้สึกว่าดีขึ้น.\n\n## แก่นของแนวคิด\n\n**1. ชัดเจนและเจาะจง — ระบุ task, audience, format.** model เติมทุกช่องที่คุณไม่ได้บอกด้วยสิ่งที่ likely ที่สุด ซึ่งไม่ใช่สิ่งที่คุณต้องการเสมอ. `สรุปให้หน่อย` เปิดช่องกำกวมเต็มไปหมด (สรุปยาวแค่ไหน? สำหรับใคร? รูปแบบไหน?); `สรุปเป็น bullet 3 ข้อ สำหรับผู้บริหารที่ไม่รู้ technical` ปิดช่องพวกนั้น. ชัดเจน ≠ ยาว — มันคือการกำจัดความกำกวม ไม่ใช่การพูดเยอะ.\n\n**2. ให้ context ที่จำเป็น.** model รู้แค่สิ่งที่อยู่ใน prompt + weights ของมัน. ข้อมูลเฉพาะ (policy ภายใน, ประวัติลูกค้า, ตัวเลขจริง) ต้องใส่เข้าไปเอง. แต่ *เลือก* ใส่เฉพาะที่เกี่ยว — dump ทุกอย่างทำให้ signal เจือจางและเปลือง token (การ budget context อยู่ใน sibling `context-management`).\n\n**3. show, don't just tell.** ตัวอย่าง input→output หนึ่งคู่มักคุมรูปแบบได้ดีกว่าคำอธิบายยาวสามย่อหน้า. รูปแบบ few-shot และการบังคับ output เป็น JSON/schema มีรายละเอียดใน sibling `few-shot-and-structured-output` — ที่นี่จำแค่หลักว่า 'แสดงตัวอย่าง' ได้ผลกว่า 'อธิบาย'.\n\n**4. ระบุ output format ให้ชัด.** บอกความยาว โครงสร้าง และโทนที่ต้องการตรง ๆ. ถ้าไม่บอก model จะเลือกรูปแบบที่ likely ตาม training ซึ่งอาจ parse ต่อไม่ได้หรือยาวเกินไป.\n\n**5. แตก task ซับซ้อนเป็นขั้น + 'think step by step'.** สำหรับงาน reasoning การให้ model แสดงขั้นตอนก่อนสรุป (chain-of-thought, Wei et al. 2022) เพิ่มความแม่นในงานเลข/logic อย่างมีนัยสำคัญ. เหตุผลเชื่อมกับ next-token: model 'คิด' ผ่านการ generate token — ถ้าบังคับให้กระโดดไปคำตอบเลย มันข้ามขั้นการทำงาน. งานใหญ่ที่แตกเป็น sub-step ชัด ๆ ก็ผิดสะสมน้อยกว่าเหมาโจทย์เดียว.\n\n**6. iterate — prompting เป็น empirical.** เขียน → รันกับชุด test case → วัดผล → แก้ *ทีละอย่าง* → วนใหม่. อย่าแก้หลายจุดพร้อมกัน เพราะจะไม่รู้ว่าอะไรทำให้ดีขึ้น (หรือแย่ลง). นี่คือส่วนที่ทำให้มันเป็น engineering: การตัดสินว่า prompt ดีขึ้นจริงต้องมาจากการวัด ไม่ใช่ความรู้สึก.\n\nอีกหลักที่ร้อยทุกข้อเข้าด้วยกันคือ **แยก instruction ออกจาก data** ให้ชัด (ด้วย delimiter หรือ section header) — ช่วยทั้งความชัดและลดความเสี่ยง prompt injection (ch.8). การจัดโครงสร้าง prompt ผ่าน role — system / user / assistant — เป็นอีกกลไกแยก instruction ถาวรจาก input และอยู่ใน sibling `message-roles`.\n\n```mermaid\nflowchart TD\n  W[\"Write prompt: task, audience, format, context\"] --> R[Run on test cases]\n  R --> M[\"Measure output vs expected\"]\n  M --> Q{Good enough?}\n  Q -->|no| D[\"Diagnose ambiguous instruction\"]\n  D --> E[Edit one thing]\n  E --> R\n  Q -->|yes| S[\"Ship as versioned prompt\"]\n```\n\n## ตัวอย่าง (ร่าง reply ให้ support agent)\n\n**Before (กำกวม):**\n\n> `ตอบลูกค้าคนนี้ที: [ลูกค้าบ่นว่าโดนหักค่าธรรมเนียมโอนซ้ำ 2 ครั้ง]`\n\nOutput ที่ได้: ขอโทษลอย ๆ ยาวไป ไม่มี next step ชัด และโทนไม่แน่นอน — รันสามครั้งได้สามแบบ. บาง run เผลอสัญญาคืนเงินทันที ทั้งที่ยังไม่ตรวจสอบ.\n\n**After (เจาะจง):**\n\n> ```\n> คุณเป็น support agent ของธนาคาร ร่าง reply ถึงลูกค้าที่ถูกหักค่าธรรมเนียมโอนซ้ำ 2 ครั้ง\n> - โทน: สุภาพ เห็นใจ ไม่รับผิดทางกฎหมาย\n> - ความยาว: ไม่เกิน 4 ประโยค\n> - ต้องมี: คำขอโทษ, แจ้งว่ากำลังตรวจสอบ, กรอบเวลา 3 วันทำการ\n> - ห้าม: สัญญาคืนเงินก่อนตรวจสอบเสร็จ\n> ข้อความลูกค้า: <วางข้อความที่นี่>\n> ```\n\nOutput ที่ได้: สั้น ตรง มี next step และโทนคงที่กว่าเดิมมาก. ประเด็นสำคัญ — ความต่างนี้ไม่ได้มาจาก model ฉลาดขึ้น แต่มาจากการปิดช่องกำกวมที่ก่อนหน้านี้ model เดาเอง. สังเกตบรรทัด `ห้าม`: negative constraint จำเป็น เพราะ model ไม่รู้ข้อจำกัดทางกฎหมาย/policy ของคุณ ถ้าไม่บอกมันจะทำสิ่งที่ 'ฟังดูช่วยเหลือดี' ซึ่งอาจผิด policy.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **'prompt ยิ่งยาวและละเอียดยิ่งดีเสมอ'** — ผิด. context เกินจำเป็นเจือจาง signal, เพิ่ม latency และเปลือง token; ชัดเจนคือกำจัดความกำกวม ไม่ใช่เพิ่มคำ.\n- **'เจอ prompt ที่ดีแล้วใช้ได้ตลอด'** — ผิด. prompting เป็น empirical; prompt ที่เวิร์กกับ 3 ตัวอย่างแรกอาจพังกับ case ที่ 4 ต้องทดกับ case จริงและ edge case.\n- **'think step by step ช่วยทุกงาน'** — ผิด. ช่วยงาน reasoning/multi-step; งาน classification หรือ extraction ตรง ๆ มันแค่เพิ่ม token และ latency โดยไม่เพิ่มคุณภาพ.\n\n## ขีดจำกัด / เมื่อไหร่ prompting ไม่พอ\n\nPrompt engineering แก้ปัญหา 'สื่อสารความต้องการให้ model เข้าใจ' ได้ดี แต่ **แก้ข้อจำกัดพื้นฐานของ model ไม่ได้**: prompt เขียนดีแค่ไหนก็ไม่ทำให้ model รู้ข้อมูลหลัง training cutoff, ไม่ทำให้มันคำนวณเลขยาวแม่นขึ้น, และไม่หยุด hallucination เมื่อไม่มีข้อมูลจริงรองรับ. ถ้าต้องการ ground truth ต้อง ground ด้วย RAG (ch.4) หรือ offload การคำนวณ/ค้นข้อมูลให้ tool call (ch.3) — prompt เป็นแค่ชั้นสื่อสาร ไม่ใช่แหล่งความจริง.\n\nต้นทุนที่มองข้ามบ่อย: ทุก token ใน prompt เสียทั้งเงินและ latency ใน *ทุก* request. prompt ยาวที่ถูกส่งซ้ำบ่อย ๆ (เช่น few-shot 10 ตัวอย่างต่อ call) แพงสะสมเร็ว — ถึงจุดหนึ่งควรพิจารณา prompt caching หรือ fine-tune แทนการยัดทุกอย่างลง prompt ทุกครั้ง. และ prompt ที่ทำให้ output ดีขึ้น *โดยเฉลี่ย* ไม่การันตี worst case; งานที่ผิดไม่ได้ (การเงิน, action ที่มี side effect) ต้องมี validation ที่ output (ch.8) เสมอ ไม่ใช่ฝากความถูกต้องไว้กับ prompt อย่างเดียว. งานของ senior คือรู้ว่าเมื่อไหร่หยุดขัด prompt แล้วไปเพิ่ม retrieval / tool / validation แทน.\n\n## มุมสัมภาษณ์\n\n- **'output ของ model ไม่ stable แก้ยังไง?'** → ลดความกำกวมใน prompt (ระบุ task/format/ตัวอย่าง), แยก instruction จาก data, ลด temperature (sibling `sampling-and-temperature`); ถ้ายังไม่พอ บังคับ structured output.\n- **'จะรู้ได้ยังไงว่า prompt ใหม่ดีกว่าเก่า?'** → วัดกับ test set / golden set ไม่ใช่ตัดสินจากความรู้สึก (เชื่อมโยง evaluation ch.9). ตอบว่า 'รู้สึกว่าดีขึ้น' คือสัญญาณอ่อนที่ interviewer จับได้ทันที.\n- **'chain-of-thought คืออะไร ใช้เมื่อไหร่?'** → ให้ model แสดงขั้นตอน reasoning ก่อนตอบ ช่วยงาน multi-step/เลข; แลกด้วย token และ latency ที่เพิ่มขึ้น จึงไม่ใช้กับงานง่าย.\n- **'prompting แก้ hallucination ได้ไหม?'** → ลดได้บ้าง (สั่งให้ตอบจาก context ที่ให้เท่านั้น, อนุญาตให้ตอบ 'ไม่ทราบ') แต่ไม่หมด; ต้อง grounding ด้วยข้อมูลจริง + validation ประกอบ.\n",
+  "recall_checks": [
+    {
+      "q": "prompt engineering ควบคุมอะไรเพื่อให้ output reliable และต่างจากการปรับ model ตรงไหน (ตอบสั้น ๆ)?",
+      "expected_answer": "ควบคุม input (prompt) ให้ output reliable โดยไม่ต้องแตะ/เปลี่ยน model",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม 'think step by step' (chain-of-thought) ถึงช่วยงาน reasoning?",
+      "expected_answer": "เพราะให้ model แสดงขั้นตอนก่อนสรุปคำตอบ",
+      "type": "mcq",
+      "options": [
+        "เพราะบังคับให้ model ข้ามขั้นตอนไปที่คำตอบเลย",
+        "เพราะให้ model แสดงขั้นตอนก่อนสรุปคำตอบ",
+        "เพราะทำให้ prompt สั้นลงและถูกลง"
+      ]
+    },
+    {
+      "q": "ข้อใดคือความเข้าใจผิดเกี่ยวกับ prompt engineering?",
+      "expected_answer": "prompt ยิ่งยาวและละเอียดยิ่งดีเสมอ",
+      "type": "mcq",
+      "options": [
+        "prompt ยิ่งยาวและละเอียดยิ่งดีเสมอ",
+        "แยก instruction จาก data ช่วยลดความกำกวม",
+        "prompt ที่ดีต้องทดกับ case จริงเสมอ"
+      ]
+    },
+    {
+      "q": "อะไรที่ prompt เขียนดีแค่ไหนก็แก้ไม่ได้?",
+      "expected_answer": "การไม่รู้ข้อมูลจริงหลัง training cutoff",
+      "type": "mcq",
+      "options": [
+        "การเดาช่องกำกวมใน instruction ที่คุณเขียน",
+        "รูปแบบ output ที่ผิดจากที่ต้องการ",
+        "การไม่รู้ข้อมูลจริงหลัง training cutoff"
+      ]
+    },
+    {
+      "q": "จะพิสูจน์ว่า prompt ใหม่ดีกว่า prompt เก่าได้อย่างไร (ตอบสั้น ๆ)?",
+      "expected_answer": "วัดผลกับ test set / golden set ไม่ใช่ตัดสินจากความรู้สึก",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models",
+      "source": "Wei et al., 2022 — arxiv.org/abs/2201.11903",
+      "why": "อ่านต้นฉบับว่าทำไมการให้ model แสดงขั้นตอนก่อนตอบเพิ่มความแม่นในงาน reasoning"
+    },
+    {
+      "title": "OpenAI — Prompt engineering guide",
+      "source": "platform.openai.com/docs/guides/prompt-engineering",
+      "why": "อ่านหลัก provider-agnostic: เขียนให้ชัด, ให้ context, ระบุ format, แตกงานเป็นขั้น"
+    },
+    {
+      "title": "Anthropic — Prompt engineering overview (Claude Docs)",
+      "source": "docs.anthropic.com — Build with Claude / Prompt engineering",
+      "why": "อ่านหลักทางการอีกเจ้า: เขียนให้ชัด, ให้ context, ใช้ตัวอย่าง, ให้ model คิดเป็นขั้น"
+    }
+  ]
+}

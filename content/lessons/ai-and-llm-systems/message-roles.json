@@ -1,0 +1,67 @@
+{
+  "concept_id": "message-roles",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Message Roles",
+  "est_minutes": 7,
+  "body_md": "# Message Roles\n\n## ทำไมถึงสำคัญ\n\nChat-style LLM call ไม่ใช่ prompt ก้อนเดียว แต่เป็น **list ของ message** ที่แต่ละอันติด **role** กำกับว่าใครพูด. การแยก role ทำให้โมเดลรู้ว่าอะไรคือกฎถาวรของงาน อะไรคือคำขอ ณ ตอนนี้ และอะไรคือบริบทจากอดีต — โมเดลถูก train มาให้ชั่งน้ำหนักแต่ละ role ต่างกัน. ยัดทุกอย่างรวมเป็น text ก้อนเดียวทำให้โมเดลแยกไม่ออกว่าอันไหนคำสั่งอันไหนข้อมูล และ multi-turn context พังทันที.\n\n## แก่นของแนวคิด\n\n- ทุก chat API call = **array ของ messages** เรียงตามเวลา แต่ละตัวมี `role` + `content`. โมเดลอ่านทั้ง array แล้วทำนาย assistant message ตัวถัดไป.\n- **3 roles มาตรฐาน**:\n  - **system** — กำหนด persona, กฎ, และ constraint ที่ใช้กับ *ทั้งบทสนทนา*. ปกติมีตัวเดียว วางบนสุด เป็นที่วาง instruction ที่ถาวร (โทน, ภาษา, สิ่งที่ห้ามทำ, รูปแบบ output). โมเดลถูก train ให้ถือ system เป็น authoritative มากกว่า user แต่ *ไม่ใช่* คำสั่งเหล็ก.\n  - **user** — input จากมนุษย์: คำขอ ณ turn นั้น ๆ.\n  - **assistant** — คำตอบของโมเดล. ใน multi-turn เราส่ง assistant turn เก่ากลับเข้าไปด้วย เพื่อให้โมเดลเห็นสิ่งที่มันเคยพูดและต่อบทสนทนาได้ถูก.\n- **ทำไมต้องแยก**: โมเดลตีความ system = กติกาของงาน และ user = งานที่ต้องทำตอนนี้. ถ้าเอา rule ไปปนใน user message เดียวกับ data ที่ไม่น่าเชื่อถือ โมเดลจะแยกไม่ออกว่าอันไหน instruction อันไหนเนื้อหา — คุณภาพตกและเสี่ยงถูก override.\n- **single-turn vs multi-turn**: single-turn = `system` + `user` หนึ่งตัว. multi-turn = `system` + คู่ `user`/`assistant` สลับกันสะสมขึ้นเรื่อย ๆ. chat API เป็น **stateless** — โมเดลไม่จำ turn ก่อนเอง เราเป็นฝ่ายแนบ history ทั้งหมดกลับไปในทุก request.\n- การ *เขียนเนื้อหา* ในแต่ละ message ให้ชัด (แยก instruction จาก data, ให้ context พอดี) เป็นเรื่องของ sibling `prompt-engineering-basics` — บทนี้ owns แค่ *โครงสร้าง role* เท่านั้น.\n\n## ตัวอย่าง (support assistant ของธนาคาร)\n\nโครง messages ที่ส่งให้โมเดล:\n\n```json\n[\n  {\"role\": \"system\",\n   \"content\": \"คุณคือผู้ช่วย support ของ Bank X ตอบสุภาพและกระชับเป็นภาษาไทย ห้ามสัญญาว่าจะคืนเงิน (refund) เด็ดขาด เมื่อลูกค้าขอ refund ให้ escalate ไปเจ้าหน้าที่เสมอ\"},\n  {\"role\": \"user\", \"content\": \"ยอดเงินหาย 500 บาท ขอเงินคืนด้วย\"},\n  {\"role\": \"assistant\", \"content\": \"รบกวนขอโอนเรื่องให้เจ้าหน้าที่ตรวจสอบให้นะคะ...\"},\n  {\"role\": \"user\", \"content\": \"แล้วเมื่อไหร่จะได้เงิน\"}\n]\n```\n\nจุดสำคัญ:\n- **refund policy อยู่ใน system** ไม่ใช่ user — เพราะมันเป็นกฎถาวรที่ต้องคุมทุก turn ไม่ใช่คำขอครั้งเดียว.\n- ที่ user turn 2 พูดแค่ \"เงิน\" ลอย ๆ โมเดล resolve ได้ว่าหมายถึง refund 500 บาท **เพราะเห็น user/assistant turn ก่อนใน array** — ถ้าไม่แนบ history โมเดลจะงง.\n- อยากได้ output เป็นเครื่องอ่าน (เช่นสร้าง ticket) ก็ใส่ constraint ใน system เช่น ตอบเป็น JSON schema `{intent, escalate}` เท่านั้น ห้ามมี prose — system คือที่วาง output contract.\n\n```mermaid\nflowchart TD\n  S[\"system: durable rules\"] --> ARR[\"messages array\"]\n  U1[\"user: turn 1\"] --> ARR\n  A1[\"assistant: turn 1\"] --> ARR\n  U2[\"user: turn 2\"] --> ARR\n  ARR --> LLM[\"LLM\"]\n  LLM --> R[\"assistant: new reply\"]\n  R -. appended to history .-> ARR\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"system prompt เป็นกำแพงความปลอดภัย บังคับโมเดลได้ 100%\"** — ผิด. system มีน้ำหนักกว่า user จริง แต่ไม่ใช่ hard security boundary; user หรือ tool result ที่แฝงคำสั่งอาจ override ได้ (prompt injection) — รายละเอียดอยู่ที่ sibling `prompt-injection-intro`.\n- **\"โมเดลจำบทสนทนาเองระหว่าง turn\"** — ผิด. API stateless เราต้องแนบ history เองทุกครั้ง; ถ้าลืมแนบ โมเดลเหมือนเริ่มบทสนทนาใหม่.\n- **\"assistant message มีได้เฉพาะที่โมเดลสร้าง\"** — ไม่จริงเสมอไป เราประดิษฐ์ assistant message เพื่อ prefill หรือชี้นำรูปแบบคำตอบได้ (เป็นเทคนิค prompting → sibling).\n\n## ขีดจำกัด / trade-off\n\n- **system role ไม่ใช่ guarantee**: เป็น authoritative-ish ไม่ใช่ enforce ระดับโค้ด. injection override ได้ ⇒ ต้อง validate output ก่อนนำ action ไปทำจริงเสมอ ไม่ใช่เชื่อว่า system กันไว้ให้แล้ว.\n- **จ่าย token ทุก turn**: system prompt ถูกส่งซ้ำในทุก request เพราะ API stateless — system ยิ่งยาว ยิ่งแพงและ latency สูงขึ้น *ทุก* turn ไม่ใช่ครั้งเดียว. prompt caching ช่วยลดได้บางส่วน (ดู `caching-and-cost-control`).\n- **history โตชน context window**: multi-turn ที่ยาวขึ้นเรื่อย ๆ จะชนขีดจำกัด token ต้อง truncate หรือ summarize (ดู `context-management`).\n- **มีแค่ 3 roles**: อย่าพยายามประดิษฐ์ role ปลอมเพื่อยัด metadata — โครงสร้างนี้ตั้งใจให้เรียบง่าย งานจัดระเบียบ context ทำในเนื้อหาของ message ไม่ใช่เพิ่ม role.\n- เมื่อ *ไม่* ต้องแยกละเอียด: งาน one-shot ง่าย ๆ (แปล, สรุปสั้น) system อาจว่างหรือสั้นมากก็พอ — เขียน system prompt ยืดยาวให้งานจิ๊บจ๊อยคือ token ที่จ่ายฟรี.\n\n## มุมสัมภาษณ์\n\n- \"system กับ user message ต่างกันยังไง และกฎอย่าง refund policy ควรอยู่ role ไหน?\" → system = durable rule ทั้งบทสนทนา, user = คำขอตอนนี้ ⇒ policy อยู่ system.\n- \"ทำไมต้องส่ง assistant turn เก่ากลับเข้า request?\" → chat API stateless โมเดลไม่จำเอง history คือสิ่งที่ให้ multi-turn context.\n- \"system prompt กันการโดน hijack ได้ไหม?\" → ไม่ 100% เป็นสะพานไปเรื่อง prompt injection และความจำเป็นของ output validation.\n- \"single-turn กับ multi-turn โครงสร้าง message ต่างกันตรงไหน?\" → multi-turn สะสมคู่ user/assistant ต่อท้ายเรื่อย ๆ ใต้ system เดียว.\n",
+  "recall_checks": [
+    {
+      "q": "3 roles หลักใน chat message API คืออะไร และแต่ละอันทำหน้าที่อะไร?",
+      "expected_answer": "system = กฎ/persona ถาวรทั้งบทสนทนา, user = input จากมนุษย์ ณ turn นั้น, assistant = คำตอบโมเดล (และ turn เก่าที่แนบกลับเป็น context)",
+      "type": "short_answer"
+    },
+    {
+      "q": "กฎ 'ห้ามสัญญาคืนเงิน' ของ support assistant ควรวางไว้ที่ role ไหน?",
+      "expected_answer": "system message",
+      "type": "mcq",
+      "options": [
+        "user message",
+        "system message",
+        "assistant message"
+      ]
+    },
+    {
+      "q": "ทำไม chat API ต้องแนบ conversation history กลับไปในทุก request?",
+      "expected_answer": "เพราะ chat API เป็น stateless",
+      "type": "mcq",
+      "options": [
+        "เพราะโมเดลจำได้แต่ต้องยืนยันซ้ำเสมอ",
+        "เพื่อบังคับ output เป็น JSON เสมอ",
+        "เพราะ chat API เป็น stateless"
+      ]
+    },
+    {
+      "q": "system role กัน prompt injection ได้ 100% หรือไม่?",
+      "expected_answer": "ไม่ได้เต็มร้อย ต้อง validate เพิ่ม",
+      "type": "mcq",
+      "options": [
+        "ไม่ได้เต็มร้อย ต้อง validate เพิ่ม",
+        "ได้ เพราะเป็น hard security boundary",
+        "ได้ ถ้า system prompt ยาวพอ"
+      ]
+    },
+    {
+      "q": "multi-turn conversation ที่ส่งให้โมเดลประกอบด้วยอะไรบ้าง?",
+      "expected_answer": "system message (คงที่) หนึ่งตัว ตามด้วยคู่ user/assistant message ที่สลับและสะสมจาก turn ก่อน ๆ ส่งไปทั้งหมดทุก request",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "OpenAI Platform Docs — Text generation (message roles: system, user, assistant)",
+      "source": "platform.openai.com/docs/guides/text-generation",
+      "why": "อ่านว่า messages array กับ role ประกอบกันยังไงในทางปฏิบัติ"
+    },
+    {
+      "title": "Anthropic Docs — Messages API reference (user/assistant roles, system parameter)",
+      "source": "docs.anthropic.com — Messages API reference",
+      "why": "เทียบวิธีที่บาง provider แยก system ออกเป็น parameter ต่างหาก"
+    },
+    {
+      "title": "OpenAI Platform Docs — Prompt engineering guide",
+      "source": "platform.openai.com/docs/guides/prompt-engineering",
+      "why": "อ่านต่อเรื่องเขียนเนื้อหาใน message ให้ดี (เชื่อมกับ prompt-engineering-basics)"
+    }
+  ]
+}

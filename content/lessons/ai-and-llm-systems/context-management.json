@@ -1,0 +1,67 @@
+{
+  "concept_id": "context-management",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Context Management",
+  "est_minutes": 7,
+  "body_md": "# Context Management\n\n## ทำไมถึงสำคัญ\n\nContext window มีขนาดจำกัด (เรื่อง token กับขนาด window ดูได้ใน `tokens-and-context-window` ของ ch.1) — งานของคุณคือ *ตัดสินใจว่าจะใส่อะไรลงในพื้นที่จำกัดนั้น และใส่อย่างไร*. ยัดทุกอย่างเข้าไปไม่ได้ทำให้โมเดลฉลาดขึ้น: context ที่ไม่เกี่ยวข้องกลับ *เบี่ยงเบน* โมเดลและกินโควตา token ที่ควรเหลือไว้ให้คำตอบ. senior ที่ทำระบบ LLM จริงจึงมอง context เป็น budget ที่ต้องบริหาร ไม่ใช่ถังที่เทของลงไปให้เต็ม.\n\n## แก่นของแนวคิด\n\nContext management มีสี่ decision ที่ต้องทำทุก request:\n\n- **Relevance — ใส่เฉพาะที่เกี่ยวข้อง.** token ทุกตัวที่ไม่ช่วยตอบ task ตรงหน้าเป็นได้แค่ noise ที่ทำให้โมเดลเสียสมาธิและเพิ่ม cost. ตัดประวัติที่ไม่เกี่ยว, ตัด field ที่ไม่ใช้ออกจาก JSON, อย่าแนบเอกสารทั้งฉบับถ้าใช้จริงแค่ย่อหน้าเดียว.\n- **Compression — สรุปของยาวให้สั้น.** ประวัติการสนทนาที่ยาวขึ้นเรื่อย ๆ ไม่จำเป็นต้องส่งดิบทั้งหมด. เก็บเป็น **rolling summary**: สรุปสิ่งที่คุยไปแล้วเป็นย่อหน้าสั้น ๆ แล้วอัปเดตสรุปนั้นเมื่อบทสนทนาเดินหน้าต่อ.\n- **Budgeting — แบ่งพื้นที่ window.** window ก้อนเดียวต้องแชร์กันระหว่าง system prompt + summary + เอกสารที่ retrieve มา + turn ล่าสุด + *พื้นที่ที่กันไว้ให้คำตอบ*. ถ้าไม่กันที่ให้ output ไว้ คำตอบจะถูกตัดกลางคัน.\n- **Ordering — วางตำแหน่งให้ถูก.** โมเดลให้น้ำหนักข้อมูลช่วงต้นและช่วงท้ายของ context มากกว่าช่วงกลาง (ปรากฏการณ์ \"lost in the middle\"). ข้อมูลสำคัญที่สุด — instruction หลักและข้อเท็จจริงที่ต้องใช้ตอบ — ควรอยู่ต้นหรือท้าย ไม่ใช่จมอยู่กลางกองเอกสารยาว ๆ.\n\nการดึงความรู้ภายนอกเข้ามาใส่ context (RAG) เป็น *แหล่งหนึ่ง* ที่ป้อน context — วิธี retrieve อยู่ใน ch.4; บทนี้สนใจว่าเมื่อได้ของมาแล้วจะ *จัดการ* พื้นที่ window อย่างไร.\n\n## ตัวอย่าง (support thread ยาว)\n\nลูกค้าเปิด chat กับ support bot เรื่องข้อพิพาทการโอนเงิน คุยกันยาวจนกลายเป็น thread 200 ข้อความ. ถ้าส่งครบทั้ง 200 ข้อความทุกครั้งที่โมเดลต้องตอบ:\n\n- token ต่อ request บวมขึ้นเรื่อย ๆ → แพงและช้าขึ้นทุก turn\n- ข้อเท็จจริงสำคัญ (เลข transaction, ยอดเงินที่พิพาท) จมอยู่กลาง thread → โดน \"lost in the middle\"\n\nวิธีจัดการคือ เก็บ **rolling summary** (\"ลูกค้าโต้แย้งการโอน 4,500 บาท วันที่ 12 ก.ค., ยืนยันตัวตนแล้ว, กำลังรอผล investigation\") + **turn ล่าสุด 3–5 อัน** แบบดิบ ๆ ส่วนข้อความที่เก่ากว่านั้น truncate ทิ้งได้เพราะสรุปครอบคลุมแล้ว. วางสรุปไว้ต้น context และคำถามล่าสุดของลูกค้าไว้ท้าย — สองจุดที่โมเดลอ่านได้แม่นที่สุด.\n\n```mermaid\nflowchart TD\n  T[\"200-message support thread\"] -->|\"compress old turns\"| SUM[\"Rolling summary\"]\n  T -->|\"keep verbatim\"| REC[\"Recent turns: last 3-5\"]\n  subgraph W[\"Context window: fixed token budget\"]\n    SYS[\"System prompt: rules\"]\n    SUM\n    RET[\"Retrieved docs: relevant only\"]\n    REC\n    ANS[\"Reserved answer space\"]\n  end\n```\n\n(การเก็บ state ของ session ระยะยาว — เช่นเก็บ summary นี้ไว้ที่ไหน, resume conversation อย่างไร — เป็นเรื่องของ session/state modeling ใน ch.7)\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"window ใหญ่ขึ้น (เช่น 200k token) แปลว่าไม่ต้องจัดการ context แล้ว\"** ผิด. window ใหญ่ลดปัญหาแค่บางส่วน — context ที่ยาวยังแพงขึ้นตาม token, ยังช้าลง, และ \"lost in the middle\" ยังเกิดกับ window ใหญ่ ข้อมูลกลางกองก็ยังถูกมองข้าม.\n- **\"ใส่ context เยอะ = คำตอบดีขึ้น\"** ผิด. เกินจุดหนึ่ง context ส่วนเกินกลายเป็น noise ที่ *ลด* คุณภาพ ไม่ใช่เพิ่ม.\n- **\"summarize แล้วยังเก็บได้ครบทุกอย่าง\"** ผิด. การสรุปคือการ *ยอมทิ้งรายละเอียด* โดยตั้งใจ — เป็น trade-off ไม่ใช่ของฟรี.\n\n## ขีดจำกัด / trade-off\n\nทุกเทคนิคในบทนี้มีราคาของมัน:\n\n- **Summarize เสียรายละเอียด.** rolling summary อาจตัดข้อมูลที่ภายหลังกลับกลายเป็นสำคัญ (เช่นลูกค้าเคยบอก reference number ตอนต้น thread แต่สรุปไม่ได้เก็บไว้). ยิ่งบีบอัดแรง ยิ่งเสี่ยงทิ้งของจำเป็น และการรัน summarize เองก็เป็น LLM call ที่มี cost/latency เพิ่มขึ้นมาอีก.\n- **Stuff more เสีย cost + accuracy.** ทางกลับกัน การใส่เผื่อไว้ให้ครบก็แลกด้วย token ที่แพงขึ้น, latency สูงขึ้น, และความเสี่ยง lost-in-the-middle. ไม่มีจุดที่ได้ทุกอย่างพร้อมกัน — ต้องเลือกตาม task.\n- **เมื่อไหร่ไม่ต้องลงแรง:** งาน single-turn สั้น ๆ ที่ context พอดี window อยู่แล้ว การสร้างกลไก summary/budget เป็น over-engineering. ลงแรงเมื่อบทสนทนายาว, เอกสารเยอะ, หรือ cost ต่อ request สำคัญเท่านั้น.\n\n## มุมสัมภาษณ์\n\n- \"ประวัติการสนทนายาวเกิน window จะทำอย่างไร?\" → rolling summary + เก็บ turn ล่าสุดไม่กี่อัน + truncate/retrieve ของเก่า ไม่ใช่ส่งดิบทั้งหมด.\n- \"รู้จัก lost in the middle ไหม มีผลต่อการออกแบบ prompt อย่างไร?\" → วางข้อมูลสำคัญไว้ต้น/ท้าย context ไม่ใช่ตรงกลาง.\n- \"ทำไม window ใหญ่ขึ้นถึงไม่ได้แก้ปัญหา context ทั้งหมด?\" → ยังแพง, ยังช้า, และยัง lost-in-the-middle; ต้อง curate อยู่ดี.\n- \"จะแบ่ง token budget ของหนึ่ง request อย่างไร?\" → กันที่ให้ system + summary + retrieved + recent turns และเผื่อพื้นที่คำตอบ (output) ไว้เสมอ.\n",
+  "recall_checks": [
+    {
+      "q": "เมื่อประวัติการสนทนายาวจนใกล้เต็ม context window เทคนิคหลักในการจัดการคืออะไร?",
+      "expected_answer": "เก็บ rolling summary ของบทสนทนาเก่า + เก็บ turn ล่าสุดไม่กี่อันแบบดิบ แล้ว truncate หรือ retrieve เฉพาะส่วนที่เหลือ ไม่ส่งดิบทั้งหมด",
+      "type": "short_answer"
+    },
+    {
+      "q": "ปรากฏการณ์ \"lost in the middle\" บอกว่าอะไร?",
+      "expected_answer": "ให้น้ำหนักข้อมูลช่วงต้นและท้ายมากกว่าช่วงกลาง",
+      "type": "mcq",
+      "options": [
+        "ประมวลผล context ที่สั้นกว่าได้แม่นยำมากกว่าเสมอ",
+        "ให้น้ำหนักข้อมูลช่วงต้นและท้ายมากกว่าช่วงกลาง",
+        "ลืมข้อมูลทั้งหมดทันทีที่ context ยาวเกิน window"
+      ]
+    },
+    {
+      "q": "การใส่ context เข้า prompt มากเกินความจำเป็นทำให้เกิดผลเสียอะไร?",
+      "expected_answer": "เปลืองต้นทุน token และช้าลงโดยไม่ช่วยคุณภาพ",
+      "type": "mcq",
+      "options": [
+        "เปลืองต้นทุน token และช้าลงโดยไม่ช่วยคุณภาพ",
+        "โมเดลจะตอบยาวขึ้นและสุภาพขึ้นโดยอัตโนมัติ",
+        "context window จะขยายขนาดให้เองโดยอัตโนมัติ"
+      ]
+    },
+    {
+      "q": "หลัก relevance ในการจัดการ context หมายถึงอะไร?",
+      "expected_answer": "ใส่เฉพาะข้อมูลที่เกี่ยวข้องกับ task ตรงหน้า",
+      "type": "mcq",
+      "options": [
+        "ใส่ประวัติการสนทนาทั้งหมดให้ครบทุก turn เสมอ",
+        "ใส่เอกสารทุกฉบับที่มีเผื่อโมเดลอาจได้ใช้",
+        "ใส่เฉพาะข้อมูลที่เกี่ยวข้องกับ task ตรงหน้า"
+      ]
+    },
+    {
+      "q": "ในการ budget token ของ window ทำไมต้องกันพื้นที่ส่วนหนึ่งไว้เสมอ?",
+      "expected_answer": "ต้องกันพื้นที่ไว้ให้ output/คำตอบของโมเดล ถ้าใช้ token จนหมดไปกับ input คำตอบจะถูกตัดกลางคัน",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Lost in the Middle: How Language Models Use Long Contexts",
+      "source": "Liu et al., 2023 — arXiv:2307.03172",
+      "why": "อ่านหลักฐานเชิงทดลองว่าโมเดลใช้ข้อมูลช่วงต้น/ท้าย context ได้ดีกว่าช่วงกลาง"
+    },
+    {
+      "title": "Effective context engineering for AI agents",
+      "source": "Anthropic Engineering blog — \"Effective context engineering for AI agents\"",
+      "why": "อ่านแนวทางการ curate context ให้เหลือเฉพาะที่จำเป็นและจัดลำดับให้โมเดลใช้ได้จริง"
+    },
+    {
+      "title": "Conversation summarization / memory",
+      "source": "LangChain documentation — memory summarization (ConversationSummaryBufferMemory)",
+      "why": "ดูวิธี implement rolling summary + truncation ของประวัติการสนทนาในโค้ดจริง"
+    }
+  ]
+}
