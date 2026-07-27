@@ -1,0 +1,67 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "vector-databases",
+  "version": 1,
+  "title_en": "Vector Databases",
+  "est_minutes": 8,
+  "body_md": "# Vector Databases\n\n## ทำไมถึงสำคัญ\n\nเมื่อคุณมี embedding (vector ที่สะท้อนความหมายของข้อความ — ดู sibling `embeddings-and-semantic-search`) เป็นล้าน ๆ ตัว การหา \"ตัวที่ใกล้เคียงคำถามที่สุด\" ด้วยการเทียบทีละตัว (brute-force / exact nearest neighbor) ต้องคำนวณ distance กับทุก vector ในทุก query ซึ่งช้าเกินใช้ใน production. Vector database คือ storage engine ที่ออกแบบมาเก็บ embedding จำนวนมากและ **ค้นเพื่อนบ้านที่ใกล้ที่สุดได้เร็ว**. หัวใจที่ต้องตอบให้ได้: มันเร็วเพราะยอม \"ประมาณ\" คำตอบ ไม่ใช่หาคำตอบที่ถูกเป๊ะทุกครั้ง.\n\n## แก่นของแนวคิด: ANN แลก recall นิดเดียวเพื่อความเร็วมหาศาล\n\n- **Query flow**: แปลงคำถามเป็น query vector → ส่งเข้า index → ได้ top-k เพื่อนบ้านที่ใกล้ที่สุด (วัดระยะด้วย cosine / dot product / L2).\n- **ทำไม brute-force ไม่ไหว**: exact k-NN เป็น O(N) ต่อ query — ต้องเทียบครบทุก vector. N ระดับล้าน คูณด้วยหลาย query ต่อวินาที = ช้าเกินรับได้.\n- **ทางออกคือ ANN index** (Approximate Nearest Neighbor): โครงสร้างที่ตัด search space ให้เหลือ candidate ส่วนน้อยแทนการสแกนทั้งหมด. ตระกูล index ที่พบบ่อย (ยกเป็นตัวอย่างทั่วไป ไม่ใช่การเชียร์ตัวใดตัวหนึ่ง):\n  - **HNSW** (graph-based): สร้าง multi-layer graph ให้เดินจากจุดหนึ่งเข้าหาเพื่อนบ้านที่ใกล้ขึ้นเรื่อย ๆ.\n  - **IVF** (partition-based): แบ่ง vector space เป็น cluster ก่อน แล้ว query แตะเฉพาะไม่กี่ cluster ที่ใกล้.\n- คำว่า **approximate** คือหัวใจ: index อาจ **พลาด** เพื่อนบ้านจริงบางตัวเพื่อแลกความเร็ว. คุณภาพวัดด้วย **recall** — ผลที่คืนมาตรงกับผลของ exact search กี่ %.\n\nFeatures ที่ทำให้ vector DB ต่างจาก \"ที่เก็บ vector เฉย ๆ\":\n\n- **Metadata filtering**: เก็บ metadata คู่กับ vector (เช่น `tenant_id`, `language`, `region`, `doc_type`) แล้ว query แบบ \"หาเพื่อนบ้านที่ใกล้ที่สุด *เฉพาะ* ที่ตรง filter\" — จำเป็นมากกับ multi-tenant และ compliance.\n- **Upsert**: เพิ่ม/แก้ vector ต่อเนื่องได้ ไม่ต้อง rebuild index ทั้งก้อน.\n- **Hybrid search**: ผสม vector similarity กับ keyword/full-text (เช่น BM25) เพื่อจับทั้งความหมายและคำตรงตัวอย่างรหัสสินค้าหรือชื่อเฉพาะ ที่ semantic ล้วน ๆ มักพลาด.\n\n```mermaid\nflowchart LR\n  Q[\"Question text\"] --> E[\"Embed to query vector\"]\n  E --> IDX[\"ANN index HNSW or IVF\"]\n  F[\"Metadata filter: tenant, language\"] --> IDX\n  IDX --> K[\"Top-k nearest vectors\"]\n  K --> R[\"Chunks plus metadata to RAG\"]\n```\n\n## ตัวอย่าง (support / multi-region KB)\n\nSupport bot ของบริษัท fintech มี knowledge base เป็นล้าน chunk ครอบคลุมหลายประเทศและหลายภาษา (การตัดเอกสารเป็น chunk เป็นเรื่องของ sibling `chunking-strategies`). ลูกค้าคนไทยถามเรื่องค่าธรรมเนียมโอนเงิน — ถ้าค้น semantic ทั้ง KB ดิบ ๆ อาจได้ chunk ภาษาอังกฤษที่เป็น policy ของประเทศอื่นซึ่ง \"ความหมายใกล้\" แต่ผิด region.\n\nวิธีที่ถูกคือแนบ metadata `{tenant: \"TH\", language: \"th\", product: \"transfer\"}` ไปกับทุก vector ตอน index. เวลา query เอา query vector บวกกับ filter `language = \"th\" AND region = \"TH\"` ส่งเข้า ANN index พร้อมกัน — DB คืน top-k เพื่อนบ้านที่ใกล้ที่สุด *ในกลุ่มที่ผ่าน filter เท่านั้น*. ผลคือ bot ตอบด้วย policy ที่ถูกภาษา ถูกประเทศ และ tenant หนึ่งไม่มีวันเห็นข้อมูลของอีก tenant (data isolation). chunk ที่ได้ถูกส่งต่อเข้า RAG prompt — flow เต็มเป็นของ sibling `rag-pipeline-and-grounding`.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"vector search คืนผลถูกต้องเป๊ะเสมอเหมือน SQL WHERE\"** — ผิด. ANN เป็น approximate โดยเจตนา อาจพลาดเพื่อนบ้านจริงบางตัว. ถ้าต้องการ exact 100% ต้องยอมช้า (brute-force) หรือดัน recall ของ index ขึ้นโดยแลกความเร็ว/หน่วยความจำ.\n- **\"จะทำ semantic search ต้องมี vector database เฉพาะทางเสมอ\"** — ผิด. ข้อมูลระดับไม่กี่พันถึงหลักแสน vector, library ในหน่วยความจำ (เช่น FAISS) หรือ extension บน relational DB ที่มีอยู่แล้ว (เช่น pgvector บน Postgres) มักพอและง่ายกว่ามาก.\n- **\"metadata filter ทำให้ query เร็วขึ้นเสมอ\"** — ไม่จริง. การผสม filter เข้ากับ ANN index ทำได้ยากกว่าที่คิด; filter ที่เข้มอาจทำให้ index หา candidate ที่ผ่านเงื่อนไขได้ยากจน recall ตกหรือช้าลง.\n\n## ขีดจำกัด / trade-offs (senior เจาะ trade-off ไม่ใช่จุดขาย)\n\n- **Approximate = อาจ miss**: ANN แลก recall เพื่อ speed. use case ที่ทน false-negative ไม่ได้ (เช่น legal/compliance ที่ \"ต้องเจอทุกอันที่เกี่ยวข้อง\") ต้องระวัง — อาจต้องดัน recall สูงจนความเร็วหาย หรือใช้วิธีอื่นเสริม.\n- **สามเหลี่ยม recall ↔ speed ↔ memory**: ปรับ parameter ให้ recall สูงขึ้น มักแลกด้วย RAM ที่มากขึ้นและ/หรือ query ที่ช้าลง — เลือกได้แค่จุดสมดุล ไม่ได้ทั้งสามพร้อมกัน. HNSW มักให้ recall สูงและเร็วแต่กิน RAM หนัก; IVF ประหยัด RAM กว่าแต่ต้อง tune ให้ดี.\n- **Build + memory cost**: ANN index ส่วนใหญ่อยู่ใน RAM และมีต้นทุนตอนสร้าง; ข้อมูลใหญ่มากต้อง shard หรือ quantize (บีบ vector ให้เล็กลง) ซึ่งก็แลกด้วย recall อีกทอด.\n- **Pre-filter vs post-filter**: pre-filter (จำกัดชุดก่อนค้น) แม่นแต่ทำยากกับบาง index; post-filter (ค้นก่อนแล้วค่อยกรอง) ง่ายแต่ top-k อาจเหลือน้อยกว่าที่ขอเมื่อ filter เข้ม.\n- **เมื่อไหร่ไม่ควรเพิ่ม vector DB แยก**: ข้อมูลเล็ก, query ไม่ถี่, หรือทีมมี Postgres อยู่แล้ว → pgvector/library พอ. vector DB แยกคืออีกหนึ่ง system ที่ต้อง deploy, monitor, backup และ sync ให้ตรงกับ source of truth — ต้นทุน operational นี้คุ้มก็ต่อเมื่อ scale หรือ latency บังคับจริง.\n\n## มุมสัมภาษณ์\n\n- **\"ทำไมไม่หา nearest neighbor แบบ brute-force ไปเลย?\"** → exact k-NN เป็น O(N) ต่อ query; ที่ N ล้านและ throughput สูงจะช้าเกินไป. ANN ตัด search space แลก recall เล็กน้อยเพื่อความเร็ว.\n- **\"ANN ต่างจาก exact search ยังไง และแลกอะไร?\"** → approximate อาจพลาดเพื่อนบ้านจริงบางตัว; วัดคุณภาพด้วย recall; ดัน recall ขึ้นแลกด้วย speed/memory.\n- **\"multi-tenant กันไม่ให้เห็นข้อมูลกันยังไง?\"** → metadata filtering ด้วย `tenant_id` คู่กับ vector search; ระวังเรื่อง pre vs post filter.\n- **\"เมื่อไหร่ไม่ต้องมี vector database เฉพาะทาง?\"** → ข้อมูลเล็กหรือมี Postgres อยู่แล้ว → pgvector/FAISS พอ อย่าเพิ่ม infra ถ้า scale ไม่บังคับ.\n- **\"HNSW กับ IVF เลือกยังไง?\"** → เจาะ trade-off recall/speed/memory: HNSW เร็วและ recall สูงแต่กิน RAM; IVF ประหยัด RAM แต่ต้อง tune.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม vector database ถึงใช้ ANN index แทนการเทียบทุก vector แบบ brute-force?",
+      "expected_answer": "เพราะ exact k-NN เป็น O(N) ต่อ query ช้าเกินไปเมื่อมี vector จำนวนมากและ query ถี่; ANN ตัด search space ให้เหลือ candidate ส่วนน้อย แลก recall เล็กน้อยเพื่อความเร็ว",
+      "type": "short_answer"
+    },
+    {
+      "q": "ANN index แลกอะไรเพื่อให้ค้นได้เร็วขึ้น?",
+      "expected_answer": "recall — อาจพลาดเพื่อนบ้านบางตัว",
+      "type": "mcq",
+      "options": [
+        "จำนวน vector สูงสุดที่ index รองรับได้",
+        "recall — อาจพลาดเพื่อนบ้านบางตัว",
+        "ความแม่นของ metadata filter ทุกครั้ง"
+      ]
+    },
+    {
+      "q": "จะกันไม่ให้ tenant A เห็นข้อมูลของ tenant B ใน vector search ทำได้อย่างไร?",
+      "expected_answer": "filter ด้วย metadata tenant_id ตอน query",
+      "type": "mcq",
+      "options": [
+        "เข้ารหัส vector ของแต่ละ tenant แยกไฟล์เก็บ",
+        "สร้าง embedding model แยกต่อ tenant แต่ละราย",
+        "filter ด้วย metadata tenant_id ตอน query"
+      ]
+    },
+    {
+      "q": "กรณีใดที่มักยังไม่จำเป็นต้องเพิ่ม vector database เฉพาะทาง?",
+      "expected_answer": "ข้อมูลเล็ก และมี Postgres อยู่แล้ว",
+      "type": "mcq",
+      "options": [
+        "ข้อมูลเล็ก และมี Postgres อยู่แล้ว",
+        "มี vector หลายล้านและ throughput query สูงมาก",
+        "ต้องการ latency ต่ำที่สุดเมื่อ scale ใหญ่มาก"
+      ]
+    },
+    {
+      "q": "recall ในบริบทของ ANN search หมายถึงอะไร?",
+      "expected_answer": "สัดส่วนของเพื่อนบ้านจริง (ผลจาก exact search) ที่ ANN คืนกลับมาได้ครบกี่ %; recall ยิ่งสูงยิ่งพลาดผลจริงน้อย แต่มักแลกด้วย speed หรือ memory ที่มากขึ้น",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Efficient and Robust Approximate Nearest Neighbor Search Using Hierarchical Navigable Small World Graphs (HNSW)",
+      "source": "Malkov & Yashunin, IEEE TPAMI 2018 (arXiv:1603.09320)",
+      "why": "อ่านต้นฉบับว่า HNSW ตัด search space ด้วย multi-layer graph อย่างไร และ recall/speed แลกกันตรงไหน"
+    },
+    {
+      "title": "Billion-scale similarity search with GPUs",
+      "source": "Johnson, Douze & Jégou 2017, arXiv:1702.08734",
+      "why": "อ่านว่า library ในหน่วยความจำทำ ANN + quantization ระดับพันล้าน vector ได้อย่างไร โดยยังไม่ต้องมี vector DB แยก"
+    },
+    {
+      "title": "pgvector — open-source vector similarity search for Postgres",
+      "source": "pgvector GitHub repository (github.com/pgvector/pgvector)",
+      "why": "อ่านทางเลือกเมื่อข้อมูลเล็กหรือมี Postgres อยู่แล้ว: ทำ vector search บน relational DB โดยไม่เพิ่ม infrastructure"
+    }
+  ]
+}

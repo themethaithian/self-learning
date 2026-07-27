@@ -1,0 +1,67 @@
+{
+  "concept_id": "rag-pipeline-and-grounding",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "RAG Pipeline and Grounding",
+  "est_minutes": 8,
+  "body_md": "# RAG Pipeline and Grounding\n\n## ทำไมถึงสำคัญ\n\nRAG (Retrieval-Augmented Generation) คือ flow ที่ \"หาความรู้ที่เกี่ยวข้องมาป้อนให้โมเดลตอนตอบ\" แทนที่จะหวังให้โมเดลจำได้เองจาก training. มันทำให้ระบบตอบด้วยข้อมูลสดหรือข้อมูลลับเฉพาะองค์กรที่โมเดลไม่เคยเห็นตอนเทรน โดยไม่ต้อง retrain และการ ground คำตอบกับเอกสารจริงช่วยลด hallucination ลงมาก. แต่หัวใจที่ต้องจำคือ RAG ดีได้แค่เท่าที่ retrieval ดี — ดึงผิดมา คำตอบก็ผิดทั้งที่ดู \"มีหลักฐาน\".\n\n## แก่นของแนวคิด\n\nRAG แยกเป็นสองช่วง:\n\n- **Offline (indexing):** เอาเอกสาร → ตัดเป็น chunk → ทำ embedding → เก็บใน vector store. (chunking, embedding, vector DB เป็นเรื่องของ sibling สามตัวในบทนี้ — สมมติว่ารู้แล้ว)\n- **Online (answering):** รับ query → embed query → retrieve top-k chunk ที่ใกล้เคียงที่สุด → เอา chunk ไปแปะใน prompt เป็น context ต่อท้ายคำถาม → โมเดล generate คำตอบที่ **grounded** อยู่บน context นั้น → แนบ **citation** ชี้กลับไปยัง chunk ต้นทาง\n\n**Grounding** = การบังคับให้คำตอบอิงกับข้อความที่เรายื่นให้ ไม่ใช่ความจำล้วนของโมเดล. เพราะข้อเท็จจริงอยู่ตรงหน้าใน prompt แล้ว โมเดลจึงมีแนวโน้มเดาน้อยลง. **Citation** คือการอ้างอิงว่าประโยคไหนมาจาก chunk ไหน — ทำให้ผู้ใช้ (และระบบ eval) ตรวจย้อนได้ว่าคำตอบมีหลักฐานจริงหรือแต่งเอง.\n\nจุดที่ต้องเน้น: retrieval คือ **เพดาน** ของคุณภาพ. ถ้า top-k ที่ดึงมาไม่มีคำตอบอยู่เลย โมเดลจะทำได้ดีที่สุดแค่ตอบจาก chunk ผิด ๆ (grounded-but-wrong) หรือหลุดไปเดาเอง. RAG ไม่ได้ทำให้โมเดล \"ฉลาดขึ้น\" มันแค่ \"ป้อนของให้ถูก\" — ถ้าป้อนผิด ผลก็ผิด.\n\n```mermaid\nflowchart TD\n  subgraph Offline\n    D[Source docs / KB] --> CH[Chunk]\n    CH --> EM1[Embed chunks]\n    EM1 --> VS[(Vector store)]\n  end\n  subgraph Online\n    Q[User query] --> EM2[Embed query]\n    EM2 --> R[\"Retrieve top-k chunks\"]\n    VS --> R\n    R --> P[\"Build prompt: context + question\"]\n    P --> M[LLM generate]\n    M --> A[\"Grounded answer + citations\"]\n  end\n```\n\n## ตัวอย่าง (support / knowledge base)\n\nทีม support ของแอปการเงินมี knowledge base เป็นบทความหลายร้อยชิ้น. ลูกค้าถามว่า \"ทำไมโอนเงินแล้วปลายทางยังไม่เข้า?\"\n\n1. embed คำถามลูกค้า → เทียบใน vector store\n2. retrieve top-3 chunk ได้บทความ KB-142 \"Interbank transfer settlement timing\" และ KB-090 \"Pending transaction states\"\n3. prompt ที่ส่งเข้าโมเดล = system instruction + context (เนื้อ chunk ทั้งสาม) + คำถามลูกค้า\n4. โมเดลตอบว่า \"การโอนข้ามธนาคารรอบนี้จะ settle ภายใน 1–2 ชั่วโมงทำการ สถานะตอนนี้คือ pending [KB-142]\" — พร้อม citation ชี้ไปที่ KB-142\n\nผลลัพธ์: ลูกค้าได้คำตอบจากนโยบายจริงของบริษัท ไม่ใช่ตัวเลขที่โมเดลเดา และทีม support กดเปิด KB-142 ตรวจได้ทันทีว่าถูกต้อง. ถ้า retrieval พลาดไปดึงบทความเรื่อง \"ค่าธรรมเนียมการโอน\" มาแทน โมเดลก็จะตอบเรื่องค่าธรรมเนียมอย่างมั่นใจ — grounded บนเอกสารที่ผิด นี่คือหน้าตาของ garbage retrieval → grounded-but-wrong.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ใส่ RAG แล้ว hallucination หายหมด\"** ผิด. RAG ลด hallucination ได้ก็ต่อเมื่อ retrieval ดึงของถูกมา และโมเดลยังอาจ \"เมิน\" หรือขัดกับ context ที่ให้ได้ จึงต้อง verify + cite เสมอ (การวัด groundedness เป็นเรื่องของ ch.9 `eval-metrics-groundedness`).\n- **\"RAG คือการ fine-tune แบบหนึ่ง\"** ผิด. RAG ไม่แตะ weight ของโมเดลเลย มันแค่เปลี่ยน prompt ตอน runtime. เมื่อไหร่ควรใช้ RAG เทียบกับ fine-tune หรือ long-context เป็นเรื่องของ sibling `rag-vs-finetune-vs-long-context`.\n- **\"top-k ยิ่งเยอะยิ่งดี\"** ผิด. ยัด chunk เยอะเกินทำให้ context เจือจาง เปลือง token และดัน chunk ที่ตรงจริงให้จมอยู่กลางกอง (lost in the middle).\n\n## ขีดจำกัด / เมื่อไหร่ต้องระวัง\n\n- **Retrieval เป็นเพดาน:** ทั้ง pipeline แพ้ตั้งแต่ step แรกถ้า retrieve ผิด. งบส่วนใหญ่ของการทำ RAG ให้ดีหมดไปกับการปรับ chunking, embedding, และ re-ranking ไม่ใช่การปรับ prompt ตอน generate.\n- **Grounded ≠ ถูก:** คำตอบที่อ้าง citation ดูน่าเชื่อ แต่ถ้า chunk ต้นทางผิดหรือล้าสมัย หรือโมเดลอ่าน context ผิด คำตอบก็ผิด. citation แค่ทำให้ตรวจสอบได้ ไม่รับประกันความถูก.\n- **Latency + complexity เพิ่ม:** ทุก request มี extra hop (embed query + vector search) ก่อนถึงโมเดล และต้องดูแล indexing pipeline, vector store, การ re-embed เมื่อเอกสารเปลี่ยน — มี moving parts มากกว่าเรียกโมเดลตรง ๆ.\n- **Stale index:** เอกสารในองค์กรเปลี่ยน แต่ vector store ยังเป็นเวอร์ชันเก่า → RAG ตอบด้วยข้อมูลเก่าอย่างมั่นใจ. ต้องมี re-index หรือ invalidation strategy.\n- **เมื่อไม่ควรใช้:** ถ้าความรู้ที่ต้องใช้พอดีกับ context window อยู่แล้ว (เอกสารเดียวสั้น ๆ) การยัด long-context ตรง ๆ ง่ายและแม่นกว่า ไม่ต้องแบก retrieval stack; ถ้าสิ่งที่อยากปรับคือ \"สไตล์หรือรูปแบบคำตอบ\" ไม่ใช่ \"ความรู้\" RAG ช่วยไม่ได้ นั่นเป็นงานของ fine-tune.\n\n## มุมสัมภาษณ์\n\n- \"ออกแบบ RAG pipeline สำหรับ support bot จาก KB บริษัท ทำยังไง?\" → เล่าสองช่วง offline/online, เน้นว่า retrieval คือจุดที่คุณภาพชี้ขาด และต้องมี citation + eval.\n- \"ใส่ RAG แล้วยังตอบผิด จะ debug ที่ไหนก่อน?\" → ดู retrieval ก่อนเสมอ: chunk ที่ดึงมามีคำตอบไหม; ถ้าไม่มี ปัญหาอยู่ที่ chunking/embedding/top-k ไม่ใช่ prompt.\n- \"RAG ต่างจาก fine-tune ยังไง เลือกอันไหน?\" → สะพานไป sibling `rag-vs-finetune-vs-long-context`.\n- \"จะรู้ได้ยังไงว่าคำตอบ ground จริง ไม่ได้แต่ง?\" → citation ให้ตรวจย้อน บวกกับวัด groundedness/faithfulness (ch.9).\n",
+  "recall_checks": [
+    {
+      "q": "ลำดับขั้น online ของ RAG จาก query ถึงคำตอบมีอะไรบ้าง?",
+      "expected_answer": "embed query → retrieve top-k chunk → ใส่ chunk เป็น context ใน prompt ต่อท้ายคำถาม → โมเดล generate คำตอบที่ grounded พร้อม citation",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดถูกต้องที่สุดเกี่ยวกับ RAG กับ hallucination?",
+      "expected_answer": "RAG ลด hallucination ได้เมื่อ retrieval ดี",
+      "type": "mcq",
+      "options": [
+        "RAG กำจัด hallucination ได้ทุกกรณีเสมอไป",
+        "RAG ลด hallucination ได้เมื่อ retrieval ดี",
+        "RAG เพิ่ม hallucination เพราะ context ที่ยาว"
+      ]
+    },
+    {
+      "q": "ทำไมคุณภาพของ retrieval จึงเป็น 'เพดาน' ของคุณภาพคำตอบใน RAG?",
+      "expected_answer": "ถ้า retrieve chunk ที่ผิดหรือไม่เกี่ยวมา โมเดลจะ ground คำตอบอยู่บนข้อมูลผิด ได้คำตอบที่ grounded-but-wrong หรือหลุดไปเดาเอง — โมเดลตอบได้ดีที่สุดแค่เท่าที่ของที่ป้อนเข้าไปถูก",
+      "type": "short_answer"
+    },
+    {
+      "q": "จุดประสงค์หลักของการใส่ citation ในคำตอบ RAG คืออะไร?",
+      "expected_answer": "ให้ผู้ใช้ตรวจสอบแหล่งที่มาของคำตอบได้",
+      "type": "mcq",
+      "options": [
+        "ทำให้ prompt สั้นลงและประหยัด token มากขึ้น",
+        "ทำให้คำตอบดูยาวและน่าเชื่อถือกว่าเดิม",
+        "ให้ผู้ใช้ตรวจสอบแหล่งที่มาของคำตอบได้"
+      ]
+    },
+    {
+      "q": "ข้อใดเป็น trade-off ที่แท้จริงของการใช้ RAG ใน production?",
+      "expected_answer": "เพิ่ม latency และ complexity ให้ระบบ",
+      "type": "mcq",
+      "options": [
+        "เพิ่ม latency และ complexity ให้ระบบ",
+        "โมเดลไม่จำเป็นต้องใช้ context ในการตอบอีก",
+        "ทำให้ vector index ไม่มีวันล้าสมัยเลย"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks (Lewis et al., 2020)",
+      "source": "arxiv.org/abs/2005.11401",
+      "why": "อ่านเปเปอร์ต้นฉบับที่นิยาม RAG และแนวคิด grounding ด้วย retriever + generator"
+    },
+    {
+      "title": "Retrieval-Augmented Generation for Large Language Models: A Survey (Gao et al., 2023)",
+      "source": "arxiv.org/abs/2312.10997",
+      "why": "อ่านภาพรวม pipeline retrieve→augment→generate และปัญหา retrieval quality อย่างเป็นระบบ"
+    },
+    {
+      "title": "Emerging Patterns in Building GenAI Products",
+      "source": "martinfowler.com/articles/gen-ai-patterns/",
+      "why": "อ่านมุม engineering ของ RAG เป็น pattern จริงในงาน production พร้อมข้อควรระวัง"
+    }
+  ]
+}
