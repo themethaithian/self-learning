@@ -1,0 +1,67 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "sampling-and-temperature",
+  "version": 1,
+  "title_en": "Sampling and Temperature",
+  "est_minutes": 8,
+  "body_md": "# Sampling and Temperature\n\n## ทำไมถึงสำคัญ\n\nโมเดลไม่ได้ 'เลือก' คำตอบเดียวตายตัว แต่ทุกก้าว output เป็น probability distribution เหนือ token ถัดไป (token และ distribution คืออะไร ดู what-is-an-llm และ tokens-and-context-window — สมมติว่ารู้แล้ว). วิธีที่คุณหยิบ token ออกจาก distribution นั้นเรียกว่า decoding และมันคือ knob ที่ตัดสินว่าคำตอบจะ deterministic/น่าเบื่อ หรือ หลากหลาย/เพี้ยน. ตั้งผิดค่าเดียว งาน extraction ก็ได้ผลไม่ stable ส่วนงาน brainstorm ก็ได้คำตอบซ้ำเดิมทุกครั้ง.\n\n## แก่นของแนวคิด\n\n- **Greedy decoding**: เลือก token ที่ probability สูงสุดเสมอ (argmax) → deterministic, reproducible แต่มักได้ข้อความซ้ำ ตัน วนลูป น่าเบื่อ.\n- **Sampling**: สุ่ม token ตาม probability จริง — token ที่มีน้ำหนัก 0.6 จะถูกหยิบราว 60% ของครั้ง → คำตอบหลากหลายขึ้น.\n- **Temperature**: ปรับความชันของ distribution *ก่อน* sample. ค่าต่ำ (เข้าใกล้ 0) ทำให้ distribution แหลม (token เด่นยิ่งเด่น) เข้าใกล้ greedy; ค่าสูงทำให้ distribution แบน (token หางยาวมีโอกาสมากขึ้น) → สุ่ม/สร้างสรรค์ แต่หลุดประเด็นและ hallucinate ง่ายขึ้น.\n- **top-p (nucleus sampling)**: แทนที่จะ sample จาก token ทั้ง vocab ให้ sample จากเซตเล็กที่สุดที่รวม probability mass ถึง p (เช่น p=0.9) แล้วตัด tail ที่เหลือทิ้ง — กัน token ขยะสุดขั้วออกแบบยืดหยุ่นกว่าการ fix จำนวนตัว (top-k).\n- temperature กับ top-p ใช้ร่วมกันได้: temperature ปรับ *รูป* ของ distribution, top-p *ตัด* tail.\n\n```mermaid\nflowchart TD\n  D[\"Next-token distribution\"] --> T[\"Temperature: scale distribution sharper or flatter\"]\n  T --> P[\"top-p: truncate to smallest set covering mass p\"]\n  P --> S[\"Sample: draw by probability\"]\n  D --> G[\"Greedy: pick argmax, skip sampling\"]\n  S -->|\"low temp\"| LT[\"Near-deterministic, safe, bland\"]\n  S -->|\"high temp\"| HT[\"Diverse, creative, hallucination risk\"]\n  G --> GO[\"Same output each run\"]\n```\n\n## ตัวอย่าง (fintech)\n\n**Low temperature — ดึง field จากข้อความ support**: ลูกค้าพิมพ์ 'บัตร credit โดนตัดซ้ำ ref TXN-88213 เมื่อวานนี้'. เราต้องการให้โมเดลดึง `transaction_ref = TXN-88213` ออกมา และต้องได้ค่าเดิมเป๊ะทุกครั้งที่รันข้อความเดียวกัน → ตั้ง temperature ต่ำ (≈0) เพื่อให้ผลนิ่ง ไม่แต่ง ref ปลอมขึ้นมาเอง. (การ *บังคับ* ให้ output ออกมาเป็น JSON/schema เป็นคนละเรื่องกับ decoding — นั่นคือ structured output ดู few-shot-and-structured-output ใน ch.2).\n\n**High temperature — ร่างหลายเวอร์ชัน**: ให้โมเดลร่าง email แจ้งลูกค้าเรื่อง refund 3 สำนวนให้ทีม support เลือกแก้ก่อนส่ง → ตั้ง temperature สูงขึ้นเพื่อให้แต่ละร่างใช้คำและโทนต่างกันจริง ไม่ออกมาเหมือนกันหมด.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **'temperature สูง = โมเดลฉลาด/สร้างสรรค์ขึ้น'** ผิด — มันเพิ่มแค่ *ความสุ่ม* ไม่ได้เพิ่มความรู้หรือเหตุผล; สูงเกินไปคือข้อความเพี้ยน หลุดประเด็น hallucinate ง่ายขึ้น.\n- **'temperature 0 = deterministic เป๊ะทุก bit'** ผิด — ลด randomness ของการ sample ได้จริง แต่ผลข้าม hardware, เวอร์ชันโมเดล, และการ batch ไม่การันตีว่า identical.\n- **'temperature กับ top-p เหมือนกัน'** ผิด — คนละกลไก: ตัวหนึ่งปรับรูป distribution อีกตัวตัด tail.\n\n## ขีดจำกัด / trade-off\n\nไม่มีค่า 'ดีที่สุด' ค่าเดียว — มันเป็น trade-off ที่ต้องเลือกตาม task. **High temperature**: ได้ diversity/ความสร้างสรรค์ แต่แลกด้วย consistency ที่ตกลง และความเสี่ยง hallucination + หลุด format ที่สูงขึ้น — แย่สำหรับงานที่ต้อง parse ผลต่อ หรือ correctness สำคัญ (classification, extraction, code, งานคำนวณ). **Low temperature**: ได้ผลนิ่ง reliable reproducible แต่ข้อความ bland ซ้ำ ๆ และเสี่ยง repetition loop ในงาน generation ยาว ๆ — แย่สำหรับ brainstorm/creative.\n\nข้อควรรู้ระดับ production: decoding knob เหล่านี้เป็น implementation detail ที่เปลี่ยนได้ — บาง provider/model รุ่นใหม่จำกัดหรือเอา knob พวกนี้ออก (temperature/top-p ไม่ใช่ของตายตัว) และให้ steer พฤติกรรมด้วย prompting แทน อย่า hard-code สมมติฐานเรื่องช่วงค่าหรือการมีอยู่ของ parameter.\n\n## มุมสัมภาษณ์\n\n- 'temperature ต่ำ vs สูง ใช้เมื่อไหร่?' → ต่ำสำหรับ extraction/classification/code (ต้องการ consistency); สูงสำหรับ brainstorm/creative writing.\n- 'greedy ต่างจาก sampling ยังไง แล้ว temperature 0 ใกล้อะไร?' → greedy = argmax เสมอ; temperature ต่ำสุดจะ collapse เข้าหา greedy.\n- 'top-p คืออะไร ต่างจาก temperature ตรงไหน?' → nucleus: sample จากเซตเล็กสุดที่รวม mass ถึง p; temperature ปรับความชัน distribution.\n- 'ตั้ง temperature 0 แล้วได้ผลเดิมเป๊ะทุกครั้งไหม?' → ลด randomness ได้ แต่ไม่การันตี bit-for-bit ข้ามระบบ.\n- ต่อยอด: ทำไม extraction pipeline บน production ควรใช้ temperature ต่ำ *บวก* validate output — เพราะแม้ temp ต่ำก็ยัง hallucinate ได้ (เชื่อมกับ guardrails/hallucination-mitigation).\n",
+  "recall_checks": [
+    {
+      "q": "Greedy decoding เลือก token ถัดไปด้วยหลักการอะไร และให้ผลลักษณะใด?",
+      "expected_answer": "เลือก token ที่มี probability สูงสุดเสมอ (argmax) → ได้ผล deterministic/reproducible แต่มักซ้ำและน่าเบื่อ",
+      "type": "short_answer"
+    },
+    {
+      "q": "งานประเภทใดควรตั้ง temperature ต่ำ?",
+      "expected_answer": "งาน extraction ที่ต้องการผลลัพธ์คงที่",
+      "type": "mcq",
+      "options": [
+        "งาน brainstorm ที่ต้องการไอเดียหลากหลาย",
+        "งาน extraction ที่ต้องการผลลัพธ์คงที่",
+        "งาน creative writing ที่ต้องการสำนวนใหม่"
+      ]
+    },
+    {
+      "q": "top-p (nucleus sampling) สุ่ม token จากเซตแบบใด?",
+      "expected_answer": "เซตเล็กสุดที่ probability รวมถึงค่า p",
+      "type": "mcq",
+      "options": [
+        "argmax token ตัวเดียวที่ probability สูงสุด",
+        "ทุก token แบบ uniform ไม่สนน้ำหนัก",
+        "เซตเล็กสุดที่ probability รวมถึงค่า p"
+      ]
+    },
+    {
+      "q": "การตั้ง temperature = 0 รับประกันผลลัพธ์เหมือนกันเป๊ะทุก bit ข้ามทุกระบบหรือไม่ เพราะอะไร?",
+      "expected_answer": "ไม่รับประกัน — ลด randomness ของการ sample ได้ แต่ floating point/hardware/เวอร์ชันโมเดล/การ batch ทำให้ผลข้ามระบบไม่ identical เสมอ",
+      "type": "short_answer"
+    },
+    {
+      "q": "การเพิ่ม temperature ให้สูงขึ้นส่งผลต่อ distribution และคำตอบอย่างไร?",
+      "expected_answer": "แบน distribution ลง สุ่มมากขึ้น หลุดง่าย",
+      "type": "mcq",
+      "options": [
+        "แบน distribution ลง สุ่มมากขึ้น หลุดง่าย",
+        "แหลม distribution ขึ้น ผลนิ่ง ซ้ำมากขึ้น",
+        "คง distribution เดิม เพิ่มความเร็วประมวลผล"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "The Curious Case of Neural Text Degeneration",
+      "source": "Holtzman et al., ICLR 2020 — arxiv.org/abs/1904.09751",
+      "why": "อ่านต้นทางของ nucleus sampling (top-p) และเหตุผลว่าทำไม greedy กับ pure sampling ถึงพัง"
+    },
+    {
+      "title": "Speech and Language Processing (3rd ed. draft) — บท Large Language Models / decoding",
+      "source": "Jurafsky & Martin, Speech and Language Processing, 3rd ed. (draft)",
+      "why": "อ่าน greedy, sampling, temperature, และ top-p อย่างเป็นระบบพร้อมสูตร"
+    },
+    {
+      "title": "Anthropic Messages API reference — temperature parameter",
+      "source": "platform.claude.com/docs — Messages API",
+      "why": "ดูว่า provider จริงจัดการ temperature อย่างไร ช่วงค่าที่รับ และทำไมรุ่นใหม่ถึงถอด parameter นี้ออก"
+    }
+  ]
+}

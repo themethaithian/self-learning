@@ -1,0 +1,67 @@
+{
+  "concept_id": "capabilities-and-limits",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Capabilities and Limits",
+  "est_minutes": 8,
+  "body_md": "# Capabilities and Limits\n\n## ทำไมถึงสำคัญ\n\nLLM เก่งงานภาษาแบบกว้างมาก แต่ senior ที่ออกแบบระบบต้องแยกให้ออกว่า \"เก่ง\" กับ \"เชื่อถือได้\" ไม่ใช่เรื่องเดียวกัน. งานที่โมเดลดูทำได้ลื่น (คำนวณเลข, อ้างข้อเท็จจริงล่าสุด) กลับเป็นจุดที่มันพังเงียบ ๆ และมั่นใจว่าถูก. การรู้ capability map นี้คือสิ่งที่ทำให้คุณออกแบบ *ระบบ* รอบข้อจำกัด แทนที่จะเชื่อ output ดิบ ๆ แล้วเจอ incident ตอน production.\n\n## แก่นของแนวคิด\n\n**จุดแข็ง — งานที่ LLM ทำได้ดีแบบ zero/few-shot ข้าม domain โดยไม่ต้อง train ใหม่:**\n\n- language understanding & generation: เขียน, ปรับโทน, ตอบคำถามปลายเปิด\n- summarization: ย่อเอกสารยาว, สรุป conversation thread\n- classification & extraction: จัดหมวด ticket, ดึง field จากข้อความอิสระออกมาเป็น structured\n- code: generate, อธิบาย, แปลงภาษา, review\n- translation ระหว่างภาษา\n- flexible instruction-following: รับ instruction ใหม่ทันทีในหลาย domain\n\nจุดร่วมของงานเหล่านี้คือ \"มีหลายคำตอบที่ยอมรับได้\" และผิดนิดหน่อยไม่ถึงกับพัง.\n\n**ข้อจำกัดหลัก — จุดที่ห้ามเชื่อ output ดิบ:**\n\n- **hallucination**: แต่งข้อมูลที่ไม่มีจริงออกมาด้วยน้ำเสียงมั่นใจ เพราะเป้าหมายของโมเดลคือ token ที่ likely ไม่ใช่ token ที่จริง (ต่อยอดจาก what-is-an-llm).\n- **knowledge cutoff**: ไม่รู้เหตุการณ์หลังวัน train — ราคาล่าสุด, policy ที่เพิ่งเปลี่ยน, ยอดในบัญชีตอนนี้ — เว้นแต่จะป้อนให้ผ่าน tool/retrieval.\n- **arithmetic / counting / precise math**: คำนวณเลขหลายหลัก, นับ, proration, ปัดเศษเงิน พลาดง่ายและพลาดแบบดูน่าเชื่อ.\n- **stateless**: ไม่มี memory ข้าม call — ทุก request โมเดลเห็นแค่สิ่งที่อยู่ใน context ครั้งนั้น (เชื่อมกับ tokens-and-context-window). \"ความจำ\" ของแชตคือ app ที่ส่ง history กลับเข้าไปเอง.\n- **prompt sensitivity**: คำถามเดียวกันแต่ถ้อยคำต่างกันเล็กน้อยอาจได้คำตอบต่างกัน — output ไม่ deterministic โดยธรรมชาติ.\n\n**หลักออกแบบ (แก่นที่บทนี้เป็นเจ้าของ):** อย่าแก้ข้อจำกัดด้วยการ \"ขอให้โมเดลตั้งใจมากขึ้น\" — ให้ออกแบบระบบรอบข้อจำกัดแทน. แต่ละข้อจำกัดจับคู่กับ mechanism ระดับระบบ: เลข → ยกให้ tool/โค้ด, ข้อเท็จจริงสด → retrieval, ความถูกต้องก่อน action → guardrail + verification, และวัดว่าดีขึ้นจริงด้วย evaluation. โมเดลรับหน้าที่ \"เข้าใจภาษาและตัดสินใจว่าจะเรียกอะไร\" ส่วนความถูกต้องเชิงตัวเลข/ข้อเท็จจริง/action ให้ส่วนอื่นของระบบรับผิดชอบ.\n\n## ตัวอย่าง (support / refund)\n\nผู้ช่วย AI ใน contact center รับคำขอ refund: ลูกค้าพิมพ์ว่า \"ขอคืนเงินออเดอร์ที่ยกเลิก หักค่าธรรมเนียมแล้วเหลือเท่าไหร่\". สิ่งที่ **ห้าม** ทำคือปล่อยให้โมเดลคำนวณยอด refund เองแล้วตอบลูกค้าตรง ๆ เพราะ:\n\n- ยอดออเดอร์จริงอยู่ใน database ไม่ได้อยู่ในหัวโมเดล (knowledge cutoff / stateless) — โมเดลอาจ hallucinate ตัวเลขขึ้นมา.\n- proration + หักค่าธรรมเนียม + ปัดเศษเงิน คือ exact arithmetic ที่โมเดลพลาดได้ และพลาดแบบดูสมเหตุสมผล.\n- นโยบายค่าธรรมเนียมอาจเพิ่งเปลี่ยนหลัง training cutoff.\n\nดีไซน์ที่ถูก: โมเดลเข้าใจ intent → เรียก tool `get_order` และ `calculate_refund` (โค้ด deterministic คำนวณจาก ledger จริง) → ดึง policy ปัจจุบันด้วย retrieval → โมเดลเรียบเรียงคำตอบจากตัวเลขที่ระบบคืนมา ไม่ใช่จากความจำ → ก่อน \"โอนเงินจริง\" ผ่าน approval gate. โมเดลเป็นตัวเข้าใจภาษาและ orchestrate ส่วนตัวเลขและ action เป็นของระบบ. (กลไก tool calling อยู่ใน ch.3, retrieval ใน ch.4, approval/human-in-the-loop ใน ch.7.)\n\n```mermaid\nflowchart LR\n  M[\"Exact math / counting\"] -->|\"delegate to code\"| T[\"Tool calling (ch.3)\"]\n  F[\"Fresh facts after cutoff\"] -->|\"inject real sources\"| R[\"Retrieval / RAG (ch.4)\"]\n  H[\"Confident fabrication\"] -->|\"verify before acting\"| G[\"Guardrails (ch.8)\"]\n  G -->|\"measure regressions\"| E[\"Evaluation (ch.9)\"]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"โมเดลรุ่นใหม่ฉลาดขึ้น เดี๋ยว hallucination กับเลขก็หายเอง\"** — ผิด. รุ่นใหม่ลดอัตราพลาดลงแต่ไม่เป็นศูนย์ และมันยังพลาดแบบมั่นใจเหมือนเดิม; ระบบ production ต้องออกแบบให้ทนความผิดพลาดที่เหลือ ไม่ใช่รอโมเดลสมบูรณ์แบบ.\n- **\"prompt เก่ง ๆ แก้ได้ทุกอย่าง\"** — prompt ช่วยเรื่อง format/behavior แต่แก้ knowledge cutoff หรือ exact math ไม่ได้ ต้องพึ่ง tool/retrieval.\n- **\"โมเดลจำบทสนทนาก่อนหน้าได้เอง\"** — ผิด. มัน stateless; ความต่อเนื่องมาจาก app ที่ป้อน history กลับเข้าไปใน context.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ LLM และมันแลกอะไร\n\n- **เมื่องานเป็น deterministic ล้วน อย่าใช้ LLM เลย**: คำนวณดอกเบี้ย, ตรวจ rule, sort, validate format — โค้ดธรรมดาให้คำตอบถูก 100%, เร็วกว่า, ถูกกว่า และ test ได้แน่นอน. เอา LLM ไปครอบงานพวกนี้คือเพิ่ม latency, cost, และความไม่แน่นอนโดยไม่ได้อะไรกลับมา.\n- **การ \"design รอบข้อจำกัด\" ไม่ฟรี**: ทุก mitigation คือระบบที่เพิ่มขึ้นมา — tool layer, retrieval pipeline, guardrail, eval harness — ล้วนมีโค้ด, infra, และจุดพังของตัวเอง. ต้นทุนจริงคือ operational complexity ไม่ใช่แค่ค่า token.\n- **latency & cost**: ยิ่งใส่ tool call หลายรอบและ retrieval ยิ่งช้าและแพงขึ้น (ลงลึกใน cost-latency-tradeoffs) — บางเคส human + rule-based ถูกและเร็วกว่า.\n- **non-determinism ชนกับงานที่ต้อง reproducible**: งานที่ต้อง audit ได้และให้ผลเท่าเดิมทุกครั้ง (เช่น posting บัญชี) ไม่ควรมี LLM อยู่ใน critical path ของการตัดสินตัวเลข.\n- เส้นแบ่งของ senior: ใช้ LLM เป็น \"ตัวเข้าใจภาษาและ orchestrate\" ไม่ใช่ \"source of truth เชิงตัวเลข/ข้อเท็จจริง/action\". ที่ไหนต้องการความถูกต้องตายตัว ที่นั่นต้องมีส่วนที่ไม่ใช่โมเดลรับประกัน.\n\n## มุมสัมภาษณ์\n\n- \"งานไหนที่ **ไม่ควร** ให้ raw LLM ทำ?\" → exact math / คำนวณเงิน, ข้อเท็จจริงที่ต้องสด, action ที่มีผลจริง — ยกให้ tool/retrieval/guardrail.\n- \"ระบบจะจัดการ hallucination ยังไง?\" → grounding ด้วย retrieval + verification ก่อนใช้ output ไม่ใช่หวังให้โมเดลไม่พลาด (ต่อใน ch.8/ch.9).\n- \"LLM รู้เหตุการณ์ล่าสุดไหม?\" → ไม่ เว้นแต่ป้อนผ่าน tool/retrieval เพราะมี knowledge cutoff.\n- \"ทำไมไม่ให้โมเดลคำนวณ refund เอง?\" → arithmetic ไม่น่าเชื่อถือ + ยอดกับ policy อยู่นอกโมเดล; ยกเลขให้โค้ด โมเดลแค่เรียบเรียงคำตอบ.\n- คำถามพวกนี้มักตามด้วย \"แล้วจะ implement ยังไง\" ซึ่งพาไปเรื่อง tool calling, RAG, และ guardrails ในบทถัด ๆ ไป.\n",
+  "recall_checks": [
+    {
+      "q": "จับคู่ข้อจำกัดกับ mechanism ระดับระบบ: exact math, fresh facts, และ correctness ก่อน action ควรแก้ด้วยอะไรตามลำดับ?",
+      "expected_answer": "exact math -> tool calling (ยกให้โค้ด), fresh facts -> retrieval, correctness ก่อน action -> guardrail/verification",
+      "type": "short_answer"
+    },
+    {
+      "q": "งานใดที่ไม่ควรไว้ใจให้ raw LLM ทำเองโดยตรง?",
+      "expected_answer": "คำนวณยอด refund ที่แม่นยำ",
+      "type": "mcq",
+      "options": [
+        "คำนวณยอด refund ที่แม่นยำ",
+        "ร่างข้อความตอบลูกค้าให้สุภาพ",
+        "สรุป ticket ยาวให้สั้นลง"
+      ]
+    },
+    {
+      "q": "ทำไม LLM ถึงไม่รู้เหตุการณ์ล่าสุด ถ้าไม่ได้ป้อนข้อมูลให้?",
+      "expected_answer": "เพราะมันมี knowledge cutoff",
+      "type": "mcq",
+      "options": [
+        "เพราะ context window เล็กเกินไปมาก",
+        "เพราะมันมี knowledge cutoff",
+        "เพราะตั้ง temperature ต่ำเกินไป"
+      ]
+    },
+    {
+      "q": "ทำไมความต่อเนื่องของบทสนทนาถึงเป็นหน้าที่ของ app ไม่ใช่ของตัวโมเดล?",
+      "expected_answer": "เพราะ LLM เป็น stateless ไม่มี memory ข้าม call; app ต้องส่ง history กลับเข้า context เองทุกครั้ง",
+      "type": "short_answer"
+    },
+    {
+      "q": "หลักออกแบบที่ถูกต้องเมื่อเจอข้อจำกัดของ LLM คืออะไร?",
+      "expected_answer": "ออกแบบระบบรอบข้อจำกัดนั้น",
+      "type": "mcq",
+      "options": [
+        "ขอให้โมเดลตั้งใจให้มากขึ้น",
+        "รอโมเดลรุ่นใหม่ที่ไม่พลาด",
+        "ออกแบบระบบรอบข้อจำกัดนั้น"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Language Models are Few-Shot Learners (Brown et al., 2020)",
+      "source": "arXiv:2005.14165",
+      "why": "อ่านหลักฐานว่าทำไม LLM ทำงานข้าม domain แบบ few-shot ได้โดยไม่ต้อง train ใหม่"
+    },
+    {
+      "title": "Survey of Hallucination in Natural Language Generation (Ji et al., 2023)",
+      "source": "ACM Computing Surveys / arXiv:2202.03629",
+      "why": "อ่านภาพรวมว่าทำไม hallucination เกิดและวัด/บรรเทาได้แค่ไหน ไม่ใช่กำจัดหมด"
+    },
+    {
+      "title": "Building Effective Agents",
+      "source": "Anthropic Engineering, anthropic.com/engineering/building-effective-agents",
+      "why": "อ่านต่อว่าทำไมต้องออกแบบ 'ระบบ' รอบโมเดล (tools/retrieval/guardrails) แทนเชื่อ output ดิบ"
+    }
+  ]
+}
