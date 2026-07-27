@@ -1,0 +1,72 @@
+{
+  "concept_id": "cancellation-and-backpressure",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Cancellation and Backpressure",
+  "est_minutes": 8,
+  "body_md": "# Cancellation and Backpressure\n\n## ทำไมถึงสำคัญ\n\nstream ไม่ใช่ response ที่ยิงครั้งเดียวจบ แต่เป็น *live resource* ที่กินทั้ง connection, memory, goroutine และเงินค่า token ตลอดเวลาที่มันยังเปิดอยู่. ถ้าคุณ start stream ได้แต่ *หยุด* มันไม่เป็น คุณจะจ่ายค่า generate token ที่ไม่มีใครอ่าน และถ้า client อ่านช้ากว่าที่ server ผลิต buffer จะบวมจน OOM. Senior interview เจาะตรงนี้เพราะมันคือความต่างระหว่าง demo ที่รันผ่านกับ production ที่ไม่ล้ม.\n\n## แก่นของแนวคิด\n\nบทนี้เป็นเจ้าของสามเรื่องที่ทำให้ stream *หยุดได้* และ *มีขอบเขต*: cancellation, backpressure, และ timeouts/disconnects. การ implement transport ของ stream เอง (SSE framing, event format) เป็นของ sibling `token-streaming-sse` — ที่นี่โฟกัส \"การควบคุม\" ไม่ใช่ \"รูปแบบสาย\".\n\n### 1. Cancellation — หยุดต้นน้ำ ไม่ใช่แค่ปลายน้ำ\n\nเมื่อผู้ใช้ปิดแท็บ, กด stop, หรือ navigate ออก คุณต้อง **abort การเรียก LLM upstream** ไม่ใช่แค่หยุด render ฝั่ง UI. เพราะ provider คิดเงินตาม token ที่ *generate ออกมา* ไม่ใช่ token ที่ผู้ใช้เห็น — ถ้าแค่ปิดหน้าจอแต่ยังปล่อยให้ generation วิ่งต่อจนจบ คุณจ่ายเต็มสำหรับคำตอบที่ถูกทิ้งลงถังทันที.\n\nหลักคือ *propagate* สัญญาณยกเลิกให้ครบสาย: client → server → provider call.\n\n- ฝั่ง client: `AbortController` (เรียก `abort()` แล้ว fetch/stream ที่ค้างอยู่ถูกตัด)\n- ฝั่ง server (Go): `context.Context` — เมื่อ request ถูกตัด `ctx.Done()` จะปิด, และถ้าส่ง `ctx` ตัวเดียวกันนี้เข้าไปใน HTTP call ที่เรียก provider connection ต้นน้ำจะถูกยกเลิกตามทันที\n- แล้ว cleanup: ปิด response body, ปล่อย goroutine ที่อ่าน stream, คืน buffer\n\nGo จับ client disconnect ได้จาก `r.Context()` ของ request handler — พอ client หลุด context นั้น cancel เอง หน้าที่ของคุณคือ *ส่งต่อ* มันลงไป ไม่ใช่สร้าง context ใหม่ที่ตัดขาดจากของเดิม.\n\n### 2. Backpressure — ผู้ผลิตเร็วกว่าผู้บริโภค\n\nproducer (goroutine ที่อ่าน token จาก provider) อาจผลิต token เร็วกว่าที่ client รับไหว (เน็ตช้า, browser busy). ถ้า buffer แบบไม่มีขอบเขต — เช่น อ่าน token ทั้งหมดยัดใส่ slice หรือ channel ไม่จำกัดขนาด — memory จะโตตามส่วนต่างของอัตราจนล้ม.\n\nทางแก้คือทำให้ *bounded* ทุกจุด:\n\n- ใช้ **bounded channel** (buffered channel ขนาดจำกัด) ระหว่าง producer กับ writer — พอเต็ม producer จะถูก block เอง = ชะลอตัวลง (natural backpressure ที่ Go ให้ฟรี)\n- ตั้ง **write timeout** ต่อการเขียนหนึ่งก้อนไปหา client: ถ้าเขียนไม่ผ่านในเวลาที่กำหนด แปลว่า consumer ตายแล้ว → ยกเลิก stream ทั้งเส้น\n- เลือก policy เมื่อ buffer เต็ม: **block/pause** (ให้ producer รอ) เหมาะกับ token คำตอบที่ทิ้งไม่ได้; **drop** เหมาะเฉพาะ event ที่ค่าล่าสุดสำคัญกว่าความครบ (เช่น progress %) — token ของคำตอบ *ห้าม drop* เพราะจะได้ข้อความขาด\n\n### 3. Timeouts และ disconnects\n\nนอกจากผู้ใช้กดยกเลิกเอง stream ยังตายเงียบ ๆ ได้: เน็ตหลุด, TCP ค้าง, provider แขวน. ต้องมี **idle timeout** — ถ้าไม่มี token ใหม่เข้ามาหรือเขียนออกไม่ได้ภายใน N วินาที ให้ล้ม stream แล้ว cleanup แทนที่จะถือ connection ค้างไว้กิน resource. อย่าพึ่งแค่ TCP keepalive ระดับ OS ที่ default นานเป็นหลักนาที.\n\n## ตัวอย่าง (support: ลูกค้าปิดแชทกลางคำตอบ)\n\nระบบ support chat: ลูกค้าถามเรื่อง refund, โมเดลกำลัง stream คำตอบยาว 400 token. ลูกค้าอ่าน 2 บรรทัดแรกแล้วเข้าใจ เลยปิดแท็บทิ้ง.\n\n- **ผิด:** server ไม่รู้ว่า client หลุด ยังอ่าน token จาก provider จนครบ 400 → จ่ายเต็ม, goroutine ค้าง; ถ้ามีคนทำแบบนี้พร้อมกันหลายพัน request จะเกิด goroutine leak และค่า token บานปลาย\n- **ถูก:** `r.Context()` cancel ทันทีที่ TCP ปิด → `ctx.Done()` เด้ง → HTTP call ที่เรียก provider (ถือ `ctx` เดียวกัน) ถูก abort → provider หยุด generate ที่ token ~30 → เราจ่ายแค่ที่ generate จริง → ปิด body, ปล่อย goroutine, คืน buffer\n\n```mermaid\nsequenceDiagram\n  participant U as \"User (browser)\"\n  participant S as \"Your server\"\n  participant P as \"LLM provider\"\n  U->>S: open stream (SSE)\n  S->>P: start generation (pass ctx)\n  P-->>S: stream tokens\n  S-->>U: forward tokens\n  U--xS: close tab / click stop\n  Note over S: r.Context() cancelled\n  S--xP: abort upstream call\n  Note over S,P: provider stops billing and compute\n  S->>S: cleanup goroutine and buffer\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ปิด UI ก็พอ ไม่ต้องยุ่งกับ backend\"** ผิด — provider คิดเงินตาม generation ที่ backend สั่ง ไม่ใช่ pixel ที่ผู้ใช้เห็น; ไม่ abort = จ่ายเต็มทุกครั้งที่มีคนปิดกลางคัน\n- **\"buffer ทั้งหมดไว้ก่อนแล้วค่อยส่ง จะได้ไม่ต้องคิดเรื่องจังหวะ\"** ผิด — นั่นคือ unbounded buffering ที่พา OOM มาเอง และยังทิ้ง perceived-latency benefit ของ streaming ทิ้งไปด้วย\n- **\"context cancellation คือ retry ชนิดหนึ่ง\"** ผิด — cancellation ตั้งใจ *หยุด*; การ retry เมื่อ provider error/timeout เป็นคนละเรื่องและอยู่ใน chapter production (`retries-fallback-multi-provider`)\n\n## ขีดจำกัด / trade-offs\n\n- **ไม่ cancel = เผาเงินและ compute เปล่า** และเปิดช่อง goroutine/connection leak ที่ค่อย ๆ ฆ่า server — นี่คือ default cost ที่ได้ฟรีถ้าไม่ทำอะไรเลย\n- **timeout ก้าวร้าวเกินไปตัดคำตอบที่ valid ทิ้ง** — คำตอบแบบ reasoning ยาว ๆ หรือ tool call ที่รอ upstream นานอาจใช้เวลาจริง; ตั้ง idle timeout สั้นไปจะฆ่า request ที่ยังทำงานถูกต้อง ต้องวัดจาก inter-token time จริง ไม่ใช่ total time ตายตัว\n- **backpressure policy เป็น trade-off ทั้งคู่**: block ให้ correctness (ไม่มี token หาย) แต่ถ้า consumer ค้างจริงจะลามถ้าไม่มี timeout กัน; drop ตอบเร็วไม่ค้างแต่ทำข้อความขาด — LLM token ส่วนใหญ่จึงเลือก block + idle timeout\n- **buffer เล็กไป vs ใหญ่ไป**: เล็กไป producer ถูก block บ่อยจน throughput ตก; ใหญ่ไปกิน memory และซ่อนปัญหา consumer ช้าไว้จนรู้ตัวสาย — ต้องจูนตาม token size และจำนวน stream พร้อมกัน\n- **cancellation ต้อง propagate ครบสาย**: ถ้ายกเลิกแค่ครึ่งทาง (เช่นปิด UI แต่ server ยังถือ provider connection ไว้) แทบไม่ต่างจากไม่ทำเลย — cost ตัวจริงอยู่ปลายทางสุดคือ provider call\n\n## มุมสัมภาษณ์\n\n- \"ผู้ใช้ปิดแท็บกลางคำตอบ ระบบควรทำอะไร?\" → abort upstream provider call ผ่าน context/AbortController แล้ว cleanup goroutine+buffer; ประเด็นที่ผู้สัมภาษณ์อยากได้ยินคือ *หยุดจ่ายค่า token*\n- \"client อ่านช้ากว่า server ผลิต จะกันไม่ให้ memory ระเบิดยังไง?\" → bounded buffer/channel + write timeout, เลือก block vs drop ตามว่าข้อมูลทิ้งได้ไหม\n- \"ใน Go propagate cancellation ยังไง?\" → ส่ง `ctx` ตัวเดียวจาก `r.Context()` ลงไปถึง HTTP call ของ provider, ฟัง `ctx.Done()`, อย่าสร้าง context ใหม่ที่ตัดสาย\n- \"ต่างจาก retry ยังไง?\" → cancellation = ตั้งใจหยุด; retry = ลองใหม่เมื่อ error — คนละเจตนากัน (retry อยู่ใน chapter production)\n",
+  "recall_checks": [
+    {
+      "q": "เมื่อผู้ใช้ปิดแท็บหรือกดหยุดกลางคัน ทำไมต้อง abort การเรียก LLM upstream ทันที?",
+      "expected_answer": "เพราะ provider คิดเงินตาม token ที่ generate ออกมา ไม่ใช่ token ที่ผู้ใช้เห็น ถ้าไม่ abort โมเดลจะ generate ต่อจนจบและเราจ่ายเต็มสำหรับคำตอบที่ไม่มีใครอ่าน",
+      "type": "short_answer"
+    },
+    {
+      "q": "backpressure ในระบบ streaming เกิดขึ้นในสถานการณ์ใด?",
+      "expected_answer": "consumer รับ token ช้ากว่าที่ผลิต",
+      "type": "mcq",
+      "options": [
+        "provider ส่ง token เร็วกว่าปกติมาก",
+        "consumer รับ token ช้ากว่าที่ผลิต",
+        "network latency สูงตอนเริ่ม stream"
+      ]
+    },
+    {
+      "q": "ถ้า consumer ช้าแต่ producer ยังผลิตต่อและ buffer ไม่มีขอบเขต จะเกิดอะไร?",
+      "expected_answer": "memory โตไม่หยุดจนเกิด OOM ได้",
+      "type": "mcq",
+      "options": [
+        "provider หยุดส่ง token ให้อัตโนมัติ",
+        "TTFT ของ request ถัดไปลดลงชัดเจน",
+        "memory โตไม่หยุดจนเกิด OOM ได้"
+      ]
+    },
+    {
+      "q": "ใน Go กลไกใดใช้ propagate การยกเลิกจาก client disconnect ไปถึงการเรียก LLM?",
+      "expected_answer": "ส่งต่อ context cancellation (ctx)",
+      "type": "mcq",
+      "options": [
+        "ส่งต่อ context cancellation (ctx)",
+        "เพิ่ม worker goroutine ให้มากขึ้น",
+        "retry การเรียก provider ใหม่ทันทีที่หลุด"
+      ]
+    },
+    {
+      "q": "idle timeout ที่ตั้งสั้นเกินไปสร้างปัญหาอะไร?",
+      "expected_answer": "ตัดคำตอบยาวที่ยัง valid ทิ้งกลางคัน",
+      "type": "mcq",
+      "options": [
+        "ทำให้ provider คิดเงินเพิ่มเป็นสองเท่า",
+        "ตัดคำตอบยาวที่ยัง valid ทิ้งกลางคัน",
+        "ทำให้ backpressure หายไปทั้งหมด"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "context package — Go standard library",
+      "source": "pkg.go.dev/context",
+      "why": "อ่านนิยาม context.Context, ctx.Done() และวิธี propagate cancellation ลงไปตลอดสายเรียก"
+    },
+    {
+      "title": "Go Concurrency Patterns: Context",
+      "source": "go.dev/blog/context (The Go Blog)",
+      "why": "อ่าน pattern ต้นฉบับการใช้ context ยกเลิก request/goroutine ให้ครบสาย"
+    },
+    {
+      "title": "AbortController — MDN Web Docs",
+      "source": "developer.mozilla.org/en-US/docs/Web/API/AbortController",
+      "why": "อ่านฝั่ง client ว่ายกเลิก fetch/stream ที่กำลัง in-flight ยังไง"
+    }
+  ]
+}

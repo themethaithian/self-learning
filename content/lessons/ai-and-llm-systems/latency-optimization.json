@@ -1,0 +1,67 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "latency-optimization",
+  "version": 1,
+  "title_en": "Latency Optimization",
+  "est_minutes": 7,
+  "body_md": "# Latency Optimization\n\n## ทำไมถึงสำคัญ\n\nLatency ของ LLM ไม่ใช่ตัวเลขเดียว แต่มีสองส่วนที่ผู้ใช้รู้สึกต่างกัน: กว่าจะเห็นตัวอักษรแรก (TTFT) กับกว่าจะได้คำตอบจนจบ (generation time). ถ้า optimize ผิดส่วน จะเสียแรงไปกับ metric ที่ผู้ใช้ไม่ได้รู้สึก. หน้าที่ของ senior คือ optimize สิ่งที่ผู้ใช้รู้สึกจริง แล้วลงแรงให้พอดีกับ SLO — ไม่ over-engineer และไม่ปล่อยช้าเกินรับได้.\n\n## แก่นของแนวคิด\n\nแยก latency เป็นสองส่วนก่อนเสมอ:\n\n- **TTFT (time to first token)**: เวลาตั้งแต่ส่ง request จนได้ token แรก. ขับด้วย prompt size (ยิ่งยาว prefill ยิ่งนาน), queueing ที่ฝั่ง provider, และขนาด/ความเร็วของโมเดล.\n- **Generation time**: เวลาตั้งแต่ token แรกจนจบ. ขับด้วยจำนวน output token และความเร็วในการ decode ต่อ token ของโมเดล.\n- **Total = TTFT + generation**. คนละส่วนใช้คนละ lever — จับให้ถูกส่วนก่อนแก้.\n\nLever ที่ใช้จริง:\n\n- **Stream** — ปรับ *perceived* latency ไม่ใช่ total: ผู้ใช้เห็นคำตอบเริ่มไหลทันที แต่ token สุดท้ายมาถึงเวลาเดิม. (กลไก SSE ฝั่ง backend อยู่ที่ sibling `token-streaming-sse` — ไม่ทวนซ้ำที่นี่)\n- **Prompt caching** — reuse cached prefix → ลด TTFT (และ cost) เฉพาะเมื่อ prefix ซ้ำ.\n- **โมเดลเล็ก/เร็วขึ้น** สำหรับงานง่าย — ลดทั้ง TTFT และ generation. (trade-off cost กับความฉลาดของขนาดโมเดลอยู่ที่ ch.1 `cost-latency-tradeoffs`)\n- **ลด prompt + cap output length** — prompt สั้นช่วยลด prefill; จำกัด max output ช่วยลด decode.\n- **Parallelize** calls/tools ที่อิสระต่อกัน — ลด wall-clock เมื่อไม่มี data dependency ระหว่างกัน.\n- **Retrieve น้อยลง** — RAG ที่ดึง chunk มาน้อยลง = prompt สั้นลง = TTFT ต่ำลง.\n- (advanced, ชื่อไว้เฉย ๆ) **speculative decoding** — ให้โมเดลเล็กเดา token ล่วงหน้าแล้วโมเดลใหญ่ verify เพื่อเร่ง decode.\n\nMindset หลัก: optimize metric ที่ผู้ใช้รู้สึก (TTFT + streaming) และ match effort กับ SLO — งานที่ SLO หลวมไม่ต้องไล่ tuning สุดทาง.\n\n## ตัวอย่าง (support triage แบบ fintech)\n\nระบบ support รับ ticket เข้ามาปนกัน: ส่วนใหญ่เป็นคำถามง่าย (\"ยอดคงเหลือ\", \"reset password\") ปนกับ dispute ที่ต้องวิเคราะห์ประวัติธุรกรรม.\n\n- ชั้นแรก: **โมเดลเล็ก + เร็ว** classify ว่า ticket เป็นหมวดไหน — ตอบเกือบทันที (TTFT ต่ำ, output แค่ label เดียว) แล้ว route ได้เลย.\n- เฉพาะ ticket ที่เป็น dispute เท่านั้นจึง escalate ไป **โมเดลใหญ่ที่ช้ากว่า** เพื่อ reason ข้ามประวัติ transaction.\n\nผลคือ ~80% ของ traffic วิ่งผ่านเส้นทางที่ถูกและเร็ว โมเดลใหญ่ถูกเรียกเฉพาะเมื่อจำเป็นจริง. (การ route ระหว่างโมเดลนี้เป็นเรื่องของ LLM gateway/routing — ดู ch.10)\n\n```mermaid\nflowchart TD\n  TOTAL[\"Total time = TTFT + generation\"] --> TTFT[\"TTFT: prompt size; queue; model\"]\n  TOTAL --> GEN[\"Generation: output length; decode speed\"]\n  CACHE[\"Prompt caching\"] -->|\"reuse prefix\"| TTFT\n  SHORT[\"Shorter prompt; retrieve less\"] --> TTFT\n  SMALL[\"Smaller/faster model\"] --> TTFT\n  SMALL --> GEN\n  CAP[\"Cap output length\"] --> GEN\n  STREAM[\"Streaming\"] -->|\"perceived only\"| PERC[\"What the user feels\"]\n  TTFT --> PERC\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"streaming ทำให้ response เร็วขึ้น\"** — ผิด. streaming ลด *perceived* latency เท่านั้น; total time เท่าเดิม token สุดท้ายมาถึงเวลาเดิมเป๊ะ.\n- **\"prompt caching ช่วยทุก request\"** — ผิด. ช่วยเฉพาะ prefix ที่ซ้ำ (system prompt / few-shot ที่คงที่); ถ้าทุก request มี prefix ต่างกันจะไม่ได้ประโยชน์.\n- **\"โมเดลเล็กแย่กว่าเสมอ\"** — ผิด. งาน classification / extraction โมเดลเล็กมักแม่นพอและเร็วกว่ามาก การใช้โมเดลใหญ่คือ overkill.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรทำ และต้นทุนคืออะไร)\n\n- **streaming ไม่ลด total time** — ถ้า SLA วัด total completion (เช่น batch job หรืองานที่ต้องรอคำตอบครบก่อนใช้ต่อ) streaming ไม่ช่วยเลย.\n- **โมเดลเล็ก = เร็วขึ้นแต่คุณภาพอาจตก** — นี่คือกับดักหลัก: อย่าลด latency จนคำตอบผิดโดยไม่รู้ตัว. ต้องมี eval ยืนยันว่าโมเดลเล็กยังผ่านเกณฑ์งานนั้นก่อนสลับ.\n- **caching ช่วยเฉพาะ prefix ซ้ำ** และมี TTL/overhead ของตัวเอง — ออกแบบ prompt ให้ส่วนคงที่อยู่ต้น (cacheable) ส่วนที่เปลี่ยนอยู่ท้าย ไม่งั้น cache ไม่ hit. (caching ระดับ system + gateway ดู ch.10)\n- **ไล่ p99/p999 แพงแบบ non-linear** — median เร็วขึ้นง่าย แต่ tail latency ท้าย ๆ ต้องลงทุน (provisioned capacity, redundancy, fallback) ที่อาจไม่คุ้มถ้า SLO ไม่ได้ต้องการระดับนั้น. (การวัด percentile/tail latency ให้ถูก ดู DDIA ch.1)\n- **parallelize เพิ่ม complexity** — error handling, partial failure, การรวมผลลัพธ์; คุ้มเมื่อ call อิสระกันจริงเท่านั้น.\n\n## มุมสัมภาษณ์\n\n- **\"ผู้ใช้บ่นว่า LLM ช้า จะเริ่มดีบักตรงไหน?\"** → แยก TTFT กับ generation ก่อน วัดว่าปัญหาอยู่ส่วนไหน แล้วเลือก lever ให้ตรงส่วนนั้น — ไม่เดาสุ่ม.\n- **\"streaming ทำให้ response เร็วขึ้นจริงไหม?\"** → ไม่; ลดแค่ perceived latency, total เท่าเดิม. คำถามนี้ดักคนที่สับสนสองอย่างนี้.\n- **\"จะลด TTFT ได้ยังไงบ้าง?\"** → prompt caching, ลด/ตัด prompt, retrieve น้อยลง, ใช้โมเดลเล็ก/เร็วขึ้น.\n- **\"optimize latency มี downside อะไร?\"** → เสี่ยงแลกความถูกต้อง (โมเดลเล็ก), และการไล่ p99 มีต้นทุนสูงแบบ non-linear — ต้อง match กับ SLO ที่ต้องการจริง.\n",
+  "recall_checks": [
+    {
+      "q": "latency ของ LLM แยกเป็นสองส่วนอะไรบ้าง และอะไรขับแต่ละส่วน?",
+      "expected_answer": "TTFT (time to first token) ขับด้วย prompt size, queueing, และขนาด/ความเร็วโมเดล; และ generation time ขับด้วยจำนวน output token และความเร็ว decode ต่อ token",
+      "type": "short_answer"
+    },
+    {
+      "q": "streaming ส่งผลต่อ latency อย่างไร?",
+      "expected_answer": "ลด perceived latency แต่ total เท่าเดิม",
+      "type": "mcq",
+      "options": [
+        "ลด total response time โดยตรงทุก request",
+        "ลด perceived latency แต่ total เท่าเดิม",
+        "ลดทั้ง perceived และ total time พร้อมกันเสมอ"
+      ]
+    },
+    {
+      "q": "prompt caching ลด TTFT ได้เมื่อไหร่?",
+      "expected_answer": "เมื่อ prefix ของ prompt ซ้ำกัน",
+      "type": "mcq",
+      "options": [
+        "เมื่อ prefix ของ prompt ซ้ำกัน",
+        "เมื่อ output ที่ generate สั้นมาก",
+        "เมื่อทุก request มี prompt ต่างกัน"
+      ]
+    },
+    {
+      "q": "ยกสองวิธีที่ใช้ลด TTFT ได้",
+      "expected_answer": "prompt caching (reuse cached prefix), ลด prompt / retrieve น้อยลง, หรือใช้โมเดลเล็ก/เร็วขึ้น (ตอบสองอย่างใดก็ได้)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคือ downside ของการเลือกโมเดลเล็กลงเพื่อลด latency?",
+      "expected_answer": "คุณภาพคำตอบอาจตกในงานที่ยาก",
+      "type": "mcq",
+      "options": [
+        "TTFT จะสูงขึ้นกว่าโมเดลใหญ่",
+        "prompt caching จะใช้ไม่ได้อีกต่อไป",
+        "คุณภาพคำตอบอาจตกในงานที่ยาก"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Designing Data-Intensive Applications, Chapter 1: Reliable, Scalable, and Maintainable Applications",
+      "source": "Martin Kleppmann, Designing Data-Intensive Applications (O'Reilly, 2017), ch. 1",
+      "why": "อ่านต่อว่าทำไม tail latency (p99/p999) แพงและวัด percentile ให้ถูกต้องยังไง"
+    },
+    {
+      "title": "Efficiently Scaling Transformer Inference",
+      "source": "Pope et al., 2022, arXiv:2211.05102",
+      "why": "อ่านโมเดลต้นทุนของ prefill (TTFT) เทียบ decode (generation) แบบละเอียด"
+    },
+    {
+      "title": "Fast Inference from Transformers via Speculative Decoding",
+      "source": "Leviathan et al., 2023, arXiv:2211.17192",
+      "why": "อ่านหลักการ speculative decoding ที่ลด generation time โดยไม่เปลี่ยน output"
+    }
+  ]
+}

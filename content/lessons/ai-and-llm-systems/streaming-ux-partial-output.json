@@ -1,0 +1,62 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "streaming-ux-partial-output",
+  "version": 1,
+  "title_en": "Streaming UX and Partial Output",
+  "est_minutes": 8,
+  "body_md": "# Streaming UX and Partial Output\n\n## ทำไมถึงสำคัญ\n\nStreaming ลด perceived latency ก็จริง แต่ประโยชน์นั้นหายหมดถ้า client render สายของ delta ผิด — โชว์ JSON ครึ่งใบ, markdown ที่ยังปิด tag ไม่ครบ, หรือค้างหน้าจอเงียบ ๆ เมื่อ stream หลุด. งานของ client คือแปลง \"สายของ delta ดิบ\" ให้เป็น feedback ที่ responsive โดย *ไม่* โชว์อะไรที่ยัง broken หรือ parse ครึ่ง ๆ. บทนี้เป็นเรื่อง **การ render/handle stream ฝั่ง client** ล้วน ๆ.\n\n> ขอบเขต: การส่ง token ผ่าน SSE เป็นเรื่องของ transport (sibling `token-streaming-sse`) — บทนี้สมมติว่า delta มาถึง client แล้วและถามว่า \"จะ render มันยังไง\". ส่วนการยกเลิกจริง (หยุด LLM, cleanup connection) เป็นของ sibling `cancellation-and-backpressure`; บทนี้พูดถึงแค่ปุ่ม stop ในฐานะ UI state.\n\n## แก่นของแนวคิด\n\nกฎหลักคือ **แยกประเภทของ delta แล้ว render คนละแบบ**:\n\n- **prose (plain text)** → append ทีละ delta ทันที (typewriter / incremental). token เดียวก็ยัง valid เสมอ เพราะมันคือ text ที่แค่ยาวขึ้นเรื่อย ๆ ผู้ใช้เห็นความคืบหน้าทันที.\n- **structured output** (JSON, tool arguments, ตาราง, code block ที่ต้อง parse) → **buffer จนครบ** แล้วค่อย parse + validate + render. partial JSON parse ไม่ได้ (`{ \"amount\": 45` ยังไม่ใช่ object ที่ valid) และ markdown table ที่ยังไม่ปิดแถวจะ render เพี้ยน.\n- **non-text events** → แปลงเป็น **status ที่มองเห็น**: \"thinking\", \"calling tool: lookup_order\", \"running\". อย่าปล่อยหน้าจอว่างเฉย ๆ เพราะช่วงนี้ไม่มี text ไหลออกมา ผู้ใช้จะนึกว่าค้าง.\n- **done state + stop control** → ต้องมี signal ชัดเจนว่า \"จบแล้ว\" ไม่ใช่แค่ \"หยุดพิมพ์ไปเฉย ๆ\" (การหยุดพิมพ์อาจแปลว่า stalled หรือ dropped ก็ได้) และระหว่าง stream ต้องมีปุ่ม stop ให้กดได้.\n\nและต้อง handle **stream ขาดกลางคัน** อย่าง graceful: ถ้าเจอ error event หรือ connection drop → เก็บ partial ที่ได้ไว้ + ป้ายว่า \"incomplete\" + เปิดให้ retry ไม่ใช่หมุน spinner ค้างตลอดกาล.\n\n## ตัวอย่าง (customer-support agent / refund)\n\nAgent ตอบลูกค้าเรื่องขอคืนเงิน. คำตอบสองส่วนไหลมาใน stream เดียวกัน:\n\n1. **prose** อธิบายสิ่งที่ทำ: `\"กำลังตรวจสอบคำสั่งซื้อ #A123 ...\"` → append ทันที ผู้ใช้เห็นทีละคำ รู้ว่าระบบกำลังทำงาน.\n2. ระหว่างนั้น agent เรียก tool `lookup_order` → UI โชว์ status `\"looking up order...\"` แทนหน้าจอว่าง.\n3. เมื่อ agent ตัดสินใจคืนเงิน มันปล่อย **structured \"refund object\"**: `{ \"order_id\": \"A123\", \"amount\": 450.00, \"currency\": \"THB\" }`.\n   - ระหว่างที่ JSON ยังไหลมาไม่ครบ (`{ \"order_id\": \"A12` ...) client **buffer ไว้** ไม่แสดงปุ่ม confirm.\n   - พอ JSON ปิดวงเล็บครบ + parse ผ่าน + validate ว่ามี field ครบ → ค่อย render การ์ด refund พร้อมปุ่ม `\"Confirm refund ฿450.00\"`.\n\nถ้าเผลอโชว์ปุ่ม confirm จาก JSON ที่ยังไม่ครบ ผู้ใช้อาจกดยืนยัน refund ที่ `amount` ยังผิดหรือยังไม่มาถึง — นี่คือเหตุผลตรง ๆ ว่าทำไม \"prose stream ได้ แต่ structured ต้อง buffer จนครบ และอย่า act บน partial structured output\".\n\n```mermaid\nflowchart TD\n  D[Stream delta arrives] --> T{Delta type?}\n  T -->|text| P[Append delta to prose and render]\n  T -->|structured| B[Buffer bytes]\n  T -->|tool event| S[\"Show status: tool running\"]\n  B --> CK{JSON complete and valid?}\n  CK -->|no| B\n  CK -->|yes| R[Parse then render widget]\n  S --> W[Wait for tool result]\n  W --> D\n  P --> E{Stream ended?}\n  R --> E\n  E -->|no| D\n  E -->|yes| DONE[Show done state and stop control]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"streaming = โชว์ทุก byte ที่ได้รับทันที\"** ผิด. จริงเฉพาะ prose; structured output ต้อง buffer จนครบก่อน render.\n- **\"stream หยุดพิมพ์ = จบแล้ว\"** ผิด. ต้องมี explicit done event/state; การเงียบไปอาจแปลว่า stalled หรือ connection dropped ไม่ใช่ complete.\n- **\"ใช้ lenient parser ก็ parse partial JSON ได้\"** ผิดในทางปฏิบัติ. parser อาจไม่ throw แต่ค่าที่ได้ไม่ครบ/ผิด; ห้ามเอาไป render เป็น final หรือ act ต่อ.\n\n## ขีดจำกัด / trade-offs\n\n- **Responsive แต่ validate/format ทั้งก้อนไม่ได้ระหว่างทาง.** incremental render ทำให้เห็นผลไว แต่คุณจัด markdown ให้สวย, syntax-highlight code block, หรือ lint คำตอบทั้งก้อนได้แค่ตอน **done** เท่านั้น; ระหว่าง stream ต้องยอมให้เห็นของดิบ (เช่น markdown ที่ยังไม่ render เต็ม).\n- **Re-render cost.** append ทุก delta = re-render หลายสิบครั้ง/วินาที. ถ้า render DOM/markdown ใหม่ทั้งก้อนทุก delta จะ jank; ต้อง batch/throttle การ update หรือ append เฉพาะส่วนใหม่.\n- **ห้าม act บน partial structured output.** อย่ายิง side effect (เรียก API, โชว์ปุ่มที่กดแล้วมีผลจริง) จาก data ที่ยังไม่ครบและยังไม่ผ่าน validation.\n- **บางกรณีไม่ควร stream เลย.** คำตอบสั้นมาก, หรือคำตอบที่ \"ครึ่งใบไม่ควรถูกเห็น\" — เช่น ผล classification ที่เป็น JSON ล้วน หรือการตัดสินใจ approve/deny — โชว์ทีเดียวตอนจบดีกว่า เพราะ partial ไม่มีคุณค่าและอาจทำให้ผู้ใช้เข้าใจผิด.\n\n## มุมสัมภาษณ์\n\n- \"คุณ stream คำตอบที่เป็น markdown + JSON ผสมกัน จะ render ยังไงไม่ให้พัง?\" → แยก prose (append ทันที) ออกจาก structured (buffer จนครบ + validate ก่อน render).\n- \"ทำไมห้าม parse partial JSON แล้วโชว์เลย?\" → partial ยัง parse ไม่ได้/ได้ค่าผิด และห้าม act บน state ที่ยัง invalid — โดยเฉพาะเมื่อมันผูกกับ side effect เช่นปุ่ม confirm.\n- \"ถ้า connection หลุดกลาง stream ผู้ใช้ควรเห็นอะไร?\" → partial ที่ได้ + ป้าย incomplete + retry ไม่ใช่ spinner ค้าง (การหยุด LLM/cleanup ฝั่ง server เป็นของ `cancellation-and-backpressure`).\n- \"แยก loading state ยังไง?\" → 'thinking' vs 'calling tool X' vs 'done' เป็นคนละ status ที่ผู้ใช้ต้องแยกออกว่าระบบกำลังทำอะไรอยู่.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไมต้อง buffer structured/JSON output จนครบก่อน render แทนที่จะ append ทีละ token เหมือน prose?",
+      "expected_answer": "เพราะ JSON/structured ที่ยังไม่ครบ parse ไม่ได้ ถ้า render ครึ่ง ๆ จะได้ UI ที่พังหรือค่าที่ผิด ต้องรอให้ครบและ valid ก่อนจึงจะแสดงหรือ act ได้",
+      "type": "short_answer"
+    },
+    {
+      "q": "prose (plain text) ที่ไหลมาระหว่าง stream ควร render แบบใด?",
+      "type": "mcq",
+      "options": [
+        "รอจน stream จบก่อนแล้วแสดงทีเดียว",
+        "append ทีละ delta ทันทีที่มาถึง",
+        "แสดงเฉพาะ token ตัวสุดท้ายที่ได้รับมา"
+      ],
+      "expected_answer": "append ทีละ delta ทันทีที่มาถึง"
+    },
+    {
+      "q": "ระหว่างที่ agent กำลังเรียก tool (ไม่มี text ไหลออกมา) UI ควรทำอย่างไร?",
+      "type": "mcq",
+      "options": [
+        "แสดงสถานะว่า tool กำลังทำงาน",
+        "แสดงว่าคำตอบทั้งหมดเสร็จสมบูรณ์แล้ว",
+        "แสดง JSON ดิบที่ยังไม่ครบให้เห็น"
+      ],
+      "expected_answer": "แสดงสถานะว่า tool กำลังทำงาน"
+    },
+    {
+      "q": "ถ้า stream หลุดกลางคัน (connection drop) UI ควร handle อย่างไรให้ graceful?",
+      "type": "mcq",
+      "options": [
+        "ค้างหน้าจอ spinner รอไว้เฉย ๆ ไม่ทำอะไรต่อ",
+        "ลบข้อความที่ render ไปแล้วทั้งหมดออกทันที",
+        "แสดง partial ที่ได้ + แจ้งว่าไม่ครบ"
+      ],
+      "expected_answer": "แสดง partial ที่ได้ + แจ้งว่าไม่ครบ"
+    }
+  ],
+  "references": [
+    {
+      "title": "Using server-sent events",
+      "source": "MDN Web Docs, developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events",
+      "why": "อ่านการ consume stream ฝั่ง client (onmessage, error, done) ที่ handling/rendering บทนี้ต่อยอดจาก"
+    },
+    {
+      "title": "Response Times: The 3 Important Limits",
+      "source": "Nielsen Norman Group, nngroup.com/articles/response-times-3-important-limits/",
+      "why": "อ่านว่าทำไม feedback ที่ต่อเนื่อง/incremental จึงลด perceived latency และต้องบอกสถานะเมื่อระบบทำงานนาน"
+    },
+    {
+      "title": "Vercel AI SDK — Streaming & Generative UI",
+      "source": "ai-sdk.dev/docs (Streaming, streamObject, Generative UI)",
+      "why": "อ่าน pattern จริงของการ stream prose คู่กับ structured/tool output ที่ต้อง buffer จนครบก่อนแสดง widget"
+    }
+  ]
+}
