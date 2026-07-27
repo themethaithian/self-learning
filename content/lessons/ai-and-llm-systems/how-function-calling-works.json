@@ -1,0 +1,67 @@
+{
+  "concept_id": "how-function-calling-works",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "How Function Calling Works",
+  "est_minutes": 8,
+  "body_md": "# How Function Calling Works\n\n## ทำไมถึงสำคัญ\n\nโดยลำพัง LLM ทำได้แค่ generate ข้อความ — มันไม่รู้ real-time data, query database เองไม่ได้, และคำนวณเลขซับซ้อนก็พลาดง่าย (ดู `capabilities-and-limits` ใน ch.1). Function calling (หรือ tool calling) คือกลไกที่เปลี่ยน LLM จาก text generator ให้ \"ลงมือทำ\" ได้จริง โดยไม่ต้อง fine-tune — มันเชื่อมโมเดลเข้ากับระบบภายนอกผ่านโค้ดของเราเอง. หัวใจที่ต้องเข้าใจให้ขาดคือ **โมเดลแค่ตัดสินใจและ \"ขอ\" ให้เรียก tool เท่านั้น ส่วนคนที่รัน tool จริงคือ application ของเรา ไม่ใช่โมเดล**.\n\n## แก่นของแนวคิด: model decides, app executes\n\nflow มาตรฐานของ function calling หนึ่งรอบ:\n\n1. เราส่งรายการ tool ที่ใช้ได้ให้โมเดล — แต่ละตัวมี name + description + parameters (รายละเอียดการนิยาม schema เป็นของ sibling `tool-schemas`).\n2. แทนที่จะตอบเป็นข้อความ โมเดลอาจ emit **tool call request** ออกมาแทน: ระบุ tool name + argument เป็น structured data (tool argument คือ structured output รูปแบบหนึ่ง — ดู `few-shot-and-structured-output` ใน ch.2).\n3. **โค้ดของเราเป็นคนรับ request นั้นไปรัน tool จริง** — hit database, ยิง API, คำนวณ. โมเดลไม่เคยแตะ execution เลย.\n4. เราส่งผลลัพธ์กลับเข้า conversation ในรูป tool result.\n5. โมเดลอ่าน result แล้ว generate คำตอบต่อ (หรือขอเรียก tool ตัวถัดไป — การวนหลายรอบเป็นของ sibling `agentic-tool-loop`).\n\nจุดที่ต้องขีดเส้นใต้: **การ \"ตัดสินใจ\" (โมเดล) แยกจากการ \"execute\" (app) อย่างเด็ดขาด**. โมเดลเสนอเจตนา (\"อยากเรียก `lookup_order` ด้วย id นี้\") แต่ app เป็น gatekeeper ที่ตัดสินว่าจะรันจริงไหม, validate argument ก่อน, และจำกัดว่า tool ทำอะไรได้บ้าง. นี่คือเหตุผลที่ tool calling ควบคุมได้และปลอดภัยกว่าการยกอำนาจ execute ให้โมเดลตรง ๆ.\n\n```mermaid\nsequenceDiagram\n    participant U as User\n    participant M as LLM\n    participant A as App\n    participant T as order DB\n    U->>M: where is order 8842\n    M-->>A: tool call request lookup_order(8842)\n    Note over M,A: model decides and requests, app executes\n    A->>T: run lookup_order(8842)\n    T-->>A: status=shipped, eta=2 days\n    A->>M: tool result status=shipped\n    M-->>U: order 8842 shipped, arrives in 2 days\n```\n\n## ตัวอย่าง (support / order status)\n\nลูกค้าพิมพ์ถาม support bot ว่า \"ออเดอร์ 8842 ของฉันถึงไหนแล้ว\". โมเดล *ไม่มี* ข้อมูลนี้ในหัว — มันจึงไม่ตอบเดา แต่ emit tool call request ออกมาแทน: `lookup_order(order_id=8842)`.\n\nโค้ดฝั่งเรารับ request นี้ แล้วเป็นคนทำงานจริง: query ตาราง orders ด้วย `order_id=8842`, ได้ผลลัพธ์ `{status: \"shipped\", eta_days: 2}`. เรา serialize ผลนี้ส่งกลับเข้า conversation เป็น tool result. รอบถัดมาโมเดลเห็น result นั้นใน context แล้วเรียบเรียงเป็นคำตอบภาษาคน: \"ออเดอร์ 8842 ถูกจัดส่งแล้ว คาดว่าถึงใน 2 วัน\".\n\nสังเกตว่าโมเดลไม่เคยแตะ database เลย — มันแค่ตัดสินใจ *ว่าควรเรียก tool ไหนด้วย argument อะไร* ส่วนสิทธิ์เข้าถึง DB, connection, และการ validate ว่า `8842` เป็น id ที่ user คนนี้ดูได้จริง เป็นความรับผิดชอบของ app ทั้งหมด.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"โมเดลรัน tool เอง\"** — ผิด และเป็นความเข้าใจผิดที่อันตรายที่สุด. โมเดล generate แค่ *คำขอ* ที่เป็น structured data; ถ้าโค้ดเราไม่รับไปรัน ก็ไม่มีอะไรเกิดขึ้น. \"function calling\" ไม่ได้แปลว่าโมเดล call function.\n- **\"พอประกาศ tool แล้วโมเดลจะเรียกทันทีทุกครั้ง\"** — ผิด. โมเดล *อาจ* เลือกเรียก หรือตอบเป็นข้อความปกติก็ได้; การตัดสินใจเรียกเป็น probabilistic ไม่ใช่ deterministic guarantee.\n- **\"tool result ที่ส่งกลับ เชื่อถือได้เสมอในสายตาโมเดล\"** — จริง ๆ result เป็นแค่ข้อความอีกชิ้นใน context; ถ้ามันมาจาก external source ที่ไม่ trust ก็กลายเป็นช่องทาง prompt injection ได้ (ดู `prompt-injection-intro`).\n\n## ขีดจำกัด / trade-offs (เมื่อไหร่ไม่ควรใช้ และต้นทุนคืออะไร)\n\nTools เพิ่มพลังให้โมเดลก็จริง แต่มีราคาที่ senior ต้องตอบได้:\n\n- **Latency**: ทุก tool call เพิ่ม round-trip อย่างน้อย 2 ครั้ง (โมเดล → app → โมเดล) บวกเวลารัน tool เอง. งานที่โมเดลตอบเองได้อยู่แล้ว การยัด tool เข้าไปทำให้ทั้งช้าและแพงขึ้นเปล่า ๆ.\n- **Failure modes**: tool ล้มได้เสมอ (network, invalid argument, business rule) และโมเดลอาจ hallucinate argument ที่ผิดหรือ tool ที่ไม่มีจริง. ต้อง validate argument ทุกครั้งก่อนรัน — วิธี handle error เป็นของ sibling `tool-error-handling`.\n- **Security surface**: ทุก tool ที่เปิดให้โมเดลเรียกได้ = capability ที่ผู้โจมตีอาจ trigger ผ่าน prompt injection. ให้ tool ถือสิทธิ์น้อยที่สุด (least privilege), scope แคบ, และ **app ต้องเป็นคน enforce ว่าใครเรียก tool ไหน/ด้วย argument อะไรได้** — ห้ามตั้งสมมติฐานว่า \"โมเดลคงไม่เรียกมั่ว\".\n- **เมื่อไหร่ไม่ควรใช้**: ถ้า workflow เป็น deterministic ชัดเจนอยู่แล้ว (รู้ลำดับ step แน่นอน) การเขียนโค้ดเรียกตรง ๆ เร็ว ถูก และเชื่อถือได้กว่าการให้โมเดลตัดสินใจเรียก tool เอง. ให้โมเดลตัดสินใจเฉพาะจุดที่ input เป็น natural language และเส้นทางไม่ตายตัวจริง ๆ.\n\n## มุมสัมภาษณ์\n\n- **\"ใครรัน tool — โมเดลหรือแอป?\"** → application รัน; โมเดลแค่ตัดสินใจและส่งคำขอ. คำถามนี้เช็คว่าเข้าใจ execution boundary จริงหรือท่องมา.\n- **\"เล่า flow ของ function calling ตั้งแต่ user ถามจนได้คำตอบ\"** → 5 ขั้น: ให้ tools → โมเดลขอเรียก → app execute → คืน result → โมเดลตอบต่อ (request → execute → return).\n- **\"ทำไม design แบบนี้ปลอดภัยกว่าให้โมเดลรันเอง?\"** → แยก decide จาก execute; app เป็น gatekeeper ที่ validate + จำกัดสิทธิ์ก่อนลงมือ.\n- **\"ถ้าโมเดลขอเรียก tool ที่ไม่มีจริง หรือใส่ argument ผิด?\"** → นำไปสู่ validation + `tool-error-handling`; app ต้องไม่เชื่อ argument ดิบจากโมเดล.\n",
+  "recall_checks": [
+    {
+      "q": "ใน function calling โมเดลทำอะไรได้ และไม่ได้ทำอะไร?",
+      "expected_answer": "โมเดลตัดสินใจและ 'ขอ' ให้เรียก tool พร้อม argument เท่านั้น ไม่ได้รัน tool เอง — application เป็นคนรันจริงแล้วส่งผลลัพธ์กลับเข้า conversation",
+      "type": "short_answer"
+    },
+    {
+      "q": "ใครเป็นผู้ execute tool จริง ๆ?",
+      "expected_answer": "application code ของเรา",
+      "type": "mcq",
+      "options": [
+        "provider API เป็นคนรันให้",
+        "application code ของเรา",
+        "โมเดล LLM รันด้วยตัวมันเอง"
+      ]
+    },
+    {
+      "q": "หลังจาก app รัน tool เสร็จ ต้องทำอะไรต่อ?",
+      "expected_answer": "ส่ง result กลับให้โมเดลตอบ",
+      "type": "mcq",
+      "options": [
+        "ส่ง result กลับให้โมเดลตอบ",
+        "ให้ผู้ใช้อ่าน result เองโดยตรง",
+        "ทิ้ง result ทิ้งไป ไม่ต้องใช้"
+      ]
+    },
+    {
+      "q": "ทำไม design ที่แยก 'model decides' ออกจาก 'app executes' ถึงปลอดภัยและควบคุมได้มากกว่า?",
+      "expected_answer": "เพราะการตัดสินใจ (โมเดล) แยกจากการ execute (app) ทำให้ app เป็น gatekeeper ที่ validate argument, จำกัดสิทธิ์ tool, และปฏิเสธได้ก่อนรันจริง",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดเป็นต้นทุน/ความเสี่ยงของการเพิ่ม tools ให้โมเดล?",
+      "expected_answer": "เพิ่ม latency และ attack surface",
+      "type": "mcq",
+      "options": [
+        "ทำให้ระบบตอบสนองได้เร็วขึ้นทุกครั้ง",
+        "แทบไม่มีต้นทุนอะไรเพิ่มขึ้นเลย",
+        "เพิ่ม latency และ attack surface"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "OpenAI Platform Docs — Function calling guide",
+      "source": "OpenAI Platform Documentation, \"Function calling\" guide",
+      "why": "อ่านภาพ request/response ของ tool call จาก provider หนึ่งแบบ hands-on"
+    },
+    {
+      "title": "Anthropic Docs — Tool use (function calling)",
+      "source": "Anthropic Documentation, \"Tool use\" guide",
+      "why": "เทียบ flow เดียวกันจากอีก provider เพื่อยืนยันว่าแนวคิด vendor-agnostic"
+    },
+    {
+      "title": "Toolformer: Language Models Can Teach Themselves to Use Tools",
+      "source": "Schick et al., 2023 (arXiv:2302.04761)",
+      "why": "อ่านต้นทางแนวคิดว่าโมเดลเรียนรู้ 'เมื่อไหร่ควรเรียก tool ไหน' ได้อย่างไร"
+    }
+  ]
+}

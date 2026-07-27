@@ -1,0 +1,67 @@
+{
+  "concept_id": "parallel-and-sequential-tools",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Parallel vs Sequential Tool Calls",
+  "est_minutes": 7,
+  "body_md": "# Parallel vs Sequential Tool Calls\n\n## ทำไมถึงสำคัญ\n\nภายใน tool loop (ตัว loop ดูใน `agentic-tool-loop` ของ chapter เดียวกัน) โมเดลอาจต้องเรียกหลาย tool กว่าจะได้คำตอบ — และลำดับการรันมีผลตรงต่อทั้ง *ความถูกต้อง* และ *latency*. tool ที่อิสระต่อกันรันพร้อมกันได้ (parallel) เพื่อลดเวลารวม; ส่วน tool ที่ input ตัวหลังต้องใช้ผลของตัวก่อน ต้องรันเรียงกัน (sequential) ไม่งั้นได้ผลผิด. งานของ senior คือแยกสองกรณีนี้ออกจาก data dependency ให้ขาด — ไม่ใช่รันเรียงกันทุกอย่างเพราะกลัว หรือรันพร้อมกันทุกอย่างเพราะอยากเร็ว.\n\n## แก่นของแนวคิด\n\n- **Parallel — tool อิสระ รันพร้อมกัน.** เมื่อโมเดลต้องการข้อมูลหลายชิ้นที่ *ไม่ขึ้นต่อกัน* (เช่น อากาศ + ราคาหุ้น + ตารางนัด) มันขอเรียกหลาย tool ใน turn เดียวได้ แล้ว *แอป* เป็นคนรัน tool เหล่านั้นแบบ concurrent (goroutine / async) จากนั้นรวมผลส่งกลับทีเดียว. เวลารวม ≈ tool ที่ช้าที่สุด แทนที่จะเป็นผลบวกของทุกตัว.\n- **Sequential — มี data dependency.** เมื่อ input ของ tool ตัวถัดไป *ต้องใช้ output* ของตัวก่อน (เช่น `find_user(email)` → ได้ `user_id` → `get_orders(user_id)`) มันรันพร้อมกันไม่ได้ เพราะตอนจะเรียกตัวหลังยังไม่มีค่าที่ต้องใส่. ลำดับถูกบังคับด้วย *การไหลของข้อมูล* ไม่ใช่ความชอบ.\n- **ใครตัดสิน.** โมเดลเป็นคน *เสนอ* ว่าจะเรียกอะไรบ้าง — ถ้ามันเห็นว่า tool อิสระกัน มักขอมาพร้อมกันในหนึ่ง turn; ถ้าต้องพึ่งผลก่อน มันจะขอทีละรอบ (เรียก → เห็นผล → เรียกต่อ). ฝั่ง *แอป* มีหน้าที่ execute จริง: รันชุดที่อิสระแบบ concurrent และเคารพลำดับของชุดที่ dependent.\n- **latency win ของ parallel.** ประโยชน์ทั้งหมดของ parallel คือ *ลด latency* — ไม่ใช่ทำให้คำตอบแม่นขึ้นหรือถูก token ลง. และมันได้ผลเฉพาะกับส่วนที่ *อิสระจริง*; ส่วนที่เป็น dependent chain คือเพดานความเร็วที่ parallelism ลดไม่ได้ (แนวเดียวกับ Amdahl's law: เร่งได้แค่ส่วนที่ขนานได้ ส่วนที่ต้องเรียงกันคือขีดจำกัด).\n\n(tool ตัวใดตัวหนึ่งใน batch parallel อาจ fail ได้ — การจัดการ error / retry อยู่ใน `tool-error-handling`; บทนี้โฟกัสที่ *ลำดับ* ไม่ใช่ความล้มเหลว)\n\n## ตัวอย่าง (fintech support)\n\nลูกค้าถามว่า \"ออเดอร์ #A-1029 ของฉันสถานะอะไร และฉันได้ส่วนลด tier ไหน\". โมเดลต้องการสองข้อมูลที่ *ไม่เกี่ยวกัน*: สถานะออเดอร์ กับ ระดับสมาชิก → เรียกแบบ **parallel**: `get_order(order_id=\"A-1029\")` และ `get_customer_tier(customer_id)` พร้อมกัน. แอปยิงสองคำขอ concurrent, รอตัวที่ช้ากว่าเสร็จ, แล้วส่งผลทั้งคู่กลับให้โมเดลตอบในรอบเดียว.\n\nอีกเคส: ลูกค้าถาม \"ขอรายการเดินบัญชี 5 รายการล่าสุดของบัญชีออมทรัพย์ฉัน\". โมเดลยังไม่รู้ `account_id` — ต้องหา account ก่อน → **sequential**: `find_account(customer_id, type=\"savings\")` → ได้ `account_id` → `get_transactions(account_id, limit=5)`. ถ้าฝืนยิงสองตัวพร้อมกัน `get_transactions` จะไม่มี `account_id` ที่ต้องใส่ตั้งแต่แรก.\n\n```mermaid\nflowchart TD\n  subgraph P[\"Parallel: independent tools\"]\n    M[\"Model asks in one turn\"] --> A1[\"get_order\"]\n    M --> A2[\"get_customer_tier\"]\n    A1 --> J[\"Join, answer once\"]\n    A2 --> J\n  end\n  subgraph S[\"Sequential: data dependency\"]\n    F[\"find_account\"] -->|\"account_id\"| G[\"get_transactions(account_id)\"]\n  end\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"parallel ทำให้คำตอบดีขึ้น/แม่นขึ้น\"** ผิด. parallel แลกได้แค่ *เวลา* (latency) — คุณภาพคำตอบเท่าเดิม. ถ้าอยากได้ความถูกต้อง ต้องไปดูที่ tool schema และ data dependency ไม่ใช่ที่ concurrency.\n- **\"โมเดลจัดการ dependency ให้เองเสมอ อยากสั่งรันพร้อมกันก็ได้\"** ผิด. ถ้า tool ตัวหลังต้องใช้ค่าที่ยังไม่มี การบังคับ parallel ทำให้ argument หาย/มั่ว → ผลผิด. ลำดับถูกกำหนดโดยข้อมูล ไม่ใช่โดยการตั้งค่า.\n- **\"sequential ปลอดภัยกว่า เลยรันเรียงทุกอย่างไว้ก่อน\"** ผิดในแง่ประสิทธิภาพ. ถ้า tool อิสระต่อกันจริง การรันเรียงกันคือการทิ้ง latency ฟรี ๆ ทุก turn.\n\n## ขีดจำกัด / trade-off\n\n- **parallel เร็ว เฉพาะเมื่ออิสระจริง.** ถ้า \"อิสระ\" แค่ผิวเผินแต่จริง ๆ แชร์ state กัน (เช่นสอง tool เขียน record เดียวกัน) การรัน concurrent เปิดช่อง race condition / ordering bug ที่ debug ยาก. read ที่ไม่มี side effect ขนานได้สบาย; write ที่แตะ state ร่วมกันต้องคิดเรื่องลำดับและ isolation เสมอ.\n- **concurrency เพิ่ม complexity.** ต้องจัดการ fan-out/fan-in, partial failure (บางตัวสำเร็จบางตัว fail), timeout ต่อตัว, และการรวมผลกลับเข้า conversation ให้ถูกต้อง. โค้ดซับซ้อนขึ้นจริง — คุ้มเมื่อ latency สำคัญและมี tool อิสระหลายตัวจริง ๆ เท่านั้น.\n- **เพดานของ parallelism.** งานที่เป็น dependent chain ยาว (A→B→C→D) parallel ช่วยไม่ได้เลย เพราะทุกก้าวรอก้าวก่อน; latency ถูกบังคับด้วยความยาวของ chain. อย่าคาดหวังว่า concurrency จะเร่งงานที่มี dependency แน่นหนา.\n- **เมื่อไหร่ไม่ต้องทำ parallel:** เมื่อแต่ละ turn เรียก tool ตัวเดียว, หรือ tool ทั้งหมด dependent กัน, หรือ latency ไม่ใช่คอขวด — การไป implement concurrent executor คือ over-engineering.\n\n## มุมสัมภาษณ์\n\n- \"parallel กับ sequential tool call ต่างกันยังไง เลือกยังไง?\" → ดูที่ data dependency: input ของตัวหลังต้องใช้ output ตัวก่อนไหม; ถ้าไม่ → parallel เพื่อลด latency, ถ้าใช่ → บังคับ sequential.\n- \"ประโยชน์ของ parallel tool call คืออะไร และ *ไม่ใช่* อะไร?\" → ลด latency เท่านั้น; ไม่ได้เพิ่มความแม่นหรือลด token.\n- \"ถ้าโมเดลขอเรียกสาม tool พร้อมกัน แต่จริง ๆ ตัวที่สามต้องใช้ผลตัวแรก จะเกิดอะไร?\" → argument ของตัวที่สามจะขาด/ผิด; ต้อง detect dependency แล้วบังคับให้รันเรียง.\n- \"แอปกับโมเดล ใครรับผิดชอบ concurrency?\" → โมเดล *เสนอ* ชุด tool; แอปเป็นคน execute จริง จึงเป็นคนตัดสินใจรัน concurrent และคุม ordering / side-effect.\n",
+  "recall_checks": [
+    {
+      "q": "tool calls สองตัวต้องรันแบบ sequential (เรียงลำดับ) ในกรณีใด?",
+      "expected_answer": "เมื่อ input ของ tool ตัวถัดไปต้องใช้ผลลัพธ์ (output) ของ tool ตัวก่อนหน้า — คือมี data dependency ระหว่างกัน",
+      "type": "short_answer"
+    },
+    {
+      "q": "ประโยชน์หลักของการเรียก tool แบบ parallel คืออะไร?",
+      "expected_answer": "ลด latency เพราะ tool อิสระรันพร้อมกันได้",
+      "type": "mcq",
+      "options": [
+        "ลด latency เพราะ tool อิสระรันพร้อมกันได้",
+        "ทำให้โมเดลเลือก tool ได้แม่นยำและถูกต้องขึ้น",
+        "ลด token ที่ต้องส่งเข้าโมเดลในแต่ละรอบลง"
+      ]
+    },
+    {
+      "q": "โมเดลจะขอเรียก tool หลายตัวแบบ parallel ได้เมื่อใด?",
+      "expected_answer": "เมื่อ input แต่ละ tool ไม่ขึ้นกับผลของ tool อื่น",
+      "type": "mcq",
+      "options": [
+        "เมื่อ tool ทุกตัวเขียนแก้ไข record ตัวเดียวกันอยู่",
+        "เมื่อ input แต่ละ tool ไม่ขึ้นกับผลของ tool อื่น",
+        "เมื่อโมเดลยังไม่แน่ใจว่าจะเรียก tool ตัวไหนดี"
+      ]
+    },
+    {
+      "q": "ถ้าบังคับให้ tool ที่มี data dependency รันแบบ parallel จะเกิดอะไร?",
+      "expected_answer": "tool ตัวหลังขาด input ที่ต้องใช้ จึงได้ผลผิด",
+      "type": "mcq",
+      "options": [
+        "ได้ผลเหมือนเดิมทุกอย่างแต่เร็วขึ้นเสมอ",
+        "โมเดลจะ merge ผลลัพธ์ทั้งหมดให้ถูกต้องเองอัตโนมัติ",
+        "tool ตัวหลังขาด input ที่ต้องใช้ จึงได้ผลผิด"
+      ]
+    },
+    {
+      "q": "เมื่อโมเดลขอเรียก tool อิสระหลายตัวในหนึ่ง turn ใครเป็นผู้รันให้เกิด concurrency จริง?",
+      "expected_answer": "แอป (application) เป็นผู้ execute tool — โมเดลแค่เสนอว่าจะเรียกอะไร; แอปจึงเป็นฝ่ายเลือกรัน tool อิสระแบบ concurrent แล้วรวมผลส่งกลับ",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Function calling — Parallel function calling",
+      "source": "OpenAI API documentation — platform.openai.com/docs/guides/function-calling",
+      "why": "อ่านกลไก parallel function calling ที่ provider รองรับจริง และวิธี app รับหลาย tool call ใน turn เดียว"
+    },
+    {
+      "title": "Tool use (function calling)",
+      "source": "Anthropic documentation — \"Tool use with Claude\" (docs section)",
+      "why": "เทียบว่า provider อีกเจ้าจัดการ tool call หลายตัวและการส่งผลกลับเข้า conversation อย่างไร"
+    },
+    {
+      "title": "Validity of the Single Processor Approach to Achieving Large-Scale Computing Capabilities",
+      "source": "Gene Amdahl, 1967 (Amdahl's Law)",
+      "why": "อ่านต้นทางแนวคิดว่า parallel เร่งได้แค่ส่วนที่ขนานได้ ส่วน dependent chain คือเพดานความเร็ว"
+    }
+  ]
+}

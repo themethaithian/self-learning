@@ -1,0 +1,67 @@
+{
+  "concept_id": "agentic-tool-loop",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "The Agentic Tool Loop",
+  "est_minutes": 8,
+  "body_md": "# The Agentic Tool Loop\n\n## ทำไมถึงสำคัญ\n\nงานจริงมักทำไม่จบด้วย tool call เดียว: โมเดลต้อง look up ข้อมูลก่อน แล้วค่อยตัดสินใจ แล้วค่อยลงมือ. รูปแบบที่ทำให้เกิดสิ่งนี้คือ **loop** — app เรียกโมเดล, ถ้าโมเดลขอเรียก tool ก็รันแล้วป้อนผลกลับเข้า conversation, แล้วเรียกโมเดลอีกครั้ง วนไปจนโมเดลตอบเป็น final answer. loop นี้แหละคือแก่นของสิ่งที่เรียกว่า \"agent\" และเป็นจุดที่ engineering concern อย่าง termination กับ cost เข้ามาเกี่ยว.\n\n## แก่นของแนวคิด\n\n- กลไกของ \"หนึ่งรอบ\" (โมเดลขอเรียก tool พร้อม argument → app รัน → คืนผล) คือ function calling พื้นฐาน ซึ่งเป็นของ sibling `how-function-calling-works` — บทนี้ไม่เล่าซ้ำ. บทนี้เป็นเจ้าของ **การวนหลายรอบ**.\n- โครงของ loop: (1) เรียกโมเดลด้วย conversation ทั้งก้อน → (2) ดูว่าโมเดลตอบเป็น tool call หรือ final answer → (3) ถ้าเป็น tool call, **app เป็นคนรันจริง** (โมเดลไม่รันเอง) → (4) **append** ผลลัพธ์ (พร้อม tool call id) กลับเข้า conversation → (5) เรียกโมเดลอีกครั้งด้วย context ที่โตขึ้น. วนจนกว่าจะไม่มี tool call.\n- เงื่อนไขจบ (termination condition): loop จบเมื่อโมเดลตอบกลับ **ไม่มี tool call** — นั่นคือ final answer. นี่คือ termination ตามธรรมชาติ.\n- แต่ธรรมชาติอย่างเดียวไม่พอ: ต้องมี **max-iterations / step budget** เป็น hard cap เสมอ. โมเดลอาจวน (เรียก tool เดิมซ้ำ, สลับไปมา) หรือ tool คืน error แล้วโมเดลลองใหม่ไม่รู้จบ. ถ้าไม่มี cap, loop อาจไม่จบและ cost บานปลาย เพราะทุกรอบคือ API call เต็ม ๆ อีกครั้ง.\n- state ของ loop คือ conversation array ที่ยาวขึ้นเรื่อย ๆ — แต่ละรอบส่ง context ทั้งหมดกลับไปใหม่ ดังนั้น token (และเงิน) โตแบบสะสมทุกรอบ ไม่ใช่คงที่.\n- การเรียกหลาย tool \"พร้อมกัน\" ภายใน **หนึ่ง** step (parallel) เป็นคนละเรื่องกับการวนหลาย step — อันนั้นเป็นของ sibling `parallel-and-sequential-tools`.\n- นี่คือ loop เชิงกลไกล้วน ๆ. รูปแบบการ \"คิด\" ที่ซ้อนบน loop นี้ (reason → act → observe แบบ ReAct, planning) เป็นเรื่องของ ch.6 `agent-loop-react` — บทนี้ให้แค่เครื่องจักร ยังไม่ใช่ reasoning pattern.\n\n## ตัวอย่าง (support: จ่ายเงินคืน)\n\nลูกค้าขอ refund ออเดอร์หนึ่ง. งานนี้ทำ tool เดียวไม่ได้ ต้องวนหลายรอบ:\n\n1. โมเดลเรียก `lookup_order(order_id)` → app คืนสถานะออเดอร์ + ยอดเงิน + วันที่ซื้อ\n2. โมเดลอ่านผล แล้วเรียก `check_refund_policy(order)` → app คืนว่าอยู่ในกรอบ 30 วันไหม และ refund ได้เท่าไหร่\n3. โมเดลเห็นว่าเข้าเงื่อนไข จึงเรียก `issue_refund(order_id, amount)` → app ทำจริงแล้วคืน refund id\n4. โมเดลไม่เรียก tool อีก แต่ตอบ final answer: \"คืนเงิน 1,200 บาทให้แล้ว เลขอ้างอิง RF-88231\"\n\nสังเกตว่า step 2 ตัดสินใจจากผลของ step 1, และ step 3 จากผลของ step 2 — โมเดลจะรู้ argument ของรอบถัดไปได้ก็ต่อเมื่อเห็นผลของรอบก่อน. นี่คือเหตุผลว่าทำไมต้องเป็น loop ไม่ใช่ยิงทีเดียว. (หมายเหตุ: `issue_refund` มี side effect จริง — การ retry ตอน tool error ต้องระวังไม่ให้จ่ายซ้ำ ซึ่งเป็นเรื่องของ sibling `tool-error-handling`.)\n\n```mermaid\nflowchart TD\n  U[User task] --> M[Call model with full conversation]\n  M --> D{Tool call or final answer}\n  D -->|Final answer| DONE[Return answer to user]\n  D -->|Tool call| G{Step budget left}\n  G -->|No| STOP[\"Stop: budget exceeded, fallback\"]\n  G -->|Yes| E[App executes the tool]\n  E --> A[Append tool result to conversation]\n  A --> M\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"โมเดลรัน tool เอง\"** ผิด. โมเดลแค่ *ขอ* ให้เรียก tool พร้อม argument; app เป็นคนรันจริงและเป็นคนคุม loop ทั้งหมด. โมเดลไม่มี access ตรงไปที่ระบบของคุณ.\n- **\"loop จบเองเสมอเพราะโมเดลฉลาดพอ\"** ผิด. โมเดลวนซ้ำ/หลงทางได้ — hard cap เป็นสิ่งจำเป็น ไม่ใช่ของประดับ.\n- **\"ยิ่งวนหลายรอบยิ่งดีเพราะโมเดลได้คิดเยอะ\"** ผิด. แต่ละรอบเพิ่ม latency, cost, และโอกาส drift; เป้าหมายคือจบให้เร็วที่สุดเท่าที่งานต้องการ.\n\n## ขีดจำกัด / trade-offs\n\nจำนวน step ที่มากขึ้นแลกมาด้วยราคา. ข้อดี: loop ทำงานหลายขั้นที่พึ่งพากันได้ (chain: look up → decide → act) ซึ่ง single call ทำไม่ได้. ข้อเสียที่ต้องตอบให้ได้ในสัมภาษณ์:\n\n- **Latency สะสม**: ทุกรอบคือ round-trip ไปโมเดล + เวลา execute tool. งาน 5 step อาจใช้เวลาหลายวินาที — แพงต่อ UX แบบ real-time.\n- **Cost โตเร็วกว่าเชิงเส้น**: conversation ยาวขึ้นทุกรอบ และถูกส่งกลับทั้งก้อนใหม่ทุกครั้ง ดังนั้น token รวมไม่ได้โตเป็นเส้นตรงตามจำนวน step แต่โตเร็วกว่านั้น.\n- **ความเสี่ยง loop ไม่จบ / drift**: ยิ่งวนมาก โมเดลยิ่งมีโอกาสหลงจาก goal เดิม หรือวนเรียก tool ซ้ำด้วย argument เดิม. cap iterations + เช็คว่าคืบหน้าจริงช่วยกัน.\n- **เมื่อไม่ควรใช้**: ถ้างานจบได้ใน single tool call หรือไม่ต้องใช้ tool เลย อย่าห่อด้วย agent loop — เพิ่ม latency/cost/ความไม่แน่นอนโดยเปล่าประโยชน์. loop เหมาะกับงานที่ argument ของ step ถัดไป *ต้อง* พึ่งผลของ step ก่อนเท่านั้น.\n\nทางปฏิบัติ: ตั้ง max_steps (เช่น 5–10) ตามความซับซ้อนของงาน, และมี fallback ชัดเจนเมื่อชน cap (คืน error / ส่งต่อ human) แทนที่จะวนเงียบ ๆ.\n\n## มุมสัมภาษณ์\n\n- \"loop ของ agent จบเมื่อไหร่?\" → เมื่อโมเดลตอบกลับโดยไม่มี tool call (final answer); และต้องมี max-iterations เป็น hard cap คู่กันเสมอ.\n- \"ทำไมต้องมี max-iterations ในเมื่อมี termination condition ตามธรรมชาติแล้ว?\" → เพราะโมเดลวนซ้ำ/หลงทาง/ติด error loop ได้จนไม่ถึง final answer — cap กัน cost บานปลายและ hang.\n- \"ใครรัน tool — โมเดลหรือ app?\" → app; โมเดลแค่ขอเรียกพร้อม argument. คำถามนี้แยกคนที่เข้าใจกลไกจริงออกจากคนที่คิดว่าโมเดล execute เอง.\n- \"cost ของ agent loop โตยังไงเมื่อ step เพิ่ม?\" → โตเร็วกว่าเชิงเส้น เพราะ context ทั้งก้อนถูกส่งซ้ำทุกรอบและยาวขึ้นเรื่อย ๆ.\n",
+  "recall_checks": [
+    {
+      "q": "loop ของ agentic tool ปกติจบ (terminate) เมื่อไหร่?",
+      "expected_answer": "เมื่อโมเดลตอบกลับเป็น final answer ที่ไม่มี tool call อีก",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม agent loop ต้องมี max-iterations / step budget เป็น hard cap แม้จะมี termination condition ตามธรรมชาติแล้ว?",
+      "expected_answer": "กันไม่ให้ loop วนไม่จบและเปลืองต้นทุน",
+      "type": "mcq",
+      "options": [
+        "บังคับให้โมเดลเรียก tool อย่างน้อยหนึ่งครั้งเสมอ",
+        "กันไม่ให้ loop วนไม่จบและเปลืองต้นทุน",
+        "ทำให้คำตอบสุดท้ายแม่นยำขึ้นในทุกกรณี"
+      ]
+    },
+    {
+      "q": "ในแต่ละรอบของ loop หลัง app รัน tool เสร็จ ต้องทำอะไรกับผลลัพธ์?",
+      "expected_answer": "append เข้า conversation แล้วเรียกโมเดลต่อ",
+      "type": "mcq",
+      "options": [
+        "ส่งผลลัพธ์กลับไปให้ผู้ใช้ดูโดยตรงทันที",
+        "เก็บผลลัพธ์ไว้เฉย ๆ จนกว่าจะจบทุก tool call",
+        "append เข้า conversation แล้วเรียกโมเดลต่อ"
+      ]
+    },
+    {
+      "q": "การเรียกหลาย tool 'พร้อมกัน' ภายในหนึ่ง step ต่างจาก agentic tool loop อย่างไร?",
+      "expected_answer": "การเรียกพร้อมกันในหนึ่ง step คือ parallel tool calls (sibling concept); loop คือการวนหลาย step ที่ผลของ step ก่อนป้อนกลับให้โมเดลตัดสินใจ step ถัดไป",
+      "type": "short_answer"
+    },
+    {
+      "q": "เพิ่มจำนวน step ใน loop ให้ผลอย่างไร?",
+      "expected_answer": "capability สูงขึ้น แต่ latency และ cost ก็สูงตาม",
+      "type": "mcq",
+      "options": [
+        "capability สูงขึ้น แต่ latency และ cost ก็สูงตาม",
+        "latency ลดลงเพราะแบ่งงานเป็นหลายรอบเล็ก ๆ ที่เร็วกว่า",
+        "cost คงที่ไม่ว่าจะวนกี่รอบก็ตาม"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+      "source": "Yao et al., 2022 (arXiv:2210.03629)",
+      "why": "อ่านต้นฉบับแนวคิด loop ที่สลับ reason กับ act — พื้นฐานของ agent loop ที่ ch.6 ต่อยอด"
+    },
+    {
+      "title": "Function calling",
+      "source": "OpenAI Platform Docs — platform.openai.com/docs/guides/function-calling",
+      "why": "อ่านวิธีที่ provider อธิบายรอบ model → tool → ป้อนผลกลับ อย่างเป็นทางการ"
+    },
+    {
+      "title": "Tool use (function calling) — how tool use works",
+      "source": "Anthropic Docs, Agents and tools → Tool use overview",
+      "why": "อ่านตัวอย่าง multi-step loop ที่ app คุมและ append tool result กลับเข้า conversation"
+    }
+  ]
+}
