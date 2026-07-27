@@ -1,0 +1,67 @@
+{
+  "concept_id": "chunking-strategies",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Chunking Strategies",
+  "est_minutes": 8,
+  "body_md": "# Chunking Strategies\n\n## ทำไมถึงสำคัญ\n\nใน RAG คุณ embed และ retrieve เป็น **chunk** ไม่ใช่เอกสารทั้งฉบับ — การออกแบบ chunk จึงเป็นตัวกำหนดคุณภาพการค้นคืนโดยตรง ตั้งแต่ก่อนถึงขั้น embedding หรือ vector DB. เอกสารจริง (คู่มือ, policy, FAQ) มักยาวเกินกว่าจะ embed เป็นก้อนเดียวแล้วได้ vector ที่มีความหมายคม. ถ้า chunk ออกแบบพลาด ระบบจะ retrieve เจอข้อความที่ไม่เกี่ยว หรือเจอ chunk ที่ขาด context ที่จำเป็นต่อการตอบ — ปัญหาที่ prompt เก่งแค่ไหนก็แก้ไม่ได้ เพราะข้อมูลผิดตั้งแต่ต้นทาง.\n\n## แก่นของแนวคิด\n\n- chunk คือ **หน่วยของการ retrieve**. embedding แปลงข้อความหนึ่งก้อนเป็น vector เดียว (embedding เป็น sibling concept ในบทนี้ — ไม่เล่าซ้ำที่นี่) ยิ่งก้อนใหญ่ vector ยิ่งกลายเป็นค่าเฉลี่ยของหลายเรื่องปนกัน → similarity เจือจาง.\n- **ขนาด chunk เป็น trade-off กลางของทั้งเรื่อง**:\n  - *ใหญ่เกินไป* = embedding เจือจาง (หนึ่ง vector ครอบหลายหัวข้อ), retrieve มาแล้วพ่วงข้อความรอบข้างที่ไม่เกี่ยว, และเปลือง context window ตอน inject เข้า prompt.\n  - *เล็กเกินไป* = แต่ละ chunk ขาด context ที่จำเป็นต่อการตอบ เช่น ประโยคที่อ้าง \"ตามเงื่อนไขข้างต้น\" แต่เงื่อนไขนั้นถูกตัดไปอยู่คนละ chunk.\n- **overlap**: ให้ chunk ที่ติดกันมีเนื้อหาซ้อนกันบางส่วน (เช่น 10–20%) เพื่อกันข้อเท็จจริงที่คร่อมรอยต่อ (boundary) ระหว่าง chunk ถูกตัดขาดหายไป — fact ที่คร่อม boundary จะยังอยู่ครบในอย่างน้อยหนึ่ง chunk.\n- **วิธี split**:\n  - *fixed-size* — ตัดตามจำนวน token/character คงที่ ง่ายและเร็ว แต่ตัดกลางประโยคหรือกลางความคิดได้.\n  - *semantic / structural boundary* — ตัดตามโครงสร้างจริง เช่น heading, paragraph, sentence ทำให้แต่ละ chunk เป็นหน่วยความหมายที่สมบูรณ์กว่า.\n- **metadata**: แนบข้อมูลกำกับติดไปกับแต่ละ chunk (source, section/heading, version, วันที่, doc type) เพื่อใช้ filter ตอน query (เช่น เอาเฉพาะ policy ที่ยัง active) และใช้แสดง citation ตอนตอบ.\n- ต้องจับคู่ขนาด chunk กับทั้ง **ชนิดเนื้อหา** และ **embedding model** ที่ใช้ — แต่ละ model มีความยาว input และลักษณะ optimal ต่างกัน.\n\n## ตัวอย่าง (support / policy doc)\n\nSupport knowledge base มีเอกสาร \"Refund & Chargeback Policy\" ยาว 12 หน้า แบ่งเป็นหัวข้อ: eligibility, timeframe, fees, chargeback process, exceptions. ถ้า embed ทั้งไฟล์เป็น vector เดียว คำถาม \"ขอ refund ได้ภายในกี่วัน\" จะ match อ่อนมาก เพราะ vector เป็นค่าเฉลี่ยของทุกหัวข้อรวมกัน.\n\nวิธีที่ดีกว่า: split ตาม heading (structural) จะได้ chunk \"timeframe\" แยกเป็นก้อนเดียว, ใส่ overlap 2–3 ประโยคกับหัวข้อ \"eligibility\" ที่อยู่ก่อนหน้า (เผื่อกฎ timeframe อ้างเงื่อนไข eligibility), แล้วแนบ metadata `{source: \"refund-policy-v3\", section: \"timeframe\", effective: \"2026-01\"}`. ตอน query ระบบ filter เฉพาะ policy version ที่ active ก่อน แล้ว retrieve chunk \"timeframe\" ตรง ๆ พร้อมบอกได้ว่ามาจาก section ไหน.\n\n```mermaid\nflowchart TD\n  D[\"Long doc: refund-policy.pdf\"] --> S[\"Split on section headings\"]\n  S --> C1[\"Chunk: eligibility\"]\n  S --> C2[\"Chunk: timeframe (overlap: eligibility)\"]\n  S --> C3[\"Chunk: fees (overlap: timeframe)\"]\n  C1 --> MB[\"attach metadata: source; section; version\"]\n  C2 --> MB\n  C3 --> MB\n  MB --> E[\"embed each chunk -> one vector\"]\n  E --> V[\"store vectors in vector DB\"]\n```\n\nการเอา chunk ที่ retrieve มายัดเข้า prompt เพื่อให้โมเดลตอบโดยอ้างอิงเอกสารจริงและใส่ citation เป็นเรื่องของ sibling `rag-pipeline-and-grounding`; ส่วนการเก็บและค้น vector จำนวนมากเป็นเรื่องของ sibling `vector-databases`.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"chunk เล็กที่สุดเท่าที่ทำได้ = ค้นแม่นที่สุด\"** ผิด — chunk เล็กไปทำให้แต่ละก้อนขาด context จนตอบไม่ได้ หรือ retrieve เจอประโยคที่ตรงคำแต่ไม่มีข้อมูลพอ.\n- **\"มี chunk size ตายตัวที่ดีที่สุด (เช่น 512 token) ใช้ได้กับทุกงาน\"** ผิด — ขึ้นกับชนิดเอกสารและ embedding model ต้องทดสอบเอง.\n- **\"overlap ยิ่งเยอะยิ่งดี\"** ผิด — overlap เพิ่ม storage และ duplication (ข้อความซ้ำถูก retrieve ซ้อนกัน) โดยได้ประโยชน์ลดลงเรื่อย ๆ.\n\n## ขีดจำกัด / trade-off\n\n- **big vs small ไม่มี free lunch**: ใหญ่ = context ครบแต่ relevance เจือจาง + เปลือง context window; เล็ก = คม/แม่นแต่เสี่ยงขาด context. ต้องเลือกจุดกลางตามงาน ไม่ใช่ดันไปสุดทางใดทางหนึ่ง.\n- **overlap มีต้นทุน**: overlap แลกมาด้วย storage และ index size ที่โตขึ้น (chunk มากขึ้น + ข้อความซ้ำ) และทำให้ผลลัพธ์ retrieve ซ้ำซ้อนจนต้อง dedupe; มากไปเปลืองโดยไม่คุ้ม.\n- **ไม่มี universal best size**: chunk ที่ดีของ code, ของ legal contract, และของ chat log ไม่เท่ากัน — ต้องวัดด้วย retrieval eval (recall/precision ต่อชุดคำถามจริง) ไม่ใช่เดา.\n- **structural split ต้องมีโครงสร้างให้ split**: เอกสารที่ไม่มี heading/format ชัด (OCR, transcript) ทำ semantic split ยาก อาจต้องพึ่ง fixed-size หรือใช้ model ช่วยหา boundary ซึ่งเพิ่มต้นทุน.\n- **re-chunk = re-embed ทั้ง corpus**: เปลี่ยนกลยุทธ์ chunk ทีหลัง แปลว่าต้อง re-embed และ re-index ใหม่หมด ซึ่งมีต้นทุนจริง — ควรออกแบบให้ดีตั้งแต่ต้นและวัดก่อนขยาย.\n\n## มุมสัมภาษณ์\n\n- \"ทำไมต้อง chunk เอกสารก่อน embed แทนที่จะ embed ทั้งไฟล์?\" → vector เดียวต่อทั้งไฟล์เจือจาง; retrieve หน่วยที่เล็กและตรงกว่าได้ และพอดี context window มากกว่า.\n- \"chunk เล็กไปกับใหญ่ไป เสียอะไรต่างกัน?\" → เล็ก = ขาด context; ใหญ่ = relevance เจือจาง + เปลือง context (นี่คือ trade-off แกนกลางที่ interviewer เจาะ).\n- \"overlap มีไว้ทำไม และต้นทุนคืออะไร?\" → กัน fact ที่คร่อม boundary หาย; ต้นทุนคือ storage และ duplication.\n- \"จะเลือก chunk size ยังไง?\" → ไม่มีค่าตายตัว, จับคู่กับชนิดเนื้อหา + embedding model, แล้ววัดด้วย retrieval eval.\n- \"metadata ใน chunk ช่วยอะไร?\" → filter ตอน query (version/permission/recency) และใช้ทำ citation.\n",
+  "recall_checks": [
+    {
+      "q": "overlap ระหว่าง chunk ที่ติดกันมีไว้เพื่ออะไร?",
+      "expected_answer": "กันข้อเท็จจริงที่คร่อมรอยต่อ (boundary) ระหว่าง chunk ถูกตัดขาดหายไป ให้ fact นั้นยังอยู่ครบในอย่างน้อยหนึ่ง chunk",
+      "type": "short_answer"
+    },
+    {
+      "q": "chunk ที่เล็กเกินไปเสียอะไร เทียบกับ chunk ที่ใหญ่เกินไป?",
+      "expected_answer": "เล็ก = ขาด context; ใหญ่ = relevance เจือจาง",
+      "type": "mcq",
+      "options": [
+        "เล็ก = relevance เจือจาง; ใหญ่ = ขาด context",
+        "เล็ก = ขาด context; ใหญ่ = relevance เจือจาง",
+        "เล็ก = storage สูงขึ้น; ใหญ่ = ค้นแม่นขึ้น"
+      ]
+    },
+    {
+      "q": "ข้อใดถูกเกี่ยวกับการเลือก chunk size?",
+      "expected_answer": "ต้องจับคู่กับ content และ embedding model แล้ววัดด้วย eval",
+      "type": "mcq",
+      "options": [
+        "ต้องจับคู่กับ content และ embedding model แล้ววัดด้วย eval",
+        "มี chunk size มาตรฐานตัวเดียวที่ดีที่สุดใช้ได้กับทุกงานทันที",
+        "chunk ยิ่งเล็กยิ่งค้นแม่นขึ้นเรื่อย ๆ เสมอ ไม่มีข้อเสียใด ๆ เลย"
+      ]
+    },
+    {
+      "q": "metadata ที่แนบกับแต่ละ chunk ใช้ทำอะไรได้บ้าง?",
+      "expected_answer": "ใช้ filter ผลลัพธ์ตอน query (เช่น source, section, version/recency) และใช้แสดง citation ในคำตอบ",
+      "type": "short_answer"
+    },
+    {
+      "q": "overlap ระหว่าง chunk มีต้นทุนหลักคืออะไร?",
+      "expected_answer": "เพิ่ม storage และเกิดข้อความซ้ำซ้อนตอน retrieve",
+      "type": "mcq",
+      "options": [
+        "ทำให้ embedding model ประมวลผลช้าลงอย่างมีนัยสำคัญ",
+        "ลด recall ของการ retrieve ลงในแทบทุกกรณี",
+        "เพิ่ม storage และเกิดข้อความซ้ำซ้อนตอน retrieve"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Chunking Strategies for LLM Applications",
+      "source": "Pinecone Learn — pinecone.io/learn/chunking-strategies",
+      "why": "อ่านสรุปวิธี chunk (fixed-size, overlap, structural) และผลต่อคุณภาพ retrieval"
+    },
+    {
+      "title": "Text splitters (Concepts)",
+      "source": "LangChain docs — python.langchain.com/docs/concepts/text_splitters",
+      "why": "อ่านตัวเลือก splitter จริงที่ใช้ใน production (recursive, by heading, token-based)"
+    },
+    {
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "source": "Lewis et al., 2020, arXiv:2005.11401",
+      "why": "อ่านต้นฉบับแนวคิด RAG ว่าทำไมจึง retrieve หน่วยย่อยมาประกอบคำตอบแทนทั้งเอกสาร"
+    }
+  ]
+}

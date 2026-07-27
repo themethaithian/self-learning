@@ -1,0 +1,67 @@
+{
+  "concept_id": "rag-vs-finetune-vs-long-context",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "RAG vs Fine-Tuning vs Long Context",
+  "est_minutes": 9,
+  "body_md": "# RAG vs Fine-Tuning vs Long Context\n\n## ทำไมถึงสำคัญ\n\nเมื่อโมเดลต้อง \"รู้\" หรือ \"ทำ\" อะไรที่มันไม่ได้เรียนมาตอน train มีสามทางเลือกที่มักถูกสับสนกัน: RAG, fine-tuning, long context. เลือกผิดแล้วจ่ายแพงทั้งเงินและเวลา — เช่น fine-tune เพื่อ \"ยัด fact\" ทั้งที่ควรใช้ RAG จะได้โมเดลที่ยัง hallucinate และอัปเดตข้อมูลทีต้อง retrain ใหม่ทุกครั้ง. คำถามสัมภาษณ์ senior เกือบทุกครั้งไม่ได้ถามว่าแต่ละอันคืออะไร แต่ถามว่า \"งานนี้เลือกอันไหน เพราะอะไร\".\n\n## แก่นของแนวคิด\n\nแยกให้ขาดด้วยคำถามเดียว: คุณต้องการเพิ่ม **ความรู้ (knowledge)** หรือเปลี่ยน **พฤติกรรม (behavior)**?\n\n- **RAG (Retrieval-Augmented Generation)** — เก็บความรู้ไว้นอกโมเดลใน index/vector store, ตอนตอบก็ retrieve เฉพาะชิ้นที่เกี่ยวข้องมาแปะใน prompt แล้วให้โมเดลตอบโดย ground กับข้อมูลนั้น. เหมาะกับ **fact ที่ใหญ่ เปลี่ยนบ่อย หรือเป็น proprietary** เพราะ update = แก้ index ไม่ใช่ retrain โมเดล และตอบได้แบบ citable (อ้างแหล่งได้). กลไก pipeline จริง (chunk → embed → retrieve → ground) อยู่ใน sibling `rag-pipeline-and-grounding` — บทนี้โฟกัสแค่ *เมื่อไหร่ควรเลือก*.\n- **Fine-tuning** — เอา example จำนวนมากไป train ต่อบนโมเดลเพื่อเปลี่ยน *วิธีตอบ*: format, style, tone, หรือทำ task แคบ ๆ ให้สม่ำเสมอ. มันเปลี่ยน **HOW** ไม่ใช่ **WHAT** — และ **ไม่ใช่** วิธีที่เชื่อถือได้ในการฉีด fact ใหม่ (โมเดลอาจจำเพี้ยน/hallucinate และต้อง retrain ทุกครั้งที่ข้อมูลเปลี่ยน). รายละเอียดการ train เชิงลึกอยู่นอกขอบเขตบทนี้ (ดู material fine-tuning แยกต่างหาก).\n- **Long context** — ยัดเอกสารที่เกี่ยวข้อง *ทั้งฉบับ* เข้าไปใน prompt ตรง ๆ. ง่ายและเร็วที่สุดเมื่อเนื้อหา **พอดีกับ context window** และเป็นข้อมูล per-request (เช่นไฟล์ที่ user เพิ่งอัปโหลด). แต่จ่ายด้วย token ทุกครั้งและชนเพดาน window เมื่อ scale. กลไก window/token อยู่ที่ ch.1 `tokens-and-context-window`.\n\n**จุดที่ต้องจำให้ขึ้นใจ:** RAG = knowledge, fine-tune = behavior, long-context = \"มันพอดี window แล้วเอาเลย\". สามอันนี้ไม่ใช่คู่แข่งเสมอไป — production จริงมัก **combine** กัน: fine-tune โมเดลให้ตอบตาม format/แบรนด์ที่ต้องการ แล้วใช้ RAG ป้อน fact ที่ถูกต้องตอน query.\n\n## ตัวอย่าง (customer support ของ fintech)\n\nทีม support ของแอปโอนเงินมีสามงานที่หน้าตาคล้ายกันแต่ตอบด้วยคนละเครื่องมือ:\n\n- **แคตตาล็อก fee / โปรโมชันเปลี่ยนทุกวัน** → **RAG**. ราคาและเงื่อนไขเปลี่ยนบ่อย ห้ามให้โมเดลเดา ต้อง retrieve ตัวเลขล่าสุดจาก knowledge base มา ground และอ้างอิงได้. อัปเดต = แก้ index วันต่อวัน ไม่แตะโมเดล.\n- **บังคับให้ทุกคำตอบตามฟอร์แมต/โทนแบรนด์เป๊ะ** (ขึ้นต้นด้วยคำทักทายมาตรฐาน, ปิดท้ายด้วย disclaimer, โทนสุภาพเป็นทางการ, ห้ามสัญญาผลตอบแทน) → **fine-tune**. นี่คือ *behavior* ที่ต้องการความสม่ำเสมอข้ามทุกคำตอบ prompt engineering อย่างเดียวคุมได้ไม่นิ่งพอเมื่อ volume สูง.\n- **สรุป ticket thread เดียวที่ลูกค้าเพิ่งส่งมา** → **long context**. thread นั้นสั้นพอที่จะใส่ทั้งก้อนใน prompt และใช้ครั้งเดียว ไม่ต้องมี index ไม่ต้อง train อะไรเลย.\n\nสังเกตว่าระบบจริงใช้ทั้งสามพร้อมกันได้: โมเดลที่ fine-tune แล้ว (โทนแบรนด์) + RAG (fee ล่าสุด) + long context (thread ของลูกค้า) ในคำตอบเดียว.\n\n## แผนผังการตัดสินใจ\n\n```mermaid\nflowchart TD\n  Q1{\"Need fresh, large, or proprietary facts?\"}\n  Q1 -->|yes| RAG[\"RAG: retrieve, then ground\"]\n  Q1 -->|no| Q2{\"Need consistent behavior, format, or tone?\"}\n  Q2 -->|yes| FT[\"Fine-tune the model\"]\n  Q2 -->|no| Q3{\"Whole doc fits the window; used once?\"}\n  Q3 -->|yes| LC[\"Long context: put doc in prompt\"]\n  Q3 -->|no| RAG\n  FT -.combine with.-> RAG\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"อยากให้โมเดลรู้ข้อมูลบริษัทเรา → fine-tune ด้วยเอกสารบริษัท\"** — ผิดที่พบบ่อยที่สุด. fine-tuning ปรับ behavior ไม่ใช่ knowledge store ที่เชื่อถือได้ — โมเดลจะจำแบบเลือน ๆ, ยัง hallucinate, และพอเอกสารเปลี่ยนคุณต้อง retrain ใหม่ทั้งรอบ. ข้อมูล/fact = งานของ RAG.\n- **\"long context มาแล้ว RAG ตายแล้ว\"** — ผิด. window ใหญ่ขึ้นช่วยได้ แต่ยัดทุกอย่างเข้าไปแพงขึ้นตาม token, ช้าลง, และเจอปัญหา lost-in-the-middle (โมเดลมองข้ามข้อมูลกลาง ๆ ของ context ที่ยาว). เมื่อ corpus ใหญ่เกิน window RAG ยังจำเป็น.\n- **\"fine-tune แล้วไม่ต้องทำ prompt / RAG อีก\"** — ผิด. fine-tune จูน behavior แต่ fact ยังต้อง ground สด ๆ ตอน query — ทั้งสองทำงานคนละหน้าที่.\n\n## ขีดจำกัด / trade-offs (แก่นของบทนี้)\n\n| แนวทาง | จ่ายด้วยอะไร | เมื่อไหร่ไม่ควรใช้ / พังเมื่อไหร่ |\n|---|---|---|\n| **RAG** | ต้องสร้าง + ดูแล pipeline (chunk, embed, vector store, retrieval quality); คุณภาพคำตอบผูกกับคุณภาพ retrieval — retrieve ผิด = ตอบผิดแบบมั่นใจ | เมื่อ fact นิ่งและเล็กพอใส่ prompt ได้ RAG คือ over-engineering; เมื่อปัญหาคือ *behavior* ไม่ใช่ knowledge RAG แก้ไม่ตรงจุด |\n| **Fine-tune** | ต้องมี dataset คุณภาพ + เวลา/เงิน train + วงจร retrain ทุกครั้งที่อยาก \"อัปเดต\"; เปลี่ยนยาก ทดลองช้า | เมื่อต้องการฉีด fact (ใช้ RAG แทน); เมื่อ behavior ที่ต้องการทำได้ด้วย prompt/few-shot อยู่แล้ว fine-tune คือต้นทุนเกินจำเป็น |\n| **Long context** | จ่าย token ทุก request (แพง + ช้าเมื่อ scale); ชนเพดาน window; lost-in-the-middle | เมื่อเอกสารใหญ่เกิน window หรือ reuse ข้อมูลชุดเดิมซ้ำหลาย request (ควร index ด้วย RAG แทนการยัดซ้ำทุกครั้ง) |\n\nหลักที่ senior ใช้: เริ่มจากอันที่ถูกและง่ายที่สุดที่แก้ปัญหาได้ (มักเป็น prompt / long-context) แล้วค่อยขยับไป RAG เมื่อ corpus โต และไป fine-tune เฉพาะเมื่อ behavior ต้องนิ่งจริง ๆ — ไม่ใช่กระโดดไป fine-tune ตั้งแต่แรกเพราะฟังดูเท่.\n\n## มุมสัมภาษณ์\n\n- **\"อยากให้ chatbot ตอบด้วยข้อมูล product ล่าสุดของเรา ใช้ RAG หรือ fine-tune?\"** → RAG. product เปลี่ยนบ่อย = knowledge ต้อง update ที่ index; fine-tune จะ stale ทันทีและ retrain แพง. นี่คือ trap ที่ interviewer ชอบตั้ง.\n- **\"เมื่อไหร่ fine-tune ถึงคุ้ม?\"** → เมื่อต้องการ behavior/format/tone ที่สม่ำเสมอข้าม volume สูง หรือ task แคบเฉพาะทาง และ prompt engineering คุมได้ไม่นิ่งพอ — ไม่ใช่เพื่อเพิ่ม fact.\n- **\"context window ใหญ่ขึ้นเรื่อย ๆ ยังต้องใช้ RAG ไหม?\"** → ยัง เมื่อ corpus ใหญ่เกิน window, ต้องการ cost/latency ที่คุมได้, หรือต้องการ citation; และต้องระวัง lost-in-the-middle.\n- **\"จะ combine ทั้งสามยังไง?\"** → fine-tune โมเดลให้มี behavior/format ที่ต้องการ + RAG ป้อน fact ที่ grounded ตอน query + long context สำหรับเอกสาร per-request ที่พอดี window.\n",
+  "recall_checks": [
+    {
+      "q": "ต้องการเพิ่ม fact/ข้อมูลใหม่ที่เปลี่ยนบ่อยให้โมเดล ควรใช้แนวทางไหน?",
+      "expected_answer": "RAG (retrieve แล้ว ground)",
+      "type": "mcq",
+      "options": [
+        "RAG (retrieve แล้ว ground)",
+        "Fine-tune โมเดลด้วยข้อมูลใหม่",
+        "เพิ่ม temperature ให้สูงขึ้น"
+      ]
+    },
+    {
+      "q": "fine-tuning เหมาะกับอะไรมากที่สุด?",
+      "expected_answer": "ปรับ behavior/format/tone ให้คงที่",
+      "type": "mcq",
+      "options": [
+        "ยัดข้อเท็จจริงใหม่ที่เปลี่ยนบ่อยลงโมเดล",
+        "ปรับ behavior/format/tone ให้คงที่",
+        "ทำให้เอกสารทั้งฉบับพอดีกับ window"
+      ]
+    },
+    {
+      "q": "long context (ใส่เอกสารทั้งฉบับใน prompt) เหมาะเมื่อไหร่?",
+      "expected_answer": "เมื่อเอกสารพอดีกับ window และใช้ครั้งเดียว",
+      "type": "mcq",
+      "options": [
+        "เมื่อข้อมูลเปลี่ยนทุกวันและมีขนาดใหญ่เกิน window",
+        "เมื่อต้องการเปลี่ยน tone ถาวรของโมเดล",
+        "เมื่อเอกสารพอดีกับ window และใช้ครั้งเดียว"
+      ]
+    },
+    {
+      "q": "ทำไมการ fine-tune เพื่อ 'เพิ่ม fact ใหม่' จึงเป็นวิธีที่ไม่ดี?",
+      "expected_answer": "fine-tune เปลี่ยน behavior ไม่ใช่ knowledge store ที่เชื่อถือได้ — โมเดลยัง hallucinate ได้ และต้อง retrain ทุกครั้งที่ข้อมูลเปลี่ยน จึงควรใช้ RAG ป้อน fact แทน",
+      "type": "short_answer"
+    },
+    {
+      "q": "RAG กับ fine-tune combine กันได้ไหม อย่างไร?",
+      "expected_answer": "ได้ — fine-tune โมเดลให้มี behavior/format/tone ที่ต้องการ แล้วใช้ RAG ป้อน fact ที่ถูกต้องและ grounded ในเวลา query",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "source": "Lewis et al., 2020, arXiv:2005.11401",
+      "why": "อ่านต้นฉบับแนวคิด RAG ว่าทำไมแยก knowledge ออกจาก parameter ของโมเดล"
+    },
+    {
+      "title": "Lost in the Middle: How Language Models Use Long Contexts",
+      "source": "Liu et al., 2023, arXiv:2307.03172",
+      "why": "อ่านหลักฐานว่าทำไม long context ยาว ๆ ทำให้โมเดลมองข้ามข้อมูลกลาง context"
+    },
+    {
+      "title": "Retrieval-Augmented Generation for Large Language Models: A Survey",
+      "source": "Gao et al., 2023, arXiv:2312.10997",
+      "why": "อ่านภาพรวมว่าเมื่อไหร่ควรเลือก RAG เทียบกับ fine-tuning และการ combine"
+    }
+  ]
+}
