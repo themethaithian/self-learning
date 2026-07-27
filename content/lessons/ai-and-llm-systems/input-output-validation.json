@@ -1,0 +1,67 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "input-output-validation",
+  "version": 1,
+  "title_en": "Input and Output Validation",
+  "est_minutes": 7,
+  "body_md": "# Input and Output Validation\n\n## ทำไมถึงสำคัญ\n\nOutput ของ LLM เป็นสิ่ง untrusted ไม่ต่างจาก input ของผู้ใช้ที่ไม่รู้จัก — มันคือข้อความที่ \"น่าจะถูก\" ตาม probability ไม่ใช่ค่าที่รับประกันว่าตรง business rule. การเอา output ดิบไปใช้ / แสดง / execute action ตรง ๆ เพราะเชื่อว่า \"โมเดลฉลาดพอ\" คือสาเหตุคลาสสิกของ production incident. Guardrail ที่ถูกต้องคือ deterministic code ที่ล้อมรอบโมเดล probabilistic ทั้งด่านเข้าและด่านออก.\n\n## แก่นของแนวคิด\n\n- **Input validation** — ก่อน input จะเข้าไปใน prompt: จำกัด length, ตรวจ format, บังคับ allowed values, และ sanitize. ถ้า input มาจาก tool result หรือแหล่งภายนอกก็ untrusted เช่นกัน. (การกันไม่ให้ input แฝงคำสั่งมา hijack โมเดลเป็นเรื่องของ sibling `prompt-injection-defense` — คนละมิติกับ validation เชิงโครงสร้างตรงนี้.)\n- **Tool argument validation** — เมื่อโมเดลเรียก tool มันเดา argument เองได้ ต้อง validate argument ก่อน execute โดยเฉพาะ tool ที่มี side effect จริง (รายละเอียดการ handle อยู่ที่ ch.3 `tool-error-handling`).\n- **Output validation** — output ดิบต้องผ่านด่านก่อนถูกนำไปใช้: (1) ตรงกับ schema ที่กำหนด (field ครบ, type ถูก), (2) ค่าอยู่ใน allowed values / enum ที่คาดไว้, (3) ผ่าน business rule (เช่น จำนวนเงินไม่เกิน policy). ผิดข้อใดข้อหนึ่ง = ไม่ยอมรับ.\n- **Retry / repair** — เมื่อ output ไม่ผ่าน อย่าล้มทั้ง request ทันที: ส่ง error กลับให้โมเดลแก้ (repair), retry ใหม่แบบจำกัดจำนวน, และมี fallback (rule-based หรือ human review) เมื่อ retry หมด.\n- การบังคับให้โมเดล \"ผลิต\" JSON/schema ตั้งแต่ต้นด้วย structured output / JSON mode (ch.2 `few-shot-and-structured-output`) ช่วยให้ output ถูกรูปแบบง่ายขึ้น แต่ไม่ได้แทน validation — โมเดลยัง break schema หรือใส่ค่าเกิน rule ได้ ต้อง validate เสมอ.\n- Validation เชิงโครงสร้างนี้คนละเรื่องกับการกรองเนื้อหา PII / toxic — นั่นเป็นของ sibling `pii-and-moderation`.\n\n## ตัวอย่าง (support / refund)\n\nระบบ support-assist ให้ LLM เสนอจำนวน refund จากบทสนทนาลูกค้า โดยตอบเป็น JSON:\n\n```json\n{ \"action\": \"refund\", \"amount\": 5000, \"currency\": \"THB\", \"reason\": \"late delivery\" }\n```\n\nPolicy: refund อัตโนมัติสูงสุด 1,000 THB, currency ต้องเป็น THB, และ action ต้องอยู่ใน {refund, reject, escalate}. Guardrail deterministic ตรวจ:\n\n- schema: field ครบ, `amount` เป็นตัวเลข → ผ่าน\n- allowed values: `action` อยู่ใน enum, `currency == \"THB\"` → ผ่าน\n- business rule: `amount <= 1000` → **ไม่ผ่าน** (5,000 เกิน policy)\n\nผลคือ **ไม่จ่ายตามที่โมเดลเสนอ**. ระบบ repair (แจ้งโมเดลว่าเกิน limit ให้เสนอใหม่ที่ ≤1,000 หรือ escalate) หรือส่งให้ human ตรวจ. ถ้าไม่มีด่านนี้ โมเดลที่ hallucinate ตัวเลข หรือถูก inject ให้เพิ่มยอด จะสั่งจ่ายเงินจริงออกไป — เป็น incident ที่แพงและย้อนยาก.\n\n```mermaid\nflowchart TD\n  U[User or tool input] --> IV{\"Input valid: length, format, allowed?\"}\n  IV -- no --> RJ[Reject or sanitize]\n  IV -- yes --> P[Build prompt]\n  P --> M[LLM]\n  M --> O[Raw output]\n  O --> OV{\"Match schema, enum, business rules?\"}\n  OV -- yes --> USE[Use, display, or execute action]\n  OV -- no --> RT{Retries left?}\n  RT -- yes --> P\n  RT -- no --> FB[Fallback or human review]\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"โมเดลฉลาดพอแล้ว ไม่ต้อง validate output\"** ผิด — ความฉลาดเฉลี่ยที่สูงไม่รับประกัน worst case; ด่าน deterministic คือสิ่งเดียวที่กันเคสหลุด.\n- **\"บังคับ JSON mode แล้ว output ถูกต้องแน่นอน\"** ผิด — JSON mode รับประกันแค่ว่า parse ได้ ไม่รับประกันว่า field ครบหรือค่าอยู่ใน rule.\n- **\"validate ผ่าน = คำตอบถูกต้องเชิงความหมาย\"** ผิด — validation จับ malformed / out-of-bounds ได้ แต่ไม่ได้ตัดสินว่า reason ที่โมเดลให้มานั้นสมเหตุผลจริงไหม.\n\n## ขีดจำกัด / เมื่อไหร่ที่ validation ไม่พอ\n\nValidation เป็น necessary แต่ไม่ sufficient. มันจับ output ที่ผิดรูปแบบหรือเกินขอบเขต (schema / enum / range) ได้ดี แต่ **ตัดสิน semantic correctness ไม่ได้** — output ที่ well-formed และอยู่ใน rule ทุกข้อยังผิดความหมายได้ (เช่น refund 800 บาทให้เคสที่จริง ๆ ไม่ควร refund เลย). Schema ที่เข้มเกินไปมี cost อีกด้าน: มันจะ reject output ที่ valid-but-unexpected (โมเดลตอบดีกว่าที่เราคาดแต่ผิดรูปที่ล็อกไว้) ทำให้เสียคำตอบดี ๆ ทิ้ง. Retry / repair loop เพิ่ม latency และ token cost ต่อ request และถ้าตั้ง retry ไม่จำกัดหรือไม่มี fallback ก็กลายเป็นวนเปลืองเงิน. งานของ senior คือรู้ว่า validation กันชั้นไหน (โครงสร้าง / ขอบเขต) และต้องมีชั้นอื่น (human-in-the-loop, eval, confidence threshold) มาเสริมชั้นความหมายที่ validation เอื้อมไม่ถึง.\n\n## มุมสัมภาษณ์\n\n- \"โมเดลตอบ JSON ให้แล้ว ทำไมยังต้อง validate อีก?\" → เพราะ output เป็น untrusted; JSON mode รับประกันแค่ parse ได้ ไม่รับประกัน schema/rule; ต้องมีด่าน deterministic.\n- \"ออกแบบ guardrail รอบ action ที่จ่ายเงินยังไง?\" → validate schema → allowed values → business rule (amount ≤ policy) ก่อน execute; ไม่ผ่าน = repair/retry/escalate ไม่ใช่จ่ายเลย.\n- \"ถ้า output ไม่ผ่าน validation ทำยังไง?\" → retry/repair แบบจำกัดจำนวน + fallback (rule-based หรือ human) เมื่อ retry หมด ไม่ปล่อยให้ request ค้างหรือวนไม่จบ.\n- \"validation จับอะไรไม่ได้บ้าง?\" → semantic correctness; ต้องเสริมด้วย eval / human-in-the-loop — เป็นสะพานไปเรื่อง `confidence-and-fallback` และ LLM evaluation.\n",
+  "recall_checks": [
+    {
+      "q": "core mindset ของ guardrail รอบโมเดลคืออะไร?",
+      "expected_answer": "guardrail คือ deterministic code ที่ล้อมรอบโมเดล probabilistic ทั้งด่าน input และ output — ไม่เชื่อ output ดิบ",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมต้อง validate output ของ LLM ก่อนนำไปใช้?",
+      "expected_answer": "output เป็น untrusted อาจผิด schema/rule",
+      "type": "mcq",
+      "options": [
+        "output เป็น untrusted อาจผิด schema/rule",
+        "output ช้าเกินไปต้องรอ validate ก่อนเสมอ",
+        "ต้องนับ token ที่โมเดลใช้ให้ครบก่อนนำไปใช้"
+      ]
+    },
+    {
+      "q": "โมเดลเสนอ refund 5,000 แต่ policy สูงสุด 1,000 ควรทำอย่างไร?",
+      "expected_answer": "reject แล้ว retry หรือส่งให้คนตรวจ",
+      "type": "mcq",
+      "options": [
+        "จ่ายตามโมเดลเพราะโมเดลเห็น context ครบ",
+        "reject แล้ว retry หรือส่งให้คนตรวจ",
+        "ปรับ policy ขึ้นให้พอดีกับที่โมเดลเสนอ"
+      ]
+    },
+    {
+      "q": "ข้อใดคือ misconception เกี่ยวกับ output validation?",
+      "expected_answer": "โมเดลฉลาดพอแล้วจึงข้าม validation ได้",
+      "type": "mcq",
+      "options": [
+        "ต้อง validate output ทุกครั้งก่อนนำไปใช้จริง",
+        "invalid output ควร retry หรือ repair ก่อนยอมรับ",
+        "โมเดลฉลาดพอแล้วจึงข้าม validation ได้"
+      ]
+    },
+    {
+      "q": "validation จับ output ที่ผิดรูปแบบและเกินขอบเขตได้ แต่จับอะไรไม่ได้?",
+      "expected_answer": "semantic correctness (ความถูกต้องเชิงความหมาย) — output ที่ well-formed และอยู่ใน rule ยังผิดความหมายได้",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "OWASP Top 10 for Large Language Model Applications (LLM05: Improper Output Handling)",
+      "source": "owasp.org/www-project-top-10-for-large-language-model-applications/",
+      "why": "อ่านว่าการ trust output ดิบเป็นความเสี่ยง security อันดับต้น ๆ และ pattern การ handle ที่ปลอดภัย"
+    },
+    {
+      "title": "JSON Schema Specification",
+      "source": "json-schema.org",
+      "why": "อ่านวิธีนิยาม schema เพื่อ validate โครงสร้าง output ของโมเดลแบบ deterministic"
+    },
+    {
+      "title": "AI Engineering, chapter on Inference Optimization & Guardrails",
+      "source": "Chip Huyen, AI Engineering (O'Reilly, 2025)",
+      "why": "อ่านต่อเรื่อง defensive design รอบ LLM: input/output guardrails, retry/repair, และ fallback"
+    }
+  ]
+}

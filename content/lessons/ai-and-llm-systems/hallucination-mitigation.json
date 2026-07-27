@@ -1,0 +1,72 @@
+{
+  "concept_id": "hallucination-mitigation",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Hallucination Mitigation",
+  "est_minutes": 7,
+  "body_md": "# Hallucination Mitigation\n\n## ทำไมถึงสำคัญ\n\nHallucination คือการที่โมเดล \"แต่งข้อมูลขึ้นมาอย่างมั่นใจ\" — ตอบผิดด้วยน้ำเสียงเหมือนถูก. ในงาน fintech/support การเดา policy การคืนเงินผิดแค่ครั้งเดียวอาจกลายเป็น compliance incident หรือทำให้ลูกค้าเสียเงินจริง. บทนี้คือ *toolkit* ของเทคนิคที่ **ลด** ความถี่และความรุนแรงของ hallucination — ย้ำว่า *ลด* ไม่ใช่กำจัด. (สาเหตุว่าทำไมโมเดลถึง hallucinate — เพราะมันทำนาย token ที่ likely ที่สุด ไม่ได้ค้นความจริงจาก database — อยู่ใน `what-is-an-llm`.)\n\n## แก่นของแนวคิด — the toolkit\n\nไม่มี silver bullet; senior จะ *ซ้อน* หลายชั้นเข้าด้วยกันตามความเสี่ยงของงาน:\n\n- **Grounding + citation:** ดึงข้อเท็จจริงจริง (KB, เอกสาร) มาใส่ prompt แล้วสั่งให้โมเดล \"ตอบเฉพาะจากบริบทที่ให้ และอ้าง source\" — หัวใจของ RAG. เมื่อคำตอบผูกกับ evidence โมเดลเดาน้อยลง และผู้ใช้ตรวจย้อนได้. (กลไก retrieve → inject → generate เต็ม ๆ อยู่ใน `rag-pipeline-and-grounding`; ที่นี่มองมันเป็นแค่ *หนึ่ง* mitigation ในหลาย ๆ ตัว.)\n- **อนุญาตให้ตอบ \"ไม่รู้\" / refuse:** สั่งใน prompt ให้ชัดว่า ถ้าบริบทไม่มีคำตอบ ให้ตอบว่าไม่แน่ใจ แทนการเดา. โดย default โมเดลอยากช่วย → มันจะเติมช่องว่างด้วยการแต่ง ถ้าเราไม่เปิดประตู \"ไม่รู้\" ให้มันเดินออกอย่างถูกต้อง.\n- **Constrain the task:** บีบงานให้แคบแทนปล่อย open-ended — บังคับ structured output/JSON, ให้เลือกจาก closed set (enum), หรือทำเป็น classification. ยิ่ง space ของคำตอบแคบ โอกาสแต่งยิ่งน้อย.\n- **Verify / cross-check:** ผ่านคำตอบรอบสอง — เช็คแต่ละ claim กับ source/tool, ให้โมเดลตรวจงานตัวเอง (self-check), หรือทำ self-consistency (สุ่มหลายคำตอบแล้วดูว่าตรงกันไหม; ถ้าคำตอบแกว่งไปมา = สัญญาณว่าไม่น่าเชื่อ).\n- **ขอ source เสมอ:** บังคับให้แนบว่าเอาคำตอบมาจากไหน. ถ้าโมเดลอ้าง source ไม่ได้ นั่นคือธงว่ากำลังเดา.\n- **ลด temperature สำหรับงาน factual:** งาน extraction/lookup ตั้ง temperature ต่ำให้ deterministic เกาะข้อมูล; temperature สูงเพิ่มความสุ่ม = เพิ่มโอกาส hallucinate (รายละเอียด sampling อยู่ใน `sampling-and-temperature`).\n\n```mermaid\nflowchart TD\n  Q[\"User query\"] --> R[\"Retrieve context from KB\"]\n  R --> G{\"Enough evidence?\"}\n  G -->|No| IDK[\"Reply: I am not sure\"]\n  G -->|Yes| GEN[\"Generate from context only\"]\n  GEN --> V[\"Verify claims vs source\"]\n  V -->|Unsupported claim| IDK\n  V -->|All supported| ANS[\"Answer with citations\"]\n```\n\n## ตัวอย่าง (wallet support bot)\n\nลูกค้าถาม: \"เติมเงินเข้าผิดบัญชี ขอคืนได้ภายในกี่วัน?\" KB มีนโยบาย refund ทั่วไป แต่ *ไม่มี* เคสเติมผิดบัญชีระบุไว้.\n\n- **Bot ที่ ground + cite:** ตอบเฉพาะสิ่งที่ KB มี พร้อมอ้างหัวข้อ policy; เมื่อไม่พบเคสนี้ในบริบท ตอบว่า \"ผมไม่แน่ใจสำหรับเคสเติมผิดบัญชีครับ ขอส่งต่อให้ทีม operations ตรวจสอบ\" แล้ว escalate.\n- **Bot ที่ไม่ ground:** ตอบมั่นใจว่า \"คืนได้ภายใน 7 วันตามกฎหมายผู้บริโภค\" — ฟังดูน่าเชื่อ อ้างกฎที่ไม่มีจริง. ลูกค้าคาดหวังผิด และคำตอบนี้อาจกลายเป็นข้อผูกพันที่บริษัทต้องรับผิดชอบ.\n\nจุดสำคัญ: การตอบ \"ผมไม่แน่ใจ\" แล้ว escalate มีค่าน้อยกว่าการเดา policy ผิดมาก. มูลค่าความเสียหายไม่สมมาตร — นี่คือเหตุผลที่งาน high-stakes ต้องเปิดทาง refuse ไว้เสมอ.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"RAG/grounding กำจัด hallucination ได้\"** ผิด. grounding ลดได้มาก แต่โมเดลยัง misread บริบท, รวมสองเอกสารผิด ๆ, หรือแต่งต่อจาก context ที่ retrieve มาผิดได้.\n- **\"temperature สูงช่วยให้ฉลาดขึ้น เลยลด hallucination\"** ผิดกลับด้าน. สูง = สุ่มมากขึ้น = แต่งง่ายขึ้น; งาน factual ต้องต่ำ.\n- **\"ให้โมเดลตรวจงานตัวเองแล้วจบ\"** ไม่พอ. self-check จับได้บางส่วน แต่โมเดลอาจ \"มั่นใจผิด\" ซ้ำสองรอบ; verify ที่แข็งแรงต้องเทียบกับ source/tool ภายนอก ไม่ใช่ถามความเห็นตัวเองอย่างเดียว.\n\n## ขีดจำกัด / trade-off (senior ต้องพูดได้)\n\n- **ลดไม่กำจัด:** ทุกเทคนิครวมกันก็ยังเหลือ residual hallucination. งาน high-stakes ต้องมี evaluation วัดจริง (hallucination rate / groundedness → `eval-metrics-groundedness`) + human review เป็น safety net.\n- **grounding ดีเท่าที่ retrieval ดี:** ถ้า retrieve เอกสารผิดหรือไม่ครบ โมเดล ground กับข้อมูลผิด — garbage in, confident garbage out. คุณภาพผูกกับ retrieval quality (`rag-pipeline-and-grounding`).\n- **\"ไม่รู้\" มากไปทำลาย helpfulness:** bot ที่ตอบ \"ไม่แน่ใจ\" กับเกือบทุกอย่างไร้ประโยชน์. ต้อง tune ว่าเมื่อไหร่ควร refuse/escalate — จุดตัดนี้คือเรื่อง `confidence-and-fallback`.\n- **verify/self-consistency เพิ่ม cost + latency:** หลาย LLM call ต่อหนึ่งคำตอบ. คุ้มกับงานความเสี่ยงสูง แต่แพงเกินไปสำหรับงานทั่วไป.\n- **constrain ลด hallucination แลกกับความยืดหยุ่น:** บีบเป็น closed set/JSON ตัดงาน open-ended ที่ต้องใช้ความยืดหยุ่นทิ้งไป — เลือกใช้ตามลักษณะงาน.\n\n## มุมสัมภาษณ์\n\n- \"จะลด hallucination ในระบบยังไง?\" → คาดหวังคำตอบเป็น *layered toolkit* (grounding, IDK, constrain, verify, sources) ไม่ใช่เทคนิคเดียว; และประโยคที่ต้องพูดออกมาคือ \"reduce not eliminate.\"\n- \"ในเมื่อลบไม่หมด จะออกแบบระบบ high-stakes ยังไง?\" → grounding + allow refuse + human-in-the-loop + eval วัดผล + confidence-based fallback.\n- \"grounding กับ fine-tuning อันไหนแก้ hallucination ตรงกว่า?\" → grounding (ข้อมูลสด verifiable ตอบจากบริบท); fine-tune ปรับ behavior/style ไม่ใช่ยัดข้อเท็จจริงใหม่ (`rag-vs-finetune-vs-long-context`).\n- trap ที่ชอบถาม: \"เพิ่ม temperature ช่วยลด hallucination ไหม?\" → ไม่ ตรงกันข้าม.\n",
+  "recall_checks": [
+    {
+      "q": "เทคนิค mitigation ในบทนี้ทำอะไรกับ hallucination ได้ — กำจัดหมด หรือแค่ลด? แล้วงาน high-stakes ต้องเสริมอะไร?",
+      "expected_answer": "แค่ลดความถี่/ความรุนแรง กำจัด 100% ไม่ได้ งาน high-stakes จึงต้องเสริม evaluation (วัด hallucination rate/groundedness) และ human review",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมการอนุญาตให้โมเดลตอบว่า \"ไม่แน่ใจ\" จึงช่วยลด hallucination?",
+      "expected_answer": "เปิดทางให้ยอมรับว่าไม่รู้ แทนที่จะเดาคำตอบมาแบบมั่นใจ",
+      "type": "mcq",
+      "options": [
+        "เปิดทางให้ยอมรับว่าไม่รู้ แทนที่จะเดาคำตอบมาแบบมั่นใจ",
+        "ทำให้โมเดลตอบเร็วขึ้นและประหยัด token ต่อคำขอมากกว่าเดิม",
+        "เพิ่มความมั่นใจให้โมเดลตอบทุกคำถามได้เสมอโดยไม่ต้องกรอง"
+      ]
+    },
+    {
+      "q": "งาน factual extraction ควรตั้ง temperature แบบไหนเพื่อลดโอกาส hallucinate?",
+      "expected_answer": "ตั้งต่ำเพื่อให้คำตอบ deterministic เกาะข้อมูลมากขึ้น",
+      "type": "mcq",
+      "options": [
+        "ตั้งสูงเพื่อให้คำตอบหลากหลายและครอบคลุมเนื้อหามากที่สุด",
+        "ตั้งต่ำเพื่อให้คำตอบ deterministic เกาะข้อมูลมากขึ้น",
+        "ตั้งให้สุ่มเปลี่ยนไปเรื่อยตามความยาวของคำถามที่รับเข้ามา"
+      ]
+    },
+    {
+      "q": "ขั้น verify / cross-check ใน pipeline ทำหน้าที่อะไร?",
+      "expected_answer": "ตรวจว่าทุก claim ในคำตอบมี evidence จากแหล่งจริงรองรับ",
+      "type": "mcq",
+      "options": [
+        "แปลคำถามของผู้ใช้ให้เป็นภาษาอังกฤษก่อนส่งเข้าให้โมเดลตอบ",
+        "เพิ่ม temperature ให้คำตอบดูสร้างสรรค์ยิ่งขึ้นก่อนแสดงผล",
+        "ตรวจว่าทุก claim ในคำตอบมี evidence จากแหล่งจริงรองรับ"
+      ]
+    },
+    {
+      "q": "ทำไม grounding ด้วย RAG จึงไม่ได้แปลว่าจะไม่มี hallucination เลย?",
+      "expected_answer": "grounding ดีเท่าที่ retrieval ดี ถ้า retrieve เอกสารผิด/ไม่ครบ หรือโมเดล misread บริบท ก็ยัง hallucinate ได้",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Survey of Hallucination in Natural Language Generation",
+      "source": "Ji et al., ACM Computing Surveys, 2023",
+      "why": "อ่านภาพรวมว่า hallucination มีกี่ประเภทและ mitigation แต่ละกลุ่มทำงานอย่างไร"
+    },
+    {
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "source": "Lewis et al., NeurIPS 2020",
+      "why": "อ่านต้นทางแนวคิด grounding ด้วย retrieved context เพื่อลดการแต่งข้อเท็จจริง"
+    },
+    {
+      "title": "Chain-of-Verification Reduces Hallucination in Large Language Models",
+      "source": "Dhuliawala et al., 2023",
+      "why": "อ่านว่า verify pass รอบสอง (ตรวจ claim ของตัวเอง) ลด hallucination ได้อย่างไร"
+    },
+    {
+      "title": "Self-Consistency Improves Chain of Thought Reasoning in Language Models",
+      "source": "Wang et al., ICLR 2023",
+      "why": "อ่านเทคนิค cross-check ด้วยการสุ่มหลายคำตอบแล้วดูความสอดคล้อง"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "concept_id": "pii-and-moderation",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "PII and Content Moderation",
+  "est_minutes": 8,
+  "body_md": "# PII and Content Moderation\n\n## ทำไมถึงสำคัญ\n\nในระบบที่คุยกับลูกค้าจริง ข้อความที่ผู้ใช้พิมพ์เข้ามามักมี PII (personally identifiable information) เช่น ชื่อ, เลขบัตรประชาชน, เลขบัตรเครดิต, ที่อยู่ — และทุกจุดที่ข้อมูลนี้ \"ออกนอก boundary\" ของคุณ (เขียนลง log, ส่งเข้า third-party model, เก็บลง storage) คือความเสี่ยงทั้งด้าน security และด้านกฎหมาย. หน้าที่ของ guardrail ชั้นนี้คือลด exposure ให้น้อยที่สุด และกรองเนื้อหาที่เป็นอันตรายทั้งขาเข้าและขาออกก่อนมันจะสร้างความเสียหาย. senior ต้องมองข้อมูลลูกค้าเป็น liability ที่ต้องจัดการ ไม่ใช่ asset ที่เก็บไว้เฉย ๆ.\n\n## แก่นของแนวคิด\n\nGuardrail ชั้นนี้มีสามส่วนที่แยกหน้าที่กันชัด:\n\n- **PII detection & redaction** — ตรวจจับข้อมูลส่วนบุคคลแล้ว mask/redact (แทนด้วย placeholder เช่น `[CARD]`, `[NATIONAL_ID]`) *ก่อน* ข้อมูลจะไปถึงจุดที่คุณควบคุมไม่ได้: ก่อนเขียน log, ก่อนส่งเข้าโมเดลของ provider ภายนอก, ก่อนเก็บถาวร. หลักคือ data minimization — อะไรที่โมเดลไม่จำเป็นต้องเห็นเพื่อทำงาน ก็ไม่ต้องส่งไป.\n- **Content moderation** — screen เนื้อหาที่เป็น abuse, hate, self-harm หรือผิด policy *ทั้งสองฝั่ง*: input จากผู้ใช้ (บล็อกก่อนเข้าโมเดล) และ output จากโมเดล (บล็อกก่อนถึงผู้ใช้). ทำได้ด้วย rule/keyword, classifier หรือ moderation API เฉพาะทาง. เมื่อเจอให้ block หรือตอบแบบ safe-response แทนที่จะปล่อยผ่าน.\n- **Compliance** — data retention limit (เก็บได้นานเท่าไร), consent (ผู้ใช้ยินยอมให้ใช้ข้อมูลทำอะไร) และ region rule (ข้อมูลอยู่ในเขตไหนได้). สิ่งเหล่านี้เป็นข้อกำหนดที่ระบบต้องทำตาม ไม่ใช่ nice-to-have.\n\nจุดสำคัญเรื่องลำดับ: redaction ต้องเกิด *ก่อน* boundary crossing เสมอ — เพราะเมื่อ raw PII ออกไปแล้ว (อยู่ใน log ที่ทีมอื่นอ่านได้ หรือใน prompt ที่ส่งไปให้ provider) คุณเรียกคืนไม่ได้.\n\nหมายเหตุ (edge case): diagram ด้านล่าง moderate input *ก่อน* redact ได้ก็ต่อเมื่อ moderation เป็น in-house/rule-based — ถ้าใช้ moderation API ภายนอก การเรียก API นั้นเองคือ boundary crossing ทำให้ raw PII ถึง third party ก่อน redact จึงควร redact ก่อน (ถ้าไม่ทำให้ moderation เพี้ยน) หรือมั่นใจว่า vendor เป็น trusted processor. และอย่าลืมฝั่ง output: โมเดลก็ leak PII ได้ (เช่น regurgitate ข้อมูลที่จำมาจาก training) — output-side check จึงสำคัญไม่แพ้ input.\n\n```mermaid\nflowchart TD\n  IN[User input] --> MIN{Moderate input}\n  MIN -->|blocked| SR[Safe response or block]\n  MIN -->|allowed| RD[Detect and redact PII]\n  RD --> M[LLM model]\n  M --> MOUT{Moderate output}\n  MOUT -->|blocked| SR\n  MOUT -->|allowed| RESP[Response to user]\n  RD -. redacted only .-> LOG[Logs and storage]\n```\n\n## ตัวอย่าง (support / fintech)\n\nลูกค้าพิมพ์เข้า chat: \"บัตรเครดิตผม 4111 1111 1111 1111 โดนตัดเงินซ้ำ ช่วยที เลขบัตรประชาชน 1-2345-...\".\n\nFlow ที่ถูกต้อง:\n\n1. **Moderate input** — ข้อความนี้ไม่เป็นอันตราย ผ่าน. (ถ้าเป็นข้อความด่าทอ/ขู่ agent → block หรือ safe-response)\n2. **Detect & redact PII** — ก่อนส่งเข้าโมเดลหรือเขียน log ระบบแทนที่เลขบัตรเป็น `[CARD]` และเลขบัตรประชาชนเป็น `[NATIONAL_ID]`. โมเดลเห็นแค่ \"บัตรเครดิต `[CARD]` โดนตัดเงินซ้ำ\" ซึ่งพอต่อการช่วยเหลือ.\n3. **Log ที่ปลอดภัย** — log บันทึกเวอร์ชัน redacted เท่านั้น ไม่มีเลขบัตรจริงตกค้างใน log aggregator.\n4. **Moderate output** — คำตอบโมเดลถูก screen อีกรอบก่อนถึงลูกค้า.\n\nถ้าอีกข้อความหนึ่งเป็น abuse (ด่าทอรุนแรง) → moderation ฝั่ง input บล็อกและตอบ safe-response แทนที่จะส่งเข้าโมเดล.\n\nประเด็นคือเลขบัตรจริงไม่เคยออกนอก boundary ของคุณเลย — ไม่ไปอยู่ใน third-party model และไม่ตกใน log.\n\n## เชื่อมกับ concept อื่น\n\n- การ validate ว่า output ตรง schema / ปลอดภัยก่อนใช้งาน (นอกเหนือจากเรื่อง PII และ harmful content) เป็นเรื่องของ sibling `input-output-validation`.\n- Prompt injection เป็น *การโจมตี* คนละแบบ (input แฝงคำสั่ง hijack โมเดล) — วิธีป้องกันอยู่ที่ sibling `prompt-injection-defense` ไม่ใช่บทนี้.\n- จริยธรรมที่กว้างกว่าเรื่อง redaction — ควรเก็บข้อมูลอะไร นานแค่ไหน เพื่ออะไร — โยงกับ chapter `crm-and-support-ai` (การจัดการข้อมูลลูกค้าจริง) และแนวคิด ethics of data ใน distributed-systems track. บทนี้โฟกัสเฉพาะกลไก detect / redact / moderate.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"redact ที่ output ก็พอแล้ว\"** ผิด. ต้อง redact *ก่อน* boundary crossing ทุกจุด รวมถึงก่อนเขียน log และก่อนส่ง prompt เข้า provider — ไม่ใช่แค่ก่อนแสดงผลให้ผู้ใช้.\n- **\"PII detection แม่นยำ 100% ถ้าเขียน regex ดี ๆ\"** ผิด. รูปแบบ PII หลากหลายมาก (ชื่อ, ที่อยู่, เลขหลายฟอร์แมต) — regex จับ format ตายตัวได้ แต่ miss ชื่อ/บริบท และเกิด false positive ได้ตลอด.\n- **\"moderation คือ filter คำหยาบ\"** ผิด. moderation ครอบหลายมิติ (hate, self-harm, violence, sexual, policy) และต้องทำทั้ง input และ output — คนละเรื่องกับ blocklist คำหยาบชุดเดียว.\n\n## ขีดจำกัด / trade-offs (เมื่อไหร่ไม่ควร และมันแลกอะไร)\n\n- **Detection ไม่สมบูรณ์แบบ** — มีทั้ง false negative (miss PII จริง → ข้อมูลรั่ว) และ false positive (ตัดของที่ไม่ใช่ PII). ทั้งสองมีราคา: miss = ความเสี่ยงด้านกฎหมาย, false positive = context หาย.\n- **Over-redaction ทำลาย utility** — ถ้า redact แรงเกินไป โมเดล/agent สูญ context ที่จำเป็นต้องใช้ตอบ (เช่น redact เลข order ทิ้งทั้งที่ต้องใช้ค้นเคส) คำตอบจะแย่ลง. ต้องบาลานซ์ระหว่างลด exposure กับรักษา utility.\n- **Moderation over-block** — ตั้งเข้มไปจะปฏิเสธ request ปกติ (เช่นคำถามการแพทย์โดนตีว่า self-harm) ทำลาย UX; ตั้งหลวมไปก็ปล่อยของอันตรายผ่าน. ไม่มีจุดตั้งที่ perfect — เป็น threshold ที่ต้องจูนตามความเสี่ยงของ domain.\n- **Third-party model = ข้อมูลออกนอก boundary** — ทุกครั้งที่ส่ง prompt ไป provider ภายนอก ข้อมูลนั้นออกจากการควบคุมของคุณ (แม้ provider สัญญาว่าไม่เอาไป train ต่อ). ทางเลือกคือ redact ก่อนส่ง, ใช้ self-hosted model สำหรับข้อมูลอ่อนไหวสุด, หรือไม่ส่งเลย — แต่ละทางแลกด้วย cost/quality.\n- **ทุก guardrail คือ latency + cost ที่เพิ่ม** — moderation call และ PII scan เป็นขั้นตอนเพิ่มก่อน/หลังโมเดล เพิ่ม latency และบางทีเป็น API call ที่มีค่าใช้จ่ายแยก. งาน internal ความเสี่ยงต่ำอาจไม่คุ้มที่จะใส่ทุกชั้น — senior เลือกชั้น guardrail ตามความอ่อนไหวของข้อมูลและ audience จริง.\n\n## มุมสัมภาษณ์\n\n- \"ทำไมต้อง redact PII ก่อนเขียน log ไม่ใช่ตอน query log?\" → เพราะเมื่อ raw PII ลง log แล้ว มันกระจายไปทั่ว (log aggregator, backup, ทีมอื่นเข้าถึงได้) เรียกคืนไม่ได้ — ต้องลด exposure ที่ต้นทางเสมอ.\n- \"content moderation ทำฝั่งไหน?\" → ทั้ง input และ output; output ก็ harmful ได้แม้ input ดูปกติ.\n- \"PII detection พลาดได้ไหม จะออกแบบระบบยังไงให้ทน?\" → ได้แน่นอน (false negative/positive) — ออกแบบ defense-in-depth, จำกัด retention และไม่พึ่ง detection ชั้นเดียว.\n- \"ส่งข้อมูลลูกค้าเข้า third-party LLM ต้องระวังอะไร?\" → ข้อมูลออกนอก boundary; ต้อง redact ก่อน, ดู data residency/consent และชั่งกับทางเลือก self-hosted.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไมต้อง redact PII ก่อนเขียนลง log หรือก่อนส่งเข้า third-party model แทนที่จะทำทีหลัง?",
+      "expected_answer": "เพราะเมื่อ raw PII ออกนอก boundary แล้ว (กระจายใน log aggregator/backup หรืออยู่ใน prompt ที่ provider ภายนอกได้ไป) เรียกคืนไม่ได้ ต้องลด exposure ที่ต้นทาง",
+      "type": "short_answer"
+    },
+    {
+      "q": "content moderation ควรทำที่จุดใด?",
+      "expected_answer": "ทั้ง input และ output",
+      "type": "mcq",
+      "options": [
+        "ทั้ง input และ output",
+        "เฉพาะ output ที่โมเดลสร้าง",
+        "เฉพาะ input ที่ผู้ใช้ส่งมา"
+      ]
+    },
+    {
+      "q": "ทำไม over-redaction (redact แรงเกินไป) จึงเป็นปัญหา?",
+      "expected_answer": "เพราะมันลบ context ที่โมเดล/agent จำเป็นต้องใช้ตอบ ทำให้คุณภาพคำตอบแย่ลง ต้องบาลานซ์ระหว่างลด exposure กับรักษา utility",
+      "type": "short_answer"
+    },
+    {
+      "q": "การตั้ง moderation ที่เข้มเกินไปทำให้เกิดปัญหาใด?",
+      "expected_answer": "over-block ข้อความปกติที่ไม่อันตราย",
+      "type": "mcq",
+      "options": [
+        "โมเดลช้าลงจนตอบไม่ทัน timeout",
+        "over-block ข้อความปกติที่ไม่อันตราย",
+        "PII ทั้งหมดถูกเก็บลง log โดยอัตโนมัติ"
+      ]
+    },
+    {
+      "q": "มุมมอง compliance บอกให้มองข้อมูลลูกค้าเป็นอะไร?",
+      "expected_answer": "liability ที่ต้องจำกัด retention",
+      "type": "mcq",
+      "options": [
+        "asset ที่ควรเก็บให้มากที่สุดเท่าที่ทำได้",
+        "ข้อมูลสาธารณะที่แชร์ได้อิสระ",
+        "liability ที่ต้องจำกัด retention"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "NIST SP 800-122: Guide to Protecting the Confidentiality of PII",
+      "source": "NIST Special Publication 800-122",
+      "why": "อ่านนิยาม PII อย่างเป็นทางการและหลักการจำแนก/ปกป้องข้อมูลส่วนบุคคล"
+    },
+    {
+      "title": "GDPR Article 5 — Principles relating to processing of personal data",
+      "source": "Regulation (EU) 2016/679 (GDPR), Article 5",
+      "why": "อ่านหลัก data minimisation, storage limitation และ purpose limitation ที่ compliance ต้องทำตาม"
+    },
+    {
+      "title": "OpenAI Moderation guide",
+      "source": "OpenAI Platform Documentation — Moderation",
+      "why": "อ่านตัวอย่าง moderation API จริงว่าจำแนกเนื้อหาเป็นหมวดใดบ้าง (hate, self-harm ฯลฯ)"
+    },
+    {
+      "title": "Microsoft Presidio — PII detection and anonymization",
+      "source": "Microsoft Presidio (open-source), project documentation",
+      "why": "อ่านวิธี detect/redact PII แบบ open-source ทั้ง recognizer และ anonymizer"
+    }
+  ]
+}

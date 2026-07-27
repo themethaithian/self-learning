@@ -1,0 +1,67 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "confidence-and-fallback",
+  "version": 1,
+  "title_en": "Confidence and Fallback",
+  "est_minutes": 8,
+  "body_md": "# Confidence and Fallback\n\n## ทำไมถึงสำคัญ\n\nในระบบ production คำถามที่แท้จริงไม่ใช่ \"โมเดลตอบถูกไหม\" แต่คือ \"ตอนที่มันไม่แน่ใจ เรารู้ตัวหรือเปล่า และทำอะไรที่ปลอดภัย\". คำตอบที่ผิดแบบ *ดูมั่นใจ* อันตรายกว่าการยอมรับว่าไม่รู้ เพราะมันหลอกทั้งผู้ใช้และระบบปลายทางให้เชื่อ. โดยเฉพาะงาน high-stakes อย่าง fintech การเดาผิดหนึ่งครั้ง = เงินหรือ trust ที่เสียไปจริง.\n\n## แก่นของแนวคิด\n\nแนวคิดนี้มีสองครึ่งที่ต้องออกแบบแยกกัน: **ประเมินว่ามั่นใจแค่ไหน (confidence estimation)** และ **จะทำอะไรเมื่อไม่มั่นใจ (fallback)**.\n\n### ประเมิน confidence — ทำไมถึงยาก\n\nปัญหาแรก: *stated confidence เชื่อไม่ได้*. ถ้าถามโมเดลตรง ๆ ว่า \"มั่นใจกี่ %\" มันมักตอบมั่นใจสูงแม้ตอบผิด (over-confident / miscalibrated). ปัญหาที่สอง: raw token log-probability ที่ควรสะท้อนความไม่แน่ใจ ก็ *ไม่ได้ expose ทุก provider* และต่อให้มี probability ที่สูงก็ไม่ได้แปลว่าคำตอบถูก. เพราะงี้เราต้องพึ่ง **proxy** แทนการเชื่อคำพูดของโมเดล:\n\n- **Self-consistency** — sample คำตอบหลายครั้ง (temperature > 0) แล้วดูว่ากระจายหรือเกาะกลุ่ม. ตรงกันหลายรอบ = สัญญาณว่ามั่นใจ; คำตอบคนละทิศ = ไม่แน่ใจ (Wang et al. 2022).\n- **Validation / retrieval score** — สัญญาณจากระบบรอบ ๆ โมเดล: RAG retrieve เจอ context ที่ similarity สูงไหม, output ผ่าน schema validation ไหม, ผ่าน business rule ไหม. ถ้า retrieve ไม่เจออะไรตรง ก็ไม่ควรมั่นใจในคำตอบ.\n- **Verifier / judge** — ให้โมเดลหรือ heuristic ตัวที่สองตรวจคำตอบแรก (แนวเดียวกับ `llm-as-judge` ใน ch.9) แล้วใช้คะแนนนั้นเป็น confidence.\n- **Explicit uncertainty prompt** — อนุญาตให้โมเดลตอบ \"ไม่รู้\" ได้ แทนบังคับให้ตอบเสมอ — แต่ยังต้องระวังว่า self-report มัก over-confident.\n\n(log-prob เป็นตัวอย่างทั่วไปของสัญญาณระดับ token ไม่ใช่ข้อสรุปว่า stack ไหนมีให้ใช้จริง)\n\n### Fallback — เมื่อ confidence ต่ำกว่า threshold\n\nตั้ง **threshold**: ถ้า confidence ต่ำกว่าบาร์ที่กำหนด อย่าให้โมเดลเดา ทำอย่างอื่นที่ปลอดภัยแทน. ตัวเลือก fallback เรียงจากเบาไปหนัก:\n\n1. **Rule-based path** — ตกลงไปใช้ logic แบบ deterministic (decision table, keyword rule) ที่คาดเดาผลได้.\n2. **Safe default / canned response** — คำตอบมาตรฐานที่ปลอดภัย เช่น \"เรื่องนี้ต้องให้เจ้าหน้าที่ตรวจสอบ\" แทนการเดาเนื้อหา.\n3. **Escalate to human** — \"ไม่แน่ใจ ขอโอนให้เจ้าหน้าที่\" (กลไกการโอนจริงอยู่ใน `handoff-orchestration`, ch.7 — บทนี้เน้นแค่ *การตัดสินใจว่าเมื่อไหร่ควร fallback*).\n\nหลักคิดรวบยอดคือ **graceful degradation**: คำตอบที่ปลอดภัยแต่ช่วยได้น้อย ดีกว่าคำตอบที่มั่นใจแต่ผิด.\n\nจุดที่ต้องแยกให้ชัด: ถ้า fallback คือการให้คน *อนุมัติ action* ก่อนทำจริง (ไม่ใช่โอนบทสนทนา) นั่นคือ HITL (`human-in-the-loop`, ch.7). และการสอนโมเดลให้ตอบ \"ไม่รู้\" เพื่อ *ลด hallucination* เป็นเรื่องของ sibling `hallucination-mitigation` — บทนี้มองการตอบ \"ไม่รู้\" เป็นแค่หนึ่งใน fallback option ที่ trigger ด้วย confidence.\n\n```mermaid\nflowchart TD\n  A[Model produces answer] --> C[Estimate confidence via proxy]\n  C --> T{\"Confidence >= threshold?\"}\n  T -->|Yes| R[Return answer to user]\n  T -->|\"No: below threshold\"| F[Fallback path]\n  F --> RB[\"Rule-based logic\"]\n  F --> SD[\"Safe default / canned\"]\n  F --> HU[\"Escalate to human\"]\n```\n\n## ตัวอย่าง (fintech support bot)\n\nSupport bot ของ e-wallet รับข้อความ \"ขอยกเลิก recurring payment ของผม\". ระบบทำสองอย่างก่อนตอบ: classify intent และ retrieve policy. ผลออกมา intent = `cancel_subscription` ด้วย score 0.55 และ RAG retrieval score ต่ำ (ไม่เจอ policy doc ที่ตรง). ลอง sample คำตอบ 5 ครั้งเพื่อเช็ค self-consistency — 3 ครั้งบอกให้ยกเลิก, 2 ครั้งบอกให้ pause. ทุกสัญญาณชี้ว่า *ไม่มั่นใจ* และต่ำกว่า threshold ที่ตั้งไว้ (0.8).\n\nระบบจึง **ไม่ auto-resolve** — ไม่ยิง API ยกเลิก payment จริง เพราะถ้าจัดหมวดผิดแล้วไปยกเลิกผิดตัว = ความเสียหายทางเงินจริง. แทนที่จะเดา มัน fallback: ตอบ canned safe response (\"การยกเลิกการชำระเงินอัตโนมัติต้องยืนยันตัวตน ขอโอนให้เจ้าหน้าที่ดูแลนะครับ\") แล้ว route ไป human. เทียบกับ bot ที่ threshold หลวมแล้ว auto-resolve ทันที — เคสนี้มีโอกาสสูงที่จะไปกดยกเลิกผิดรายการอย่างมั่นใจ.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ถามโมเดลว่ามั่นใจกี่ % แล้วเชื่อค่านั้นได้เลย\"** ผิด. self-reported confidence มัก miscalibrated (มั่นใจสูงทั้งที่ผิด) ต้องใช้ proxy ที่อิสระจากคำพูดของโมเดล.\n- **\"log-prob สูง = คำตอบถูก\"** ผิด. probability สะท้อนแค่ว่า token นั้น likely ตาม distribution ไม่ใช่ความจริง; และหลาย provider ไม่ expose ให้ด้วยซ้ำ.\n- **\"fallback = ระบบด้อยกว่า\"** ผิด. fallback ที่ออกแบบมาดีคือ graceful degradation — เป็น feature ที่ทำให้ระบบน่าเชื่อถือ ไม่ใช่การยอมแพ้.\n\n## ขีดจำกัด / trade-off\n\n**Proxy ทุกตัวไม่สมบูรณ์.** self-consistency ที่ตรงกันไม่ได้การันตีว่าถูก — โมเดลผิดพร้อมกันอย่างมั่นใจได้ (consistently wrong); retrieval score สูงไม่ได้แปลว่าคำตอบใช้ context นั้นถูก; และ confidence ที่วัดได้มัก miscalibrated ไม่ตรงกับ accuracy จริง. อย่าเชื่อ confidence number ราวกับมันแม่นยำ.\n\n**Threshold คือ dial ที่มีสองขั้วเสีย.** ตั้งบาร์เข้มเกินไป (ต้องมั่นใจมากถึงจะตอบเอง) → เกือบทุกเคสตกไป fallback/escalate, automation แทบไม่เหลือ, human ล้น, ROI ของ AI ติดลบ. ตั้งบาร์หลวมเกินไป → auto-answer เคสที่เสี่ยง คำตอบมั่นใจแต่ผิดหลุดออกไปถึงผู้ใช้. จุดพอดีต้องจูนด้วยข้อมูลจริง (false-answer rate เทียบกับ escalation rate) ไม่ใช่ค่าคงที่ตั้งครั้งเดียวจบ.\n\n**การวัด confidence ไม่ฟรี.** self-consistency = sample N ครั้ง = จ่าย token และ latency N เท่า; verifier/judge = อีก call เพิ่ม; retrieval scoring = compute เพิ่ม. ในงาน low-stakes ที่ตอบผิดไม่เสียหาย (brainstorm, ร่างที่คนตรวจอยู่แล้ว) หรือใน copilot/agent-assist ที่มี human ตรวจทุกคำตอบก่อนส่งอยู่แล้ว การใส่ confidence gate เต็มรูปแบบมัก overkill — เพิ่ม complexity และ cost โดยไม่ได้ลด risk ที่มีอยู่แล้ว.\n\n## มุมสัมภาษณ์\n\n- **\"จะรู้ได้ยังไงว่าโมเดลไม่มั่นใจ ในเมื่อมันพูดมั่นใจตลอด?\"** → stated confidence เชื่อไม่ได้; ใช้ proxy: self-consistency, retrieval/validation score, verifier/judge, (log-prob ถ้ามี) แล้วเตือนเรื่อง calibration.\n- **\"confidence ต่ำแล้วทำอะไรต่อ?\"** → fallback ladder: rule-based path → safe default → escalate to human; อธิบายด้วยคำว่า graceful degradation.\n- **\"ทำไมคำตอบปลอดภัยแต่ช่วยน้อย ดีกว่าคำตอบมั่นใจแต่ผิด?\"** → โดยเฉพาะ high-stakes คำตอบผิดที่ดูมั่นใจสร้างความเสียหายและทำลาย trust มากกว่าการยอมรับว่าไม่แน่ใจ.\n- **\"จูน threshold ยังไงไม่ให้ escalate ทุกเคสหรือปล่อยเคสเสี่ยง?\"** → เป็น trade-off automation กับ risk; วัดด้วย data สองด้าน (false-answer เทียบ escalation rate) แล้วปรับต่อเนื่อง ไม่ใช่ค่า magic.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไมจึงเชื่อ confidence ที่โมเดลบอกเอง (stated confidence) ไม่ได้ ต้องใช้ proxy แทน?",
+      "expected_answer": "เพราะโมเดลมัก over-confident / miscalibrated (มั่นใจสูงแม้ตอบผิด) จึงต้องใช้ proxy ที่อิสระจากคำพูดโมเดล เช่น self-consistency, retrieval/validation score, verifier",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมเมื่อ confidence ต่ำจึงควร fallback ไปทางที่ปลอดภัย แทนที่จะให้โมเดลเดา?",
+      "expected_answer": "คำตอบที่ปลอดภัยแต่ช่วยน้อย ดีกว่าคำตอบมั่นใจแต่ผิด",
+      "type": "mcq",
+      "options": [
+        "เพราะ rule-based path แม่นยำกว่าโมเดลเสมอในทุกกรณี",
+        "คำตอบที่ปลอดภัยแต่ช่วยน้อย ดีกว่าคำตอบมั่นใจแต่ผิด",
+        "เพราะ fallback ช่วยลดต้นทุน token ของ provider ลงมาก"
+      ]
+    },
+    {
+      "q": "ข้อใดเป็น proxy สำหรับประเมิน confidence ที่ใช้ได้จริง?",
+      "expected_answer": "self-consistency: sample หลายครั้งดูว่าคำตอบตรงกันไหม",
+      "type": "mcq",
+      "options": [
+        "self-consistency: sample หลายครั้งดูว่าคำตอบตรงกันไหม",
+        "ถามโมเดลตรง ๆ ว่ามั่นใจกี่เปอร์เซ็นต์แล้วเชื่อค่านั้นได้เลย",
+        "ดูความยาวของคำตอบ ยิ่งยาวยิ่งแปลว่ามั่นใจมากกว่า"
+      ]
+    },
+    {
+      "q": "การตั้ง confidence threshold เป็น dial ที่มีสองขั้วเสีย — สองขั้วนั้นคืออะไร?",
+      "expected_answer": "ตั้งเข้มเกินไป (ต้องมั่นใจมากถึงจะตอบเอง) → fallback/escalate เกือบทุกเคส automation แทบไม่เหลือ; ตั้งหลวมเกินไป → auto-answer เคสเสี่ยง คำตอบมั่นใจแต่ผิดหลุดออกไป",
+      "type": "short_answer"
+    },
+    {
+      "q": "self-consistency ทำให้ประเมิน confidence แม่นขึ้น แต่ต้นทุนหลักคืออะไร?",
+      "expected_answer": "ต้อง sample หลายครั้ง จึงจ่าย token และ latency เพิ่ม",
+      "type": "mcq",
+      "options": [
+        "ทำให้ระบบตอบไม่ตรงกันในแต่ละครั้งจนผู้ใช้สับสนหนักขึ้น",
+        "ทำให้ schema validation ของ output พังบ่อยขึ้นกว่าเดิม",
+        "ต้อง sample หลายครั้ง จึงจ่าย token และ latency เพิ่ม"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Wang et al. 2022 — Self-Consistency Improves Chain of Thought Reasoning in Language Models",
+      "source": "arxiv.org/abs/2203.11171",
+      "why": "อ่าน self-consistency เป็น proxy วัดความมั่นใจจากการ sample คำตอบหลายครั้งแล้วดู agreement"
+    },
+    {
+      "title": "Kadavath et al. 2022 — Language Models (Mostly) Know What They Know",
+      "source": "arxiv.org/abs/2207.05221",
+      "why": "อ่านว่าโมเดลประเมินความมั่นใจตัวเองได้แค่ไหน และแนวคิด P(True) / self-evaluation"
+    },
+    {
+      "title": "Guo et al. 2017 — On Calibration of Modern Neural Networks",
+      "source": "arxiv.org/abs/1706.04599",
+      "why": "อ่านพื้นฐาน calibration — ทำไม probability ที่โมเดลให้ ไม่เท่ากับความถูกต้องจริง"
+    }
+  ]
+}
