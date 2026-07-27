@@ -42,7 +42,7 @@ Phase 2 ค่อย publish โชว์เป็นผลงาน (ดู des
 - สัปดาห์ 5: [ ] T22 [ ] T23 [ ] T24 [ ] T25 [ ] C3 [ ] C4
 - สัปดาห์ 6: [ ] T26 [ ] T27 [ ] T31 [ ] T32 [ ] T34 [ ] C5 [ ] C6
 - DDIA track (additive, [รายละเอียด](tickets/ddia.md)): [x] T-ddia-track [x] T-ddia-curriculum · **lessons 12/12 บท ครบทั้ง track (61 บทเรียน)** — reader: [Study Reader artifact](https://claude.ai/code/artifact/b67a1cad-4b9e-4b2e-9cf1-755128e1ebb5)
-- AI & LLM Systems track (7th, additive, [รายละเอียด](tickets/ai-systems.md)): [x] T-ai-track (enable + tree 11 บท/53 concept + loader test) · lessons 24/53 (ch.1–5: Foundations, Prompting, Tool Calling, RAG, Streaming) — เจาะตำแหน่ง Backend/AI-CRM ([🎯 roadmap](https://claude.ai/code/artifact/a6d332fd-de7b-44bb-91db-37549984c7a7))
+- AI & LLM Systems track (7th, additive, [รายละเอียด](tickets/ai-systems.md)): [x] T-ai-track (enable + tree 11 บท/53 concept + loader test) · lessons 29/53 (ch.1–6: +Agents & Orchestration) — เจาะตำแหน่ง Backend/AI-CRM ([🎯 roadmap](https://claude.ai/code/artifact/a6d332fd-de7b-44bb-91db-37549984c7a7))
 
 ## กติกาการทำงาน (ทุก ticket)
 

@@ -1,0 +1,67 @@
+{
+  "concept_id": "planning-and-decomposition",
+  "version": 1,
+  "topic": "ai-and-llm-systems",
+  "title_en": "Planning and Decomposition",
+  "est_minutes": 7,
+  "body_md": "# Planning and Decomposition\n\n## ทำไมถึงสำคัญ\n\nงานยาก ๆ ที่สั่งให้ agent ทำในช็อตเดียว (\"แก้เคสนี้ให้ที\") มักพังแบบเงียบ ๆ แล้วหาสาเหตุไม่เจอ. การ **แตกงานใหญ่เป็น sub-step ย่อยก่อนลงมือ** เพิ่ม reliability และทำให้ความล้มเหลว *localizable* — รู้ว่าพังที่ขั้นไหน ไม่ใช่รู้แค่ว่า \"คำตอบผิด\". senior interview ไม่ได้ถามว่า planning ดีไหม แต่ถามว่า *เมื่อไหร่ควรวางแผน เมื่อไหร่ไม่ควร* และมันแลกอะไร.\n\n## แก่นของแนวคิด\n\n**Decomposition** = แตก goal ใหญ่เป็นชุด sub-task ที่แต่ละอันโมเดลทำได้แม่นกว่า และถ้าพังคุณเห็นทันทีว่าพังขั้นไหน. มีสองสไตล์หลักในการจัดลำดับ sub-task:\n\n- **Plan-then-execute**: ให้โมเดลร่างแผนทั้งชุดก่อน แล้วค่อยไล่ทำทีละขั้น. ข้อดี: เห็นแผนทั้งหมดก่อนลงมือ จึง review, ใส่ guardrail, หรือให้คนอนุมัติได้ก่อน action ใด ๆ เกิดจริง. ข้อเสีย: แข็งทื่อ — ถ้าความจริงระหว่างทางไม่ตรงกับแผน แผนก็ล้าสมัยทันที.\n- **Interleaved / adaptive**: ตัดสินใจ step ถัดไป *ระหว่างทาง* จากผลที่เพิ่งเห็น (แนว ReAct). ข้อดี: ยืดหยุ่น ปรับตามสถานการณ์จริงได้. ข้อเสีย: ไขว้เขว/วนเวียนง่าย และใส่ guardrail ยากกว่าเพราะไม่รู้ล่วงหน้าว่าจะทำอะไรบ้าง. (กลไก loop reason→act→observe เป็นของ sibling `agent-loop-react`; ที่นี่สนใจแค่ \"จัดโครงงานยังไง\" ไม่ใช่ตัว loop.)\n\nเทคนิคเสริมที่มาคู่กัน:\n\n- **Reflection / self-critique**: ให้ agent อ่านงาน/แผนของตัวเองแล้ววิจารณ์และแก้ (แนว Reflexion). จับ error ที่ pass แรกมองข้าม แต่ถ้าไม่มีเพดานก็ *วนแก้ไม่จบ*.\n- **Explicit subgoals**: ตั้งชื่อเป้าหมายกลางทางให้ชัด เพื่อให้แต่ละ step มี \"เกณฑ์เสร็จ\" ของตัวเอง.\n\nหมายเหตุขอบเขต: chain-of-thought ในฐานะเทคนิค prompt (ให้โมเดลคิดเป็นขั้นใน prompt เดียว) อยู่ ch.2 — บทนี้พูดระดับ *task structure ของ agent* ไม่ใช่การ reason ใน single prompt. และการแตกงานข้าม *หลาย agent* (แบ่งบทบาท) เป็นของ sibling `single-vs-multi-agent`; ที่นี่ agent เดียวก็ decompose งานของตัวเองได้.\n\n## ตัวอย่าง (support / fintech)\n\nลูกค้าร้องเรียนว่าโดนตัดเงินซ้ำสองครั้ง. แทนที่จะ prompt เดียวว่า \"จัดการเคสนี้ให้หน่อย\" ให้ decompose เป็น:\n\n1. **Verify account** — ยืนยันตัวตนและระบุว่าเป็นบัญชีไหน\n2. **Check history** — ดึง transaction log มาดูว่ามี double charge จริงไหม\n3. **Determine remedy** — ตัดสินใจวิธีแก้ (refund? อยู่ในนโยบายไหม?)\n4. **Draft response** — ร่างคำตอบถึงลูกค้า\n\nแต่ละขั้นเป็น tool call / reasoning ที่โฟกัส. ถ้า step 3 เลือก remedy ผิด คุณเห็นตรงจุดนั้นทันที ไม่ต้องเดาจากคำตอบสุดท้าย. และเพราะเป็น plan-then-execute คุณ *แทรก approval ก่อน step 4* ได้ — ให้คนตรวจ remedy ก่อนคำตอบหลุดถึงลูกค้า (จะ gate action ไหน เป็นเรื่องของ human-in-the-loop, ch.7).\n\n```mermaid\nflowchart TD\n  G[\"Goal: resolve complaint\"] --> P[\"Plan: break into subtasks\"]\n  P --> S1[\"Verify account\"]\n  S1 --> S2[\"Check history\"]\n  S2 --> S3[\"Determine remedy\"]\n  S3 --> S4[\"Draft response\"]\n  S4 --> R{\"Reflect: plan still valid?\"}\n  R -->|yes| D[\"Done\"]\n  R -->|no| P\n```\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"วางแผนไว้ก่อนเสมอดีกว่า react ทีละก้าว\"** — ไม่จริง. งานง่ายที่ single prompt จบได้ การ decompose มีแต่เพิ่ม call, cost, latency ฟรี ๆ.\n- **\"มีแผนแล้ว = agent ปรับตัวไม่ได้\"** — ไม่จริง. reflection/replanning ทำให้กลับไปแก้แผนกลางทางได้ (ลูกศร no ในไดอะแกรม).\n- **\"decompose = ต้องมีหลาย agent\"** — ไม่จริง. agent เดียวแตกงานเป็น sub-task ของตัวเองได้ ไม่เกี่ยวกับ multi-agent.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\n- **ต้นทุนแลก reliability**: ทุก sub-task + ขั้นวางแผน + ขั้น reflect คือ LLM call เพิ่ม → cost และ latency บานตามจำนวนขั้น. โครงสร้างที่มากขึ้นไม่ฟรี.\n- **แผนพังทั้งกระบวน (cascade)**: plan-then-execute รวมความเสี่ยงไว้ที่ *แผนตั้งต้น* — ถ้าแผนแรกผิดทิศ ทุก step ที่ตามมาทำผิดตามอย่างมั่นใจ. interleaved จับ divergence ได้เร็วกว่าแต่แลกกับความเสี่ยงไขว้เขว.\n- **Over-planning งานง่าย = waste ล้วน ๆ**: ถ้า task จบได้ใน 1 ขั้น การบังคับให้ร่างแผนก่อนคือ overhead ที่ไม่ได้คุณภาพกลับมา.\n- **Reflection วนไม่จบ**: self-critique อาจแก้แล้วแก้อีกไม่ converge — ต้องตั้ง max iteration / stopping criterion เสมอ (เชื่อมกับ termination condition ของ tool loop ใน `agentic-tool-loop`).\n- สรุปเมื่อไม่ควรใช้: งาน one-shot, path ที่ latency-sensitive, หรือเคสที่ต้นทุน error ต่ำจน review แผนไม่คุ้ม.\n\n## มุมสัมภาษณ์\n\n- \"plan-then-execute กับ ReAct-style เลือกอันไหนเมื่อไหร่?\" → plan เมื่ออยาก review/guardrail ก่อนลงมือและงานมีโครงชัด; interleaved เมื่อสภาพแวดล้อมไม่แน่นอนต้องปรับตามผลจริง.\n- \"ทำให้ agent debug ง่ายขึ้นยังไง?\" → decompose ให้ failure localizable รู้ว่าพัง step ไหน.\n- \"reflection มีข้อดีข้อเสียอะไร?\" → จับ error เพิ่ม แต่วนไม่จบถ้าไม่ตั้งเพดาน.\n- \"decomposition แลกอะไร?\" → LLM call/cost/latency เพิ่ม และความเสี่ยง cascade จากแผนที่ผิดตั้งแต่ต้น.\n",
+  "recall_checks": [
+    {
+      "q": "การ decompose งานใหญ่เป็น sub-step นอกจากเพิ่ม reliability แล้ว ยังทำให้ความล้มเหลวมีคุณสมบัติอะไร?",
+      "expected_answer": "localizable — รู้ว่าพังที่ step ไหน ทำให้ debug/แก้ได้ตรงจุด แทนการรู้แค่ว่าคำตอบสุดท้ายผิด",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อดีหลักของ plan-then-execute เทียบกับ interleaved/adaptive คืออะไร?",
+      "expected_answer": "review แผนทั้งหมดได้ก่อนลงมือทำจริง",
+      "type": "mcq",
+      "options": [
+        "ปรับตัวได้ทันทีเมื่อสถานการณ์เปลี่ยนไปเอง",
+        "review แผนทั้งหมดได้ก่อนลงมือทำจริง",
+        "ใช้ LLM call น้อยกว่าเสมอในทุกงาน"
+      ]
+    },
+    {
+      "q": "failure mode ของ reflection/self-critique คืออะไร?",
+      "expected_answer": "วนแก้ไม่จบจนกว่าจะตั้ง max iteration",
+      "type": "mcq",
+      "options": [
+        "วนแก้ไม่จบจนกว่าจะตั้ง max iteration",
+        "ทำให้ agent ปรับแผนของตัวเองไม่ได้อีกเลย",
+        "ลดจำนวน LLM call ลงโดยอัตโนมัติ"
+      ]
+    },
+    {
+      "q": "เมื่อไหร่ที่การวางแผน/decompose กลายเป็น waste?",
+      "expected_answer": "งาน one-shot ที่ single prompt ก็จบได้ — การบังคับวางแผนเพิ่มแค่ LLM call, cost, latency โดยไม่ได้คุณภาพเพิ่ม",
+      "type": "short_answer"
+    },
+    {
+      "q": "ความเสี่ยงเฉพาะของ plan-then-execute คืออะไร?",
+      "expected_answer": "แผนเริ่มต้นผิด ทุก step ที่ตามมาก็ผิดตาม",
+      "type": "mcq",
+      "options": [
+        "แต่ละ step ทำงานแยกกันจนแผนใหญ่ไร้ความหมายไป",
+        "บังคับให้ต้องใช้หลาย agent เสมอไป",
+        "แผนเริ่มต้นผิด ทุก step ที่ตามมาก็ผิดตาม"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Plan-and-Solve Prompting (Wang et al., 2023)",
+      "source": "arxiv.org/abs/2305.04091",
+      "why": "อ่านต้นทางแนวคิด plan-then-execute: วางแผนเป็นขั้นก่อนแล้วค่อยไล่ทำ"
+    },
+    {
+      "title": "Reflexion: Language Agents with Verbal Reinforcement Learning (Shinn et al., 2023)",
+      "source": "arxiv.org/abs/2303.11366",
+      "why": "อ่านว่า reflection/self-critique ช่วย agent แก้งานตัวเองยังไง และทำไมต้องมีเพดานรอบ"
+    },
+    {
+      "title": "ReAct: Synergizing Reasoning and Acting in Language Models (Yao et al., 2022)",
+      "source": "arxiv.org/abs/2210.03629",
+      "why": "อ่านต้นแบบสไตล์ interleaved/adaptive ที่ตัดสิน step ถัดไประหว่างทาง"
+    }
+  ]
+}
