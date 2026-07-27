@@ -1,0 +1,67 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "tokens-and-context-window",
+  "version": 1,
+  "title_en": "Tokens and Context Window",
+  "est_minutes": 8,
+  "body_md": "# Tokens and Context Window\n\n## ทำไมถึงสำคัญ\n\nโมเดลไม่ได้ \"อ่าน\" ข้อความแบบที่คนอ่าน — มันเห็นเป็นลำดับของ **token** (หน่วย subword) เท่านั้น. context window คือขีดจำกัดตายตัวว่าโมเดลรับ token ได้กี่ตัวต่อครั้ง และ token ยังเป็นหน่วยที่ provider ใช้คิดเงินและกำหนด latency. เข้าใจสองเรื่องนี้คือพื้นฐานของการคุมต้นทุนและตัดสินใจว่าจะยัดอะไรเข้า prompt ได้บ้าง.\n\n## แก่นของแนวคิด\n\n- **Tokenization**: ก่อนข้อความจะถึงโมเดล tokenizer จะตัดมันเป็น token — ไม่ใช่ตัวอักษร และไม่ใช่คำ แต่เป็นชิ้น subword. rule of thumb: ภาษาอังกฤษ 1 token ≈ 3/4 ของคำ (ราว ๆ 4 ตัวอักษร) และช่องว่าง/เครื่องหมายวรรคตอนก็นับเป็น token ด้วย.\n- **ภาษาอื่นตัด token ไม่เท่ากัน**: tokenizer ส่วนใหญ่ถูก train บน corpus ที่ภาษาอังกฤษเยอะ ข้อความ **ภาษาไทย/ญี่ปุ่น/จีน** ที่ความยาวใกล้กันจึงมักถูกตัดเป็น token มากกว่า → กิน context และเงินมากกว่าข้อความอังกฤษที่สื่อความหมายเท่ากัน.\n- **Context window**: จำนวน token สูงสุดที่โมเดล attend ได้ในครั้งเดียว และมันนับรวม **ทั้ง input และ output**. output ที่ยาวเบียดพื้นที่ที่เหลือของ window เสมอ.\n- **Token ขับเคลื่อนต้นทุนและ latency**: provider คิดเงินต่อ token โดยแยก rate ของ input กับ output (output มักแพงกว่า input หลายเท่า). ยิ่ง context ยาว → input token ยิ่งเยอะ → ยิ่งแพงและยิ่งช้า เพราะโมเดลต้องประมวลผล token ทั้งหมดก่อนเริ่มตอบ. (ขนาดของ *โมเดล* เป็นอีกแกนของ cost/latency ที่แยกจากจำนวน token — ดู sibling `cost-latency-tradeoffs`.)\n\nโมเดลจริงหลายรุ่นมี context window ราว 200,000 tokens และรุ่นใหญ่บางตัวถึง ~1,000,000 tokens (ตัวเลขต่างกันตามรุ่น อย่าจำเป็นค่าตายตัว).\n\n```mermaid\nflowchart TD\n  T[\"Raw text: chat + docs\"] --> TK[Tokenizer]\n  TK --> TS[\"Token sequence (subword units)\"]\n  TS --> B{\"Fit in window? input + output ไม่เกิน limit\"}\n  B -->|Yes| M[Model attends to all tokens]\n  B -->|No| F[\"Truncate / summarize / retrieve\"]\n  F --> TS\n```\n\n## ตัวอย่าง (fintech support)\n\nทีม support ของบริษัท fintech มี AI ช่วยตอบลูกค้า. ลูกค้ารายหนึ่งมีประวัติแชท 8 เดือน + เอกสาร policy + transaction history รวมกันได้ ~300,000 tokens แต่ context window มี 200,000 tokens → ใส่ไม่หมด. ทีมต้องเลือกอย่างใดอย่างหนึ่ง:\n\n- **Truncate**: ตัดแชทเก่าทิ้ง — เร็วและง่าย แต่เสี่ยงลืม context สำคัญ (เช่นข้อตกลง refund ที่คุยไว้เดือนก่อน).\n- **Summarize**: สรุปประวัติเก่าเป็นย่อหน้าสั้น — ประหยัด token แต่รายละเอียดบางส่วนหาย.\n- **Retrieve เฉพาะส่วนที่เกี่ยวข้อง** (RAG): ดึงมาเฉพาะ chunk ที่ตรงกับคำถาม — วิธีมาตรฐานสำหรับเอกสารใหญ่ ครอบคลุมใน chapter `retrieval-augmented-generation` (การ chunk อยู่ที่ `chunking-strategies`).\n\nเทียบ token ข้ามภาษา: ประโยค \"Transfer 500 to a friend\" อาจเป็นไม่กี่ token ขณะที่ \"โอนเงินห้าร้อยบาทให้เพื่อน\" ที่สื่อความหมายเดียวกันมักกิน token มากกว่า — ระบบหลายภาษาต้อง budget เผื่อจุดนี้.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"1 token = 1 คำ\"** ผิด. token คือ subword; คำยาวหรือคำแปลกอาจเป็นหลาย token และช่องว่าง/สัญลักษณ์ก็นับ. การประเมินความยาวด้วย \"จำนวนคำ\" จึงคลาดเคลื่อน — ควรนับ token จริง (เช่นด้วย token counter ของ provider) ไม่ใช่เดาจากจำนวนคำ.\n- **\"window ใหญ่ = ยัดทุกอย่างเข้าไปได้เลย\"** ผิด. window ใหญ่ไม่ได้ฟรี — แพงและช้าขึ้นตาม token และคุณภาพอาจ *แย่ลง* จากปรากฏการณ์ **lost in the middle**: โมเดลมักให้น้ำหนักข้อมูลต้นและท้าย context มากกว่าตรงกลาง ข้อมูลสำคัญที่จมอยู่กลาง ๆ อาจถูกมองข้าม.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรพึ่ง context window ใหญ่\n\n- **ต้นทุนโตเชิงเส้นตาม token**: ทุก token ที่ส่งเข้าไปคือเงินและเวลา. context 200k tokens ต่อ request ที่เรียกบ่อย ๆ บานปลายเร็ว. TTFT (เวลาเริ่มตอบ) ก็ช้าลงเพราะต้องอ่าน input ทั้งก้อนก่อน.\n- **Lost in the middle**: ยัด window เต็มไม่การันตีคุณภาพ — บ่อยครั้งได้ผลแย่กว่าการคัด context ที่เกี่ยวข้องจริง ๆ มาให้กระชับ.\n- **เมื่อข้อมูลใหญ่กว่า window หรือเปลี่ยนบ่อย**: อย่ายัดทั้งหมด ใช้ retrieve/chunk (ch.4) แทน. long-context เหมาะเฉพาะตอนเอกสาร *พอดี* กับ window และต้องเห็นทั้งฉบับพร้อมกัน — เทียบ trade-off กับ RAG ที่ `rag-vs-finetune-vs-long-context`.\n- **ต้นทุน token ไม่เท่ากันข้ามภาษา**: ผลิตภัณฑ์หลายภาษาต้องเผื่อ budget ให้ภาษาที่ตัด token เยอะ ไม่งั้นทั้งแพงเกินคาดและอาจล้น window เร็วกว่าที่ประเมินไว้.\n\n(หมายเหตุ: output จะสั้น/ยาว/หลากหลายแค่ไหน คุมด้วย decoding — ดู sibling `sampling-and-temperature`; ที่นี่เราสนใจ *จำนวน* token กับ window เท่านั้น.)\n\n## มุมสัมภาษณ์\n\n- **\"เอกสารยาวเกิน context window จะทำยังไง?\"** → truncate / summarize / RAG พร้อมอธิบาย trade-off ของแต่ละอัน (ข้อมูลหาย vs ต้นทุน vs ความซับซ้อนของระบบ).\n- **\"ทำไม context เดียวกันภาษาไทยแพงกว่าอังกฤษ?\"** → tokenizer ตัดไทยเป็น token มากกว่า input token จึงเยอะกว่า.\n- **\"window 1M แปลว่าใส่ทุกอย่างได้เสมอไหม?\"** → ไม่ เพราะ cost/latency โตตาม token และมี lost in the middle.\n- **คำนวณ cost คร่าว ๆ**: ประมาณจากจำนวน input/output token คูณ rate ต่อ token — คำถามนี้มักเช็คว่ารู้ไหมว่า output แพงกว่า input.\n",
+  "recall_checks": [
+    {
+      "q": "โดยเฉลี่ย 1 token ภาษาอังกฤษเทียบเท่าประมาณเท่าไรของคำ?",
+      "expected_answer": "ประมาณ 3/4 (สามในสี่) ของคำ หรือราว 4 ตัวอักษร",
+      "type": "short_answer"
+    },
+    {
+      "q": "context window นับรวม token อะไรบ้าง?",
+      "expected_answer": "input บวก output รวมกัน",
+      "type": "mcq",
+      "options": [
+        "เฉพาะ input จากผู้ใช้เท่านั้น",
+        "input บวก output รวมกัน",
+        "เฉพาะ output ที่โมเดลสร้าง"
+      ]
+    },
+    {
+      "q": "ทำไมการยัด context จนเกือบเต็ม window ใหญ่จึงไม่ใช่ความคิดที่ดีเสมอไป?",
+      "expected_answer": "เพราะแพงขึ้น ช้าลง และ focus เจือจาง",
+      "type": "mcq",
+      "options": [
+        "เพราะแพงขึ้น ช้าลง และ focus เจือจาง",
+        "เพราะโมเดลจะ error แล้วหยุดทำงานทันที",
+        "เพราะ tokenizer จะตัดคำผิดพลาด"
+      ]
+    },
+    {
+      "q": "ข้อความภาษาไทยเทียบกับภาษาอังกฤษที่ความยาวใกล้กัน มักจะเป็นอย่างไร?",
+      "expected_answer": "ใช้ token มากกว่า จึงแพงกว่า",
+      "type": "mcq",
+      "options": [
+        "ใช้ token น้อยกว่า จึงถูกกว่า",
+        "ใช้ token เท่ากันเสมอ",
+        "ใช้ token มากกว่า จึงแพงกว่า"
+      ]
+    },
+    {
+      "q": "ถ้าเอกสารยาวเกิน context window ยกวิธีจัดการมา 2 อย่าง",
+      "expected_answer": "truncate (ตัดทิ้ง), summarize (สรุปย่อ), หรือ retrieve เฉพาะส่วนที่เกี่ยวข้อง (RAG)",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Anthropic — Context windows",
+      "source": "platform.claude.com/docs/en/build-with-claude/context-windows",
+      "why": "อ่านว่า context window นับ input+output ยังไง และวิธีจัดการเมื่อ token ใกล้เต็ม"
+    },
+    {
+      "title": "Anthropic — Token counting",
+      "source": "platform.claude.com/docs/en/build-with-claude/token-counting",
+      "why": "อ่านวิธีนับ token จริงต่อโมเดล แทนการเดาจากจำนวนคำ (ตัวเลขต่างกันตาม tokenizer)"
+    },
+    {
+      "title": "Lost in the Middle: How Language Models Use Long Contexts",
+      "source": "Liu et al., 2023 (arxiv.org/abs/2307.03172)",
+      "why": "อ่านหลักฐานว่าทำไม window ใหญ่ไม่การันตีคุณภาพ — โมเดลมองข้ามข้อมูลกลาง context"
+    }
+  ]
+}

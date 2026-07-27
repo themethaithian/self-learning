@@ -1,0 +1,62 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "what-is-an-llm",
+  "version": 1,
+  "title_en": "What Is an LLM",
+  "est_minutes": 7,
+  "body_md": "# What Is an LLM\n\n## ทำไมถึงสำคัญ\n\nA large language model (LLM) ไม่ได้ 'รู้' คำตอบไว้ก่อนแล้วดึงมาตอบ — มันทำนาย token ถัดไปที่น่าจะตามมามากที่สุดจาก context ที่เห็น ทีละ token จนจบ. ถ้า mental model ผิดตั้งแต่ตรงนี้ (คิดว่ามันคือ search engine หรือ database ที่ค้นความจริง) จะเข้าใจ hallucination, prompting และเรื่อง downstream ทั้งหมดผิดตาม. เข้าใจข้อเดียวนี้ให้ถูก — LLM คือ probabilistic next-token predictor — คือฐานของทั้ง track นี้.\n\n## แก่นของแนวคิด\n\n**Next-token prediction ทำงานยังไง** — ข้อความถูกแปลงเป็น token (หน่วยย่อยของข้อความ; รายละเอียดอยู่ใน sibling `tokens-and-context-window`) แล้ว model รับ token ที่มาก่อนหน้าทั้งหมด (context) มาคำนวณ probability distribution เหนือ token ที่เป็นไปได้ทั้ง vocabulary ว่าตัวไหนน่าจะตามมาต่อ. เช่น context = `โอนเงินไม่สำเร็จเพราะยอดเงิน` model อาจให้ `ไม่พอ`=0.82, `คงเหลือ`=0.09, `ติดลบ`=0.03, ...; จากนั้นเลือกมา 1 token (จะเลือกแบบ greedy หรือ sample ตาม probability — อยู่ใน sibling `sampling-and-temperature`), เอา token นั้น append กลับเข้า context แล้วทำซ้ำ. loop นี้เรียกว่า autoregressive และมันคือ *ทั้งหมด* ที่ model ทำ ตั้งแต่ token แรกจนจบคำตอบ.\n\n```mermaid\nflowchart LR\n  CTX[Context tokens so far] --> LLM[LLM forward pass]\n  LLM --> DIST[Probability distribution over next token]\n  DIST --> PICK[Pick one token]\n  PICK --> APP[Append token to context]\n  APP -.->|repeat until stop| CTX\n```\n\n**probabilistic ไม่ใช่ lookup** — model ไม่มี 'ตาราง' ของข้อเท็จจริงให้ค้น. สิ่งที่มันมีคือ weights (parameters นับพันล้านตัว) ที่ถูก train จาก text จำนวนมหาศาลให้ทำนาย token ถัดไปได้แม่นที่สุด. ความรู้ที่ดูเหมือน 'จำได้' จริง ๆ คือ statistical pattern ที่ฝังอยู่ใน weights ไม่ใช่ record ที่ retrieve ออกมา. objective ที่ train มาคือ 'token ไหน likely' ไม่ใช่ 'อะไรจริง' — สองอย่างนี้ตรงกันบ่อยเพราะ training data ส่วนใหญ่เป็นข้อความจริง แต่ไม่มีอะไรการันตีว่าจะตรงกันเสมอ.\n\n**'ความเข้าใจ' อาจ emerge จากการทำนาย** — คำอธิบายที่นิยมคือ เมื่อ scale (data + parameters) ใหญ่พอ การจะทำนาย token ให้แม่นน่าจะผลักให้ model จับ structure ของภาษา ความสัมพันธ์ของแนวคิด และ reasoning pattern บางอย่างไปด้วย เพราะเป็นทางที่ช่วยลด prediction error ได้. มุมนี้ยังเป็นที่ถกเถียงอยู่ — นักวิจัยบางส่วน (เช่น Schaeffer et al. 2023) แย้งว่า 'emergent abilities' ที่ดูเหมือนโผล่ตอน scale ใหญ่ ส่วนหนึ่งเป็น artifact ของ metric ที่เลือกวัด ไม่ใช่การกระโดดของความสามารถจริง. ไม่ว่าจะตีความทางไหน สิ่งที่ยึดได้แน่คือ ความสามารถที่เราเรียกว่า 'เข้าใจ' มาจาก objective ง่าย ๆ อันเดียว (ทำนาย token) ไม่ได้ถูก program เป็น rule แยกไว้. mental model ที่ถูกคือ: **autocomplete ที่เก่งมหาศาล ไม่ใช่ oracle ที่รู้ความจริง**.\n\n## ตัวอย่าง (ทำไมตอบมั่นใจแต่ผิด)\n\nsupport bot ถูกถามว่า `ค่าธรรมเนียมโอนข้ามธนาคารของบัญชี Platinum เท่าไหร่?` ถ้าใน context ไม่มีเลขจริงของ product นี้ model ก็ยังตอบด้วยประโยคที่ฟังดูมั่นใจ เช่น `บัญชี Platinum ฟรีค่าโอนข้ามธนาคาร 5 ครั้งต่อเดือน` — เพราะรูปประโยคแบบนี้ likely มาก (พบใน training text ของธุรกิจธนาคารเยอะ) ทั้งที่เลข `5 ครั้ง` อาจไม่ตรงกับ product จริงเลย. model ไม่ได้ 'โกหก' — มันทำงานถูกตาม objective เป๊ะ คือผลิต token ที่ likely. น้ำเสียงที่มั่นใจมาจาก fluency ของภาษา ไม่ได้มาจากการตรวจสอบความจริง — นี่คือกลไกรากของ hallucination (วิธี *ลด* มันอยู่ใน ch.8 guardrails; ที่นี่เราสนใจแค่ *ทำไม* มันเกิด).\n\n## เข้าใจผิดที่พบบ่อย\n\n- **'LLM ค้นข้อมูลจาก internet หรือ database ตอนตอบ'** — ผิด. ตัว model เองไม่ retrieve อะไรเลย ตอบจาก weights ล้วน ๆ. (การต่อข้อมูลภายนอกเข้ามาคือ RAG — ch.4 — เป็นระบบที่ห่อ model อีกชั้น ไม่ใช่ตัว model.)\n- **'ถ้าตอบผิดแปลว่า model พังหรือมี bug'** — ผิด. output ที่ผิดแต่ likely คือพฤติกรรมปกติของ next-token predictor ไม่ใช่ system failure.\n- **'ตอบมั่นใจ = มั่นใจว่าถูก'** — ผิด. ความมั่นใจในน้ำเสียงเป็น property ของภาษา ไม่ใช่ signal ของ correctness.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้ LLM เปล่า\n\nmental model 'autocomplete เก่ง ๆ' บอกทันทีว่าไม่ควรพึ่ง LLM ล้วน ๆ ตรงไหน:\n\n- **งานที่ต้องการ ground truth ตรวจสอบได้** (ยอดเงิน ค่าธรรมเนียม เงื่อนไขสัญญา): LLM เปล่าให้คำตอบที่ likely ไม่ใช่ correct — ต้อง ground ด้วยข้อมูลจริงผ่าน RAG หรือ tool call.\n- **งานที่ต้องการ determinism / reproducibility**: เพราะ output มาจาก distribution + การ sample ผลจึงไม่คงที่ระหว่าง run (ดู sibling `sampling-and-temperature`).\n- **งานคำนวณแม่นยำ**: model ทำนาย token ของตัวเลข ไม่ได้ 'คำนวณ' จริง — เลขยาว ๆ ผิดง่าย ควร offload ให้ calculator/tool.\n\nต้นทุนที่แท้จริงของการใช้ผิดที่คือ: คำตอบที่ผิดแต่ *ฟังดูถูก* แพงกว่าคำตอบที่ผิดแบบเห็นชัด เพราะมันเล็ดลอดสายตาคนไปได้. งานของ senior คือออกแบบระบบโดยสมมติว่า model จะผิดบางครั้ง *เสมอ* แล้ววาง verification/guardrail รอบมัน — ไม่ใช่หวังให้ model แม่น 100%.\n\n## มุมสัมภาษณ์\n\n- **'อธิบาย LLM ในหนึ่งประโยค'** → probabilistic next-token predictor ที่ train จาก text มหาศาล ทำงานแบบ autoregressive.\n- **'ทำไม LLM ถึง hallucinate?'** → เพราะ objective คือ token ที่ likely ไม่ใช่ truth; มันตอบได้ fluently แม้ไม่มีข้อมูลจริงรองรับ.\n- **'ตอบมั่นใจแปลว่าถูกไหม?'** → ไม่; confidence ในน้ำเสียง ไม่เท่ากับ correctness.\n- **'LLM เก็บความรู้ไว้ที่ไหน?'** → ใน weights เป็น statistical pattern ไม่ใช่ database ที่ retrieve; ถ้าต้องการข้อมูลสดหรือตรวจสอบได้ ต้องต่อ RAG/tool เพิ่ม.\n",
+  "recall_checks": [
+    {
+      "q": "objective ที่ LLM ถูก train มาให้ทำคืออะไร (ตอบสั้น ๆ)?",
+      "expected_answer": "ทำนาย token ถัดไปที่ likely ที่สุดจาก context",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไม LLM ถึงตอบผิดแต่ฟังดูมั่นใจได้?",
+      "expected_answer": "เพราะมันผลิต token ที่ likely ไม่ใช่ token จริง",
+      "type": "mcq",
+      "options": [
+        "เพราะมันค้น database ภายในแล้วเจอข้อมูลที่ผิด",
+        "เพราะมันผลิต token ที่ likely ไม่ใช่ token จริง",
+        "เพราะการเชื่อมต่อ network ระหว่างการเรียกใช้งานมีปัญหา"
+      ]
+    },
+    {
+      "q": "LLM เก็บความรู้ที่ดูเหมือน 'จำได้' ไว้ที่ไหน?",
+      "expected_answer": "ใน weights เป็น statistical pattern",
+      "type": "mcq",
+      "options": [
+        "ในไฟล์ database ที่ query ตอน runtime",
+        "ในไฟล์ log ที่บันทึกทุก request",
+        "ใน weights เป็น statistical pattern"
+      ]
+    },
+    {
+      "q": "ทำไม mental model ที่ว่า 'LLM คือ database ที่ค้นความจริง' จึงอันตราย?",
+      "expected_answer": "เพราะจริง ๆ model ไม่ retrieve อะไร ตอบจาก weights แบบ probabilistic ทำให้เข้าใจ hallucination และ prompting ผิดตามไปหมด",
+      "type": "short_answer"
+    },
+    {
+      "q": "'ความเข้าใจ' ของ LLM เกิดขึ้นมาได้อย่างไร?",
+      "expected_answer": "emerge จากการ train ให้ทำนาย token ให้แม่นที่ scale ใหญ่ ไม่ได้ถูก program เป็น rule แยก",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Attention Is All You Need",
+      "source": "Vaswani et al., 2017 — arxiv.org/abs/1706.03762",
+      "why": "อ่านสถาปัตยกรรม transformer ที่เป็นรากของ LLM สมัยใหม่และกลไก attention"
+    },
+    {
+      "title": "Speech and Language Processing (3rd ed. draft), บท N-gram / Large Language Models",
+      "source": "Jurafsky & Martin — web.stanford.edu/~jurafsky/slp3/",
+      "why": "อ่านพื้นฐานว่า language model = การทำนาย word/token ถัดไป มาจากไหน"
+    },
+    {
+      "title": "The Illustrated GPT-2 (Visualizing Transformer Language Models)",
+      "source": "Jay Alammar — jalammar.github.io/illustrated-gpt2/",
+      "why": "อ่านภาพประกอบวง next-token prediction แบบ autoregressive ทีละขั้น"
+    }
+  ]
+}

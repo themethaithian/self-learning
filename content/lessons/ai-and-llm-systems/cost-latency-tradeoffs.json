@@ -1,0 +1,67 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "cost-latency-tradeoffs",
+  "version": 1,
+  "title_en": "Cost and Latency Trade-offs",
+  "est_minutes": 7,
+  "body_md": "# Cost and Latency Trade-offs\n\n## ทำไมถึงสำคัญ\n\nโมเดลที่ใหญ่/เก่งกว่ามักฉลาดขึ้น แต่แลกมาด้วยความช้าและราคาที่แพงขึ้น. การเลือกโมเดลผิด tier จึงทำให้ระบบทั้งเปลืองเงินและตอบช้าโดยไม่จำเป็น หรือกลับกัน — ตอบผิดเพราะใช้โมเดลเล็กเกินไปกับงานยาก. ทักษะวิศวกรรมที่สัมภาษณ์ senior มองหาคือการ **match model tier ให้ตรงกับงาน** ไม่ใช่การจำว่า \"โมเดลไหนดีที่สุด\".\n\n## แก่นของแนวคิด\n\n- **cost** ขับด้วยสูตรง่าย ๆ: `จำนวน token (input + output) × ราคาต่อ token ของโมเดล`. token คือหน่วยที่ provider คิดเงิน (กลไก tokenization อยู่ใน sibling `tokens-and-context-window` — ไม่เล่าซ้ำที่นี่). โมเดลใหญ่คิดราคาต่อ token แพงกว่า และมักคิด input กับ output คนละราคา (output มักแพงกว่า).\n- **latency** ขับด้วยสองอย่าง: (1) ขนาดโมเดล — โมเดลใหญ่ประมวลผลต่อ token ช้ากว่า, (2) ความยาว output — โมเดลสร้าง token ทีละตัวแบบ autoregressive ยิ่ง output ยาวยิ่งใช้เวลานาน. ส่วน input ยาวกระทบ time-to-first-token.\n- **หลักการเลือก**: งานง่ายปริมาณมาก (classification, routing, extraction) → โมเดลเล็ก/เร็ว/ถูก; งานที่ต้อง reasoning หลายขั้นจริง ๆ → โมเดลใหญ่. (ว่าโมเดลใหญ่ \"ทำอะไรได้\" ที่คุ้มค่าจ่ายเพิ่ม ดูใน sibling `capabilities-and-limits`).\n- **levers อื่นที่ลด cost/latency**: ทำ prompt/output ให้สั้นลง, caching ส่วน prompt ที่ไม่เปลี่ยน, batching งานที่ไม่รีบ. ระดับ system (LLM gateway, routing, caching layer) เป็นหัวข้อของ chapter 10 (`llm-gateway-and-routing`, `caching-and-cost-control`) — ที่นี่โฟกัสแค่การเลือก tier.\n\n```mermaid\nflowchart TD\n  T[Incoming task] --> Q{Needs deep reasoning?}\n  Q -->|\"no: classify / route / extract\"| S[\"Small model: fast, cheap\"]\n  Q -->|\"yes: multi-step reasoning\"| L[\"Large model: smart, slow, pricey\"]\n  S --> C[\"Cost = (input + output tokens) x model price\"]\n  L --> C\n  C --> M[Match model tier to task]\n```\n\n## ตัวอย่างจริงในโปรเจกต์นี้: self-grade ตอนนี้ / opt-in LLM grade ทีหลัง\n\nruntime grading ของ v1 ใช้ **self-grade**: ผู้ใช้กดเฉลย แล้วให้คะแนนความจำตัวเอง 0–5 → ป้อนเข้า SM-2 (`graded_by='self'`). ไม่มีการเรียก LLM เลย จึง **ไม่มีค่า API และไม่ต้องมี key** — ทั้ง read+recall loop รันฟรีบน VPS ที่จ่ายอยู่แล้ว.\n\nการให้ LLM ตรวจคำตอบอัตโนมัติเป็น trade-off เรื่องต้นทุนที่จงใจ **เลื่อนออกไป**: มันถูกวางเป็น opt-in หลัง `Grader` port ต่อเมื่อมี `ANTHROPIC_API_KEY` — สลับ self→LLM เป็นแค่เปลี่ยน adapter ไม่ใช่เขียนใหม่. และเมื่อถึงวันนั้น การตรวจคำตอบสั้นเทียบกับ expected answer คือ **งานง่ายปริมาณมาก** พอดีกับโมเดล tier เล็กที่สุด (Haiku-class ของ Anthropic คือตำแหน่ง fast/cheap สำหรับงานลักษณะนี้) — ไม่เอาโมเดล reasoning ตัวใหญ่มาตรวจ recall เพราะจ่ายแพงโดยไม่ได้คุณภาพที่จำเป็นเพิ่ม. สรุปคือมีสอง trade-off ซ้อนกัน: (1) จะ *จ่าย* ไหม (self ฟรี vs LLM มีค่าใช้จ่าย) และ (2) ถ้าจ่าย จะเลือก tier ไหน.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ใช้โมเดลใหญ่สุดกับทุกงานไว้ก่อน แล้วค่อย optimize ทีหลัง\"** — ที่ scale สูง นี่แพงและช้าทันที; งานส่วนใหญ่ในระบบจริงเป็นงานง่ายที่โมเดลเล็กทำได้เท่ากัน.\n- **\"โมเดลถูกกว่า = ประหยัดกว่าเสมอ\"** — ผิด ถ้ามันตอบผิด/hallucinate บ่อยขึ้นจน error ปลายทางแพงกว่าที่ประหยัดได้ (เช่น จัดหมวด transaction ผิดใน fintech).\n- **\"latency ขึ้นกับขนาดโมเดลอย่างเดียว\"** — ความยาว output ก็สำคัญ; บางทีตัด output ให้สั้นลงช่วยได้มากกว่าเปลี่ยนโมเดล.\n\n## ขีดจำกัด / trade-off (เมื่อไหร่ไม่ควรทำ และมันแลกอะไร)\n\nการ match tier ต่องานไม่ฟรี: ต้องมี **eval set** วัดว่าโมเดลเล็กทำงานนั้นได้จริงก่อน downgrade — ถ้าไม่วัด การลดขนาดจะกัดคุณภาพแบบเงียบ ๆ (พังเฉพาะ edge case ที่ไม่ทันเห็น) ซึ่งใน fintech ราคาแพง. การมี routing หลาย tier ยังเพิ่ม complexity ให้ระบบ (ต้องดูแล fallback, logging, และความไม่สม่ำเสมอของ output ข้ามโมเดล). caching/batching เองก็มีต้นทุน: batching เพิ่ม delay, cache มีปัญหา staleness. เพราะฉะนั้น **ถ้า workload ปริมาณน้อยจน cost รวมเล็กมาก อย่าเพิ่งไป optimize** — เวลาวิศวกรที่เสียไปกับ routing/caching แพงกว่าเงินที่ประหยัดได้ (premature optimization). และเมื่องานอ่อนไหวต่อความถูกต้องและ margin บาง อย่า downgrade เพื่อประหยัดเศษเงิน. หัวใจคือ senior **วัด trade-off เป็นรายกรณี** ไม่ใช่ทากฎเดียว (\"ใหญ่สุดทุกที่\" หรือ \"เล็กสุดทุกที่\") ทั้งระบบ.\n\n## มุมสัมภาษณ์\n\n- \"มี classification endpoint 10M req/วัน จะเลือกโมเดลไหนและเพราะอะไร?\" → tier เล็ก/เร็ว/ถูก, อ้างความง่ายของงาน + ปริมาณ, พูดสูตร cost = tokens × price.\n- \"จะลด cost/latency ของระบบ LLM ยังไงโดยไม่ทิ้งคุณภาพ?\" → prompt/output สั้นลง, cache prompt prefix ที่นิ่ง, batch งานไม่รีบ, route ตามงาน, และ **วัดด้วย eval set** ก่อนตัดสิน.\n- \"เมื่อไหร่โมเดลใหญ่ถึงคุ้ม?\" → เฉพาะงาน reasoning หลายขั้นที่โมเดลเล็กพังจริง (เชื่อมไป `capabilities-and-limits`).\n- คำถามพวกนี้มักเป็นสะพานต่อไปเรื่อง routing/gateway (chapter 10) และการทำ eval.\n",
+  "recall_checks": [
+    {
+      "q": "ต้นทุน (cost) ของการเรียก LLM หนึ่งครั้งถูกกำหนดโดยอะไร?",
+      "expected_answer": "จำนวน token (input + output) คูณกับราคาต่อ token ของโมเดลที่เลือก",
+      "type": "short_answer"
+    },
+    {
+      "q": "งานแบบใดที่คุ้มค่ากับการใช้โมเดลใหญ่ (large model) มากที่สุด?",
+      "expected_answer": "การ reasoning หลายขั้นที่ตรรกะซับซ้อน",
+      "type": "mcq",
+      "options": [
+        "การ extract field จากเอกสารจำนวนมาก",
+        "การ reasoning หลายขั้นที่ตรรกะซับซ้อน",
+        "การ classify ข้อความสั้นแบบ high-volume"
+      ]
+    },
+    {
+      "q": "ข้อใดคือความเข้าใจผิดเรื่อง cost/latency ของ LLM?",
+      "expected_answer": "ใช้โมเดลใหญ่สุดกับทุกงานไว้ก่อน",
+      "type": "mcq",
+      "options": [
+        "ใช้โมเดลใหญ่สุดกับทุกงานไว้ก่อน",
+        "โมเดลใหญ่ฉลาดกว่าแต่ช้าและแพงกว่ามาก",
+        "โมเดลเล็กเหมาะกับงานง่ายปริมาณมาก"
+      ]
+    },
+    {
+      "q": "ข้อใดช่วยลดทั้ง cost และ latency ได้โดยตรง?",
+      "expected_answer": "ลด prompt/output และใช้โมเดลเล็กลง",
+      "type": "mcq",
+      "options": [
+        "ส่ง context ทั้งหมดเข้าโมเดลทุกครั้งเสมอ",
+        "เพิ่ม max_tokens ให้ output ยาวขึ้นเสมอ",
+        "ลด prompt/output และใช้โมเดลเล็กลง"
+      ]
+    },
+    {
+      "q": "โปรเจกต์นี้เลือก self-grade ใน v1 แทน LLM grading ด้วยเหตุผลด้าน cost อย่างไร?",
+      "expected_answer": "self-grade ไม่มีค่า API เลย (ผู้ใช้ให้คะแนนตัวเอง) จึงเลี่ยงต้นทุน; LLM grading ด้วยโมเดล tier เล็ก (Haiku-class) เป็น opt-in ทีหลังเมื่อยอมจ่าย",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Anthropic — Models overview",
+      "source": "platform.claude.com/docs/en/about-claude/models/overview",
+      "why": "อ่านการวางตำแหน่ง model tier จริง (Haiku/Sonnet/Opus) เทียบ ความเร็ว/ราคา/ความสามารถ"
+    },
+    {
+      "title": "OpenAI — Pricing",
+      "source": "platform.openai.com/docs/pricing",
+      "why": "เทียบราคาต่อ token ข้าม tier ของอีก provider เพื่อเห็นรูปแบบ cost = tokens x price แบบ provider-agnostic"
+    },
+    {
+      "title": "Chip Huyen — Building LLM Applications for Production",
+      "source": "huyenchip.com (บทความ 2023)",
+      "why": "อ่าน trade-off เรื่อง cost/latency และการเลือกโมเดลในระบบ production จริง"
+    }
+  ]
+}
