@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "token-streaming-sse",
+  "version": 1,
+  "title_en": "Token Streaming with SSE",
+  "est_minutes": 7,
+  "body_md": "# Token Streaming with SSE\n\n## ทำไมถึงสำคัญ\n\nLLM generate ผลลัพธ์ทีละ token — คำตอบยาว ๆ อาจใช้เวลาหลายวินาทีกว่าจะจบทั้งก้อน. ถ้ารอ generate เสร็จหมดแล้วค่อยส่ง ผู้ใช้จะจ้องหน้าจอว่างเปล่าตลอดช่วงนั้น. token streaming ส่งแต่ละ token ออกไปทันทีที่โมเดลผลิตได้ ทำให้คำตอบเริ่มปรากฏภายในไม่กี่ร้อยมิลลิวินาที แม้ total generation time จะเท่าเดิม — เป็นการซื้อ perceived latency ที่ดีขึ้นโดยไม่ต้องทำให้โมเดลคิดเร็วขึ้นจริง.\n\n## แก่นของแนวคิด\n\n- โมเดลผลิต output เป็น sequence ของ token ตามลำดับ (autoregressive) อยู่แล้ว. streaming แค่ \"เปิดท่อ\" ให้แต่ละ token ไหลถึง client ทันที แทนที่จะกักไว้จนครบ.\n- server ไม่ได้ส่งข้อความเต็มซ้ำ ๆ แต่ส่ง **delta** — ชิ้นส่วนที่เพิ่มขึ้นทีละ chunk (partial text). client เป็นคนต่อ delta เข้าด้วยกันเป็นคำตอบสมบูรณ์.\n- นอกจาก text delta, stream ยังพก **structured event** ได้ เช่น สัญญาณเริ่ม/จบข้อความ, tool-call เริ่มทำงานหรือมี argument เพิ่มขึ้น, และ event จบ (done/stop). client อ่าน event เหล่านี้เพื่อรู้ว่าตอนนี้โมเดลกำลัง \"พิมพ์ข้อความ\" หรือ \"เรียก tool\".\n- **transport ที่นิยมคือ Server-Sent Events (SSE)**: HTTP response แบบ stream ทางเดียว (server → client) ที่ตั้ง content-type `text/event-stream` แล้วทยอยส่ง event เป็น text จนกว่าจะปิด connection. ทางเลือกอื่นคือ chunked HTTP ดิบ ๆ หรือ WebSocket (สองทาง) — แต่ SSE เบากว่า WebSocket และเข้ากับ HTTP/proxy/auth เดิมได้ เพราะมันคือ HTTP response ธรรมดาตัวหนึ่ง.\n- ทำไมถึงเลือก SSE มากกว่า WebSocket สำหรับ chat: การพ่น token เป็นทางเดียว (server พูดฝ่ายเดียว) client แทบไม่ต้องส่งอะไรกลับระหว่าง stream การเปิด channel สองทางจึงเกินความจำเป็น.\n\nฝั่ง backend ด้วย `net/http` ธรรมดาทำได้โดยไม่ต้องพึ่ง framework: set header `Content-Type: text/event-stream`, เขียน event แต่ละอันในรูป `data: <chunk>\\n\\n` แล้ว **flush ทันที** ผ่าน `http.Flusher` — หัวใจอยู่ที่การ flush หลังทุก event ไม่ปล่อยให้ Go buffer สะสมจนจบ request (ไม่งั้นก็กลับไปเป็น non-streaming เหมือนเดิม).\n\n## ตัวอย่าง (support chat)\n\nลูกค้าถาม bot ว่า \"ยอดค้างชำระบัตรเดือนนี้เท่าไหร่ และจ่ายขั้นต่ำวันไหน\". ถ้าไม่ stream ลูกค้าจ้องหน้าจอ 4 วินาทีแล้วคำตอบเด้งมาทั้งก้อน. ถ้า stream ผ่าน SSE คำตอบจะไล่ปรากฏทีละคำ — \"ยอดค้าง... ชำระ... ของคุณ... คือ 12,480 บาท...\" — ผู้ใช้เห็นว่าระบบกำลังตอบตั้งแต่วินาทีแรก ความรู้สึกว่า \"ค้าง/พัง\" หายไปเลย.\n\nflow มาตรฐาน: client เปิด request ที่รับ SSE → backend เรียก LLM แบบ streaming → ทุก token delta ที่โมเดลคืน backend forward ต่อเป็น SSE event → client ต่อ delta เข้า UI ทีละชิ้น → เมื่อโมเดลจบ backend ส่ง done event แล้วปิด connection.\n\n```mermaid\nsequenceDiagram\n  participant C as Client\n  participant S as Backend\n  participant M as LLM API\n  C->>S: request with Accept text/event-stream\n  S->>M: start streaming completion\n  loop each generated token\n    M-->>S: token delta\n    S-->>C: SSE data event\n    Note over C: append delta to UI\n  end\n  M-->>S: final stop event\n  S-->>C: SSE done event\n  S->>C: close connection\n```\n\n(การ render partial output ฝั่ง client และ event พิเศษอย่าง tool-call กำลังทำงาน อยู่ใน sibling `streaming-ux-partial-output` — บทนี้ owns แค่กลไก stream + SSE transport.)\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"streaming ทำให้คำตอบเร็วขึ้น\"** ผิด. total generation time เท่าเดิม สิ่งที่ลดคือ *perceived* latency (โดยเฉพาะ time to first token). ผู้ใช้เห็นเร็วขึ้น แต่โมเดลไม่ได้คิดเร็วขึ้น. การลด latency จริง ๆ (caching, เลือกโมเดล) อยู่ใน sibling `latency-optimization`.\n- **\"SSE = WebSocket\"** ผิด. SSE เป็น HTTP ทางเดียว server→client เท่านั้น; WebSocket เป็น full-duplex สองทาง. งาน stream token ทางเดียวใช้ SSE ก็พอ.\n- **\"ต้องมี framework พิเศษถึงจะ stream ได้\"** ผิด. SSE คือ HTTP response ที่เขียนแล้ว flush ทีละชิ้น — `net/http` + `http.Flusher` ก็เพียงพอ.\n\n## ขีดจำกัด / เมื่อไหร่ไม่ควรใช้\n\n- **error handling ยากขึ้นมาก**: ถ้า LLM หรือ network ล้มระหว่างทาง error อาจมาถึง *หลัง* ส่ง partial output ไปแล้ว. ตอนนั้น HTTP status 200 ถูกส่งไปพร้อม header ตั้งแต่ต้น stream — จะเปลี่ยนเป็น 500 ไม่ได้อีก ต้องแจ้ง error เป็น event ภายใน stream และ client ต้องจัดการกรณีคำตอบค้างครึ่งทางเอง.\n- **post-process / validate ทั้งก้อนได้ยาก**: ถ้าต้องตรวจ output ทั้งคำตอบก่อนแสดง (moderation, schema validation, redact PII) การ stream ขัดกับสิ่งนี้ตรง ๆ เพราะคุณส่งชิ้นแรกออกไปก่อนเห็นชิ้นสุดท้าย. งานที่ต้อง gate ทั้งคำตอบก่อนถึงตาผู้ใช้ (เช่นคำตอบที่ต้องผ่าน compliance) มักไม่ควร stream ตรงถึง user.\n- **infra บางตัว buffer SSE**: reverse proxy, load balancer, หรือ CDN บางตัว buffer response จนเต็มก่อนปล่อย ทำให้ streaming เสียผลทั้งหมด (client ได้ทั้งก้อนทีเดียวเหมือนเดิม). ต้องปิด buffering ที่ proxy layer จริง ๆ ถึงจะได้ประโยชน์.\n- **cost ไม่ลด**: จำนวน token ที่คิดเงินเท่าเดิม — streaming เป็นเรื่อง UX ล้วน ไม่ช่วยประหยัดค่าใช้จ่าย.\n- การยกเลิก stream กลางคัน (ผู้ใช้ปิดหน้าจอ) และ backpressure เมื่อ client รับช้ากว่า server ส่ง เป็นคนละปัญหา อยู่ใน sibling `cancellation-and-backpressure`.\n\n## มุมสัมภาษณ์\n\n- \"ทำไม chat UI ถึง stream token แทนรอคำตอบเต็ม?\" → perceived latency / TTFT: ผู้ใช้เห็นทันที แม้ total time เท่าเดิม.\n- \"SSE ต่างจาก WebSocket ยังไง เลือกอันไหนสำหรับ LLM chat?\" → SSE ทางเดียว เบากว่า พอสำหรับ server พ่น token; WebSocket สองทาง overkill เว้นแต่ต้องคุยกลับ realtime.\n- \"ถ้า LLM error หลังส่งไปครึ่งคำตอบแล้ว จะจัดการยังไง?\" → ส่ง error เป็น event ใน stream, client แสดงสถานะคำตอบไม่สมบูรณ์; เปลี่ยน HTTP status ไม่ได้เพราะ header ส่งไปแล้ว. เป็นคำถามยอดฮิตที่วัดว่าเข้าใจ trade-off จริงไหม.\n- \"จะ implement SSE ด้วย net/http ยังไงโดยไม่ใช้ library?\" → set `text/event-stream`, เขียน `data:` frame, เรียก `Flusher.Flush()` หลังทุก event.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม token streaming ช่วย UX แม้ total generation time เท่าเดิม?",
+      "expected_answer": "ผู้ใช้เห็นคำตอบเริ่มทันที perceived latency ลดลง",
+      "type": "mcq",
+      "options": [
+        "ผู้ใช้เห็นคำตอบเริ่มทันที perceived latency ลดลง",
+        "โมเดลประมวลผลเร็วขึ้นเพราะ stream แบบขนานหลาย token",
+        "ประหยัดค่า token เพราะส่งข้อมูลทีละ delta เล็ก ๆ"
+      ]
+    },
+    {
+      "q": "ในเชิงกลไก server ส่งอะไรให้ client ระหว่าง stream แทนที่จะส่งข้อความเต็มซ้ำ ๆ?",
+      "expected_answer": "ส่ง incremental delta (ชิ้นส่วนที่เพิ่มขึ้นทีละ chunk) เป็น event แล้ว client ต่อรวมกันเอง",
+      "type": "short_answer"
+    },
+    {
+      "q": "SSE เป็น transport แบบใด?",
+      "expected_answer": "one-way HTTP stream จาก server ไปยัง client",
+      "type": "mcq",
+      "options": [
+        "two-way channel เปิดค้างสองทางเหมือน WebSocket",
+        "one-way HTTP stream จาก server ไปยัง client",
+        "การ poll endpoint ซ้ำเป็นช่วง ๆ ทุกวินาที"
+      ]
+    },
+    {
+      "q": "ความยากหลักของ error handling ใน streaming คืออะไร?",
+      "expected_answer": "error อาจมาถึงหลังส่ง partial output ไปแล้ว",
+      "type": "mcq",
+      "options": [
+        "streaming ป้องกัน error ทุกชนิดไม่ให้เกิดขึ้น",
+        "connection ค้างเปิดถาวรทุกครั้งที่เกิด error",
+        "error อาจมาถึงหลังส่ง partial output ไปแล้ว"
+      ]
+    },
+    {
+      "q": "backend ที่ใช้ net/http ธรรมดาต้องทำอะไรเพื่อ stream SSE ให้ได้ผลจริง?",
+      "expected_answer": "ตั้ง Content-Type: text/event-stream แล้วเขียน event ทีละอันพร้อม flush ทันทีผ่าน http.Flusher ไม่ buffer จนจบ",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTML Living Standard — Server-sent events",
+      "source": "WHATWG HTML Living Standard, section 'Server-sent events' (html.spec.whatwg.org)",
+      "why": "อ่าน wire format ของ SSE จริง: field data/event/id และการจบ frame ด้วยบรรทัดว่าง"
+    },
+    {
+      "title": "Using server-sent events",
+      "source": "MDN Web Docs — Server-sent events / EventSource (developer.mozilla.org)",
+      "why": "อ่านวิธีฝั่ง client รับ stream ด้วย EventSource และ content-type text/event-stream"
+    },
+    {
+      "title": "Streaming responses (provider API reference)",
+      "source": "Provider streaming docs — Anthropic Messages 'Streaming' / OpenAI 'Streaming' guide",
+      "why": "ดูรูปแบบ delta/structured event จริงที่ provider ส่ง (start, text delta, tool-call, stop)"
+    },
+    {
+      "title": "net/http — http.Flusher",
+      "source": "Go standard library, pkg.go.dev/net/http#Flusher",
+      "why": "อ่านวิธี flush chunk ทีละ event ด้วย net/http ธรรมดา ไม่ต้องพึ่ง framework"
+    }
+  ]
+}
