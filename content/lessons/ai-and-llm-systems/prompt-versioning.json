@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "prompt-versioning",
+  "version": 1,
+  "title_en": "Prompt Versioning",
+  "est_minutes": 10,
+  "body_md": "# Prompt Versioning\n\n## ทำไมถึงสำคัญ\n\nprompt กำหนดพฤติกรรมของระบบไม่ต่างจากโค้ด แต่มันมักถูกปฏิบัติเหมือน string ที่ใครก็เข้าไปแก้ในหน้า admin แล้วมีผลทันที — ไม่มี review ไม่มีร่องรอย. ผลคือเมื่อคุณภาพตกตอนตีสาม ไม่มีใครตอบได้ว่าตอนนั้นระบบใช้ prompt แบบไหน ใครแก้ และจะกลับไปสถานะเดิมยังไง. คำถามนี้ในห้องสัมภาษณ์แยกทีมที่ \"ลองเล่น LLM\" ออกจากทีมที่ ship LLM ขึ้น production ได้จริง.\n\n## แก่นของแนวคิด\n\n### 1. prompt คือ production artifact\n\nเกณฑ์เดียวกับโค้ด: ทุกอย่างที่มีผลต่อพฤติกรรมใน production ต้องมี version, review, test, rollout ที่ควบคุมได้ และ rollback. prompt เข้าเกณฑ์ครบทุกข้อ แต่ต่างจากโค้ดตรงที่ **ไม่มี compiler และไม่มี type system มาคอยเตือน** — แก้ผิดยังไงก็ผ่านเสมอ ความผิดพลาดโผล่เป็นพฤติกรรมที่เพี้ยน ไม่ใช่ build error. ยิ่งไม่มีตาข่ายรับ ยิ่งต้องพึ่ง process มาแทน.\n\n### 2. version ไม่ใช่แค่ข้อความ prompt แต่คือ bundle ทั้งชุด\n\nสิ่งที่ต้องอยู่ในเวอร์ชันเดียวกัน:\n\n- ข้อความ prompt (system instruction, template, ตัวแปรที่แทรก)\n- model identity/version ที่ใช้\n- decoding parameter — temperature, top-p, max output tokens (`sampling-and-temperature`)\n- tool definitions ที่เปิดให้เรียก (`tool-schemas`)\n- retrieval config — index/corpus ที่ชี้ไป, จำนวน chunk ที่ดึง, กติกาการตัด chunk (`chunking-strategies`)\n- few-shot examples และ output schema ที่บังคับ (`few-shot-and-structured-output`)\n\nเปลี่ยนอย่างใดอย่างหนึ่ง = พฤติกรรมเปลี่ยน = ต้องนับเป็นเวอร์ชันใหม่. ถ้านิยาม \"version\" ว่าคือข้อความอย่างเดียว วันที่ลด temperature แล้วคำตอบแข็งทื่อจนลูกค้าบ่น log จะบอกว่ายังเป็น prompt เวอร์ชันเดิม แล้วจะไล่หาสาเหตุไม่เจอ.\n\nกฎที่ทำให้ทุกอย่างข้างบนใช้ได้จริงคือ **version ต้อง immutable**: แก้ = สร้าง id ใหม่ ไม่ใช่ UPDATE ทับของเดิม. ถ้าทับได้ ก็ไม่เหลืออะไรให้ rollback และ log เก่าที่อ้าง id นั้นจะโกหก เพราะ id เดิมชี้ไปยังเนื้อหาที่เปลี่ยนไปแล้ว.\n\n### 3. เก็บที่ไหน: ใน repo หรือใน config store\n\n| | prompt อยู่ใน repo (deploy พร้อมโค้ด) | prompt อยู่ใน DB/config store |\n| --- | --- | --- |\n| ได้มาฟรี | PR review, CI, history, diff, เปลี่ยนพร้อมโค้ดที่ parse output ได้ในก้อนเดียว | แก้ได้เกือบทันทีโดยไม่ต้อง deploy, คนที่ไม่ใช่ engineer ก็แก้ได้ |\n| ต้องสร้างเอง | (มีให้อยู่แล้ว) | approval flow, audit trail, immutable version, rollback, staged rollout |\n| ต้นทุนของการแก้ 1 ครั้ง | รอ deploy pipeline | แทบไม่มี |\n| ความเสี่ยงหลัก | hotfix ช้า, คอขวดอยู่ที่คนที่มีสิทธิ์ deploy | prompt กับโค้ดหลุดจากกัน, แก้แล้วไม่มีใครรู้ |\n\nแกนของ trade-off คือ **speed of change กับ safety/traceability** ไม่ใช่ \"อันไหนดีกว่า\". ทางสายกลางที่ใช้กันบ่อย: ให้ repo เป็น source of truth (ได้ review และ diff) แล้ว publish ออกมาเป็น immutable version เก็บใน store ส่วน \"เวอร์ชันไหน active\" คุมด้วย flag ที่เปลี่ยนได้โดยไม่ต้อง deploy — ได้ safety จากฝั่ง repo และได้ rollback ระดับวินาทีจากฝั่ง flag.\n\n### 4. ทำไมต้อง log version id ในทุก request\n\nทุก LLM call ต้องแนบ prompt version id ลง log/trace (รายละเอียดของ trace อยู่ใน `llm-observability` บทถัดไป). ไม่มี id นี้แล้วสองอย่างทำไม่ได้เลย:\n\n1. **debug ย้อนหลัง** — เคสที่ลูกค้าร้องเรียนเมื่อสัปดาห์ก่อนถูกตอบด้วย bundle ไหน ไม่มีทางรู้ ได้แค่เดา\n2. **join ผล eval กับ traffic จริง** — A/B test และ online metric ต้องแยกตัวเลขตามเวอร์ชัน (`online-eval-and-ab-testing`) ถ้า log ไม่มี version id ก็แบ่งกลุ่มไม่ได้ และคำถาม \"เวอร์ชันใหม่ดีกว่าจริงไหม\" จะตอบไม่ได้\n\n### 5. promote ผ่าน eval เท่านั้น\n\nprompt เวอร์ชันใหม่ต้องผ่านด่านก่อนถึง traffic เต็ม: รัน golden set แบบ offline เทียบกับ baseline (`golden-sets-and-offline-eval`) → ถ้าไม่แย่ลง ค่อยปล่อย canary ที่ traffic ส่วนน้อย → เฝ้า metric ที่แยกตาม version id → ดีค่อย ramp, แย่ก็ rollback ทันทีโดยชี้ flag กลับไปเวอร์ชันก่อนหน้า.\n\n```mermaid\nflowchart TD\n  E[\"Edit prompt bundle\"] --> V[\"Publish new immutable version id\"]\n  V --> R[\"Review and approve\"]\n  R --> G[\"Run golden set offline\"]\n  G --> C{\"No regression vs baseline?\"}\n  C -->|no| E\n  C -->|yes| K[\"Canary on small traffic slice\"]\n  K --> M[\"Compare online metrics per version id\"]\n  M --> D{\"Metrics healthy?\"}\n  D -->|no| B[\"Rollback: flag points to previous version\"]\n  D -->|yes| F[\"Ramp to full traffic\"]\n  B --> E\n```\n\n## ตัวอย่าง (fintech: bot ตอบเรื่องบัตรเครดิต)\n\nระบบใช้ prompt bundle `v7` ที่มีกติกาว่า ถ้าลูกค้าถามยอดค้างชำระ ต้องให้ยืนยันตัวตนก่อนจึงบอกตัวเลข และมี few-shot ตัวอย่างหนึ่งที่สาธิตการปฏิเสธอย่างสุภาพเมื่อยังไม่ยืนยัน.\n\nวันหนึ่งมีคนแก้ prompt ในหน้า admin: เติม \"ตอบให้กระชับ ไม่เกินสองประโยค\" และลบ few-shot ตัวอย่างนั้นทิ้งเพราะมันยาว. สองการแก้นี้ดูไม่มีพิษภัย แต่รวมกันแล้วทำให้โมเดลข้ามขั้นตอนยืนยันตัวตนในหลายเคส — ตอบยอดหนี้ให้ทันที.\n\nระบบที่ทำ versioning เต็มรูปแบบกันเคสนี้ได้สองชั้น: golden set มีเคส \"ถามยอดโดยยังไม่ยืนยันตัวตน\" อยู่ `v8` จึงตกตั้งแต่ offline; ถ้าหลุดชั้นแรกไปได้ canary จะเห็น metric ของ `v8` แย่กว่า `v7` แล้ว rollback ได้ในไม่กี่นาที.\n\nระบบที่ไม่ทำ: prompt ถูกแก้ทับ row เดิม log ไม่มี version id — สองสัปดาห์ต่อมา compliance ตรวจเจอ ทีมบอกไม่ได้ว่าเริ่มเมื่อไหร่ กระทบกี่ราย และ prompt ต่างจากตอนนั้นตรงไหน. ปัญหาที่แท้จริงไม่ใช่ \"แก้ผิด\" — คนแก้ผิดกันได้ทุกทีม — แต่คือ **แก้ผิดแล้วมองไม่เห็นและย้อนไม่ได้**.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"prompt เป็นแค่ข้อความ ไม่ใช่โค้ด เลยไม่ต้องผ่าน process เดียวกัน\"** — เกณฑ์ตัดสินคือ \"มันเปลี่ยนพฤติกรรม production ไหม\" ไม่ใช่ \"มันเป็นภาษาโปรแกรมไหม\". และเพราะไม่มี type system กันพลาด มันควรได้ระเบียบ *มากกว่า* โค้ด ไม่ใช่น้อยกว่า.\n- **\"ย้าย prompt ไปไว้ใน DB แล้วจะ rollback ง่ายเอง\"** — DB ให้ rollback ก็ต่อเมื่อออกแบบให้แต่ละเวอร์ชันเป็น row ใหม่ที่แก้ไม่ได้ พร้อม audit ว่าใครสลับเป็นตัวไหนตอนไหน. ถ้ายัง UPDATE ทับของเดิม การย้ายไป DB แค่ทำให้แก้พลาดได้เร็วขึ้นเฉย ๆ.\n- **\"แก้นิดเดียว ไม่ต้องรัน eval\"** — ขนาดของ diff ไม่สัมพันธ์กับขนาดของการเปลี่ยนพฤติกรรม เติมคำว่า \"กระชับ\" คำเดียวก็ตัดขั้นตอนสำคัญทิ้งได้อย่างในตัวอย่าง.\n- **\"prompt เราไม่ได้แก้ คุณภาพก็ต้องเท่าเดิม\"** — ผิด. โมเดลฝั่ง provider ถูกอัปเดตได้ และ corpus ที่ retrieval ดึงก็เปลี่ยนตลอด พฤติกรรมจึง drift ได้ทั้งที่ prompt นิ่ง. รับมือด้วยการ pin model version เท่าที่ provider เปิดให้ทำ และตั้งรอบ re-run eval เป็นระยะ ไม่ใช่รันเฉพาะตอนแก้ prompt.\n- **\"pin model version แล้ว output จะคงที่\"** — pin ลด drift ที่มาจากฝั่ง provider แต่ไม่ได้ทำให้ output deterministic (sampling ยังสุ่ม) และเวอร์ชันที่ pin ไว้ก็มีวัน deprecate ต้องวางแผนย้ายอยู่ดี.\n\n## ขีดจำกัด / trade-off\n\n- **ทุกด่านที่เพิ่มคือความเร็วที่เสียไป** — review + golden set + canary ทำให้การแก้ prompt หนึ่งครั้งใช้เวลาเป็นชั่วโมงแทนที่จะเป็นวินาที. ช่วง prototype ที่ spec ยังเปลี่ยนทุกวัน หรือ internal tool ที่มีคนตรวจ output ทุกครั้งก่อนใช้ ระเบียบเต็มรูปแบบมักไม่คุ้ม — เก็บใน repo ให้มี history ไว้ก็พอ แล้วค่อยเพิ่มด่านเมื่อ output เริ่มถึงลูกค้าจริงหรือไป trigger action ทางการเงิน.\n- **config store คือการเขียน deploy pipeline ย่อ ๆ ขึ้นมาใหม่** — approval, audit, staged rollout, rollback ที่ repo/CI ให้มาฟรี ต้อง implement เองทั้งหมด และของที่เขียนเองก็มี bug ได้. อย่าเลือกทางนี้เพราะ \"ยืดหยุ่นกว่า\" ให้เลือกเมื่อความเร็วในการแก้มีค่าพอจะจ่ายค่าสร้างของพวกนี้.\n- **prompt กับโค้ดหลุดจากกันได้เมื่อแยกที่เก็บ** — ถ้า prompt เวอร์ชันใหม่เปลี่ยนรูปแบบ output แต่โค้ดที่ parse ยังคาดของเดิม ระบบพังทันทีโดย CI ไม่เห็นอะไรเลย. ต้องถือ output schema เป็นสัญญาระหว่างสองฝั่ง และให้การเปลี่ยน schema เป็นเคสที่ต้องไปทาง deploy พร้อมโค้ดเท่านั้น.\n- **rollback prompt ไม่เหมือน rollback โค้ด** — โค้ดกลับเวอร์ชันแล้วพฤติกรรมกลับทันที แต่ผลที่ prompt แย่สร้างไว้แล้วยังอยู่: ticket ที่ถูกจัดหมวดผิด, สรุปบทสนทนาที่เขียนลง memory ไปแล้ว, คำตอบที่ส่งถึงลูกค้าไปแล้ว. rollback หยุดเลือดได้ แต่ต้องมีแผนตามล้างของเสียแยกต่างหาก.\n- **ค่าใช้จ่ายแฝงตอนสลับเวอร์ชัน** — เปลี่ยน prompt ที่เป็น prefix คงที่ทำให้ prompt cache ที่อุ่นไว้ใช้ไม่ได้ ต้นทุนและ latency ขยับขึ้นช่วงหนึ่งหลัง rollout (ดู `caching-and-cost-control`) จึงไม่ควรสลับเวอร์ชันถี่เกินจำเป็น และต้องอ่านกราฟช่วงนั้นอย่างระวัง.\n\n## มุมสัมภาษณ์\n\n- **\"prompt คุณเก็บไว้ที่ไหน\"** → ตอบเป็น trade-off (speed of change vs traceability) และบอกว่าอะไรต้องสร้างเองถ้าเลือกฝั่ง config store — ไม่ใช่ตอบชื่อเครื่องมือ.\n- **\"แก้ prompt แล้วคุณภาพตก จะพิสูจน์ยังไงว่าเป็นเพราะ prompt\"** → version id ใน log ทุก request แล้ว join metric ตามเวอร์ชัน เทียบช่วงก่อน/หลัง หรือเทียบตรง ๆ ใน canary.\n- **\"อะไรนับเป็นเวอร์ชันใหม่\"** → ทั้ง bundle: prompt + model + parameter + tools + retrieval config + few-shot. ตอบแค่ \"ข้อความ prompt\" ถือว่าตก.\n- **\"prompt ไม่ได้แตะเลยแต่ผลแย่ลง เกิดอะไรขึ้นได้บ้าง\"** → model อัปเดตฝั่ง provider, corpus/retrieval เปลี่ยน, คำถาม user drift. รับมือด้วย pin เท่าที่ทำได้ + re-run eval ตามรอบ.\n- **\"rollback prompt แล้วจบเลยไหม\"** → ไม่จบ ต้องพูดถึงผลที่เกิดไปแล้วและแผนตามแก้ด้วย.\n",
+  "recall_checks": [
+    {
+      "q": "นอกจากข้อความ prompt แล้ว มีอะไรอีกที่ต้องนับรวมเป็นส่วนหนึ่งของ prompt version?",
+      "expected_answer": "model version ที่ใช้, decoding parameter เช่น temperature และ max output tokens, tool definitions, retrieval config และ few-shot examples/output schema — เปลี่ยนอย่างใดอย่างหนึ่งก็เปลี่ยนพฤติกรรม จึงต้องเป็นเวอร์ชันใหม่",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมทุก LLM request ต้อง log prompt version id?",
+      "expected_answer": "เพื่อย้อน debug ได้ว่าเคสที่พังใช้เวอร์ชันไหน และเพื่อ join metric ของ eval/A-B test แยกตามเวอร์ชัน",
+      "type": "mcq",
+      "options": [
+        "เพื่อย้อน debug ได้ว่าเคสที่พังใช้เวอร์ชันไหน และเพื่อ join metric ของ eval/A-B test แยกตามเวอร์ชัน",
+        "เพื่อให้ระบบฝั่ง provider รู้ว่าต้องหยิบ prompt cache ก้อนไหนมาใช้ และคิดค่าใช้จ่ายในอัตราที่ถูกลงสำหรับ request ที่ prefix ซ้ำกัน",
+        "เพื่อบังคับให้ทุก request ที่ใช้เวอร์ชันเดียวกันได้ output เหมือนเดิมทุกครั้งที่เรียกซ้ำ"
+      ]
+    },
+    {
+      "q": "ข้อใดสรุป trade-off ระหว่างการเก็บ prompt ไว้ใน repo กับใน DB/config store ได้ถูกต้อง?",
+      "expected_answer": "repo ได้ review และ CI มาให้ฟรีแต่แก้ต้อง deploy ส่วน config store แก้ได้เร็วแต่ต้องสร้าง review, audit และ rollback เอง",
+      "type": "mcq",
+      "options": [
+        "การเก็บไว้ใน config store ปลอดภัยกว่าเสมอ เพราะการที่ prompt อยู่ในฐานข้อมูลทำให้ระบบมี rollback ให้โดยอัตโนมัติอยู่แล้วโดยไม่ต้องออกแบบอะไรเพิ่ม",
+        "repo ได้ review และ CI มาให้ฟรีแต่แก้ต้อง deploy ส่วน config store แก้ได้เร็วแต่ต้องสร้าง review, audit และ rollback เอง",
+        "repo เหมาะกับ prompt ที่ยาวเท่านั้น ส่วน config store เหมาะกับ prompt สั้นที่มีตัวแปรแทรกจำนวนมาก เพราะข้อจำกัดเรื่องขนาดไฟล์ของระบบ version control"
+      ]
+    },
+    {
+      "q": "ทีมไม่ได้แก้ prompt เลย แต่คุณภาพในการใช้งานจริงค่อย ๆ แย่ลง บทนี้ชี้สาเหตุอะไร และรับมืออย่างไร?",
+      "expected_answer": "โมเดลฝั่ง provider ถูกอัปเดตได้และ corpus ที่ retrieval ดึงก็เปลี่ยน พฤติกรรมจึง drift แม้ prompt เดิม รับมือด้วยการ pin model version เท่าที่ provider เปิดให้ และตั้งรอบ re-run eval เป็นระยะแทนที่จะรันเฉพาะตอนแก้ prompt",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อจำกัดของการ rollback prompt ที่ต่างจากการ rollback โค้ดคืออะไร?",
+      "expected_answer": "ผลที่เกิดไปแล้ว เช่น ticket ที่ถูกจัดหมวดผิด ไม่ย้อนกลับตาม prompt",
+      "type": "mcq",
+      "options": [
+        "prompt เวอร์ชันเก่าที่ถูก rollback กลับมาจะใช้ไม่ได้อีก เพราะการ deploy เวอร์ชันใหม่ทุกครั้งทำให้ template เดิมหมดอายุไปโดยอัตโนมัติ",
+        "การ rollback prompt ต้องรอ golden set รันจบทั้งชุดก่อนเสมอ จึงกู้สถานการณ์ได้ช้ากว่าการ rollback โค้ดอย่างมีนัยสำคัญ",
+        "ผลที่เกิดไปแล้ว เช่น ticket ที่ถูกจัดหมวดผิด ไม่ย้อนกลับตาม prompt"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Hidden Technical Debt in Machine Learning Systems",
+      "source": "Sculley et al., NeurIPS 2015 (หัวข้อ Configuration Debt)",
+      "why": "อ่านเหตุผลเชิงระบบว่าทำไม configuration ที่ไม่ถูก version คือหนี้ทางเทคนิคที่แพงที่สุดของระบบ ML"
+    },
+    {
+      "title": "Feature Toggles (aka Feature Flags)",
+      "source": "Pete Hodgson, martinfowler.com/articles/feature-toggles.html",
+      "why": "อ่านวิธีแยก deploy ออกจาก release เพื่อสลับเวอร์ชันและ rollback ได้โดยไม่ต้อง deploy ใหม่"
+    },
+    {
+      "title": "The Site Reliability Workbook — บท Canarying Releases",
+      "source": "Google SRE, 'The Site Reliability Workbook' (O'Reilly, 2018), บท Canarying Releases (sre.google/workbook)",
+      "why": "อ่านวิธีออกแบบ canary ให้จับ regression ได้ก่อน ramp เต็ม และเงื่อนไขที่ควร rollback"
+    },
+    {
+      "title": "AI Engineering — บทว่าด้วย Prompt Engineering",
+      "source": "Chip Huyen, 'AI Engineering' (O'Reilly, 2025), บท Prompt Engineering (หัวข้อการจัดระเบียบและ version prompt)",
+      "why": "อ่านแนวปฏิบัติในการแยก prompt ออกจากโค้ดและจัดเก็บเป็นเวอร์ชันในทีม product"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "llm-gateway-and-routing",
+  "version": 1,
+  "title_en": "LLM Gateway and Routing",
+  "est_minutes": 8,
+  "body_md": "# LLM Gateway and Routing\n\n## ทำไมถึงสำคัญ\n\nพอมีมากกว่าหนึ่ง service ที่เรียก LLM ทุกทีมจะเริ่มเขียนโค้ดชุดเดียวกันซ้ำ: ใส่ API key, retry, นับ token, log request. ผลคือ key กระจายอยู่หลายที่, ไม่มีใครตอบได้ว่าเดือนนี้ feature ไหนใช้เงินไปเท่าไหร่, และการเปลี่ยนโมเดลหนึ่งตัวต้อง deploy ห้า service. LLM gateway คือคำตอบเชิงโครงสร้างของปัญหานี้ และเป็นตำแหน่งที่ routing decision ควรอยู่.\n\n## แก่นของแนวคิด\n\n**LLM gateway = ชั้นกลางระหว่างแอปกับ provider**. แอปเรียก endpoint ภายในตัวเดียวด้วยเจตนาเชิงงาน (\"ขอผลสำหรับงานประเภท summarize\") แทนที่จะเรียก provider ตรง ๆ. สิ่งที่ย้ายมารวมที่ gateway คือ cross-cutting concern ที่ไม่ใช่ business logic:\n\n- **Credential management** — provider key อยู่ที่เดียว หมุนได้โดยไม่ต้องแตะโค้ดแอป\n- **Rate limiting & quota** — จำกัดเป็นราย tenant / ทีม / feature กัน batch job เบื้องหลังกินโควตาจนงาน user-facing ช้า\n- **Cost accounting** — นับ token แล้ว attribute ต้นทุนกลับไปที่ผู้เรียก (ต่อยอดใน `caching-and-cost-control`)\n- **Caching** — จุดเดียวที่เห็น request ทั้งหมด จึงเป็นที่ที่ cache ได้ผลที่สุด\n- **Retry / fallback policy** — เขียนครั้งเดียวใช้ทุกทีม (รายละเอียดอยู่ที่ `retries-fallback-multi-provider`)\n- **Logging & tracing** — บันทึกทุก call ในรูปแบบเดียวกัน (`llm-observability`)\n\nหลักเบื้องหลังคือ Gateway pattern ทั่วไปในงาน enterprise: ห่อระบบภายนอกด้วย interface ของเราเอง เพื่อให้โค้ดที่เหลือไม่ต้องรู้จักรายละเอียดของ vendor.\n\n### Routing: เลือกโมเดลให้เหมาะกับงาน\n\nงานในระบบจริงไม่ได้ยากเท่ากันทุกอัน. classify intent, ดึง field ออกจากข้อความ, สรุปสั้น — งานที่ output ถูก constrain ดี ๆ แบบนี้โมเดลเล็กมักทำได้ในคุณภาพที่ยอมรับได้ ด้วย latency และต้นทุนที่ต่ำกว่ามาก. งานที่ต้องให้เหตุผลหลายขั้นหรือเขียนข้อความที่ส่งถึงลูกค้าจริงค่อยไปโมเดลใหญ่.\n\n- **Static routing** — ตัดสินจากคุณสมบัติที่รู้อยู่แล้วก่อนเรียก เช่น ประเภทงาน, ช่องทาง, tier ของลูกค้า. เป็น rule table ธรรมดา อ่านง่าย ทดสอบง่าย reproducible\n- **Dynamic routing** — ประเมิน complexity ของ input ก่อน ด้วย heuristic (ความยาว, จำนวน entity, มีไฟล์แนบไหม) หรือ classifier ตัวเล็ก แล้วค่อยเลือกโมเดล. ยืดหยุ่นกว่า แต่เพิ่มชิ้นส่วนที่ต้อง eval และ maintain เอง — router ที่ตัดสินผิดคือ failure mode ใหม่ที่ static ไม่มี\n\n### Cascade / escalation\n\nRouting อีกแบบคือ \"ลองก่อนแล้วค่อยยก\": ส่งไปโมเดลเล็กก่อน แล้วตรวจผลด้วย validator — schema ครบไหม, ตอบว่าไม่รู้หรือเปล่า, confidence signal ต่ำไหม (เกณฑ์ตัดสินใจว่าเมื่อไหร่ควรยกเป็นเรื่องเดียวกับ `confidence-and-fallback` ใน ch.8). ผ่านก็จบ ไม่ผ่านค่อยเรียกโมเดลใหญ่. ข้อดีคือไม่ต้องเดา complexity ล่วงหน้า ใช้ผลจริงเป็นตัวตัดสิน.\n\n```mermaid\nflowchart LR\n  A[\"App services\"] --> G[\"LLM gateway\"]\n  G --> P[\"Auth, quota, cache, logging\"]\n  P --> R{\"Router: task class and complexity\"}\n  R -->|\"simple / high volume\"| S[\"Small model\"]\n  R -->|\"complex or high stake\"| L[\"Large model\"]\n  S --> V{\"Validator: schema and confidence\"}\n  V -->|\"pass\"| O[\"Response to app\"]\n  V -->|\"fail: escalate\"| L\n  L --> O\n  O --> T[\"Trace, token count, cost record\"]\n```\n\n## ตัวอย่าง (fintech: ระบบ support ของ payment app)\n\nข้อความลูกค้าเข้ามาที่ gateway แล้วถูก route ต่างกันตามงาน:\n\n- **intent classification** (ปริมาณมาก, output เป็น enum จำกัด) → static route ไปโมเดลเล็กเสมอ\n- **สรุป transaction history ให้ human agent อ่าน** → โมเดลเล็กก่อน แล้ว validate ว่า field ครบ ถ้าไม่ครบจึง escalate\n- **ร่างคำตอบเรื่อง dispute ที่จะส่งถึงลูกค้าโดยตรง** → static route ไปโมเดลใหญ่ ไม่ cascade เพราะ stake สูงและ latency ที่เพิ่มขึ้นจากการเรียกสองรอบไม่คุ้ม\n\nตัวเลขต่อไปนี้เป็น**สมมติทั้งหมด** เพื่อให้เห็นโครงการคำนวณ ไม่ใช่ราคาจริงของ provider ใด: ให้โมเดลเล็กมีต้นทุน 1 หน่วยต่อ request, โมเดลใหญ่ 20 หน่วย. งานสรุป 100 request:\n\n- ส่งไปโมเดลใหญ่ทั้งหมด: 100 × 20 = 2,000 หน่วย\n- cascade ที่มี escalation rate 30%: (100 × 1) + (30 × 20) = 700 หน่วย → ลดลง 65%\n\nแต่ต้องดูอีกด้าน. สมมติ p50 latency ของโมเดลเล็ก 300 ms และโมเดลใหญ่ 1,200 ms: เคสที่ escalate จะใช้เวลา 300 + 1,200 = 1,500 ms ซึ่ง **ช้ากว่า** การส่งไปโมเดลใหญ่ตั้งแต่แรก. cascade จึงเป็นการย้ายภาระจากค่าใช้จ่ายไปที่ latency ของกลุ่มที่ถูกยกระดับ.\n\nและมีจุดที่ cascade เลิกคุ้ม: ต้นทุนเฉลี่ยต่อ request ของ cascade = 1 + 20e เมื่อ e คือ escalation rate ส่วนการส่งไปโมเดลใหญ่ตรง ๆ = 20 เท่ากันเมื่อ 1 + 20e = 20 นั่นคือ e = 0.95. ถ้า escalation rate จริงเกิน 95% cascade แพงกว่าการไม่ทำ. ตัวเลข 30% ข้างบนเป็นสมมติฐาน — ของจริงต้องวัดจาก traffic ตัวเอง ไม่ใช่ตั้งไว้แล้วเชื่อ.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"มี gateway แล้วระบบทนทานขึ้น\"** — ในมิติหนึ่งตรงกันข้าม: gateway คือ single point of failure ใหม่. มันล่มเมื่อไหร่ AI feature ล่มพร้อมกันหมด\n- **\"route ไปโมเดลเล็ก = ยอมลดคุณภาพ\"** — สำหรับงานที่ constrain ดี คุณภาพอาจเท่ากันจนวัดไม่ต่าง แต่ต้องพิสูจน์ด้วย eval แยกตาม route ไม่ใช่เดาเอาทั้งสองทาง\n- **\"cascade ประหยัดเสมอ\"** — ดู break-even ข้างบน; และ validator เองก็มีต้นทุนและมีโอกาสตัดสินผิดทั้งสองทิศ\n- **\"มี gateway แล้วเปลี่ยน provider ได้ฟรี\"** — abstraction รั่วเสมอ. ฟีเจอร์เฉพาะ provider เช่นรูปแบบ tool call, โหมด structured output, semantics ของ caching ไม่ map กัน 1:1\n\n## ขีดจำกัด / trade-off\n\n- **SPOF + hop ที่เพิ่มมา** — ทุก request มี network hop เพิ่มหนึ่งชั้น. ต้องออกแบบให้ gateway stateless เพื่อ scale ออกด้านข้างได้ และมี health check/timeout ที่ชัด. ถ้า latency budget ของ feature ตึงมาก ๆ ค่าใช้จ่ายส่วนนี้ต้องถูกนับจริง ไม่ใช่ปัดทิ้ง\n- **Lowest-common-denominator abstraction** — interface กลางที่รองรับทุก provider มักจบที่ความสามารถร่วมที่น้อยที่สุด. ทางออกที่ใช้ได้จริงคือเปิด escape hatch ให้ส่ง provider-specific option ผ่านได้ แลกกับการยอมรับว่า portability หายไปเฉพาะจุดนั้น\n- **routing ทำให้ debug และ eval ยากขึ้น** — คำตอบแย่หนึ่งอันอาจมาจากโมเดลไหนก็ได้. ต้อง log model, prompt version และเหตุผลของ route ทุกครั้ง ไม่งั้นสืบย้อนไม่ได้ และ eval ต้องดูแยกตาม route เพราะค่าเฉลี่ยรวมกลบ regression ของ segment ได้ (`why-llm-eval-is-hard`)\n- **routing config คือ artifact ที่เปลี่ยนคุณภาพระบบได้เงียบ ๆ** — ขยับ threshold ของ router แล้ว traffic ไหลไปอีกโมเดล คุณภาพเปลี่ยนโดยไม่มีใครแก้ prompt เลยสักบรรทัด. จึงต้องถือเป็น versioned artifact และ roll back ได้เหมือน prompt (`prompt-versioning`)\n- **เมื่อไหร่ยังไม่ควรทำ** — มี service เดียวเรียก LLM, provider เดียว, โมเดลเดียว, traffic ต่ำ: gateway เต็มรูปแบบเป็น over-engineering. เริ่มจาก internal client library ตัวเดียวที่รวม retry/logging/token counting ไว้ก่อน แล้วค่อยยกเป็น service แยกเมื่อมีผู้เรียกหลายทีมหรือต้องบังคับโควตาข้ามทีม\n\n## มุมสัมภาษณ์\n\n- **\"มี LLM feature 5 ตัวกระจายใน 5 service จะคุมต้นทุนและ key ยังไง\"** → ตอบด้วย gateway: รวม credential, quota, cost attribution ไว้ที่เดียว แล้วอธิบายว่าแลกกับ SPOF และ hop\n- **\"จะลดค่าใช้จ่ายโดยไม่ให้คุณภาพตก\"** → routing ตามประเภทงาน + cascade เฉพาะงานที่ validate ผลได้ + วัดคุณภาพแยกตาม route + คำนวณ break-even ก่อนเชื่อว่าประหยัด\n- **\"cascade ดีกว่าเสมอไหม\"** → ไม่ ให้ยกตัวเลข: escalation rate สูงพอเมื่อไหร่ต้นทุนแพงกว่าเดิม และเคสที่ escalate latency แย่ลงเสมอ\n- **\"route แล้วคุณภาพตกบางเคส จะ debug ยังไง\"** → ต้องมี trace ที่บอก model + prompt version + route reason ต่อ request ไม่งั้นได้แค่เดา\n- **\"static หรือ dynamic routing\"** → เริ่ม static เพราะ reproducible และทดสอบง่าย ขยับไป dynamic เมื่อมีข้อมูลพอจะพิสูจน์ว่า classifier ตัดสินได้ดีกว่า rule\n",
+  "recall_checks": [
+    {
+      "q": "cross-cutting concern อะไรบ้างที่ย้ายจากแอปมาไว้ที่ LLM gateway และทำไมการรวมไว้ที่เดียวถึงช่วย?",
+      "expected_answer": "credential/key management, rate limiting และ quota, cost accounting, caching, retry/fallback policy, logging และ tracing — รวมไว้ที่เดียวทำให้แอปไม่ต้องรู้จัก provider โดยตรง เปลี่ยน key หรือโมเดลได้โดยไม่ต้อง deploy ทุก service และตอบได้ว่าต้นทุนมาจาก feature ไหน",
+      "type": "short_answer"
+    },
+    {
+      "q": "จากตัวเลขสมมติในบท (โมเดลเล็ก 1 หน่วย, โมเดลใหญ่ 20 หน่วยต่อ request) cascade จะเลิกคุ้มเมื่อไหร่?",
+      "expected_answer": "เมื่อ escalation rate เกิน 95% ต้นทุนรวมจะแพงกว่าส่งไปโมเดลใหญ่ตรง ๆ",
+      "type": "mcq",
+      "options": [
+        "เมื่อ escalation rate เกิน 5% เพราะการเรียกโมเดลเล็กที่ผลไม่ผ่าน validator ถือเป็นต้นทุนที่สูญเปล่าทั้งหมด",
+        "ไม่มีจุดที่เลิกคุ้ม เพราะการลองโมเดลเล็กก่อนย่อมถูกกว่าการเรียกโมเดลใหญ่ตรง ๆ ในทุกกรณี",
+        "เมื่อ escalation rate เกิน 95% ต้นทุนรวมจะแพงกว่าส่งไปโมเดลใหญ่ตรง ๆ"
+      ]
+    },
+    {
+      "q": "ทำไม cascade ถึงไม่ได้ทำให้ latency ดีขึ้นเสมอ แม้จะลดต้นทุนได้?",
+      "expected_answer": "เคสที่ validator ไม่ผ่านต้องเรียกสองรอบ latency จึงเป็นผลรวมของโมเดลเล็กบวกโมเดลใหญ่ ซึ่งช้ากว่าการส่งไปโมเดลใหญ่ตั้งแต่แรก (ในตัวอย่างสมมติคือ 300 + 1,200 = 1,500 ms เทียบกับ 1,200 ms)",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคือผลข้างเคียงของการทำ routing ที่ทำให้งาน debug และ eval ยากขึ้น?",
+      "expected_answer": "คำตอบแต่ละอันมาจากคนละโมเดล จึงต้อง log model และ route reason และ eval แยกตาม route",
+      "type": "mcq",
+      "options": [
+        "คำตอบแต่ละอันมาจากคนละโมเดล จึงต้อง log model และ route reason และ eval แยกตาม route",
+        "router บังคับให้ทุก request ผ่านโมเดลเล็กก่อน ทำให้ trace ของทุกเคสยาวเป็นสองเท่าและอ่านยากขึ้น",
+        "gateway ทำให้ token count ที่ provider รายงานกลับมาไม่ตรงกับที่แอปนับเอง จึงเทียบคุณภาพข้ามรุ่นไม่ได้"
+      ]
+    },
+    {
+      "q": "ข้อใดเป็น trade-off ที่แท้จริงของการวาง LLM gateway ไว้หน้าทุก provider?",
+      "expected_answer": "เป็น single point of failure และเพิ่ม network hop ให้ทุก request",
+      "type": "mcq",
+      "options": [
+        "ทำให้ต้องเลือก provider เพียงรายเดียวตลอดอายุระบบ เพราะ interface กลางผูกกับ provider ตัวแรกที่นำมาต่อ",
+        "เป็น single point of failure และเพิ่ม network hop ให้ทุก request",
+        "ทำให้ prompt แต่ละเวอร์ชันถูก cache ไว้ถาวรจน rollback กลับไปเวอร์ชันก่อนหน้าไม่ได้อีก"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance",
+      "source": "Chen, Zaharia, Zou, 2023 (arXiv:2305.05176)",
+      "why": "อ่านการวิเคราะห์เชิงตัวเลขของ LLM cascade ว่าเรียกโมเดลเล็กก่อนแล้วยกระดับช่วยลดต้นทุนได้เท่าไหร่ภายใต้เงื่อนไขแบบไหน"
+    },
+    {
+      "title": "RouteLLM: Learning to Route LLMs with Preference Data",
+      "source": "Ong et al., 2024 (arXiv:2406.18665)",
+      "why": "อ่านว่า dynamic routing ที่ใช้ router เรียนรู้เองต่างจาก static rule อย่างไร และวัดผลกันด้วยอะไร"
+    },
+    {
+      "title": "Patterns of Enterprise Application Architecture — Gateway (Base Patterns)",
+      "source": "Martin Fowler, 'Patterns of Enterprise Application Architecture' (Addison-Wesley, 2002), หัวข้อ Gateway",
+      "why": "อ่านต้นตอของแนวคิดห่อระบบภายนอกด้วย interface ของเราเอง ซึ่งเป็นเหตุผลเชิงสถาปัตยกรรมของ LLM gateway"
+    },
+    {
+      "title": "AI Engineering — บทว่าด้วย AI Engineering Architecture",
+      "source": "Chip Huyen, 'AI Engineering' (O'Reilly, 2025), บท AI Engineering Architecture and User Feedback",
+      "why": "อ่านภาพรวมว่า model gateway และ router วางตัวอยู่ตรงไหนของ platform ที่มี cache, guardrail และ observability ประกอบกัน"
+    }
+  ]
+}
