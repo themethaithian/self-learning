@@ -20,6 +20,9 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000). Paste a bearer token
 (matching the Go API's `API_BEARER_TOKEN`) on the token entry page.
 
+The root `docker-compose.yml`'s `web` service also publishes port 3000 — run
+`make dev-down` first if that stack is up, or `next dev` fails to bind.
+
 ## Build
 
 ```bash

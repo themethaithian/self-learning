@@ -26,34 +26,42 @@ MySQL first-boot ที่ใช้เวลาราว 100 วินาที 
 เป็นเหตุผลที่ mysql healthcheck ใน `docker-compose.yml` ตั้ง `start_period`
 ไว้ยาวถึง 90s). รอบถัดไป (มี volume/cache แล้ว) เร็วกว่านี้มาก
 
-เปิด **http://localhost:3000** แล้ววาง token `local-dev-token` ที่หน้า `/token`
-— ค่านี้ใช้ได้ทั้งตอนไม่มีไฟล์ `.env` เลย (compose ตั้ง default ไว้เป็นค่านี้) และตอน
-copy `.env.example` มาเป็น `.env` (ค่าใน `.env.example` ก็เป็น `local-dev-token`
-เหมือนกัน) เว้นแต่คุณจะไปแก้ `API_BEARER_TOKEN` ในไฟล์ `.env` ของตัวเองเป็นค่าอื่น
-ก็ต้องใช้ค่านั้นแทน — นี่คือ dev-only default เท่านั้น ของจริงบน prod ไม่มีทางใช้ค่านี้
+เปิด **http://localhost:3000** แล้ววาง token ที่หน้า `/token`:
+
+- **ไม่มีไฟล์ `.env`** (ค่า default ตอนรันครั้งแรก) → token คือ `local-dev-token`
+- **มีไฟล์ `.env`** (เช่น copy จาก `.env.example` มา override พอร์ต) →
+  `.env.example` เป็น template เดียวกับที่ prod ใช้ด้วย จึงตั้ง `API_BEARER_TOKEN`
+  เป็น placeholder แบบเดียวกับรหัสผ่าน DB (`changeme-bearer-token`) ไม่ใช่ค่า
+  local-dev — ต้องเช็คค่าจริงที่ compose จะใช้ด้วยคำสั่งนี้ แล้ว copy ค่าที่ได้
+  ไปวางแทน:
+  ```powershell
+  docker compose config | Select-String API_BEARER_TOKEN
+  ```
+
+ค่าไหนก็ตาม เป็น dev-only ทั้งหมด ของจริงบน prod ไม่มีทางใช้ค่าพวกนี้
 
 คำสั่งอื่นที่ใช้บ่อย:
 
 ```powershell
 make logs
 ```
-ดู log ของทุก service แบบ tail ต่อเนื่อง
+ดู log ของทุก service แบบ tail ต่อเนื่อง (ไม่มี `make`: `docker compose logs -f`)
 
 ```powershell
 make dev-down
 ```
-หยุดทุก service (ข้อมูลใน MySQL ยังอยู่)
+หยุดทุก service (ข้อมูลใน MySQL ยังอยู่) (ไม่มี `make`: `docker compose down`)
 
 ```powershell
 make dev-reset
 ```
-หยุด + ลบ MySQL volume ทิ้งทั้งหมด (เริ่มนับหนึ่งใหม่)
+หยุด + ลบ MySQL volume ทิ้งทั้งหมด (เริ่มนับหนึ่งใหม่) (ไม่มี `make`: `docker compose down -v`)
 
 ```powershell
 make seed
 ```
 รัน import ใหม่อีกครั้ง หลังเพิ่ม lesson JSON ใหม่ใน `content/` — ปลอดภัย, idempotent
-(upsert by slug ซ้ำได้ไม่ซ้ำข้อมูล)
+(upsert by slug ซ้ำได้ไม่ซ้ำข้อมูล) (ไม่มี `make`: `docker compose run --rm seed`)
 
 ### แก้ปัญหาที่เจอบ่อย
 

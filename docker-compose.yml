@@ -11,11 +11,9 @@ services:
       - "127.0.0.1:${DB_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-    # start_period is long: a fresh volume's first boot (data dir init +
-    # temp-server restart cycle) measured ~100s on this machine, well past
-    # the original 30s + 10*5s budget, which made `docker compose up` abort
-    # with a false "dependency failed to start" before mysqld ever bound
-    # port 3306.
+    # Fresh-volume cold boot measured ~100s here; start_period only masks
+    # false failures during that window — retries carries the rest of the
+    # budget past it.
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
       interval: 5s
@@ -56,20 +54,20 @@ services:
       dockerfile: web/Dockerfile
     restart: unless-stopped
     environment:
-      # Explicit http:// scheme (not a bare "localhost") tells Caddy to skip
-      # automatic HTTPS for this site block. A bare hostname still triggers
-      # Caddy's internal-CA auto-HTTPS + HTTP->HTTPS redirect to :443, which
-      # this compose file never publishes and whose redirect target
-      # (https://localhost/) drops the custom host port anyway.
-      DOMAIN: http://localhost
+      # ":80" = listen on port 80 with no host restriction, so it answers on
+      # localhost, 127.0.0.1, or a LAN/WSL IP alike; having no hostname also
+      # means Caddy never attempts automatic HTTPS for this site block.
+      DOMAIN: ":80"
       ACME_EMAIL: placeholder@localhost.invalid
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:80"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
-      api:
-        condition: service_healthy
+      # Ordering only (not service_healthy): Caddy can serve static files
+      # before api is ready, and a not-yet-healthy api just means /api/*
+      # returns 502 instead of the page not loading at all.
+      - api
 
   # No profile: runs automatically on `docker compose up` so a fresh clone
   # needs zero manual import steps.
@@ -87,7 +85,14 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-sk-ant-placeholder}
     entrypoint: ["/bin/sh", "-c"]
     command: ["/app/import-curriculum -dir /app/content/curriculum && /app/import-lessons -dir /app/content/lessons"]
+    # Bind-mounted so `make seed` picks up JSON edited on the host without
+    # rebuilding the image (the Dockerfile's own COPY content/ would
+    # otherwise silently reimport stale, baked-in content).
+    volumes:
+      - ./content:/app/content:ro
     depends_on:
+      # api healthy => its startup migration already ran, so this never
+      # races a second migrator against a not-yet-migrated schema.
       api:
         condition: service_healthy
     restart: "no"
