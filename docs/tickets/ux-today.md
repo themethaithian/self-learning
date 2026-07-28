@@ -195,24 +195,85 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
     ไปเลยโดยไม่รู้ตัว — `TestRepositoryTransition_CanonicalSlugsReturned` สาธิตพฤติกรรมนี้อยู่แล้ว
     (เรียก `repo.Transition` ตรง ๆ ด้วย `"DDIA"`/`"B-Trees"` แล้วผ่าน เพราะ shape validation อยู่ที่
     `Service` เท่านั้น) — การแก้แบบเต็ม (thread VO ผ่าน `Transition`) เป็นงานใหญ่กว่าที่ตัดสินใจไม่ทำรอบนี้
-  - `concepts` unique key คือ `(chapter_id, slug)` ไม่ใช่ต่อ topic — สองบทใน topic เดียวกันที่ใช้
-    concept slug ซ้ำกันจะทำให้ query ของ ticket นี้ (JOIN topics→chapters→concepts บน
-    `t.slug + co.slug`) แมตช์ได้มากกว่า 1 แถว ตอนนี้ยังไม่มี concept slug ซ้ำแบบนี้ใน
-    `content/curriculum/*.json` จริง และ identity model นี้สืบทอดมาจาก `lessonreader.go` เดิม
-    (curriculum's read path) แต่ UX-4 เปลี่ยนมันจาก read-only ไปเป็น **write path** แล้ว — mitigate
-    แล้วด้วย `lockLesson` fail loudly (error แทนเขียนแถวผิด) แต่ยังไม่ได้แก้ schema/unique
-    constraint จริง — ต้องคิดใหม่ทั้งระบบ ไม่ใช่แค่ ticket นี้
+  - `concepts` unique key คือ `(chapter_id, slug)` ไม่ใช่ต่อ topic ที่ระดับ schema จริง — **แก้ไขหลัง
+    UX-5's code review**: สรุปเดิมของ note นี้ผิด บอกว่าสองบทใน topic เดียวกันที่ใช้ concept slug
+    ซ้ำกันจะทำให้ UX-4's PUT progress "เขียนแถวผิดเงียบ ๆ" ได้ — ที่จริงไปไม่ถึงจุดนั้นเลย เพราะ
+    `domain.NewTopic` (`internal/curriculum/domain/topic.go:64-70`, เรียกจาก curriculum's read path
+    เองใน `internal/curriculum/infra/repository.go`) บังคับ concept slug ไม่ให้ซ้ำกัน **ทั้ง topic**
+    ตอน assemble แล้ว — ถ้ามีข้อมูลซ้ำแบบนี้จริงใน DB, **`GET /api/v1/curriculum` จะ error (500) ทั้ง
+    topic นั้นทันที** ก่อนที่ PUT progress จะมีโอกาสเจอแถวซ้ำด้วยซ้ำ — failure mode ที่แท้จริงคือ
+    "curriculum tree พังทั้งก้อนแบบเห็นชัด" ไม่ใช่ "เขียนข้อมูลผิดแบบเงียบ ๆ" `lockLesson`'s
+    Query-not-QueryRow ยังเป็น defense-in-depth ที่ดีอยู่ แต่กันไว้สำหรับสถานการณ์ที่ curriculum's
+    domain layer เองก็ไม่ปล่อยให้ถึง live system อยู่แล้ว — schema/unique constraint จริงยังไม่ได้แก้
+    (debt เดิมยังอยู่ แค่ความเสี่ยงต่ำกว่าที่ note เดิมประเมินไว้มาก)
   - lock-wait timeout / deadlock (MySQL error 1205/1213) จาก `FOR UPDATE OF l` ยังไม่ map เป็น
     status ที่วินิจฉัยได้ (เช่น 409/503) — ตอนนี้ตกไปที่ 500 ทั่วไปเหมือน error อื่น ๆ; เคสที่จะเจอจริง
     คือรัน `import-lessons`/`import-curriculum` พร้อม API รับ traffic (lock wait default 50s ใกล้
     `writeTimeout = 60s` ของ server พอสมควร)
+- Status: `merged, PR #45`
+
+## UX-5 — Reader loop: breadcrumb + Finish + Next `[go-implementer]`
+
+- **Scope**: `web/app/(app)/lesson/page.tsx` ได้ breadcrumb (`Track › Chapter ›
+  Concept`), mark-in-progress on load, Finish button ที่ยิง `PUT
+  /api/v1/progress/{topic}/{concept}` (จาก UX-4) จริง, และ Next ชี้ concept ถัดไปที่
+  มี lesson ในอ่าน order เดียวกัน; `web/lib/api.ts` เพิ่ม `getProgress`/`setProgress`;
+  `web/lib/curriculum.ts` เพิ่ม pure function สองตัว (`locateLessonBreadcrumb`,
+  `findNextLesson`) และย้าย `pinFocusFirst` มาจาก `learn/page.tsx` (เดิม unexported,
+  ทดสอบไม่ได้) — ทั้งสามใช้ `flattenTrack` ตัวเดียวกันภายในไฟล์
+- **Setup เพิ่ม**: ติดตั้ง **vitest** (`web/vitest.config.ts`, `npm test` script,
+  wired เข้า `.github/workflows/ci.yml` ก่อน `npm run build`) — `web/` ไม่เคยมี test
+  runner มาก่อน สอง code review ก่อนหน้าเตือนเรื่องนี้ไว้แล้ว
+- **การตัดสินใจหลัก**:
+  - **Soft-guide ไม่ gate**: ไม่มี lesson ไหนถูกล็อกหรือแสดงเป็น unavailable เพราะบทก่อนหน้า
+    ยังไม่จบ — Next แค่ "แนะนำ" ไม่ "บังคับ"
+  - **"Finished" = รีวิวครบทุกข้อ ไม่ใช่ "ผ่านทุกข้อ"**: `allRated` เช็คว่าทุก
+    `recall_check.position` มี rating (`pass` หรือ `fail`) อยู่ใน state — บทที่ตอบ
+    `Not yet` ทั้งหมดก็ finish ได้ปกติ, บทที่ไม่มี recall check เลย (`totalChecks===0`)
+    ก็ finish ได้ทันที (`0 === 0`)
+  - **หนึ่ง round trip พอสำหรับทั้ง mark-visit และเช็คว่า finish แล้วหรือยัง**: PUT
+    `in_progress` ทุกครั้งที่ lesson โหลดสำเร็จ (ไม่ใช่ก่อนโหลด — URL พังต้องยังเป็น 404
+    สะอาด ไม่ใช่ side effect เงียบ ๆ) แล้วอ่าน **response** — forward-only clamp ของ
+    UX-4 ทำให้ concept ที่ passed แล้วตอบกลับ `{"state":"passed"}` เสมอ ไม่ต้องยิง
+    `GET /api/v1/progress` แยกอีกเส้น
+  - **`aria-disabled` ไม่ใช่ `disabled` (ซ้ำกับ UX-2)**: `disabled` attribute ทำให้
+    browser blur ปุ่มที่เพิ่งกดทันที (บั๊กที่ UX-2 เจอ) — Finish ใช้ `aria-disabled` +
+    hint นับความคืบหน้าจริง (`Rate all 4 checks to finish (2/4 rated)`) และกด "activate"
+    ตอนยังไม่ครบจะย้าย focus ไปที่ recall check ใบแรกที่ยังไม่ rate (ผ่าน ref map +
+    `RecallCheckCard` เป็น `forwardRef`) แทนที่จะเฉย ๆ
+  - **รายงาน error จริง ไม่ fake success**: Finish มี state `idle/saving/saved/error`
+    ชัดเจน — ถ้า PUT fail โชว์ error banner + ปุ่ม Retry, ไม่เปลี่ยนเป็น "Lesson finished"
+    จนกว่า PUT จะสำเร็จจริง
+  - **curriculum tree กับ lesson แยก failure กัน (ซ้ำกับบทเรียนจาก UX-2)**: หน้านี้เรียก
+    `getCurriculum()` เพิ่มจาก `getLesson()` แต่เป็นคนละ `useEffect` — breadcrumb/Next
+    fallback เป็น `Learn › {lesson.title_en}` เฉย ๆ ถ้า tree โหลดไม่ทัน/พัง, ตัว lesson
+    เองยัง render ปกติเสมอ
+  - **Traversal ข้าม chapter/topic แต่ไม่ข้าม track**: `findNextLesson` flatten
+    topics→chapters→concepts ของ **track เดียวกับ concept ปัจจุบัน** ตาม position ที่
+    backend sort มาให้แล้ว (ไม่ re-sort ฝั่ง frontend) แล้ว `.find()` ตัวแรกที่
+    `has_lesson`, ข้าม concept ที่ไม่มี lesson ไปเรื่อย ๆ รวมถึงข้าม topic boundary —
+    คืน `null` ทั้งกรณี "หมด track แล้ว" และ "position ปัจจุบันไม่อยู่ใน tree เลย" (ทั้งคู่
+    แปลว่า "ไม่มีอะไรให้ชี้ต่อ" เหมือนกันจากมุมมอง UI)
+  - **breadcrumb เลือก wrap ไม่ truncate ที่ 375px**: หัวข้อ chapter ภาษาไทยยาว ๆ ถ้าตัด
+    กลางคำจะเสียความหมาย, หน้า reader มีที่ว่างแนวตั้งเหลือพอให้ breadcrumb ขึ้นบรรทัดใหม่ได้
+    โดยไม่กระทบ layout อื่น
+- **Review focus**:
+  - ทำไม mark-in-progress ต้องยิง **หลัง** `getLesson()` สำเร็จเท่านั้น ไม่ใช่ก่อนหน้านั้น?
+  - ทำไมอ่าน state จาก **response ของ PUT in_progress** พอ ไม่ต้องมี `GET
+    /api/v1/progress` แยกอีกเส้น?
+  - ทำไม "Finished" ต้องนับจาก "รีวิวครบทุกข้อ" ไม่ใช่ "ผ่านทุกข้อ"?
+  - ทำไม `findNextLesson` ต้องคืน discriminated union (`"next" | "end-of-track" | "not-found"`)
+    แทนที่จะคืน `null` เฉย ๆ สำหรับทั้งสองกรณีที่ไม่มี next?
+- **Known debt จาก code review (บันทึกไว้ ตั้งใจไม่แก้ใน ticket นี้)**:
+  - **S12 — `ratings` (recall check pass/fail ต่อข้อ) เป็น page-local state ไม่เคย persist**:
+    rate 3 จาก 4 ข้อแล้วออกจากหน้าไปโดยไม่กด Finish หายเงียบ ๆ — วันนี้ไม่มีผลอะไร (ยังไม่มีที่ไหน
+    เก็บ per-check rating ลง DB เลย, มีแค่ aggregate "passed" ทั้ง lesson ที่ Finish เขียน) แต่พอ
+    SM-2 / recall-attempt write ลงจริง (สัปดาห์ 4, Drill tickets T16–T21) จุดนี้จะกลายเป็น data
+    loss ของจริงทันที — ต้อง revisit ตอนนั้น ไม่ใช่ ticket นี้
+  - **S15 — `Button`'s `"danger"` variant ไม่มีใครเรียกใช้เลยทั้งแอป, `text-danger` (rose-600) บน
+    cream วัดได้ ~4.39:1 ซึ่ง**จะ fail AA**ทันทีที่มีคนเอาไปใช้จริง (14px ต้องการ 4.5:1) — บันทึกไว้
+    เป็น debt เฉย ๆ ไม่เพิ่ม caller ปลอมขึ้นมาเพื่อ "justify" การมีอยู่ของ variant นี้
 - Status: `implemented, PR pending`
-
-## UX-5 — Reader loop: breadcrumb + finish + next
-
-- Implement reader flow: breadcrumb (back to chapter), finish + next button (ปะปนกับ progress save),
-  next-up link/pill ชี้ concept ถัดไป
-- Status: `ยังไม่เริ่ม`
 
 ## UX-6 — Today page + IA switch
 

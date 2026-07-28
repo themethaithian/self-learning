@@ -45,7 +45,7 @@ Phase 2 ค่อย publish โชว์เป็นผลงาน (ดู des
 - AI & LLM Systems track (7th, additive, [รายละเอียด](tickets/ai-systems.md)): [x] T-ai-track (enable + tree 11 บท/53 concept + loader test) · **lessons 53/53 ครบทั้ง track (11 บท)** — เจาะตำแหน่ง Backend/AI-CRM ([🎯 roadmap](https://claude.ai/code/artifact/a6d332fd-de7b-44bb-91db-37549984c7a7))
 - Infra (ad hoc, [รายละเอียด](tickets/local-docker.md)): [x] T-local-docker — one-command local dev stack (`make dev`: mysql + api + web + auto-seed)
 - MCQ quality (ad hoc, [รายละเอียด](tickets/mcq-quality.md)): [x] C-mcq-balance — balanced recall_checks against length/position heuristics, fixed distractor editing rules (33.7% guessability vs. 89.6% before)
-- Guided learning path (additive, [รายละเอียด](tickets/ux-today.md)): [x] UX-1 (has_lesson/est_minutes) [x] UX-1b (focus track pref API) [x] UX-2 (Learn page + focus picker, merged PR #42) [x] UX-3 (track view, merged PR #44) [~] UX-4 [ ] UX-5 [ ] UX-6 [ ] UX-7
+- Guided learning path (additive, [รายละเอียด](tickets/ux-today.md)): [x] UX-1 (has_lesson/est_minutes) [x] UX-1b (focus track pref API) [x] UX-2 (Learn page + focus picker, merged PR #42) [x] UX-3 (track view, merged PR #44) [x] UX-4 (progress API, merged PR #45) [~] UX-5 [ ] UX-6 [ ] UX-7
 
 ## กติกาการทำงาน (ทุก ticket)
 

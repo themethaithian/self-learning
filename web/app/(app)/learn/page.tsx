@@ -10,7 +10,7 @@ import {
   type Track,
 } from "@/lib/api";
 import { TrackTopics } from "@/components/TrackTopics";
-import { countAvailableLessons } from "@/lib/curriculum";
+import { countAvailableLessons, pinFocusFirst } from "@/lib/curriculum";
 import { TrackCard, type TrackStats } from "@/components/TrackCard";
 import { TrackCardsSkeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
@@ -44,14 +44,6 @@ function computeStats(track: Track): TrackStats {
 function trackSortIndex(track: string): number {
   const idx = (TRACK_DISPLAY_ORDER as readonly string[]).indexOf(track);
   return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
-}
-
-function pinFocusFirst(stats: TrackStats[], focusTrack: string | null): TrackStats[] {
-  if (!focusTrack) return stats;
-  const focusIndex = stats.findIndex((s) => s.track === focusTrack);
-  if (focusIndex === -1) return stats;
-  const focus = stats[focusIndex];
-  return [focus, ...stats.slice(0, focusIndex), ...stats.slice(focusIndex + 1)];
 }
 
 function ComingSoonRow({ label }: { label: string }) {

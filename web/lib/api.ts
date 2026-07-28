@@ -147,3 +147,27 @@ export function setFocusTrack(track: string | null): Promise<FocusTrack> {
     body: JSON.stringify({ track }),
   });
 }
+
+export type ProgressState = "not_started" | "in_progress" | "passed";
+
+export interface ProgressEntry {
+  topic: string;
+  concept: string;
+  state: ProgressState;
+  last_read_at: string | null;
+  first_passed_at: string | null;
+}
+
+// The response reflects the state the server actually stored, which may
+// differ from what was requested — UX-4's forward-only clamp means setting
+// "in_progress" on an already-passed lesson comes back {"state":"passed"}.
+export function setProgress(
+  topicSlug: string,
+  conceptSlug: string,
+  state: "in_progress" | "passed",
+): Promise<ProgressEntry> {
+  return apiFetch<ProgressEntry>(
+    `/api/v1/progress/${encodeURIComponent(topicSlug)}/${encodeURIComponent(conceptSlug)}`,
+    { method: "PUT", body: JSON.stringify({ state }) },
+  );
+}
