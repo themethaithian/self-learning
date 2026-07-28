@@ -153,6 +153,21 @@ func TestHandlerPutProgress_InvalidState(t *testing.T) {
 	}
 }
 
+// TestHandlerPutProgress_InvalidSlug pins R1(a): the handler must map
+// ErrInvalidSlug to 400, not fall through to the generic 500 branch a
+// slug-shape error used to hit.
+func TestHandlerPutProgress_InvalidSlug(t *testing.T) {
+	logger, _ := newTestLogger()
+	svc := &fakeService{setErr: fmt.Errorf("learning: %w: %q", learningapp.ErrInvalidSlug, "B-Trees")}
+	h := NewHandler(svc, logger)
+
+	rec := doRequest(h, http.MethodPut, "/api/v1/progress/ddia/B-Trees", `{"state":"in_progress"}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
 func TestHandlerPutProgress_InvalidJSON(t *testing.T) {
 	logger, _ := newTestLogger()
 	h := NewHandler(&fakeService{}, logger)
@@ -161,6 +176,21 @@ func TestHandlerPutProgress_InvalidJSON(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+// TestHandlerPutProgress_BodyTooLarge distinguishes an oversized body (413)
+// from ordinary malformed JSON (400) so a client can tell "you sent garbage"
+// from "you sent too much" instead of the same generic 400 for both.
+func TestHandlerPutProgress_BodyTooLarge(t *testing.T) {
+	logger, _ := newTestLogger()
+	h := NewHandler(&fakeService{}, logger)
+
+	oversized := `{"state":"` + strings.Repeat("x", maxPutBodyBytes) + `"}`
+	rec := doRequest(h, http.MethodPut, "/api/v1/progress/ddia/b-trees", oversized)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusRequestEntityTooLarge)
 	}
 }
 

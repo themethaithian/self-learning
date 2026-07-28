@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,117 +13,66 @@ import (
 	"github.com/themethaithian/self-learning/migrations"
 )
 
-func TestRepositoryConceptProgress_LessonNotFound(t *testing.T) {
+func mustChunkState(t *testing.T, raw string) domain.ChunkState {
+	t.Helper()
+	s, err := domain.NewChunkState(raw)
+	if err != nil {
+		t.Fatalf("NewChunkState(%q) failed: %v", raw, err)
+	}
+	return s
+}
+
+func TestRepositoryTransition_LessonNotFound(t *testing.T) {
 	db := openStubDB(t, newStubData())
-	repo := NewRepository(db)
+	svc := learningapp.NewService(NewRepository(db))
 
-	_, lessonExists, hasProgress, err := repo.ConceptProgress(context.Background(), "ddia", "b-trees")
-	if err != nil {
-		t.Fatalf("ConceptProgress() unexpected error: %v", err)
-	}
-	if lessonExists {
-		t.Fatal("lessonExists = true, want false for an unseeded concept")
-	}
-	if hasProgress {
-		t.Fatal("hasProgress = true, want false for an unseeded concept")
+	_, err := svc.SetProgress(context.Background(), "ddia", "b-trees", "in_progress")
+	if !errors.Is(err, learningapp.ErrLessonNotFound) {
+		t.Fatalf("SetProgress() error = %v, want it to wrap ErrLessonNotFound", err)
 	}
 }
 
-func TestRepositoryConceptProgress_LessonExistsNoProgress(t *testing.T) {
-	data := newStubData()
-	data.seedLesson("ddia", "b-trees", 1)
-	db := openStubDB(t, data)
-	repo := NewRepository(db)
-
-	_, lessonExists, hasProgress, err := repo.ConceptProgress(context.Background(), "ddia", "b-trees")
-	if err != nil {
-		t.Fatalf("ConceptProgress() unexpected error: %v", err)
-	}
-	if !lessonExists {
-		t.Fatal("lessonExists = false, want true")
-	}
-	if hasProgress {
-		t.Fatal("hasProgress = true, want false: no lesson_progress row written yet")
-	}
-}
-
-func TestRepositoryConceptProgress_WithProgress(t *testing.T) {
-	firstPassed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	lastRead := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
-	data := newStubData()
-	data.seedProgress("ddia", "b-trees", 1, stubProgressRow{state: "passed", firstPassedAt: &firstPassed, lastReadAt: &lastRead})
-	db := openStubDB(t, data)
-	repo := NewRepository(db)
-
-	entry, lessonExists, hasProgress, err := repo.ConceptProgress(context.Background(), "ddia", "b-trees")
-	if err != nil {
-		t.Fatalf("ConceptProgress() unexpected error: %v", err)
-	}
-	if !lessonExists || !hasProgress {
-		t.Fatalf("lessonExists=%v hasProgress=%v, want both true", lessonExists, hasProgress)
-	}
-	if !entry.State.IsPassed() {
-		t.Errorf("State = %v, want passed", entry.State)
-	}
-	if entry.FirstPassedAt == nil || !entry.FirstPassedAt.Equal(firstPassed) {
-		t.Errorf("FirstPassedAt = %v, want %v", entry.FirstPassedAt, firstPassed)
-	}
-	if entry.LastReadAt == nil || !entry.LastReadAt.Equal(lastRead) {
-		t.Errorf("LastReadAt = %v, want %v", entry.LastReadAt, lastRead)
-	}
-}
-
-// TestRepositoryConceptProgress_ScopedByBothSlugs is the concept-slug
-// analogue of curriculum's ScopedByBothSlugs test: a concept slug shared by
-// two topics must not leak the other topic's progress. Note this does NOT
-// catch a dropped "t.slug = ?" predicate in selectConceptProgressSQL
-// itself — the stub dispatches on query-string identity, so an edit to the
-// SQL text is invisible to this behavioral test either way.
-// TestSelectConceptProgressSQLShape is the actual guard for the predicate.
-func TestRepositoryConceptProgress_ScopedByBothSlugs(t *testing.T) {
+// TestRepositoryTransition_ScopedByBothSlugs is the concept-slug analogue of
+// curriculum's ScopedByBothSlugs test: a concept slug shared by two topics
+// must not leak the other topic's progress. Note this does NOT catch a
+// dropped "AND co.slug = ?" predicate in selectLessonForUpdateSQL itself —
+// the stub dispatches on query-string identity, so an edit to the SQL text
+// is invisible to this behavioral test either way.
+// TestSelectLessonForUpdateSQLShape is the actual guard for the predicate.
+func TestRepositoryTransition_ScopedByBothSlugs(t *testing.T) {
 	data := newStubData()
 	data.seedProgress("topic-a", "shared-slug", 101, stubProgressRow{state: "passed"})
 	data.seedLesson("topic-b", "shared-slug", 202)
 	db := openStubDB(t, data)
-	repo := NewRepository(db)
+	svc := learningapp.NewService(NewRepository(db))
+	ctx := context.Background()
 
-	entryB, existsB, hasProgressB, err := repo.ConceptProgress(context.Background(), "topic-b", "shared-slug")
+	entryB, err := svc.SetProgress(ctx, "topic-b", "shared-slug", "in_progress")
 	if err != nil {
-		t.Fatalf("ConceptProgress(topic-b) unexpected error: %v", err)
+		t.Fatalf("SetProgress(topic-b) unexpected error: %v", err)
 	}
-	if !existsB || hasProgressB {
-		t.Fatalf("ConceptProgress(topic-b) = exists=%v hasProgress=%v, want exists=true hasProgress=false (never leak topic-a's passed state)", existsB, hasProgressB)
-	}
-	if entryB.State.IsPassed() {
-		t.Error("ConceptProgress(topic-b) leaked topic-a's passed state")
+	if !entryB.State.IsInProgress() {
+		t.Fatalf("SetProgress(topic-b) State = %v, want in_progress (must never leak topic-a's passed state)", entryB.State)
 	}
 
-	entryA, existsA, hasProgressA, err := repo.ConceptProgress(context.Background(), "topic-a", "shared-slug")
-	if err != nil {
-		t.Fatalf("ConceptProgress(topic-a) unexpected error: %v", err)
-	}
-	if !existsA || !hasProgressA || !entryA.State.IsPassed() {
-		t.Fatalf("ConceptProgress(topic-a) = exists=%v hasProgress=%v state=%v, want true/true/passed", existsA, hasProgressA, entryA.State)
+	row, ok := data.progressOf(101)
+	if !ok || row.state != "passed" {
+		t.Fatalf("topic-a's row = %+v (ok=%v), want unchanged passed", row, ok)
 	}
 }
 
-func TestRepositoryUpsertProgress_CreatesFreshInProgress(t *testing.T) {
+func TestRepositoryTransition_FreshInProgress(t *testing.T) {
 	data := newStubData()
 	data.seedLesson("ddia", "b-trees", 1)
 	db := openStubDB(t, data)
-	repo := NewRepository(db)
-	ctx := context.Background()
+	svc := learningapp.NewService(NewRepository(db))
 
-	if err := repo.UpsertProgress(ctx, "ddia", "b-trees", mustChunkState(t, "in_progress")); err != nil {
-		t.Fatalf("UpsertProgress() unexpected error: %v", err)
-	}
-
-	entry, _, hasProgress, err := repo.ConceptProgress(ctx, "ddia", "b-trees")
+	entry, err := svc.SetProgress(context.Background(), "ddia", "b-trees", "in_progress")
 	if err != nil {
-		t.Fatalf("ConceptProgress() unexpected error: %v", err)
+		t.Fatalf("SetProgress() unexpected error: %v", err)
 	}
-	if !hasProgress || !entry.State.IsInProgress() {
-		t.Fatalf("entry = %+v, want hasProgress=true state=in_progress", entry)
+	if !entry.State.IsInProgress() {
+		t.Fatalf("State = %v, want in_progress", entry.State)
 	}
 	if entry.FirstPassedAt != nil {
 		t.Errorf("FirstPassedAt = %v, want nil for a fresh in_progress row", entry.FirstPassedAt)
@@ -132,89 +82,137 @@ func TestRepositoryUpsertProgress_CreatesFreshInProgress(t *testing.T) {
 	}
 }
 
-func TestRepositoryUpsertProgress_CreatesFreshPassed(t *testing.T) {
+func TestRepositoryTransition_FreshPassed(t *testing.T) {
 	data := newStubData()
 	data.seedLesson("ddia", "b-trees", 1)
 	db := openStubDB(t, data)
-	repo := NewRepository(db)
-	ctx := context.Background()
+	svc := learningapp.NewService(NewRepository(db))
 
-	if err := repo.UpsertProgress(ctx, "ddia", "b-trees", mustChunkState(t, "passed")); err != nil {
-		t.Fatalf("UpsertProgress() unexpected error: %v", err)
-	}
-
-	entry, _, hasProgress, err := repo.ConceptProgress(ctx, "ddia", "b-trees")
+	entry, err := svc.SetProgress(context.Background(), "ddia", "b-trees", "passed")
 	if err != nil {
-		t.Fatalf("ConceptProgress() unexpected error: %v", err)
+		t.Fatalf("SetProgress() unexpected error: %v", err)
 	}
-	if !hasProgress || !entry.State.IsPassed() {
-		t.Fatalf("entry = %+v, want hasProgress=true state=passed", entry)
+	if !entry.State.IsPassed() {
+		t.Fatalf("State = %v, want passed", entry.State)
 	}
 	if entry.FirstPassedAt == nil {
 		t.Error("FirstPassedAt = nil, want it set on first pass")
 	}
 }
 
-// TestRepositoryUpsertProgress_PreservesFirstPassedAt pins the COALESCE
-// clause in upsertProgressSQL: a re-finish must never move first_passed_at.
-func TestRepositoryUpsertProgress_PreservesFirstPassedAt(t *testing.T) {
+// TestRepositoryTransition_PreservesFirstPassedAt pins the COALESCE clause
+// in upsertProgressByLessonIDSQL: a re-finish must never move
+// first_passed_at.
+func TestRepositoryTransition_PreservesFirstPassedAt(t *testing.T) {
 	firstPassed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	data := newStubData()
 	data.seedProgress("ddia", "b-trees", 1, stubProgressRow{state: "passed", firstPassedAt: &firstPassed})
 	db := openStubDB(t, data)
-	repo := NewRepository(db)
-	ctx := context.Background()
+	svc := learningapp.NewService(NewRepository(db))
 
-	if err := repo.UpsertProgress(ctx, "ddia", "b-trees", mustChunkState(t, "passed")); err != nil {
-		t.Fatalf("UpsertProgress() unexpected error: %v", err)
-	}
-
-	entry, _, _, err := repo.ConceptProgress(ctx, "ddia", "b-trees")
+	entry, err := svc.SetProgress(context.Background(), "ddia", "b-trees", "passed")
 	if err != nil {
-		t.Fatalf("ConceptProgress() unexpected error: %v", err)
+		t.Fatalf("SetProgress() re-finish unexpected error: %v", err)
 	}
 	if entry.FirstPassedAt == nil || !entry.FirstPassedAt.Equal(firstPassed) {
 		t.Errorf("FirstPassedAt = %v, want unchanged %v", entry.FirstPassedAt, firstPassed)
 	}
 }
 
-func TestRepositoryUpsertProgress_LessonNotFound(t *testing.T) {
-	db := openStubDB(t, newStubData())
-	repo := NewRepository(db)
-
-	err := repo.UpsertProgress(context.Background(), "ddia", "b-trees", mustChunkState(t, "in_progress"))
-	if !errors.Is(err, learningapp.ErrLessonNotFound) {
-		t.Fatalf("UpsertProgress() error = %v, want it to wrap ErrLessonNotFound", err)
-	}
-}
-
-// TestRepositoryTouchProgress_RefreshesLastReadOnly pins touchProgressSQL's
-// entire reason to exist: it must move last_read_at and nothing else.
-func TestRepositoryTouchProgress_RefreshesLastReadOnly(t *testing.T) {
+// TestRepositoryTransition_ForwardOnlyClamp pins the whole reason
+// refreshLastReadAtSQL exists: it must move last_read_at and nothing else.
+func TestRepositoryTransition_ForwardOnlyClamp(t *testing.T) {
 	firstPassed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	lastRead := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	data := newStubData()
 	data.seedProgress("ddia", "b-trees", 1, stubProgressRow{state: "passed", firstPassedAt: &firstPassed, lastReadAt: &lastRead})
 	db := openStubDB(t, data)
-	repo := NewRepository(db)
-	ctx := context.Background()
+	svc := learningapp.NewService(NewRepository(db))
 
-	if err := repo.TouchProgress(ctx, "ddia", "b-trees"); err != nil {
-		t.Fatalf("TouchProgress() unexpected error: %v", err)
-	}
-
-	entry, _, _, err := repo.ConceptProgress(ctx, "ddia", "b-trees")
+	entry, err := svc.SetProgress(context.Background(), "ddia", "b-trees", "in_progress")
 	if err != nil {
-		t.Fatalf("ConceptProgress() unexpected error: %v", err)
+		t.Fatalf("SetProgress() unexpected error: %v", err)
 	}
 	if !entry.State.IsPassed() {
-		t.Errorf("State = %v, want unchanged passed", entry.State)
+		t.Errorf("State = %v, want unchanged passed (forward-only)", entry.State)
 	}
 	if entry.FirstPassedAt == nil || !entry.FirstPassedAt.Equal(firstPassed) {
 		t.Errorf("FirstPassedAt = %v, want unchanged %v", entry.FirstPassedAt, firstPassed)
 	}
 	if entry.LastReadAt == nil || entry.LastReadAt.Equal(lastRead) {
 		t.Errorf("LastReadAt = %v, want it refreshed away from %v", entry.LastReadAt, lastRead)
+	}
+}
+
+// TestRepositoryTransition_LockedThenPassed pins R1(b): a state='locked' row
+// (a future gating ticket's edge; this ticket never writes it) receiving
+// {"state":"passed"} must succeed via unlock-then-pass, not 500.
+func TestRepositoryTransition_LockedThenPassed(t *testing.T) {
+	data := newStubData()
+	data.seedProgress("ddia", "b-trees", 1, stubProgressRow{state: "locked"})
+	db := openStubDB(t, data)
+	svc := learningapp.NewService(NewRepository(db))
+
+	entry, err := svc.SetProgress(context.Background(), "ddia", "b-trees", "passed")
+	if err != nil {
+		t.Fatalf("SetProgress() unexpected error: %v", err)
+	}
+	if !entry.State.IsPassed() {
+		t.Fatalf("State = %v, want passed", entry.State)
+	}
+	if entry.FirstPassedAt == nil {
+		t.Error("FirstPassedAt = nil, want it set")
+	}
+}
+
+func TestRepositoryTransition_LockedThenInProgress(t *testing.T) {
+	data := newStubData()
+	data.seedProgress("ddia", "b-trees", 1, stubProgressRow{state: "locked"})
+	db := openStubDB(t, data)
+	svc := learningapp.NewService(NewRepository(db))
+
+	entry, err := svc.SetProgress(context.Background(), "ddia", "b-trees", "in_progress")
+	if err != nil {
+		t.Fatalf("SetProgress() unexpected error: %v", err)
+	}
+	if !entry.State.IsInProgress() {
+		t.Fatalf("State = %v, want in_progress", entry.State)
+	}
+}
+
+// TestRepositoryTransition_CanonicalSlugsReturned pins S1 directly against
+// Repository, bypassing Service's stricter shape validation (which now
+// rejects mixed-case input before any DB round trip): even called with the
+// wrong case, the DB's own slugs must come back, never the caller's.
+func TestRepositoryTransition_CanonicalSlugsReturned(t *testing.T) {
+	data := newStubData()
+	data.seedLesson("ddia", "b-trees", 1)
+	db := openStubDB(t, data)
+	repo := NewRepository(db)
+
+	entry, err := repo.Transition(context.Background(), "DDIA", "B-Trees", func(_ learningapp.ProgressEntry, lessonExists, _ bool) (learningapp.ProgressDecision, error) {
+		if !lessonExists {
+			t.Fatal("lessonExists = false, want true (case-insensitive lookup should find it)")
+		}
+		return learningapp.ProgressDecision{State: mustChunkState(t, "in_progress")}, nil
+	})
+	if err != nil {
+		t.Fatalf("Transition() unexpected error: %v", err)
+	}
+	if entry.Topic != "ddia" || entry.Concept != "b-trees" {
+		t.Errorf("Topic/Concept = %q/%q, want the DB's canonical ddia/b-trees, not the caller's DDIA/B-Trees", entry.Topic, entry.Concept)
+	}
+}
+
+func TestRepositoryTransition_QueryErrorWraps(t *testing.T) {
+	data := newStubData()
+	data.queryErr = errors.New("stub: connection refused")
+	db := openStubDB(t, data)
+	svc := learningapp.NewService(NewRepository(db))
+
+	_, err := svc.SetProgress(context.Background(), "ddia", "b-trees", "in_progress")
+	if err == nil {
+		t.Fatal("SetProgress() expected an error, got nil")
 	}
 }
 
@@ -254,82 +252,98 @@ func TestRepositoryAllProgress_Empty(t *testing.T) {
 	}
 }
 
-func TestRepositoryConceptProgress_QueryErrorWraps(t *testing.T) {
-	data := newStubData()
-	data.queryErr = errors.New("stub: connection refused")
-	db := openStubDB(t, data)
-	repo := NewRepository(db)
+// TestRepositoryTransition_ConcurrentRaceNeverContradicts is R3's proof: two
+// racing writers on a fresh concept — PUT in_progress (as fired when a
+// lesson opens) and PUT passed (Finish) — must never leave the row as
+// state=in_progress with a non-nil first_passed_at. Before the
+// SELECT ... FOR UPDATE fix, whichever write committed last won
+// unconditionally (state = new.state regardless of the prior row), so an
+// in_progress write landing after a passed write produced exactly that
+// contradiction. The stub's per-lesson lock models the row lock that now
+// prevents it: both possible orderings converge on state=passed (either
+// directly, or via the forward-only clamp when in_progress loses the race),
+// which many iterations exercise across real goroutine scheduling.
+func TestRepositoryTransition_ConcurrentRaceNeverContradicts(t *testing.T) {
+	const iterations = 50
+	for i := 0; i < iterations; i++ {
+		data := newStubData()
+		data.seedLesson("ddia", "b-trees", 1)
+		db := openStubDB(t, data)
+		svc := learningapp.NewService(NewRepository(db))
+		ctx := context.Background()
 
-	_, _, _, err := repo.ConceptProgress(context.Background(), "ddia", "b-trees")
-	if err == nil {
-		t.Fatal("ConceptProgress() expected an error, got nil")
-	}
-}
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			svc.SetProgress(ctx, "ddia", "b-trees", "in_progress")
+		}()
+		go func() {
+			defer wg.Done()
+			svc.SetProgress(ctx, "ddia", "b-trees", "passed")
+		}()
+		wg.Wait()
+		db.Close()
 
-func TestRepositoryUpsertProgress_ExecErrorWraps(t *testing.T) {
-	data := newStubData()
-	data.seedLesson("ddia", "b-trees", 1)
-	data.execErr = errors.New("stub: connection refused")
-	db := openStubDB(t, data)
-	repo := NewRepository(db)
-
-	err := repo.UpsertProgress(context.Background(), "ddia", "b-trees", mustChunkState(t, "in_progress"))
-	if err == nil {
-		t.Fatal("UpsertProgress() expected an error, got nil")
-	}
-}
-
-func mustChunkState(t *testing.T, raw string) domain.ChunkState {
-	t.Helper()
-	s, err := domain.NewChunkState(raw)
-	if err != nil {
-		t.Fatalf("NewChunkState(%q) failed: %v", raw, err)
-	}
-	return s
-}
-
-func TestSelectConceptProgressSQLShape(t *testing.T) {
-	for _, want := range []string{"t.slug = ?", "co.slug = ?", "LEFT JOIN lesson_progress lp"} {
-		if !strings.Contains(selectConceptProgressSQL, want) {
-			t.Errorf("selectConceptProgressSQL missing %q:\n%s", want, selectConceptProgressSQL)
+		row, ok := data.progressOf(1)
+		if !ok {
+			t.Fatalf("iteration %d: no progress row after concurrent transitions", i)
+		}
+		if row.state == "in_progress" && row.firstPassedAt != nil {
+			t.Fatalf("iteration %d: contradictory row: state=in_progress but first_passed_at=%v is set", i, *row.firstPassedAt)
 		}
 	}
 }
 
-func TestUpsertProgressSQLShape(t *testing.T) {
-	for _, want := range []string{
-		"INSERT INTO lesson_progress",
-		"ON DUPLICATE KEY UPDATE",
-		"state = new.state",
-		"first_passed_at = COALESCE(lesson_progress.first_passed_at, new.first_passed_at)",
-	} {
-		if !strings.Contains(upsertProgressSQL, want) {
-			t.Errorf("upsertProgressSQL missing %q:\n%s", want, upsertProgressSQL)
-		}
+func TestSelectLessonForUpdateSQLShape(t *testing.T) {
+	want := `
+SELECT l.id, t.slug, co.slug
+FROM lessons l
+JOIN concepts co ON co.id = l.concept_id
+JOIN chapters ch ON ch.id = co.chapter_id
+JOIN topics t ON t.id = ch.topic_id
+WHERE t.slug = ? AND co.slug = ?
+FOR UPDATE`
+	if selectLessonForUpdateSQL != want {
+		t.Errorf("selectLessonForUpdateSQL =\n%q\nwant\n%q", selectLessonForUpdateSQL, want)
 	}
 }
 
-// TestTouchProgressSQLShape guards touchProgressSQL against ever touching
-// state or first_passed_at — a mutation that widened its SET clause would
-// silently break the forward-only rule this ticket exists to enforce.
-func TestTouchProgressSQLShape(t *testing.T) {
-	for _, want := range []string{"t.slug = ?", "co.slug = ?", "SET lp.last_read_at = ?"} {
-		if !strings.Contains(touchProgressSQL, want) {
-			t.Errorf("touchProgressSQL missing %q:\n%s", want, touchProgressSQL)
-		}
+func TestUpsertProgressByLessonIDSQLShape(t *testing.T) {
+	want := `
+INSERT INTO lesson_progress (lesson_id, state, first_passed_at, last_read_at)
+VALUES (?, ?, ?, ?)
+AS new
+ON DUPLICATE KEY UPDATE
+    state = new.state,
+    first_passed_at = COALESCE(lesson_progress.first_passed_at, new.first_passed_at),
+    last_read_at = new.last_read_at`
+	if upsertProgressByLessonIDSQL != want {
+		t.Errorf("upsertProgressByLessonIDSQL =\n%q\nwant\n%q", upsertProgressByLessonIDSQL, want)
 	}
-	for _, mustNotContain := range []string{"lp.state", "lp.first_passed_at"} {
-		if strings.Contains(touchProgressSQL, mustNotContain) {
-			t.Errorf("touchProgressSQL contains %q, want it to touch last_read_at only:\n%s", mustNotContain, touchProgressSQL)
-		}
+}
+
+func TestRefreshLastReadAtSQLShape(t *testing.T) {
+	want := `
+UPDATE lesson_progress
+SET last_read_at = ?
+WHERE lesson_id = ?`
+	if refreshLastReadAtSQL != want {
+		t.Errorf("refreshLastReadAtSQL =\n%q\nwant\n%q", refreshLastReadAtSQL, want)
 	}
 }
 
 func TestSelectAllProgressSQLShape(t *testing.T) {
-	for _, want := range []string{"FROM lesson_progress lp", "ORDER BY t.slug, co.slug"} {
-		if !strings.Contains(selectAllProgressSQL, want) {
-			t.Errorf("selectAllProgressSQL missing %q:\n%s", want, selectAllProgressSQL)
-		}
+	want := `
+SELECT t.slug, co.slug, lp.state, lp.first_passed_at, lp.last_read_at
+FROM lesson_progress lp
+JOIN lessons l ON l.id = lp.lesson_id
+JOIN concepts co ON co.id = l.concept_id
+JOIN chapters ch ON ch.id = co.chapter_id
+JOIN topics t ON t.id = ch.topic_id
+ORDER BY t.slug, co.slug`
+	if selectAllProgressSQL != want {
+		t.Errorf("selectAllProgressSQL =\n%q\nwant\n%q", selectAllProgressSQL, want)
 	}
 }
 
@@ -345,11 +359,14 @@ func TestLessonProgressTableNameConsistency(t *testing.T) {
 		t.Fatalf("002_learning.sql does not contain %q", "CREATE TABLE IF NOT EXISTS lesson_progress")
 	}
 
+	// selectLessonForUpdateSQL is deliberately excluded: it locks the
+	// lessons row (a fresh concept has no lesson_progress row yet to lock),
+	// and TestSelectLessonForUpdateSQLShape already pins its exact text.
 	stmts := map[string]string{
-		"selectConceptProgressSQL": selectConceptProgressSQL,
-		"upsertProgressSQL":        upsertProgressSQL,
-		"touchProgressSQL":         touchProgressSQL,
-		"selectAllProgressSQL":     selectAllProgressSQL,
+		"selectProgressByLessonIDSQL": selectProgressByLessonIDSQL,
+		"upsertProgressByLessonIDSQL": upsertProgressByLessonIDSQL,
+		"refreshLastReadAtSQL":        refreshLastReadAtSQL,
+		"selectAllProgressSQL":        selectAllProgressSQL,
 	}
 	for name, stmt := range stmts {
 		if !strings.Contains(stmt, "lesson_progress") {

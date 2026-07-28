@@ -8,16 +8,28 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
-// progressConceptKey mirrors selectConceptProgressSQL's and touchProgressSQL's
-// own WHERE predicate — (topic slug, concept slug) — so a repository test
-// only passes if the lookup actually discriminates by topic, the same way a
-// real query missing "t.slug = ?" would fail it.
+// progressConceptKey is the case-folded lookup key for stubData.lessons —
+// selectLessonForUpdateSQL relies on MySQL's ai_ci collation matching
+// "B-Trees" to a stored "b-trees" row, so the stub folds case the same way
+// and separately carries the canonical (as-stored) slugs to prove the
+// repository echoes those back, not the caller's casing.
 type progressConceptKey struct{ topicSlug, conceptSlug string }
+
+func foldKey(topicSlug, conceptSlug string) progressConceptKey {
+	return progressConceptKey{strings.ToLower(topicSlug), strings.ToLower(conceptSlug)}
+}
+
+type stubLessonRef struct {
+	id      int64
+	topic   string
+	concept string
+}
 
 type stubProgressRow struct {
 	state         string
@@ -27,34 +39,62 @@ type stubProgressRow struct {
 
 // stubData is a real in-memory table keyed exactly like the schema's actual
 // keys (lesson existence by topic+concept slug, progress by lesson id), not
-// a canned-rows fixture — so it can only answer ConceptProgress/AllProgress
-// correctly if Upsert/Touch actually wrote through the same query text
-// production uses.
+// a canned-rows fixture — so it can only answer Transition/AllProgress
+// correctly if the write path actually went through the same query text
+// production uses. locks models MySQL's SELECT ... FOR UPDATE row lock: one
+// real sync.Mutex per lesson id, held for the lifetime of one transaction.
 type stubData struct {
 	mu sync.Mutex
 
-	lessons  map[progressConceptKey]int64
+	lessons  map[progressConceptKey]stubLessonRef
 	progress map[int64]stubProgressRow
+
+	locksMu sync.Mutex
+	locks   map[int64]*sync.Mutex
 
 	queryErr error
 	execErr  error
 }
 
 func newStubData() *stubData {
-	return &stubData{lessons: map[progressConceptKey]int64{}, progress: map[int64]stubProgressRow{}}
+	return &stubData{
+		lessons:  map[progressConceptKey]stubLessonRef{},
+		progress: map[int64]stubProgressRow{},
+	}
 }
 
 func (d *stubData) seedLesson(topicSlug, conceptSlug string, lessonID int64) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.lessons[progressConceptKey{topicSlug, conceptSlug}] = lessonID
+	d.lessons[foldKey(topicSlug, conceptSlug)] = stubLessonRef{id: lessonID, topic: topicSlug, concept: conceptSlug}
 }
 
 func (d *stubData) seedProgress(topicSlug, conceptSlug string, lessonID int64, row stubProgressRow) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.lessons[progressConceptKey{topicSlug, conceptSlug}] = lessonID
+	d.lessons[foldKey(topicSlug, conceptSlug)] = stubLessonRef{id: lessonID, topic: topicSlug, concept: conceptSlug}
 	d.progress[lessonID] = row
+}
+
+func (d *stubData) progressOf(lessonID int64) (stubProgressRow, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	row, ok := d.progress[lessonID]
+	return row, ok
+}
+
+func (d *stubData) lockFor(lessonID int64) *sync.Mutex {
+	d.locksMu.Lock()
+	defer d.locksMu.Unlock()
+	if d.locks == nil {
+		d.locks = map[int64]*sync.Mutex{}
+	}
+	l, ok := d.locks[lessonID]
+	if !ok {
+		l = &sync.Mutex{}
+		d.locks[lessonID] = l
+	}
+	return l
 }
 
 var (
@@ -83,7 +123,6 @@ func openStubDB(t *testing.T, data *stubData) *sql.DB {
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}
-	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 	return db
 }
@@ -100,8 +139,12 @@ func (stubDriver) Open(name string) (driver.Conn, error) {
 	return &stubConn{data: data}, nil
 }
 
+// stubConn's tx field is non-nil exactly while a transaction opened on this
+// connection is in flight, so ExecContext/QueryContext can record which
+// per-lesson locks to release on Commit/Rollback.
 type stubConn struct {
 	data *stubData
+	tx   *stubTx
 }
 
 func (c *stubConn) Prepare(string) (driver.Stmt, error) {
@@ -111,7 +154,29 @@ func (c *stubConn) Prepare(string) (driver.Stmt, error) {
 func (c *stubConn) Close() error { return nil }
 
 func (c *stubConn) Begin() (driver.Tx, error) {
-	return nil, errors.New("learningstub: transactions not supported")
+	return nil, errors.New("learningstub: use BeginTx")
+}
+
+func (c *stubConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	tx := &stubTx{conn: c}
+	c.tx = tx
+	return tx, nil
+}
+
+type stubTx struct {
+	conn      *stubConn
+	lockedIDs []int64
+}
+
+func (tx *stubTx) Commit() error   { tx.release(); return nil }
+func (tx *stubTx) Rollback() error { tx.release(); return nil }
+
+func (tx *stubTx) release() {
+	for _, id := range tx.lockedIDs {
+		tx.conn.data.lockFor(id).Unlock()
+	}
+	tx.lockedIDs = nil
+	tx.conn.tx = nil
 }
 
 func argString(a driver.NamedValue) string { return a.Value.(string) }
@@ -125,47 +190,53 @@ func argOptionalTime(a driver.NamedValue) *time.Time {
 }
 
 // ExecContext dispatches by matching query against the same Go constant
-// production sent, then applies real upsert/touch semantics against
-// stubData — a mutation of upsertProgressSQL's or touchProgressSQL's own
-// text (wrong table, dropped WHERE, dropped COALESCE) is invisible to
-// dispatch itself; TestUpsertProgressSQLShape and
-// TestTouchProgressSQLShape guard the literal text instead.
+// production sent, then applies real upsert/refresh semantics against
+// stubData — a mutation of upsertProgressByLessonIDSQL's or
+// refreshLastReadAtSQL's own text (wrong table, dropped WHERE, dropped
+// COALESCE) is invisible to dispatch itself; the SQL-shape tests in
+// repository_test.go guard the literal text instead.
 func (c *stubConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	c.data.mu.Lock()
-	defer c.data.mu.Unlock()
-
-	if c.data.execErr != nil {
-		return nil, c.data.execErr
+	execErr := c.data.execErr
+	c.data.mu.Unlock()
+	if execErr != nil {
+		return nil, execErr
 	}
 
 	switch query {
-	case upsertProgressSQL:
+	case upsertProgressByLessonIDSQL:
 		lessonID := args[0].Value.(int64)
 		state := argString(args[1])
 		firstPassedAt := argOptionalTime(args[2])
 		lastReadAt := args[3].Value.(time.Time)
 
+		c.data.mu.Lock()
 		existing := c.data.progress[lessonID]
 		if existing.firstPassedAt != nil {
 			firstPassedAt = existing.firstPassedAt
 		}
 		c.data.progress[lessonID] = stubProgressRow{state: state, firstPassedAt: firstPassedAt, lastReadAt: &lastReadAt}
+		c.data.mu.Unlock()
 		return driver.RowsAffected(1), nil
 
-	case touchProgressSQL:
+	case refreshLastReadAtSQL:
 		lastReadAt := args[0].Value.(time.Time)
-		topicSlug, conceptSlug := argString(args[1]), argString(args[2])
-		lessonID, ok := c.data.lessons[progressConceptKey{topicSlug, conceptSlug}]
+		lessonID := args[1].Value.(int64)
+
+		c.data.mu.Lock()
+		row, ok := c.data.progress[lessonID]
+		if ok {
+			row.lastReadAt = &lastReadAt
+			c.data.progress[lessonID] = row
+		}
+		c.data.mu.Unlock()
 		if !ok {
 			return driver.RowsAffected(0), nil
 		}
-		row := c.data.progress[lessonID]
-		row.lastReadAt = &lastReadAt
-		c.data.progress[lessonID] = row
 		return driver.RowsAffected(1), nil
 
 	default:
@@ -179,21 +250,38 @@ func (c *stubConn) QueryContext(ctx context.Context, query string, args []driver
 	}
 
 	c.data.mu.Lock()
-	defer c.data.mu.Unlock()
-
-	if c.data.queryErr != nil {
-		return nil, c.data.queryErr
+	queryErr := c.data.queryErr
+	c.data.mu.Unlock()
+	if queryErr != nil {
+		return nil, queryErr
 	}
 
 	switch query {
-	case selectConceptProgressSQL:
+	case selectLessonForUpdateSQL:
 		topicSlug, conceptSlug := argString(args[0]), argString(args[1])
-		lessonID, ok := c.data.lessons[progressConceptKey{topicSlug, conceptSlug}]
+		c.data.mu.Lock()
+		ref, ok := c.data.lessons[foldKey(topicSlug, conceptSlug)]
+		c.data.mu.Unlock()
 		if !ok {
-			return &conceptProgressRows{}, nil
+			return &lessonForUpdateRows{}, nil
 		}
-		row, hasProgress := c.data.progress[lessonID]
-		return &conceptProgressRows{rows: []conceptProgressFixtureRow{{lessonID: lessonID, hasProgress: hasProgress, row: row}}}, nil
+
+		// The lock acquired here (never inside c.data.mu) models MySQL's row
+		// lock: it can block this goroutine until a concurrent transaction
+		// on the same lesson commits or rolls back.
+		c.data.lockFor(ref.id).Lock()
+		if c.tx != nil {
+			c.tx.lockedIDs = append(c.tx.lockedIDs, ref.id)
+		}
+		return &lessonForUpdateRows{rows: []stubLessonRef{ref}}, nil
+
+	case selectProgressByLessonIDSQL:
+		lessonID := args[0].Value.(int64)
+		row, ok := c.data.progressOf(lessonID)
+		if !ok {
+			return &progressByIDRows{}, nil
+		}
+		return &progressByIDRows{rows: []stubProgressRow{row}}, nil
 
 	case selectAllProgressSQL:
 		return &allProgressRows{rows: c.allProgressRows()}, nil
@@ -207,13 +295,16 @@ func (c *stubConn) QueryContext(ctx context.Context, query string, args []driver
 // selectAllProgressSQL's real INNER JOINs would, sorted by (topic, concept)
 // to match its ORDER BY.
 func (c *stubConn) allProgressRows() []allProgressFixtureRow {
+	c.data.mu.Lock()
+	defer c.data.mu.Unlock()
+
 	var out []allProgressFixtureRow
-	for key, lessonID := range c.data.lessons {
-		row, ok := c.data.progress[lessonID]
+	for _, ref := range c.data.lessons {
+		row, ok := c.data.progress[ref.id]
 		if !ok {
 			continue
 		}
-		out = append(out, allProgressFixtureRow{topicSlug: key.topicSlug, conceptSlug: key.conceptSlug, row: row})
+		out = append(out, allProgressFixtureRow{topicSlug: ref.topic, conceptSlug: ref.concept, row: row})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].topicSlug != out[j].topicSlug {
@@ -224,35 +315,44 @@ func (c *stubConn) allProgressRows() []allProgressFixtureRow {
 	return out
 }
 
-type conceptProgressFixtureRow struct {
-	lessonID    int64
-	hasProgress bool
-	row         stubProgressRow
-}
-
-type conceptProgressRows struct {
-	rows []conceptProgressFixtureRow
+type lessonForUpdateRows struct {
+	rows []stubLessonRef
 	pos  int
 }
 
-func (r *conceptProgressRows) Columns() []string {
-	return []string{"l.id", "lp.state", "lp.first_passed_at", "lp.last_read_at"}
-}
-func (r *conceptProgressRows) Close() error { return nil }
+func (r *lessonForUpdateRows) Columns() []string { return []string{"l.id", "t.slug", "co.slug"} }
+func (r *lessonForUpdateRows) Close() error      { return nil }
 
-func (r *conceptProgressRows) Next(dest []driver.Value) error {
+func (r *lessonForUpdateRows) Next(dest []driver.Value) error {
 	if r.pos >= len(r.rows) {
 		return io.EOF
 	}
-	fr := r.rows[r.pos]
-	dest[0] = fr.lessonID
-	if fr.hasProgress {
-		dest[1] = []byte(fr.row.state)
-		dest[2] = timeDriverValue(fr.row.firstPassedAt)
-		dest[3] = timeDriverValue(fr.row.lastReadAt)
-	} else {
-		dest[1], dest[2], dest[3] = nil, nil, nil
+	ref := r.rows[r.pos]
+	dest[0] = ref.id
+	dest[1] = []byte(ref.topic)
+	dest[2] = []byte(ref.concept)
+	r.pos++
+	return nil
+}
+
+type progressByIDRows struct {
+	rows []stubProgressRow
+	pos  int
+}
+
+func (r *progressByIDRows) Columns() []string {
+	return []string{"state", "first_passed_at", "last_read_at"}
+}
+func (r *progressByIDRows) Close() error { return nil }
+
+func (r *progressByIDRows) Next(dest []driver.Value) error {
+	if r.pos >= len(r.rows) {
+		return io.EOF
 	}
+	row := r.rows[r.pos]
+	dest[0] = []byte(row.state)
+	dest[1] = timeDriverValue(row.firstPassedAt)
+	dest[2] = timeDriverValue(row.lastReadAt)
 	r.pos++
 	return nil
 }

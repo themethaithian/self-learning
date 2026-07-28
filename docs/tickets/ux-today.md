@@ -102,29 +102,72 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
   - **Soft-guide ไม่ gate**: API นี้ไม่มีทาง store/return `"locked"` ได้เลย — ค่านี้ยังอยู่ใน ENUM
     ของ migration 002 (เผื่อ UX-6 เอา `domain.Gate` มาต่อยอดทีหลัง) แต่ application layer reject
     ด้วย 400 ถ้า client ส่ง `"locked"` มา (เช่นเดียวกับค่าอื่นที่ไม่รู้จัก)
+  - **Slug shape validate ก่อน DB round trip ใด ๆ (R1a จาก code review รอบแรก)**: MySQL
+    `utf8mb4_0900_ai_ci` ทำให้ `co.slug = 'B-Trees'` แมตช์แถวที่เก็บจริงเป็น `b-trees` — ถ้าปล่อยให้
+    ถึง `domain.NewLessonRef` ก่อน (ซึ่งรับแค่ lowercase) จะพังเป็น 500 ไม่ใช่ 400 ทั้งที่ต้นเหตุคือ
+    client ส่ง input ผิดรูป แก้โดยเช็ค shape ของทั้ง `{topic}` และ `{concept}` (ยืม
+    `domain.NewLessonRef`'s shape check มาใช้แม้ตัวมันตั้งใจแทน concept slug อย่างเดียว) **ก่อน**
+    เรียก repository เลย — คืน `ErrInvalidSlug` → 400
   - **Idempotency เป็นงานของ application layer ไม่ใช่ domain**: `domain.LessonProgress.Unlock()`/
     `MarkPassed()` ยัง error เหมือนเดิมทุกอย่างเมื่อเรียกซ้ำ (ไม่ได้ไปอ่อน invariant เพื่อความสะดวก
-    ของ HTTP) — `Service.SetProgress` เรียก domain method จริง ๆ แล้วจับ
+    ของ HTTP) — `decideTransition` เรียก domain method จริง ๆ แล้วจับ
     `ErrAlreadyUnlocked`/`ErrAlreadyPassed` แปลงเป็น no-op ที่ refresh `last_read_at` อย่างเดียว
-    ข้อสังเกตที่ได้ระหว่างทำ: `Unlock()` error เหมือนกันไม่ว่า current state จะเป็น `in_progress`
-    หรือ `passed` (มันเช็คแค่ "ไม่ใช่ locked") ทำให้ forward-only guarantee ("PUT `in_progress`
-    บน lesson ที่ `passed` แล้วต้องไม่ downgrade") ได้มาฟรีจาก invariant เดิมของ domain โดยไม่ต้องเขียน
-    special-case เช็ค `IsPassed()` เพิ่มเลย
+    **ข้อแก้ไขจากรอบ review แรก**: รายงานตอนแรกอธิบายผิดว่า forward-only guarantee "ได้มาฟรี" จาก
+    `Unlock()` ครอบคลุมทุก path — ที่จริง path "concept ที่ยังไม่เคยมี progress row" (fresh) **ข้าม
+    domain transition ไปเลย** (`ProgressDecision{State: requested}` ตรง ๆ ไม่เรียก `NewLessonProgress`
+    ด้วยซ้ำ เพราะไม่มี state เดิมให้ transition จาก) ส่วน `Unlock()`'s "ไม่ใช่ locked" property อธิบาย
+    ได้แค่กรณี **passed + PUT in_progress ไม่ downgrade** เท่านั้น (Unlock error เหมือนกันไม่ว่า
+    current จะเป็น in_progress หรือ passed)
+  - **`locked` row + PUT passed = unlock-then-pass (R1b)**: ถ้ามี row สถานะ `locked` อยู่แล้ว (เคสของ
+    UX-6 ในอนาคต ที่ ticket นี้เองไม่เคยเขียน) แล้วมี PUT `passed` มา, `MarkPassed()` เดี่ยว ๆ จะ reject
+    (`ErrLessonLocked`) — เพราะ soft-guide คือ "ไม่เคยปฏิเสธการอ่าน/finish" (ไม่ใช่ 409) เลยแก้เป็น
+    เรียก `Unlock()` ก่อน (เพิกเฉย `ErrAlreadyUnlocked`) แล้วค่อย `MarkPassed()` — เป็นทางเดียวที่
+    locked row จะไปถึง passed ได้ และเป็นครั้งแรกที่ `Unlock()`'s locked→in_progress edge ถูกใช้จริง
+  - **Race ระหว่าง PUT in_progress (เปิด lesson) กับ PUT passed (Finish) — UX-5 จะยิงคู่นี้จริง (R3)**:
+    ออกแบบเดิม (อ่าน progress แยก 1 query แล้วค่อยเขียนทีหลัง) มี race window ที่ทำให้ state จบที่
+    `in_progress` พร้อม `first_passed_at` ไม่ว่าง (ขัดแย้งกันเอง) ถ้า in_progress เขียนทับหลัง passed
+    แก้ด้วย `SELECT ... FOR UPDATE` ล็อกแถว `lessons` ไว้ตลอด 1 transaction (`Repository.Transition`)
+    แล้วให้ `decide` callback (มาจาก `Service`) ตัดสินใจ **หลัง** ได้อ่านค่าที่ล็อกแล้วเท่านั้น — ไม่ใช้
+    ทางลัด `state = IF(...)` ฝั่ง SQL เพราะจะย้าย domain invariant (forward-only) ไปฝังใน infra
+    ซึ่งขัด DDD layering ตรง ๆ และจะมี writer ตัวที่สอง (LLM grading / UX-6) เข้ามาอีกในอนาคต —
+    `domain.LessonProgress` ต้องเป็นเจ้าของกฎนี้คนเดียวเสมอ
+  - **คืน slug จาก DB ไม่ใช่จาก caller (S1)**: `SELECT l.id, t.slug, co.slug ... FOR UPDATE` คืน slug
+    ตามที่ DB เก็บจริงเสมอ (เป็นผลพลอยได้จากการล็อกแถว lesson ข้างต้น) — ป้องกัน mismatch ถ้า
+    ai_ci collation ทำให้ query แมตช์ input คนละ case กับที่เก็บจริง (แม้ตอนนี้ R1a จะ block input
+    ผิด shape ไปตั้งแต่ต้นแล้วก็ตาม กันไว้อีกชั้นที่ infra เพราะ `Repository.Transition` เองไม่ควร
+    พึ่ง caller ส่ง case ถูกเสมอ)
   - `first_passed_at` ตั้งครั้งเดียว ไม่ถูกเขียนทับตอน re-finish — บังคับด้วย SQL
     `COALESCE(lesson_progress.first_passed_at, new.first_passed_at)` ใน `ON DUPLICATE KEY UPDATE`
     (ไม่ใช่แค่ logic ฝั่ง Go — กันไว้สองชั้น)
-- **บทเรียนจาก mutation-testing**: stub driver dispatch ด้วย query-string identity (เทียบ constant
-  กับตัวเอง เพราะ production กับ test import constant เดียวกัน) ผ่านเสมอไม่ว่า SQL text จะพังแค่ไหน —
-  ลองพังจริง 3 จุด (ลบ `COALESCE` ออกจาก upsert, เติม `lp.state` เข้าไปใน touch's SET clause,
-  ลบ `co.slug = ?` ออกจาก WHERE) ทุกจุด behavioral test (ที่ stub เขียน logic เองแยกจาก SQL จริง)
-  เขียวผ่านหมด มีแค่ SQL-shape test (`strings.Contains` เทียบ substring literal) เท่านั้นที่จับได้ —
-  แก้แล้ว restore กลับก่อน commit
+- **บทเรียนจาก mutation-testing (2 รอบ)**: stub driver dispatch ด้วย query-string identity (เทียบ
+  constant กับตัวเอง เพราะ production กับ test import constant เดียวกัน) ผ่านเสมอไม่ว่า SQL text
+  จะพังแค่ไหน — พังจริงทั้งหมด 5 จุดข้ามสองรอบ (ลบ `COALESCE` ออกจาก upsert, เติม `state = '...'`
+  เข้าไปใน refresh's SET clause, เปลี่ยน `AND` เป็น `OR` ใน `WHERE t.slug = ? AND co.slug = ?`,
+  เปลี่ยน `JOIN` เป็น `LEFT JOIN` ใน GET's `selectAllProgressSQL`) ทุกจุด behavioral test (ที่ stub
+  เขียน logic เองแยกจาก SQL text จริง) เขียวผ่านหมด มีแค่ SQL-shape test ที่เทียบ **exact literal**
+  ทั้งก้อน (ไม่ใช่ `strings.Contains` แยกท่อนแบบรอบแรก ซึ่งเช็ค `t.slug = ?` กับ `co.slug = ?` แยกกัน
+  จับ `AND`→`OR` ไม่ได้) เท่านั้นที่จับได้ — แก้แล้ว restore กลับก่อน commit ทุกครั้ง
 - **Review focus**:
-  - ทำไม `Unlock()` (ที่ดูเหมือนไม่ถูกใช้เพราะ endpoint นี้ไม่เคย gate) ถึงยังถูกเรียกจริงใน
-    `Service.SetProgress`, และมันช่วยพิสูจน์ forward-only rule ยังไง?
+  - `Service.SetProgress` มี 3 path: fresh (ไม่เคยมี row), unlock-then-pass (จาก locked),
+    idempotent/forward-only no-op — path ไหนเรียก `domain.NewLessonProgress`/`Unlock`/`MarkPassed`
+    จริง และ path ไหน bypass ไปเลย เพราะอะไร?
+  - ทำไมการล็อกแถว `lessons` (ไม่ใช่ `lesson_progress`) ด้วย `FOR UPDATE` ถึงพอป้องกัน race แม้ตอน
+    concept ยังไม่เคยมี `lesson_progress` row เลย?
   - ทำไม repository test ที่ seed ข้อมูลผ่าน stub แล้วอ่านกลับ (behavioral) ถึงจับบั๊ก SQL text
-    ไม่ได้ ต้องมี SQL-shape test (`strings.Contains`) แยกต่างหากด้วย?
-  - ทำไม `lesson_progress.state` ENUM ยังเก็บค่า `'locked'` ไว้ทั้งที่ ticket นี้ไม่เคยเขียนมันเลย?
+    ไม่ได้ ต้องเทียบ SQL string ทั้งก้อนแบบ exact literal แทน `strings.Contains` แยกท่อน?
+  - ทำไม `lesson_progress.state` ENUM ยังเก็บค่า `'locked'` ไว้ ทั้งที่ตอนนี้ ticket นี้เขียนมันได้แล้ว
+    (ผ่าน unlock-then-pass) แต่ก็ยังไม่มี path ไหนของ ticket นี้ที่ **สร้าง** row สถานะ `locked` เอง?
+- **Known debt (บันทึกไว้ ยังไม่แก้ในรอบนี้)**:
+  - "`first_passed_at` write-once" เป็น invariant ที่มีอยู่แค่ใน SQL (`COALESCE` ใน
+    `ON DUPLICATE KEY UPDATE`) — `domain.LessonProgress` และ `app.ProgressEntry` ไม่ได้ model
+    concept นี้ไว้เลย ถ้าวันหนึ่งมี writer อื่นที่ไม่ผ่าน SQL statement นี้ (เช่น import/backfill
+    script) กฎนี้จะหายไปเงียบ ๆ
+  - `concepts` unique key คือ `(chapter_id, slug)` ไม่ใช่ต่อ topic — สองบทใน topic เดียวกันที่ใช้
+    concept slug ซ้ำกันจะทำให้ query ของ ticket นี้ (JOIN topics→chapters→concepts บน
+    `t.slug + co.slug`) แมตช์ได้มากกว่า 1 แถว ตอนนี้ยังไม่มี concept slug ซ้ำแบบนี้ใน
+    `content/curriculum/*.json` จริง และ identity model นี้สืบทอดมาจาก `lessonreader.go` เดิม
+    (curriculum's read path) แต่ UX-4 เปลี่ยนมันจาก read-only ไปเป็น **write path** แล้ว — ถ้าจะแก้
+    ต้องคิดเรื่อง unique constraint ใหม่ทั้งระบบ ไม่ใช่แค่ ticket นี้
 - Status: `implemented, PR pending`
 
 ## UX-5 — Reader loop: breadcrumb + finish + next

@@ -14,27 +14,33 @@ import (
 )
 
 const (
-	// selectConceptProgressSQL resolves lesson_progress by joining lessons ->
-	// concepts -> chapters -> topics on (t.slug, co.slug) — both slugs are
-	// required because concept slugs are only topic-wide unique. The LEFT
-	// JOIN means a lesson with no progress row yet still produces one row
-	// (lp.* NULL) rather than vanishing, so a caller can tell "no lesson"
-	// (zero rows) from "lesson exists, never started" (one row, NULL state).
-	selectConceptProgressSQL = `
-SELECT l.id, lp.state, lp.first_passed_at, lp.last_read_at
+	// selectLessonForUpdateSQL locks the lesson row for the rest of the
+	// transaction, serializing every concurrent Transition for this concept
+	// through one writer at a time — two racing PUTs (e.g. one from opening
+	// a lesson, one from Finish) can never both decide from the same stale
+	// read. It also returns the DB's own slugs, not the caller's, so
+	// case-insensitive collation can never surface the caller's casing back
+	// out of a response.
+	selectLessonForUpdateSQL = `
+SELECT l.id, t.slug, co.slug
 FROM lessons l
 JOIN concepts co ON co.id = l.concept_id
 JOIN chapters ch ON ch.id = co.chapter_id
 JOIN topics t ON t.id = ch.topic_id
-LEFT JOIN lesson_progress lp ON lp.lesson_id = l.id
-WHERE t.slug = ? AND co.slug = ?`
+WHERE t.slug = ? AND co.slug = ?
+FOR UPDATE`
 
-	// upsertProgressSQL writes state on first write or on a real transition.
-	// first_passed_at is preserved via COALESCE against the table's own
-	// (pre-update) value — not overwritten by the incoming value — so a
-	// caller can safely pass "now" every time state is passed and still
-	// never move an already-set first_passed_at.
-	upsertProgressSQL = `
+	selectProgressByLessonIDSQL = `
+SELECT state, first_passed_at, last_read_at
+FROM lesson_progress
+WHERE lesson_id = ?`
+
+	// upsertProgressByLessonIDSQL writes state on first write or on a real
+	// transition. first_passed_at is preserved via COALESCE against the
+	// table's own (pre-update) value, never the incoming one, so a caller
+	// can pass "now" every time state is passed and still never move an
+	// already-set first_passed_at.
+	upsertProgressByLessonIDSQL = `
 INSERT INTO lesson_progress (lesson_id, state, first_passed_at, last_read_at)
 VALUES (?, ?, ?, ?)
 AS new
@@ -43,16 +49,10 @@ ON DUPLICATE KEY UPDATE
     first_passed_at = COALESCE(lesson_progress.first_passed_at, new.first_passed_at),
     last_read_at = new.last_read_at`
 
-	// touchProgressSQL is the idempotent / forward-only no-op path: it
-	// refreshes last_read_at only, never state or first_passed_at.
-	touchProgressSQL = `
-UPDATE lesson_progress lp
-JOIN lessons l ON l.id = lp.lesson_id
-JOIN concepts co ON co.id = l.concept_id
-JOIN chapters ch ON ch.id = co.chapter_id
-JOIN topics t ON t.id = ch.topic_id
-SET lp.last_read_at = ?
-WHERE t.slug = ? AND co.slug = ?`
+	refreshLastReadAtSQL = `
+UPDATE lesson_progress
+SET last_read_at = ?
+WHERE lesson_id = ?`
 
 	// selectAllProgressSQL starts from lesson_progress itself (inner joins
 	// outward), so only concepts with a progress row are ever returned —
@@ -76,77 +76,103 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-type progressRow struct {
-	lessonID      int64
-	state         sql.NullString
-	firstPassedAt sql.NullTime
-	lastReadAt    sql.NullTime
+func (r *Repository) Transition(
+	ctx context.Context,
+	topicSlug, conceptSlug string,
+	decide func(current learningapp.ProgressEntry, lessonExists, hasProgress bool) (learningapp.ProgressDecision, error),
+) (learningapp.ProgressEntry, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: begin tx: %w", topicSlug, conceptSlug, err)
+	}
+	defer tx.Rollback()
+
+	entry, err := transitionTx(ctx, tx, topicSlug, conceptSlug, decide)
+	if err != nil {
+		return learningapp.ProgressEntry{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: commit: %w", topicSlug, conceptSlug, err)
+	}
+	return entry, nil
 }
 
-func (r *Repository) queryConceptRow(ctx context.Context, topicSlug, conceptSlug string) (progressRow, bool, error) {
-	var row progressRow
-	err := r.db.QueryRowContext(ctx, selectConceptProgressSQL, topicSlug, conceptSlug).
-		Scan(&row.lessonID, &row.state, &row.firstPassedAt, &row.lastReadAt)
+func transitionTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	topicSlug, conceptSlug string,
+	decide func(current learningapp.ProgressEntry, lessonExists, hasProgress bool) (learningapp.ProgressDecision, error),
+) (learningapp.ProgressEntry, error) {
+	var lessonID int64
+	var canonicalTopic, canonicalConcept string
+	err := tx.QueryRowContext(ctx, selectLessonForUpdateSQL, topicSlug, conceptSlug).Scan(&lessonID, &canonicalTopic, &canonicalConcept)
 	if errors.Is(err, sql.ErrNoRows) {
-		return progressRow{}, false, nil
+		_, decideErr := decide(learningapp.ProgressEntry{}, false, false)
+		if decideErr == nil {
+			return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: decide accepted a missing lesson", topicSlug, conceptSlug)
+		}
+		return learningapp.ProgressEntry{}, decideErr
 	}
 	if err != nil {
-		return progressRow{}, false, err
+		return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: lock lesson: %w", topicSlug, conceptSlug, err)
 	}
-	return row, true, nil
+
+	current, hasProgress, err := queryProgressByLessonID(ctx, tx, lessonID, canonicalTopic, canonicalConcept)
+	if err != nil {
+		return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: %w", topicSlug, conceptSlug, err)
+	}
+
+	decision, err := decide(current, true, hasProgress)
+	if err != nil {
+		return learningapp.ProgressEntry{}, err
+	}
+
+	now := time.Now().UTC()
+	if decision.TouchOnly {
+		if _, err := tx.ExecContext(ctx, refreshLastReadAtSQL, now, lessonID); err != nil {
+			return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: refresh last_read_at: %w", topicSlug, conceptSlug, err)
+		}
+	} else {
+		var firstPassedAt any
+		if decision.State.IsPassed() {
+			firstPassedAt = now
+		}
+		if _, err := tx.ExecContext(ctx, upsertProgressByLessonIDSQL, lessonID, decision.State.String(), firstPassedAt, now); err != nil {
+			return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: upsert: %w", topicSlug, conceptSlug, err)
+		}
+	}
+
+	final, hasFinal, err := queryProgressByLessonID(ctx, tx, lessonID, canonicalTopic, canonicalConcept)
+	if err != nil {
+		return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: reload: %w", topicSlug, conceptSlug, err)
+	}
+	if !hasFinal {
+		return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: progress row missing immediately after write", topicSlug, conceptSlug)
+	}
+	return final, nil
 }
 
-func (r *Repository) ConceptProgress(ctx context.Context, topicSlug, conceptSlug string) (learningapp.ProgressEntry, bool, bool, error) {
-	row, found, err := r.queryConceptRow(ctx, topicSlug, conceptSlug)
+func queryProgressByLessonID(ctx context.Context, tx *sql.Tx, lessonID int64, topicSlug, conceptSlug string) (learningapp.ProgressEntry, bool, error) {
+	var (
+		stateRaw                  string
+		firstPassedAt, lastReadAt sql.NullTime
+	)
+	err := tx.QueryRowContext(ctx, selectProgressByLessonIDSQL, lessonID).Scan(&stateRaw, &firstPassedAt, &lastReadAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return learningapp.ProgressEntry{Topic: topicSlug, Concept: conceptSlug}, false, nil
+	}
 	if err != nil {
-		return learningapp.ProgressEntry{}, false, false, fmt.Errorf("infra: concept progress %s/%s: %w", topicSlug, conceptSlug, err)
-	}
-	if !found {
-		return learningapp.ProgressEntry{}, false, false, nil
-	}
-	if !row.state.Valid {
-		return learningapp.ProgressEntry{Topic: topicSlug, Concept: conceptSlug}, true, false, nil
+		return learningapp.ProgressEntry{}, false, err
 	}
 
-	state, err := domain.NewChunkState(row.state.String)
+	state, err := domain.NewChunkState(stateRaw)
 	if err != nil {
-		return learningapp.ProgressEntry{}, false, false, fmt.Errorf("infra: concept progress %s/%s: %w", topicSlug, conceptSlug, err)
+		return learningapp.ProgressEntry{}, false, err
 	}
 	return learningapp.ProgressEntry{
-		Topic:         topicSlug,
-		Concept:       conceptSlug,
-		State:         state,
-		FirstPassedAt: nullTimePtr(row.firstPassedAt),
-		LastReadAt:    nullTimePtr(row.lastReadAt),
-	}, true, true, nil
-}
-
-func (r *Repository) UpsertProgress(ctx context.Context, topicSlug, conceptSlug string, state domain.ChunkState) error {
-	row, found, err := r.queryConceptRow(ctx, topicSlug, conceptSlug)
-	if err != nil {
-		return fmt.Errorf("infra: upsert progress %s/%s: %w", topicSlug, conceptSlug, err)
-	}
-	if !found {
-		return fmt.Errorf("infra: upsert progress %s/%s: %w", topicSlug, conceptSlug, learningapp.ErrLessonNotFound)
-	}
-
-	now := time.Now().UTC()
-	var firstPassedAt any
-	if state.IsPassed() {
-		firstPassedAt = now
-	}
-	if _, err := r.db.ExecContext(ctx, upsertProgressSQL, row.lessonID, state.String(), firstPassedAt, now); err != nil {
-		return fmt.Errorf("infra: upsert progress %s/%s: %w", topicSlug, conceptSlug, err)
-	}
-	return nil
-}
-
-func (r *Repository) TouchProgress(ctx context.Context, topicSlug, conceptSlug string) error {
-	now := time.Now().UTC()
-	if _, err := r.db.ExecContext(ctx, touchProgressSQL, now, topicSlug, conceptSlug); err != nil {
-		return fmt.Errorf("infra: touch progress %s/%s: %w", topicSlug, conceptSlug, err)
-	}
-	return nil
+		Topic: topicSlug, Concept: conceptSlug,
+		State: state, FirstPassedAt: nullTimePtr(firstPassedAt), LastReadAt: nullTimePtr(lastReadAt),
+	}, true, nil
 }
 
 func (r *Repository) AllProgress(ctx context.Context) ([]learningapp.ProgressEntry, error) {

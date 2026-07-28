@@ -22,6 +22,13 @@ var ErrLessonNotFound = errors.New("learning: lesson not found")
 // domain.Gate stays unused here and no caller can ever write "locked".
 var ErrInvalidState = errors.New("learning: invalid requested state")
 
+// ErrInvalidSlug is returned when topicSlug or conceptSlug is not
+// slug-shaped. This must be checked before any DB round trip: MySQL's
+// ai_ci collation matches e.g. "B-Trees" to a stored "b-trees" row, so a
+// malformed-but-DB-matching slug would otherwise reach domain.NewLessonRef
+// downstream and fail there instead — a 500, not a 400.
+var ErrInvalidSlug = errors.New("learning: invalid topic or concept slug")
+
 // ProgressEntry is one concept's persisted progress, addressed by topic and
 // concept slug — the same identity GET /api/v1/lessons/{topic}/{concept}
 // already uses, never a lesson_id the curriculum API never exposes.
@@ -33,28 +40,32 @@ type ProgressEntry struct {
 	LastReadAt    *time.Time
 }
 
+// ProgressDecision is what a Transition callback decided to persist:
+// TouchOnly refreshes last_read_at and leaves State/FirstPassedAt exactly as
+// they are; otherwise State is written (and infra stamps first_passed_at the
+// first time State is passed).
+type ProgressDecision struct {
+	State     domain.ChunkState
+	TouchOnly bool
+}
+
 // Repository is the learning read/write port. infra provides the MySQL
 // adapter; tests provide a fake.
 type Repository interface {
-	// ConceptProgress resolves one concept's progress. lessonExists is false
-	// when topicSlug/conceptSlug has no lesson row. hasProgress is false when
-	// the lesson exists but no lesson_progress row has been written yet.
-	ConceptProgress(ctx context.Context, topicSlug, conceptSlug string) (entry ProgressEntry, lessonExists, hasProgress bool, err error)
+	// Transition locks topicSlug/conceptSlug's row for one transaction and
+	// calls decide with its current progress, so a decision can never be
+	// made from a stale read — e.g. two racing PUTs, one from opening a
+	// lesson and one from Finish, always see whatever the other one already
+	// committed instead of interleaving into a state/first_passed_at
+	// contradiction. lessonExists is false when there is no lesson row;
+	// decide must then return an error, since there is nothing to write.
+	// hasProgress is false when the lesson exists but no lesson_progress row
+	// has been written yet.
+	Transition(ctx context.Context, topicSlug, conceptSlug string, decide func(current ProgressEntry, lessonExists, hasProgress bool) (ProgressDecision, error)) (ProgressEntry, error)
 
-	// UpsertProgress writes state for topicSlug/conceptSlug, creating the row
-	// on first write. Infra sets first_passed_at the first time state is
-	// passed and never overwrites it afterward.
-	UpsertProgress(ctx context.Context, topicSlug, conceptSlug string, state domain.ChunkState) error
-
-	// TouchProgress refreshes last_read_at only, leaving state and
-	// first_passed_at untouched — the idempotent / forward-only no-op path.
-	TouchProgress(ctx context.Context, topicSlug, conceptSlug string) error
-
-	// AllProgress returns every concept that has a lesson_progress row.
 	AllProgress(ctx context.Context) ([]ProgressEntry, error)
 }
 
-// Service is the learning use-case layer.
 type Service struct {
 	repo Repository
 }
@@ -73,83 +84,100 @@ func (s Service) ListProgress(ctx context.Context) ([]ProgressEntry, error) {
 
 // SetProgress moves one concept's progress toward rawState ("in_progress" or
 // "passed"). Idempotency and the forward-only rule are this layer's job, not
-// domain.LessonProgress's: Unlock and MarkPassed deliberately error when the
-// lesson is already past the state they transition into, and that is
-// exactly "already at (or past) the requested state" — this method catches
-// ErrAlreadyUnlocked/ErrAlreadyPassed and turns them into a successful
-// no-op that still refreshes last_read_at, rather than weakening the domain
-// invariants to make HTTP convenient. This is also why a passed lesson never
-// downgrades on a later "in_progress" PUT: Unlock only succeeds from locked,
-// so it errors identically whether the current state is in_progress or
-// passed, and the no-op path never changes state either way.
+// domain.LessonProgress's: decide below calls Unlock/MarkPassed for real and
+// relies on alreadyAtOrPastRequestedState to turn their errors into a
+// touch-only no-op, rather than weakening the domain invariants to make
+// HTTP convenient.
 func (s Service) SetProgress(ctx context.Context, topicSlug, conceptSlug, rawState string) (ProgressEntry, error) {
 	requested, err := parseRequestedState(rawState)
 	if err != nil {
 		return ProgressEntry{}, err
 	}
-
-	current, lessonExists, hasProgress, err := s.repo.ConceptProgress(ctx, topicSlug, conceptSlug)
+	if err := validateTopicSlugShape(topicSlug); err != nil {
+		return ProgressEntry{}, err
+	}
+	ref, err := newConceptRef(conceptSlug)
 	if err != nil {
-		return ProgressEntry{}, fmt.Errorf("learning: set progress %s/%s: %w", topicSlug, conceptSlug, err)
-	}
-	if !lessonExists {
-		return ProgressEntry{}, fmt.Errorf("learning: set progress %s/%s: %w", topicSlug, conceptSlug, ErrLessonNotFound)
+		return ProgressEntry{}, err
 	}
 
-	ref, err := domain.NewLessonRef(conceptSlug)
-	if err != nil {
-		return ProgressEntry{}, fmt.Errorf("learning: set progress %s/%s: %w", topicSlug, conceptSlug, err)
-	}
-
-	if !hasProgress {
-		if _, err := domain.NewLessonProgress(ref, requested); err != nil {
-			return ProgressEntry{}, fmt.Errorf("learning: set progress %s/%s: %w", topicSlug, conceptSlug, err)
+	entry, err := s.repo.Transition(ctx, topicSlug, conceptSlug, func(current ProgressEntry, lessonExists, hasProgress bool) (ProgressDecision, error) {
+		if !lessonExists {
+			return ProgressDecision{}, ErrLessonNotFound
 		}
-		if err := s.repo.UpsertProgress(ctx, topicSlug, conceptSlug, requested); err != nil {
-			return ProgressEntry{}, fmt.Errorf("learning: set progress %s/%s: %w", topicSlug, conceptSlug, err)
+		if !hasProgress {
+			return ProgressDecision{State: requested}, nil
 		}
-		return s.reload(ctx, topicSlug, conceptSlug)
-	}
-
-	progress, err := domain.NewLessonProgress(ref, current.State)
+		return decideTransition(ref, current.State, requested)
+	})
 	if err != nil {
 		return ProgressEntry{}, fmt.Errorf("learning: set progress %s/%s: %w", topicSlug, conceptSlug, err)
-	}
-
-	var next domain.LessonProgress
-	if requested.IsPassed() {
-		next, err = progress.MarkPassed()
-	} else {
-		next, err = progress.Unlock()
-	}
-	if err != nil {
-		if errors.Is(err, domain.ErrAlreadyPassed) || errors.Is(err, domain.ErrAlreadyUnlocked) {
-			if err := s.repo.TouchProgress(ctx, topicSlug, conceptSlug); err != nil {
-				return ProgressEntry{}, fmt.Errorf("learning: set progress %s/%s: %w", topicSlug, conceptSlug, err)
-			}
-			return s.reload(ctx, topicSlug, conceptSlug)
-		}
-		return ProgressEntry{}, fmt.Errorf("learning: set progress %s/%s: %w", topicSlug, conceptSlug, err)
-	}
-
-	if err := s.repo.UpsertProgress(ctx, topicSlug, conceptSlug, next.State()); err != nil {
-		return ProgressEntry{}, fmt.Errorf("learning: set progress %s/%s: %w", topicSlug, conceptSlug, err)
-	}
-	return s.reload(ctx, topicSlug, conceptSlug)
-}
-
-func (s Service) reload(ctx context.Context, topicSlug, conceptSlug string) (ProgressEntry, error) {
-	entry, _, _, err := s.repo.ConceptProgress(ctx, topicSlug, conceptSlug)
-	if err != nil {
-		return ProgressEntry{}, fmt.Errorf("learning: reload progress %s/%s: %w", topicSlug, conceptSlug, err)
 	}
 	return entry, nil
 }
 
-// parseRequestedState accepts only the two states this API ever writes.
+// decideTransition is the only place domain.LessonProgress's transition
+// methods are called for an existing row. A requested passed unlocks first
+// (ignoring ErrAlreadyUnlocked) because MarkPassed alone rejects a locked
+// lesson outright — this is the sole way a locked row can ever reach passed.
+func decideTransition(ref domain.LessonRef, currentState, requested domain.ChunkState) (ProgressDecision, error) {
+	progress, err := domain.NewLessonProgress(ref, currentState)
+	if err != nil {
+		return ProgressDecision{}, err
+	}
+
+	if !requested.IsPassed() {
+		next, err := progress.Unlock()
+		if err != nil {
+			if alreadyAtOrPastRequestedState(err) {
+				return ProgressDecision{TouchOnly: true}, nil
+			}
+			return ProgressDecision{}, err
+		}
+		return ProgressDecision{State: next.State()}, nil
+	}
+
+	if unlocked, err := progress.Unlock(); err == nil {
+		progress = unlocked
+	} else if !errors.Is(err, domain.ErrAlreadyUnlocked) {
+		return ProgressDecision{}, err
+	}
+
+	next, err := progress.MarkPassed()
+	if err != nil {
+		if alreadyAtOrPastRequestedState(err) {
+			return ProgressDecision{TouchOnly: true}, nil
+		}
+		return ProgressDecision{}, err
+	}
+	return ProgressDecision{State: next.State()}, nil
+}
+
+func alreadyAtOrPastRequestedState(err error) bool {
+	return errors.Is(err, domain.ErrAlreadyUnlocked) || errors.Is(err, domain.ErrAlreadyPassed)
+}
+
 func parseRequestedState(raw string) (domain.ChunkState, error) {
 	if raw != "in_progress" && raw != "passed" {
 		return domain.ChunkState{}, fmt.Errorf("learning: state %q: %w", raw, ErrInvalidState)
 	}
 	return domain.NewChunkState(raw)
+}
+
+// validateTopicSlugShape borrows domain.LessonRef's shape check (mirrors
+// curriculum.Slug's rules) since this bounded context has no separate topic
+// slug type — a topic slug and a concept slug are the same shape.
+func validateTopicSlugShape(topicSlug string) error {
+	if _, err := domain.NewLessonRef(topicSlug); err != nil {
+		return fmt.Errorf("%w: %q", ErrInvalidSlug, topicSlug)
+	}
+	return nil
+}
+
+func newConceptRef(conceptSlug string) (domain.LessonRef, error) {
+	ref, err := domain.NewLessonRef(conceptSlug)
+	if err != nil {
+		return domain.LessonRef{}, fmt.Errorf("%w: %q", ErrInvalidSlug, conceptSlug)
+	}
+	return ref, nil
 }

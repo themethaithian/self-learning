@@ -18,7 +18,6 @@ type progressService interface {
 	SetProgress(ctx context.Context, topicSlug, conceptSlug, rawState string) (learningapp.ProgressEntry, error)
 }
 
-// Handler is the HTTP adapter for the learning bounded context.
 type Handler struct {
 	service progressService
 	logger  *slog.Logger
@@ -72,6 +71,11 @@ func (h *Handler) putProgress(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 	var body setProgressRequest
 	if err := dec.Decode(&body); err != nil || dec.More() {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			h.writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+			return
+		}
 		h.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
@@ -83,6 +87,8 @@ func (h *Handler) putProgress(w http.ResponseWriter, r *http.Request) {
 			h.writeJSON(w, http.StatusNotFound, map[string]string{"error": "lesson not found"})
 		case errors.Is(err, learningapp.ErrInvalidState):
 			h.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid state"})
+		case errors.Is(err, learningapp.ErrInvalidSlug):
+			h.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid topic or concept"})
 		default:
 			h.logger.Error("learning: set progress failed", "topic", topic, "concept", concept, "error", err)
 			h.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
