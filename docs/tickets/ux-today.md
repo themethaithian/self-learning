@@ -206,13 +206,61 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
     status ที่วินิจฉัยได้ (เช่น 409/503) — ตอนนี้ตกไปที่ 500 ทั่วไปเหมือน error อื่น ๆ; เคสที่จะเจอจริง
     คือรัน `import-lessons`/`import-curriculum` พร้อม API รับ traffic (lock wait default 50s ใกล้
     `writeTimeout = 60s` ของ server พอสมควร)
+- Status: `merged, PR #45`
+
+## UX-5 — Reader loop: breadcrumb + Finish + Next `[go-implementer]`
+
+- **Scope**: `web/app/(app)/lesson/page.tsx` ได้ breadcrumb (`Track › Chapter ›
+  Concept`), mark-in-progress on load, Finish button ที่ยิง `PUT
+  /api/v1/progress/{topic}/{concept}` (จาก UX-4) จริง, และ Next ชี้ concept ถัดไปที่
+  มี lesson ในอ่าน order เดียวกัน; `web/lib/api.ts` เพิ่ม `getProgress`/`setProgress`;
+  `web/lib/curriculum.ts` เพิ่ม pure function สองตัว (`locateLessonBreadcrumb`,
+  `findNextLesson`) และย้าย `pinFocusFirst` มาจาก `learn/page.tsx` (เดิม unexported,
+  ทดสอบไม่ได้) — ทั้งสามใช้ `flattenTrack` ตัวเดียวกันภายในไฟล์
+- **Setup เพิ่ม**: ติดตั้ง **vitest** (`web/vitest.config.ts`, `npm test` script,
+  wired เข้า `.github/workflows/ci.yml` ก่อน `npm run build`) — `web/` ไม่เคยมี test
+  runner มาก่อน สอง code review ก่อนหน้าเตือนเรื่องนี้ไว้แล้ว
+- **การตัดสินใจหลัก**:
+  - **Soft-guide ไม่ gate**: ไม่มี lesson ไหนถูกล็อกหรือแสดงเป็น unavailable เพราะบทก่อนหน้า
+    ยังไม่จบ — Next แค่ "แนะนำ" ไม่ "บังคับ"
+  - **"Finished" = รีวิวครบทุกข้อ ไม่ใช่ "ผ่านทุกข้อ"**: `allRated` เช็คว่าทุก
+    `recall_check.position` มี rating (`pass` หรือ `fail`) อยู่ใน state — บทที่ตอบ
+    `Not yet` ทั้งหมดก็ finish ได้ปกติ, บทที่ไม่มี recall check เลย (`totalChecks===0`)
+    ก็ finish ได้ทันที (`0 === 0`)
+  - **หนึ่ง round trip พอสำหรับทั้ง mark-visit และเช็คว่า finish แล้วหรือยัง**: PUT
+    `in_progress` ทุกครั้งที่ lesson โหลดสำเร็จ (ไม่ใช่ก่อนโหลด — URL พังต้องยังเป็น 404
+    สะอาด ไม่ใช่ side effect เงียบ ๆ) แล้วอ่าน **response** — forward-only clamp ของ
+    UX-4 ทำให้ concept ที่ passed แล้วตอบกลับ `{"state":"passed"}` เสมอ ไม่ต้องยิง
+    `GET /api/v1/progress` แยกอีกเส้น
+  - **`aria-disabled` ไม่ใช่ `disabled` (ซ้ำกับ UX-2)**: `disabled` attribute ทำให้
+    browser blur ปุ่มที่เพิ่งกดทันที (บั๊กที่ UX-2 เจอ) — Finish ใช้ `aria-disabled` +
+    hint นับความคืบหน้าจริง (`Rate all 4 checks to finish (2/4 rated)`) และกด "activate"
+    ตอนยังไม่ครบจะย้าย focus ไปที่ recall check ใบแรกที่ยังไม่ rate (ผ่าน ref map +
+    `RecallCheckCard` เป็น `forwardRef`) แทนที่จะเฉย ๆ
+  - **รายงาน error จริง ไม่ fake success**: Finish มี state `idle/saving/saved/error`
+    ชัดเจน — ถ้า PUT fail โชว์ error banner + ปุ่ม Retry, ไม่เปลี่ยนเป็น "Lesson finished"
+    จนกว่า PUT จะสำเร็จจริง
+  - **curriculum tree กับ lesson แยก failure กัน (ซ้ำกับบทเรียนจาก UX-2)**: หน้านี้เรียก
+    `getCurriculum()` เพิ่มจาก `getLesson()` แต่เป็นคนละ `useEffect` — breadcrumb/Next
+    fallback เป็น `Learn › {lesson.title_en}` เฉย ๆ ถ้า tree โหลดไม่ทัน/พัง, ตัว lesson
+    เองยัง render ปกติเสมอ
+  - **Traversal ข้าม chapter/topic แต่ไม่ข้าม track**: `findNextLesson` flatten
+    topics→chapters→concepts ของ **track เดียวกับ concept ปัจจุบัน** ตาม position ที่
+    backend sort มาให้แล้ว (ไม่ re-sort ฝั่ง frontend) แล้ว `.find()` ตัวแรกที่
+    `has_lesson`, ข้าม concept ที่ไม่มี lesson ไปเรื่อย ๆ รวมถึงข้าม topic boundary —
+    คืน `null` ทั้งกรณี "หมด track แล้ว" และ "position ปัจจุบันไม่อยู่ใน tree เลย" (ทั้งคู่
+    แปลว่า "ไม่มีอะไรให้ชี้ต่อ" เหมือนกันจากมุมมอง UI)
+  - **breadcrumb เลือก wrap ไม่ truncate ที่ 375px**: หัวข้อ chapter ภาษาไทยยาว ๆ ถ้าตัด
+    กลางคำจะเสียความหมาย, หน้า reader มีที่ว่างแนวตั้งเหลือพอให้ breadcrumb ขึ้นบรรทัดใหม่ได้
+    โดยไม่กระทบ layout อื่น
+- **Review focus**:
+  - ทำไม mark-in-progress ต้องยิง **หลัง** `getLesson()` สำเร็จเท่านั้น ไม่ใช่ก่อนหน้านั้น?
+  - ทำไมอ่าน state จาก **response ของ PUT in_progress** พอ ไม่ต้องมี `GET
+    /api/v1/progress` แยกอีกเส้น?
+  - ทำไม "Finished" ต้องนับจาก "รีวิวครบทุกข้อ" ไม่ใช่ "ผ่านทุกข้อ"?
+  - ทำไม `findNextLesson` คืน `null` เหมือนกันทั้งกรณี "หมด track" กับ "concept slug ไม่อยู่ใน
+    tree เลย" ทั้งที่เป็นคนละสาเหตุ?
 - Status: `implemented, PR pending`
-
-## UX-5 — Reader loop: breadcrumb + finish + next
-
-- Implement reader flow: breadcrumb (back to chapter), finish + next button (ปะปนกับ progress save),
-  next-up link/pill ชี้ concept ถัดไป
-- Status: `ยังไม่เริ่ม`
 
 ## UX-6 — Today page + IA switch
 

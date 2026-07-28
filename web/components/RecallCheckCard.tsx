@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { forwardRef, useState } from "react";
 import type { RecallCheck } from "@/lib/api";
 
 const RATE_OPTIONS = [
@@ -8,12 +8,27 @@ const RATE_OPTIONS = [
   { value: "fail", label: "Not yet" },
 ] as const;
 
-export function RecallCheckCard({ check, index }: { check: RecallCheck; index: number }) {
+export type RecallRating = (typeof RATE_OPTIONS)[number]["value"];
+
+interface RecallCheckCardProps {
+  check: RecallCheck;
+  index: number;
+  rating: RecallRating | null;
+  onRate: (value: RecallRating) => void;
+}
+
+export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(function RecallCheckCard(
+  { check, index, rating, onRate },
+  ref,
+) {
   const [revealed, setRevealed] = useState(false);
-  const [rating, setRating] = useState<(typeof RATE_OPTIONS)[number]["value"] | null>(null);
 
   return (
-    <div className="rounded-2xl border border-subtle bg-surface p-5 shadow-sm">
+    <div
+      ref={ref}
+      tabIndex={-1}
+      className="rounded-2xl border border-subtle bg-surface p-5 shadow-sm focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2"
+    >
       <div className="flex items-start justify-between gap-3">
         <p className="font-thai text-base leading-[1.8] text-body">{check.question}</p>
         <span className="shrink-0 rounded-full bg-page px-2 py-0.5 text-xs font-medium text-faint">#{index + 1}</span>
@@ -59,7 +74,7 @@ export function RecallCheckCard({ check, index }: { check: RecallCheck; index: n
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => setRating(opt.value)}
+                onClick={() => onRate(opt.value)}
                 aria-pressed={rating === opt.value}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 ${
                   rating === opt.value
@@ -73,9 +88,8 @@ export function RecallCheckCard({ check, index }: { check: RecallCheck; index: n
               </button>
             ))}
           </div>
-          <p className="text-xs text-faint">Progress tracking is coming in a future ticket — this rating is not saved yet.</p>
         </div>
       )}
     </div>
   );
-}
+});

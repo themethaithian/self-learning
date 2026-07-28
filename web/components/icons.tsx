@@ -35,6 +35,24 @@ export function WarningIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0"
+      aria-hidden
+      {...props}
+    >
+      <path d="M4 10.5l4 4 8-9" />
+    </svg>
+  );
+}
+
 export function ChevronIcon({ open, ...props }: SVGProps<SVGSVGElement> & { open: boolean }) {
   return (
     <svg
