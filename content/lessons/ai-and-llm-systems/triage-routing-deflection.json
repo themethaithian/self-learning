@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "triage-routing-deflection",
+  "version": 1,
+  "title_en": "Triage, Routing, and Deflection",
+  "est_minutes": 10,
+  "body_md": "# Triage, Routing, and Deflection\n\n## ทำไมถึงสำคัญ\n\nต้นทุนหลักของ support ไม่ได้อยู่ที่การตอบ แต่อยู่ที่ **เวลาของ human agent ต่อเคส** และเวลาที่เสียไปกับเคสที่ไปผิดที่. สามคำนี้มักถูกพูดรวมกันว่า \"เอา AI มาช่วยจัดการ ticket\" ทั้งที่มันเป็นสามงานคนละแบบ มี input, output, metric และ failure mode ของตัวเอง. ถ้ารวมเป็นกล่องเดียว เวลาตัวเลขแย่ลงจะบอกไม่ได้เลยว่าอะไรพัง.\n\n## แก่นของแนวคิด: สามงาน ไม่ใช่งานเดียว\n\n- **Triage** = อ่านเคสแล้วติดป้าย — category/intent, urgency กับ priority, และ **completeness** (ข้อมูลครบพอจะแก้ไหม: มี order id ไหม, มีรูปไหม). output คือ metadata ที่แปะกับ ticket ไม่ใช่การตัดสินว่าใครทำ\n- **Routing** = ตัดสินปลายทาง — ทีมหรือ skill, ภาษา, ประเภทเคส, โหลดของคิวตอนนี้, เจ้าของเคสเดิมถ้าเคยคุยกันแล้ว. input คือผล triage + สถานะของ resource ซึ่งเปลี่ยนตลอดเวลา\n- **Deflection** = แก้จบโดยไม่เข้าคิวคนเลย — ตอบจาก knowledge base, ทำ action ผ่าน tool, หรือพาไป self-service. output คือเคสที่ปิดแล้ว\n\nจุดที่คนสับสนที่สุด: deflection **ไม่ใช่** \"route ไปหา AI\". routing คือการเลือกคิว; deflection คือการทำให้ไม่ต้องมีคิว. ระบบที่ deflect ไม่ได้เลยแต่ triage แม่นก็ยังมีค่า เพราะ priority ถูกตั้งแต่ต้นทาง.\n\n> แผนภาพ stage เต็มของ contact center (intake → resolve → close) อยู่ที่ `contact-center-flows` — บทนี้เจาะเฉพาะสามกล่องกลางว่าตัดสินใจอย่างไรและพังอย่างไร\n\n```mermaid\nflowchart TD\n  A[\"Incoming case\"] --> T[\"Triage: category, priority, completeness\"]\n  T --> C{\"Confidence above class threshold?\"}\n  C -->|\"no\"| H[\"General human queue\"]\n  C -->|\"yes\"| M{\"Required info missing?\"}\n  M -->|\"yes\"| ASK[\"Ask customer for the missing field\"]\n  ASK --> T\n  M -->|\"no\"| D{\"Known self-serve intent?\"}\n  D -->|\"yes\"| S[\"Deflect: AI resolves, escape hatch shown\"]\n  D -->|\"no\"| R[\"Route by skill, language, queue load\"]\n  S -->|\"customer asks for a human\"| R\n  R --> AG[\"Assigned agent\"]\n  AG -->|\"wrong queue: re-route event\"| R\n```\n\n### Classifier หรือ LLM\n\nไม่ใช่ทุกจุดต้องใช้ LLM. งาน classify ที่ **label ชัด นิ่ง และปริมาณมาก** (intent 20-30 ตัวที่นิยามตายตัว) โมเดล classifier เล็ก — logistic regression บน embedding หรือ text classifier ที่ fine-tune จากประวัติ ticket — มักพอ: latency ระดับ ms, ต้นทุนต่อเคสต่ำมาก, output เป็น probability ที่ calibrate แล้วเอาไปตั้ง threshold ได้ตรง ๆ, และ retrain ได้เมื่อมี label ใหม่.\n\nLLM คุ้มเมื่อ: label กำกวมหรือทับซ้อนกันเอง, ต้องอ่าน thread ยาวจึงจะรู้ว่าลูกค้าต้องการอะไร, ต้อง extract field พร้อมกับ classify (เลขออเดอร์ ชื่อร้าน), ต้องเขียนเหตุผลสั้น ๆ ให้ agent อ่านต่อ, หรือ label เปลี่ยนบ่อยจน retrain ไม่ทัน (LLM เริ่มแบบ zero-shot ได้ทันที).\n\npattern ที่ใช้จริงบ่อยคือผสม: classifier เป็นด่านแรก แล้วส่งเฉพาะเคสที่ classifier ไม่มั่นใจไปให้ LLM — เป็น cascade แบบเดียวกับที่ `llm-gateway-and-routing` อธิบายไว้ เพียงเปลี่ยนหน่วยจากโมเดลเล็ก/ใหญ่ เป็น classifier/LLM.\n\n### ต้นทุนของการ route ผิดไม่เท่ากัน\n\n- **ผิดข้ามทีม** (เคสเงินไปคิว logistics) — ลูกค้าเล่าซ้ำ, เวลารวมเพิ่ม, CSAT ตก\n- **ผิด priority ต่ำเกินจริง** (เคสความปลอดภัยอาหารหรือ fraud ตกไปคิวปกติ) — ราคาสูงมากและกู้คืนไม่ได้\n- **ผิดในทิศ \"ส่งให้คนทั้งที่ AI แก้ได้\"** — เสียเงินค่าแรง แต่ลูกค้าไม่เจ็บ ถูกที่สุดในสามแบบ\n\nเพราะราคาไม่สมมาตร **threshold จึงต้องตั้งแยกต่อ class** ไม่ใช่ค่าเดียวทั้งระบบ: หมวดที่ error แพงควร bias ไปทาง recall (ยอม over-triage) ส่วนหมวดที่ error ถูกยอม precision ต่ำได้.\n\nและต้องมี **re-route / escape hatch เสมอ**: agent กดส่งต่อได้ในคลิกเดียวโดย context ตามไปด้วย ไม่ให้ลูกค้าเริ่มเล่าใหม่. สำคัญกว่านั้นคือ **log เหตุผลของ re-route** — misroute rate เป็น metric ของระบบ triage ไม่ใช่ของ agent และเป็น label ฟรีสำหรับ retrain\n\n### Deflection: วัดยังไงไม่ให้หลอกตัวเอง\n\n`deflection rate = เคสที่ AI ปิดเอง / เคสที่เข้ามาทั้งหมด`\n\nสมมติวันหนึ่งมี 1,000 เคส AI ปิดเอง 300 → deflection rate = 30%. แต่ถ้าใน 300 เคสนั้น มี 90 เคสที่ลูกค้าติดต่อกลับเรื่องเดิมภายใน 24 ชั่วโมง → false deflection = 90/300 = 30% และ **effective deflection = (300 − 90)/1,000 = 21%**.\n\ndeflection rate เดี่ยว ๆ จึงเป็น vanity metric. ต้องอ่านคู่กับ repeat-contact rate ภายใน window ที่กำหนด, CSAT เฉพาะกลุ่มที่ถูก deflect, และ abandonment — ลูกค้าที่เลิกกลางทางแล้วไม่กลับมาเลย **หน้าตาเหมือน deflection สำเร็จทั้งที่แย่ที่สุด**. วิธีเพิ่มตัวเลขที่ง่ายและผิดที่สุดคือซ่อนปุ่มคุยกับคน: ตัวเลขขึ้นทันที CSAT ลงช้า ๆ. escape to human ต้องมีอยู่เสมอและกดถึงได้ (กลไกส่งต่ออยู่ที่ `handoff-orchestration`) ส่วนการพิสูจน์ว่า flow ใหม่ดีกว่าจริงต้องผ่าน `online-eval-and-ab-testing` ไม่ใช่ดูตัวเลขรวมก่อน-หลัง.\n\n### Threshold และบันไดการเปิดใช้\n\nต่ำกว่าเกณฑ์ = ไม่ auto-route และไม่ deflect แต่ส่งคิวคน (ที่มาของค่า confidence และรูปแบบ fallback อยู่ที่ `confidence-and-fallback`). การเปิดใช้ควรไต่เป็นขั้น:\n\n1. **shadow** — โมเดลทำนายแต่ไม่มีผลต่อระบบ เก็บเทียบกับสิ่งที่คนทำจริง ได้ baseline accuracy แยกต่อ class\n2. **suggest** — แสดงเป็นค่า default ให้คนกดยืนยันหรือแก้ (ตระกูลเดียวกับ agent-assist และ `human-in-the-loop`); accept rate คือ metric และทุกครั้งที่คนแก้คือ label ใหม่\n3. **auto** — เปิดอัตโนมัติ **ทีละ class** เฉพาะ class ที่แม่นพอ ไม่ใช่เปิดทั้งระบบพร้อมกัน\n\n## ตัวอย่าง: support ของแอป food delivery\n\n\"ออเดอร์ยังไม่มาถึง ผ่านไป 40 นาที\"\n\n- **triage**: category = order_late, priority ปกติ, completeness ผ่านเพราะดึง order id จาก session ได้เอง\n- **deflect**: เรียก tool เช็ค tracking → ยังห่าง 2 กม. → ตอบ ETA พร้อมปุ่มคุยกับคน → เคสปิดเอง ไม่เข้าคิว\n- **แต่ถ้า tracking บอกว่า delivered แล้ว** ทั้งที่ลูกค้าบอกไม่ได้รับ → กลายเป็น dispute ที่ปลายทางคือคืนเงิน = action ที่มีผลเป็นเงินจริง → **ไม่ deflect** ให้ route ไปคิวที่มีสิทธิ์อนุมัติ (จุด approval gate เป็นเรื่องของ `human-in-the-loop`)\n- **\"ร้านปิดแต่ระบบยังเปิดรับออเดอร์\"** → เคสแบบนี้เป็นสัญญาณระดับ merchant ไม่ใช่เคสเดี่ยว: ถ้าเข้ามา 20 เคสจากร้านเดียวใน 10 นาที routing ที่ดีควรรวมเป็นเรื่องเดียวแล้วแจ้ง ops แทนกระจายไปหา 20 agent ให้แต่ละคนสืบซ้ำ\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"triage กับ routing คืออันเดียวกัน\"** — label ถูกแต่ตารางปลายทางล้าสมัยก็ส่งผิดได้ และสองอย่างนี้แก้คนละที่ วัดคนละตัว\n- **\"deflection = chatbot\"** — deflection ที่ถูกที่สุดมักไม่ใช่ AI: แจ้ง ETA ในแอปตั้งแต่แรกจนลูกค้าไม่ต้องถาม คือการทำให้เคสไม่เกิด ซึ่งดีกว่าการตอบเก่ง\n- **\"accuracy รวมสูงแล้วเปิด auto ได้\"** — ค่าเฉลี่ยกลบ class เล็กที่พังยับ; การตัดสินใจเปิด auto ต้องดู per-class\n\n## ขีดจำกัด / trade-off\n\n- **routing ผูกกับโครงสร้างองค์กร** — ทีมยุบ คิวเปลี่ยนชื่อ skill ใหม่มา แล้ว rule เดิมผิดเงียบ ๆ โดยไม่มี test ไหนจับได้. ต้องถือ routing table เป็น versioned config และตั้ง alert เมื่อ distribution ของ class เปลี่ยนผิดปกติ\n- **label drift** — intent ใหม่โผล่ตามโปรโมชันหรือฟีเจอร์ใหม่ โมเดลจะยัดลง class ที่ใกล้ที่สุดอย่างมั่นใจ. ต้องมี class `other` ที่ถูก monitor จริง ไม่ใช่ถังขยะ\n- **ต้นทุนแฝงเป็นงานประจำ** — labeling, QA sampling, retrain, ดูแล threshold รายคลาส. ไม่ใช่โปรเจกต์ที่ทำจบครั้งเดียว\n- **deflection มีเพดาน** — เคสที่ต้องตัดสินเชิงนโยบาย ชดเชย หรือข้อยกเว้น ไม่ควร deflect แม้โมเดลตอบได้ เพราะ error แปลงเป็นเงินและความเชื่อใจโดยตรง\n- **เมื่อไหร่ไม่ควรทำ auto** — volume ต่ำจนคนคัดเองไหว (ค่า maintain แพงกว่าที่ประหยัดได้), นิยาม category ยังเปลี่ยนทุกเดือน, หรือหมวดที่ error แพงมาก (fraud, safety) ซึ่งควรค้างอยู่ที่ขั้น suggest ตลอด\n\n## มุมสัมภาษณ์\n\n- **\"ออกแบบ auto-routing ให้ contact center\"** → แยกสามงานให้ชัดก่อน, classifier ก่อน LLM, threshold แยกต่อ class ตามราคาของ error, re-route ที่ log ได้, แล้วไต่ shadow → suggest → auto\n- **\"deflection rate ขึ้นจาก 20% เป็น 35% ดีไหม\"** → ถามกลับก่อน: repeat contact เท่าไหร่, CSAT ของกลุ่ม deflect, abandonment, แล้วคำนวณ effective deflection\n- **\"เมื่อไหร่ใช้ LLM แทน classifier\"** → คำตอบต้องมีเงื่อนไข (label กำกวม, context ยาว, label เปลี่ยนบ่อย) ไม่ใช่ \"LLM ดีกว่า\"\n- **\"รู้ได้ยังไงว่า model classify ผิด\"** → re-route event เป็น implicit label + QA sampling แบบสุ่ม + monitor การกระจายของ class\n",
+  "recall_checks": [
+    {
+      "q": "triage, routing และ deflection ต่างกันอย่างไร ตอบเป็น output ของแต่ละงาน",
+      "expected_answer": "triage ให้ metadata ติดกับ ticket (category/intent, urgency-priority, ข้อมูลครบหรือไม่); routing ให้ปลายทางว่าเคสเข้าคิวไหน โดยดู skill ภาษา ประเภทเคส และโหลดคิว; deflection ทำให้เคสปิดเองโดยไม่เข้าคิวคนเลย — deflection จึงไม่ใช่การ route ไปหา AI แต่คือการทำให้ไม่ต้องมีคิว",
+      "type": "short_answer"
+    },
+    {
+      "q": "วันหนึ่งมี 1,000 เคส AI ปิดเอง 300 เคส แต่ใน 300 นั้นมี 90 เคสที่ลูกค้ากลับมาถามเรื่องเดิมภายใน 24 ชั่วโมง effective deflection เป็นเท่าไหร่?",
+      "expected_answer": "21% เพราะหักเคสที่ลูกค้ากลับมาถามเรื่องเดิมออกก่อน แล้วหารด้วยเคสทั้งหมด (300 − 90)/1,000",
+      "type": "mcq",
+      "options": [
+        "30% เพราะ deflection rate นับจากเคสที่ AI ปิดเองหารด้วยเคสทั้งหมด ส่วนการกลับมาถามซ้ำเป็นคนละ metric ที่ควรรายงานแยกกัน ไม่นำมาหักออกจากตัวตั้ง",
+        "21% เพราะหักเคสที่ลูกค้ากลับมาถามเรื่องเดิมออกก่อน แล้วหารด้วยเคสทั้งหมด (300 − 90)/1,000",
+        "9% เพราะเอา 90 เคสที่พลาดไปหารด้วย 1,000 เคสทั้งหมด"
+      ]
+    },
+    {
+      "q": "เมื่อไหร่ที่ควรใช้ LLM ทำ triage แทน classifier ตัวเล็ก?",
+      "expected_answer": "เมื่อ label กำกวมหรือทับซ้อน ต้องอ่าน thread ยาวจึงเข้าใจ หรือ label เปลี่ยนบ่อยจน retrain ไม่ทัน",
+      "type": "mcq",
+      "options": [
+        "เมื่อ volume สูงมากและต้องการ latency ต่ำที่สุด เพราะ LLM รวมหลายเคสไว้ใน request เดียวได้ จึงถูกและเร็วกว่า classifier เมื่อคิดต่อเคส",
+        "เมื่อ label ชัดเจนและนิ่งอยู่แล้ว เพราะ LLM ตอบเป็น enum ได้แม่นกว่าเสมอ",
+        "เมื่อ label กำกวมหรือทับซ้อน ต้องอ่าน thread ยาวจึงเข้าใจ หรือ label เปลี่ยนบ่อยจน retrain ไม่ทัน"
+      ]
+    },
+    {
+      "q": "ทำไมระบบ auto-routing ต้องมี re-route / escape hatch เสมอ และการ log เหตุผลของ re-route ให้ประโยชน์อะไร",
+      "expected_answer": "เพราะ routing ผิดได้เสมอและต้นทุนของการผิดไม่เท่ากัน ต้องให้ agent ส่งต่อได้ในคลิกเดียวโดย context ตามไปด้วยเพื่อไม่ให้ลูกค้าเล่าซ้ำ; ส่วน log ของ re-route ทำให้ misroute rate กลายเป็น metric ของระบบ triage และเป็น label ฟรีสำหรับ retrain โมเดล",
+      "type": "short_answer"
+    },
+    {
+      "q": "ก่อนเปิด auto-routing ให้ทำงานเองเต็มรูปแบบ ลำดับที่ถูกต้องคืออะไร?",
+      "expected_answer": "รัน shadow mode เก็บ accuracy แยกต่อ class แล้วเปิดโหมด suggest ให้คนกดยืนยันก่อน จึงเปิด auto เฉพาะ class ที่แม่นพอ",
+      "type": "mcq",
+      "options": [
+        "รัน shadow mode เก็บ accuracy แยกต่อ class แล้วเปิดโหมด suggest ให้คนกดยืนยันก่อน จึงเปิด auto เฉพาะ class ที่แม่นพอ",
+        "ตั้ง threshold ไว้ที่ค่ากลางแล้วเปิด auto ทันที เพราะค่ากลางปลอดภัยที่สุด",
+        "เปิด auto ทั้งระบบพร้อมกันแล้วค่อยวัด accuracy รวมหลังใช้จริง เพราะมีแต่ข้อมูล production เท่านั้นที่สะท้อนการกระจายของเคสจริง การทำ shadow ก่อนจึงเป็นการเสียเวลาเปล่า"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Rules of Machine Learning: Best Practices for ML Engineering",
+      "source": "Martin Zinkevich, Google for Developers (developers.google.com/machine-learning/guides/rules-of-ml)",
+      "why": "อ่านเหตุผลว่าทำไมควรเริ่มจาก heuristic หรือโมเดลง่าย ๆ ก่อน และควรปล่อยระบบ ML เข้า production เป็นขั้น ๆ อย่างไร"
+    },
+    {
+      "title": "Human-in-the-Loop Machine Learning — บท Uncertainty Sampling",
+      "source": "Robert (Munro) Monarch, 'Human-in-the-Loop Machine Learning' (Manning, 2021)",
+      "why": "อ่านวิธีใช้ค่า confidence ตั้งเกณฑ์ส่งเคสให้คนตัดสิน และเปลี่ยนสิ่งที่คนแก้ให้กลายเป็น label สำหรับ retrain"
+    },
+    {
+      "title": "Designing Machine Learning Systems — บท Data Distribution Shifts and Monitoring in Production",
+      "source": "Chip Huyen, 'Designing Machine Learning Systems' (O'Reilly, 2022)",
+      "why": "อ่านว่า label drift และการกระจายของ class ที่เปลี่ยนไปทำให้ classifier ที่เคยแม่นพังเงียบ ๆ ได้อย่างไร และ monitor อะไรบ้าง"
+    },
+    {
+      "title": "Machine Learning Crash Course — 2 หน้าต่อเนื่องในโมดูล Classification: 'Thresholds and the confusion matrix' และ 'Accuracy, recall, precision, and related metrics'",
+      "source": "Google for Developers (developers.google.com/machine-learning/crash-course)",
+      "why": "อ่านพื้นฐานการเลื่อน threshold แล้วแลกกันระหว่าง precision กับ recall ซึ่งเป็นเหตุผลว่าทำไมหมวดที่ error แพงต้องตั้งเกณฑ์ต่างจากหมวดอื่น"
+    }
+  ]
+}

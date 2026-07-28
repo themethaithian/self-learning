@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "ai-in-crm-and-ticketing",
+  "version": 1,
+  "title_en": "AI in CRM and Ticketing",
+  "est_minutes": 9,
+  "body_md": "# AI in CRM and Ticketing\n\n## ทำไมถึงสำคัญ\n\nระบบ CRM/ticketing ที่องค์กรใช้อยู่มี workflow, report, SLA และคนทำงานผูกกับมันมาหลายปี. โปรเจกต์ AI ในบริบทนี้ล้มบ่อยไม่ใช่เพราะโมเดลไม่เก่ง แต่เพราะผลลัพธ์ของ AI ไปกองอยู่ \"นอกเรคอร์ด\" — automation เดิมมองไม่เห็น, report เดิมนับไม่ได้, และไม่มีใครตอบได้ว่าใครเป็นคนตัดสิน. บทนี้ถือหลักเดียว: **AI คือ producer ของ field ใน object model ที่มีอยู่ ไม่ใช่ระบบใหม่ที่มาแทน CRM**.\n\n## object model ของ CRM/ticketing\n\nก่อนใส่ AI ต้องเห็นของเดิมให้ชัด. แกนหลักคือ:\n\n- **Ticket / case** — entity ที่มี id, state, priority, category, ผู้รับผิดชอบ, SLA target\n- **State machine** — `new → open → pending → resolved → closed` (บวก reopen); transition มีเงื่อนไข ไม่ใช่ enum ลอย ๆ\n- **Queue & assignment** — ticket เข้าคิวตาม category/skill แล้ว route ไปทีมหรือคน\n- **Customer profile** — ตัวตนลูกค้า, product ที่ถือ, tier\n- **Interaction history** — ทุก message/call/note ที่ผูกกับเคส\n- **Knowledge base** — article ที่ใช้ตอบและใช้ deflect\n\nฟิลด์เหล่านี้คือ input ของสิ่งที่รันอยู่จริง: SLA timer เริ่มเมื่อ state เปลี่ยน, report รายเดือนนับตาม category, escalation ยิงเมื่อ priority สูง. **สิ่งที่ AI ผลิตแต่ไม่ได้ลงในฟิลด์เหล่านี้ เท่ากับไม่มีผลกับระบบ**.\n\n## AI เสียบเข้าไปตรงไหน\n\nแมปเป็น \"จุดใน workflow → งานของ AI → เขียนกลับที่ไหน\":\n\n| จุดใน workflow | งานของ AI | เขียนกลับที่ |\n| --- | --- | --- |\n| ticket เข้าใหม่ | classify หมวด + ประเมิน urgency/sentiment | `category`, `priority`, `sentiment` |\n| ticket เข้าใหม่ | extract ฟิลด์จากข้อความ (product, order id) | structured field ตาม schema |\n| agent เปิดเคสยาว | สรุปประวัติให้อ่านได้ใน 10 วินาที | `case_summary` (regenerate ได้) |\n| agent กำลังตอบ | ร่างคำตอบ + ดึง knowledge article ที่เกี่ยว | draft (ยังไม่ส่ง) + `suggested_articles` |\n| handoff | สรุปบริบทให้คนถัดไป | `handoff_note` |\n| ปิดเคส | สรุปวิธีแก้ + ติด resolution code | `resolution_summary`, `resolution_code` |\n\nไม่มีข้อไหนเป็น \"AI คุยกับลูกค้าเองทั้งเคส\" โดยตั้งใจ — การตัดสินใจ route/deflect อัตโนมัติอยู่ที่ `triage-routing-deflection`, รูปแบบการเสนอผลให้ agent ใน UI อยู่ที่ `agent-assist-copilot-patterns` และการส่งต่อบอทไปคนอยู่ที่ `handoff-orchestration` (ทั้งคู่ ch.7).\n\n## หลักสำคัญ: structured field + provenance\n\n**1) structured ไม่ใช่ข้อความลอย.** ถ้า AI สรุปว่า \"เคสนี้น่าจะเป็นการตัดเงินซ้ำ ควรให้ทีม billing ดูด่วน\" แล้วเก็บเป็น note ธรรมดา → queue เดิมไม่ route, SLA เดิมไม่ขยับ, report สิ้นเดือนไม่นับ. ต้องบังคับ output ให้ตรง schema ที่มีอยู่ (`category=\"billing.duplicate_charge\"`, `priority=\"high\"`) และค่าที่ไม่อยู่ใน enum ต้องถูก reject ไม่ใช่เขียนลงไปดื้อ ๆ.\n\n**2) provenance ต้องอยู่ในเรคอร์ด.** ทุกฟิลด์ที่ AI แตะต้องมาพร้อม: ใครใส่ (`ai_suggested` / `human_confirmed` / `human_overridden`), model + prompt version, เวลา, และ confidence ถ้ามี. ถ้าไม่เก็บจะเจอสองปัญหาที่แก้ย้อนหลังไม่ได้:\n\n- **metric ปนกัน** — `category` ในตารางกลายเป็นส่วนผสมของ \"AI เดา\" กับ \"คนแก้\" จนวัด accuracy ของ AI ไม่ได้ และ label ที่จะเอาไปใช้ eval รอบหน้าก็ปนเปื้อน\n- **audit ตอบไม่ได้** — เคสที่ปิดด้วย resolution code หนึ่ง ตอบไม่ได้ว่าคนตัดสินหรือระบบตัดสิน ซึ่งเป็นคำถามที่ compliance ถามแน่\n\nคู่ (ค่าที่ AI เสนอ, ค่าที่คนเปลี่ยนเป็น) คือ feedback signal ที่มีค่าที่สุดในระบบนี้ — เก็บไว้เสมอ. ส่วนกลไกให้คนยืนยันก่อนมีผลอยู่ที่ `human-in-the-loop` (ch.7).\n\n```mermaid\nflowchart TD\n  I[\"Inbound message\"] --> T[\"Ticket created: state new\"]\n  T --> A[\"AI: classify, extract, summarize\"]\n  A --> W[\"Write structured fields with provenance ai_suggested\"]\n  W --> Q[\"Existing queue, SLA and escalation rules run\"]\n  Q --> H[\"Human agent reviews\"]\n  H -->|\"accept\"| C[\"provenance human_confirmed\"]\n  H -->|\"edit\"| O[\"provenance human_overridden, keep AI value\"]\n  C --> R[\"Resolve and close\"]\n  O --> R\n  O --> F[\"Feedback store for eval\"]\n```\n\n## ตัวอย่าง: ข้อพิพาทการตัดเงิน (fintech)\n\nลูกค้าส่งข้อความ \"โดนตัดเงินสองรอบจากร้านเดิม\". ระบบสร้าง ticket state `new` → AI อ่านข้อความ + interaction history + โปรไฟล์ แล้วเขียนกลับ `category=\"billing.duplicate_charge\"`, `priority=\"high\"`, `extracted.merchant_name`, `suggested_articles` โดยทุกฟิลด์ติดธง `ai_suggested`. queue rule เดิมที่เขียนไว้ตั้งแต่ก่อนมี AI route เข้าทีม billing ได้ทันทีโดยไม่ต้องแก้อะไรเลย — นี่คือประโยชน์ที่แท้จริงของการเขียนกลับเป็นฟิลด์.\n\nagent เปิดเคส เห็นสรุป 4 บรรทัดแทนการไล่อ่าน 30 ข้อความ, ยืนยัน category (กลายเป็น `human_confirmed`) แต่แก้ priority ลงเป็น medium เพราะยอดเล็ก — ระบบเก็บทั้งค่าเดิมของ AI และค่าใหม่พร้อมธง `human_overridden`. ตอนปิดเคส AI ร่าง `resolution_summary` ให้ agent แก้สองคำแล้วกดยืนยัน.\n\nข้อความและประวัติที่ส่งเข้าโมเดลเต็มไปด้วย PII — การ redact เป็นเรื่องของ `pii-and-moderation` (ch.8) และทุก call ต้องมี trace ตาม `llm-observability` (ch.10).\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"เอา AI มาแทน CRM ไปเลย\"** — สิ่งที่แทนยากไม่ใช่หน้าจอ แต่คือ workflow, permission model, report และ integration ที่ต่ออยู่รอบตัวมัน\n- **\"ให้ AI ตอบเป็นข้อความสวย ๆ ก็พอ\"** — ข้อความที่ automation อ่านไม่ได้ ไม่มีผลกับ routing/SLA/report\n- **\"ประวัติเคสเก่าคือ training data ชั้นดี\"** — ส่วนใหญ่ไม่ใช่ (ดูหัวข้อถัดไป)\n- **\"AI แม่นในชุดทดสอบ = พร้อมใช้\"** — ยังเหลือคำถามว่ามันทำให้ agent เร็วขึ้นจริงไหม ซึ่งวัดคนละแบบ (`measuring-support-productivity`)\n\n## ขีดจำกัด / trade-off\n\n- **ข้อมูลใน CRM สกปรกกว่าที่คิด** — tag ถูกใช้ไม่สม่ำเสมอข้ามทีมและข้ามปี, เคสเก่าจำนวนมากถูกปิดด้วย category ตั้งต้นเพราะ agent รีบ, ประวัติบางส่วนขาดบริบทเพราะคุยจบทางโทรศัพท์. ต้นทุนจริงของโปรเจกต์มักอยู่ที่การสร้าง label ชุดเล็กที่สะอาดขึ้นมาใหม่ ไม่ใช่ที่ตัวโมเดล\n- **เปลี่ยน workflow ของทีม support = change management** — คนที่ทำงานแบบเดิมมาห้าปีจะกลับไปทำแบบเดิมทันทีถ้าของใหม่ขัดจังหวะ. ต้อง pilot กับทีมเล็ก, วัดก่อน-หลัง, และยอมรับว่าช่วงแรกอาจช้าลง — เป็นงานคน ไม่ใช่งาน deploy\n- **AI ที่ต้องแก้ทุกครั้งคือภาระสุทธิ** — ถ้าเวลาที่ agent ใช้ตรวจและแก้มากกว่าเวลาที่ประหยัดได้ ระบบก็ติดลบ แม้ accuracy จะดูสวยในรายงาน. เกณฑ์ที่ใช้ได้จริงคือ \"แก้แล้วยังเร็วกว่าเริ่มจากศูนย์\" และต้องปัดข้อเสนอทิ้งได้ในคลิกเดียว\n- **ผูกกับ schema ของระบบภายนอก** — enum ของ category, สิทธิ์เขียนฟิลด์ และ rate limit ของ API เปลี่ยนได้โดยทีมอื่น. ควรมี anticorruption layer แปลง model ของเราเข้ากับของ CRM แทนการให้ prompt รู้จัก schema ปลายทางโดยตรง\n- **เมื่อไหร่ยังไม่ควรทำ** — ปริมาณ ticket ต่ำ, category มีไม่กี่แบบและ rule เดิมแม่นอยู่แล้ว, หรือฟิลด์ที่จะให้ AI เขียนไม่มี consumer จริง (ไม่มี report/automation ใช้ต่อ). กรณีเหล่านี้ AI เพิ่มต้นทุนและจุดพังใหม่โดยไม่เปลี่ยนผลลัพธ์\n\n## มุมสัมภาษณ์\n\n- **\"จะเอา AI ไปใส่ระบบ support ที่มีอยู่ยังไง\"** → เริ่มจากอธิบาย object model และ state machine ก่อน แล้วชี้จุดเสียบทีละจุด ไม่ใช่ตอบว่า \"ทำ chatbot\"\n- **\"ผลลัพธ์ AI ควรเก็บยังไง\"** → structured field ตาม schema เดิม + provenance ต่อฟิลด์ พร้อมเหตุผลสองข้อ (metric, audit)\n- **\"จะรู้ได้ยังไงว่าโมเดลดีขึ้นจริง\"** → ต้องแยก `ai_suggested` ออกจาก `human_confirmed` ให้ได้ก่อน ไม่งั้นวัด override rate ไม่ได้เลย\n- **\"ความเสี่ยงใหญ่สุดของโปรเจกต์นี้คืออะไร\"** → คุณภาพข้อมูลเดิมและการยอมรับของทีม ไม่ใช่ความสามารถของโมเดล\n",
+  "recall_checks": [
+    {
+      "q": "องค์ประกอบหลักของ object model ใน CRM/ticketing มีอะไรบ้าง และ AI วางตัวอยู่ตรงไหนของมัน?",
+      "expected_answer": "ticket/case ที่มี state machine (new → open → pending → resolved → closed), queue และ assignment, priority/SLA, customer profile, interaction history และ knowledge base — AI ไม่ได้มาแทน object model นี้ แต่เป็น producer ของฟิลด์ในนั้น เช่น category, priority, case_summary, resolution_code",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมผลลัพธ์ของ AI ต้องถูกเขียนกลับเป็น structured field ตาม schema เดิม ไม่ใช่เก็บเป็นข้อความอิสระ?",
+      "expected_answer": "เพราะ routing, SLA และ report ที่มีอยู่อ่านได้เฉพาะฟิลด์ตาม schema เดิม ข้อความลอยจึงไม่มีผลกับ automation",
+      "type": "mcq",
+      "options": [
+        "เพราะ structured field ทำให้ prompt สั้นลงและประหยัด token ต่อ request",
+        "เพราะ routing, SLA และ report ที่มีอยู่อ่านได้เฉพาะฟิลด์ตาม schema เดิม ข้อความลอยจึงไม่มีผลกับ automation",
+        "เพราะโมเดลภาษาให้ผลแม่นกว่าเสมอเมื่อถูกบังคับให้ตอบเป็นโครงสร้าง และการเก็บเป็นข้อความอิสระจะทำให้ต้องเรียกโมเดลซ้ำอีกรอบเพื่อแปลงเป็นฟิลด์ก่อนนำไปใช้"
+      ]
+    },
+    {
+      "q": "ถ้าไม่เก็บ provenance (AI เสนอ vs คนยืนยัน vs คนแก้) ไว้ในเรคอร์ด จะเสียอะไรไป?",
+      "expected_answer": "วัด accuracy ของ AI ไม่ได้เพราะค่าที่ AI เดากับค่าที่คนแก้ปนกันในฟิลด์เดียว และ audit ตอบไม่ได้ว่าใครเป็นคนตัดสิน",
+      "type": "mcq",
+      "options": [
+        "วัด accuracy ของ AI ไม่ได้เพราะค่าที่ AI เดากับค่าที่คนแก้ปนกันในฟิลด์เดียว และ audit ตอบไม่ได้ว่าใครเป็นคนตัดสิน",
+        "ticket จะถูก route ผิดคิวทันทีที่ AI จัดหมวดหมู่พลาด",
+        "ตาราง ticket จะโตเร็วเกินไปจนต้องแยก interaction history ออกไปเป็นฐานข้อมูลอีกชุด เพื่อให้ query เดิมของทีม report ยังเร็วเท่าเดิม"
+      ]
+    },
+    {
+      "q": "AI assist ในงาน support กลายเป็นภาระสุทธิของ agent เมื่อไหร่?",
+      "expected_answer": "เมื่อเวลาที่ agent ใช้ตรวจและแก้ผลของ AI มากกว่าเวลาที่ประหยัดได้จากการไม่ต้องทำเอง",
+      "type": "mcq",
+      "options": [
+        "เมื่อโมเดลที่ใช้มี latency สูงกว่าเวลาที่ agent พิมพ์ตอบเอง",
+        "เมื่อทีม support ยังไม่ได้อบรมการใช้เครื่องมือใหม่ ทำให้ต้องเปิดคู่มือก่อนกดยืนยันทุกครั้ง และหัวหน้าทีมต้องสุ่มตรวจงานย้อนหลังเพิ่มขึ้นทุกสัปดาห์",
+        "เมื่อเวลาที่ agent ใช้ตรวจและแก้ผลของ AI มากกว่าเวลาที่ประหยัดได้จากการไม่ต้องทำเอง"
+      ]
+    },
+    {
+      "q": "ยกข้อจำกัดเชิงองค์กรสองข้อที่ทำให้โปรเจกต์ AI ใน CRM ล้ม แม้โมเดลจะทำงานได้ดีในชุดทดสอบ",
+      "expected_answer": "หนึ่ง ข้อมูลเดิมสกปรก — tag ไม่สม่ำเสมอข้ามทีมและข้ามปี เคสเก่าถูกปิดด้วย category ตั้งต้น ประวัติขาดบริบทเพราะคุยจบทางโทรศัพท์ สอง การเปลี่ยน workflow ของทีม support เป็น change management ไม่ใช่แค่ deploy ต้อง pilot วัดก่อน-หลัง และของใหม่ต้องไม่ขัดจังหวะการทำงานเดิม",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Guidelines for Human-AI Interaction",
+      "source": "Amershi et al., CHI 2019 (Microsoft Research)",
+      "why": "อ่านหลักการออกแบบว่าเมื่อไหร่ควรเสนอผลของ AI ให้คน ให้แก้ไขง่าย และแสดงที่มาของข้อเสนอ ซึ่งตรงกับเรื่อง provenance และการไม่ทำให้ agent ช้าลง"
+    },
+    {
+      "title": "People + AI Guidebook",
+      "source": "Google PAIR (pair.withgoogle.com/guidebook), บท Feedback + Control และ Errors + Graceful Failure",
+      "why": "อ่านวิธีออกแบบให้ผู้ใช้แก้และปัดข้อเสนอของ AI ได้ และเก็บ feedback จากการแก้นั้นกลับมาใช้"
+    },
+    {
+      "title": "PROV-DM: The PROV Data Model",
+      "source": "W3C Recommendation, 2013 (www.w3.org/TR/prov-dm/)",
+      "why": "อ่านโมเดลมาตรฐานของ provenance ว่าการบันทึก entity, activity และ agent ที่ผลิตค่าหนึ่ง ๆ ควรมีหน้าตาแบบไหน"
+    },
+    {
+      "title": "Domain-Driven Design — Maintaining Model Integrity (Anticorruption Layer)",
+      "source": "Eric Evans, 'Domain-Driven Design' (Addison-Wesley, 2003), ch. 14",
+      "why": "อ่านเหตุผลว่าทำไมต้องมีชั้นแปลงระหว่าง model ของเรากับ schema ของระบบ CRM ภายนอก แทนการผูกตรง"
+    }
+  ]
+}
