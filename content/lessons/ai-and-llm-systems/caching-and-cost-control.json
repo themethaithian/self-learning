@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "caching-and-cost-control",
+  "version": 1,
+  "title_en": "Caching and Cost Control",
+  "est_minutes": 10,
+  "body_md": "# Caching and Cost Control\n\n## ทำไมถึงสำคัญ\n\nต้นทุนของระบบ LLM ผูกกับ token ที่ไหลผ่านทุก request — การตัดสินใจที่ดูเล็กอย่าง \"แนบเอกสารเพิ่มอีกสองหน้าเข้า prompt\" พอคูณด้วย traffic จริงแล้วกลายเป็นเงินก้อนใหญ่ในเดือนเดียว. ที่อันตรายกว่าคือระบบไม่พังตอนใช้เงินเกิน มันยังตอบดีเหมือนเดิม ทีมจึงรู้ตัวตอนบิลมาแล้ว.\n\n## แก่นของแนวคิด\n\n### cost = จำนวน request × token ต่อ request\n\nสูตรตั้งต้นมีแค่นี้:\n\n```\ncost ต่อ request = (input tokens × ราคาต่อ input token) + (output tokens × ราคาต่อ output token)\ncost รวม        = จำนวน request × cost ต่อ request\n```\n\nสองข้อที่ต้องจำ: (1) input กับ output คิดราคาแยกกัน และโดยทั่วไป **output แพงกว่า input ต่อ token** เพราะ output ต้อง generate ทีละ token ขณะที่ input ประมวลผลขนานกันได้; (2) input โตตาม context ที่เราแนบเข้าไป ไม่ใช่ตามความยาวคำถามของผู้ใช้ (`tokens-and-context-window`).\n\nจากสูตรนี้ lever มีแค่สามทาง เทคนิคที่เหลือเป็นรูปแบบย่อยของสามข้อนี้:\n\n1. **เรียกน้อยลง** — caching, deflect คำถามที่ตอบได้โดยไม่ต้องใช้โมเดล, รวมงานที่ไม่ต้องการคำตอบทันทีเป็น batch offline\n2. **prompt สั้นลง** — ตัด context ที่ไม่ได้ถูกใช้จริง, ลด few-shot, ตั้ง max_tokens เป็นเพดานกันหลุด (อยากได้คำตอบสั้นต้องสั่งใน prompt — max_tokens แค่ตัดกลางประโยค)\n3. **ใช้โมเดลถูกลงกับงานที่ไม่ต้องใช้ของแพง** — เรื่อง routing อยู่ใน `llm-gateway-and-routing`\n\n### caching สามระดับ\n\n**1) exact-match cache (response cache)** — hash คำถาม + บริบทที่ normalize แล้ว เจอ key เดิมก็คืนคำตอบเดิมโดยไม่เรียกโมเดล. ถูกและเร็วที่สุด (ประหยัด 100% ของ call นั้น latency ระดับ millisecond) แต่ **hit rate ต่ำ** เพราะภาษาธรรมชาติซ้ำเป๊ะได้ยาก — \"ค่าธรรมเนียมโอนเท่าไร\" กับ \"ค่าธรรมเนียมโอนเท่าไหร่\" เป็นคนละ key. normalize (ตัดช่องว่าง, วรรคตอน, lowercase) ดัน hit rate ขึ้นได้บ้าง แต่แรงเกินไปก็เริ่มยุบ input ที่ความหมายไม่เท่ากันเป็น key เดียว.\n\n**2) semantic cache** — แปลงคำถามเป็น embedding หาเพื่อนบ้านที่ similarity สูงกว่า threshold ใน vector store (`embeddings-and-semantic-search`) แล้วคืนคำตอบของเพื่อนบ้านนั้น. hit rate สูงกว่าแบบแรกมาก แต่จ่ายด้วยความเสี่ยง **false hit**: \"โอนเงินไปต่างประเทศมีค่าธรรมเนียมเท่าไร\" กับ \"โอนเงินไปต่างประเทศใช้เวลากี่วัน\" อยู่ใกล้กันมากเชิงเวกเตอร์ แต่คำตอบใช้แทนกันไม่ได้. threshold จึงเป็นปุ่มแลกระหว่าง cost กับ correctness: ตั้งเข้ม hit rate ตก; ตั้งหลวม ประหยัดขึ้นแต่เริ่มตอบผิดบริบท. ส่วนคำถามที่ personalized (\"ยอดคงเหลือของฉันเท่าไร\") ต้องกันออกทั้งคลาส ไม่ใช่แก้ด้วยการปรับ threshold.\n\n**3) prompt / prefix caching ฝั่ง provider** — provider หลายเจ้าให้ cache ผลการประมวลผลของ **ส่วนต้น prompt ที่ซ้ำ ๆ** ไว้ (system prompt, few-shot, เอกสารอ้างอิงชุดเดิม) ถ้า request ถัดไปมี prefix ตรงกันตั้งแต่ token แรก ก็ไม่ต้องประมวลผลซ้ำ cost และ latency ของส่วนนั้นจึงลดลง. ต่างจากสองแบบแรกตรงที่ **ยังเรียกโมเดลจริงทุกครั้ง** — คำตอบยังสด แค่ input ส่วนที่ซ้ำถูกคิดถูกลง จึงปลอดภัยที่สุดต่อความถูกต้อง. เงื่อนไขคือต้อง **จัดลำดับ prompt ให้ส่วนคงที่อยู่ต้น ส่วนที่แปรผันอยู่ท้าย** — วาง timestamp หรือชื่อผู้ใช้ไว้บรรทัดแรกเมื่อไหร่ prefix จะไม่ match เลยสักครั้ง. ส่วนลดเท่าไร cache อยู่นานแค่ไหน มีค่าเขียน cache หรือไม่ ต่างกันตาม provider ต้องอ่าน doc ของเจ้าที่ใช้.\n\n### cache key และ invalidation\n\nจุดที่พังบ่อยที่สุดไม่ใช่ตัว cache แต่เป็น **key**. คำตอบหนึ่งผูกกับสี่อย่างที่เปลี่ยนได้ ถ้าไม่ใส่ลงใน key จะเสิร์ฟคำตอบเก่าเงียบ ๆ: **prompt version** (`prompt-versioning`), **model และ parameter** (คนละ temperature คือคนละพฤติกรรม), **version ของ context/knowledge base** (ค่าธรรมเนียมปรับใหม่แล้วแต่ cache ยังตอบเรตเก่า คือ bug ที่ offline eval จับไม่ได้) และ **scope: tenant/user/locale** (กันคำตอบรั่วข้ามขอบเขต). เสริมด้วย TTL ที่สั้นพอให้ความเสียหายของคำตอบเก่ายังรับได้ และ invalidate ทันทีเมื่อ publish ของใหม่. ส่วนที่ cache ช่วยไม่ได้ ให้กันด้วยเพดานที่ gateway: budget/quota ต่อ tenant และ max_tokens ต่อ request.\n\n```mermaid\nflowchart TD\n  R[\"Incoming request\"] --> K[\"Build cache key\"]\n  K --> E{\"Exact-match hit?\"}\n  E -->|yes| RET[\"Return cached answer\"]\n  E -->|no| S{\"Semantic hit above threshold?\"}\n  S -->|yes| RET\n  S -->|no| B{\"Tenant budget left?\"}\n  B -->|no| D[\"Reject or degrade to cheaper model\"]\n  B -->|yes| P[\"Call model with cached prefix\"]\n  P --> L[\"Log tokens and cost\"]\n  L --> W[\"Write to cache with TTL\"]\n  W --> RET\n```\n\n## ตัวอย่าง (support assistant ของ fintech — ตัวเลขสมมติทั้งหมด)\n\nหน่วยราคาสมมติ (ไม่ใช่ราคาจริงของ provider ใด ใช้ดูสัดส่วนเท่านั้น): input 1 หน่วย/1,000 tokens, output 4 หน่วย/1,000 tokens, traffic 100,000 request ต่อเดือน.\n\nBaseline ต่อ 1 request: input 4,000 tokens = system prompt 1,200 + few-shot 800 + เอกสารที่ retrieve มา 1,600 + คำถามผู้ใช้ 400; output 500 tokens.\n\n```\ncost/req = 4,000/1,000 × 1  +  500/1,000 × 4  =  4 + 2 = 6 หน่วย\nต่อเดือน  = 100,000 × 6 = 600,000 หน่วย\n```\n\noutput เป็นแค่ 500 จาก 4,500 tokens (≈11% ของ token) แต่กินไป 2 จาก 6 หน่วย (33% ของ cost) — ผลของราคาสองฝั่งที่ไม่เท่ากัน. ทีนี้ไล่ lever ทีละชั้น:\n\n1. **exact-match + semantic cache** วัด hit rate รวมได้ 10% → เหลือ 90,000 call จริง: 90,000 × 6 = **540,000**\n2. **prefix caching** บน 2,000 tokens แรก (system + few-shot) สมมติ cached prefix ถูกคิดที่ 0.1 เท่าของราคา input ปกติ:\n   `input = (2,000/1,000 × 1 × 0.1) + (2,000/1,000 × 1) = 0.2 + 2 = 2.2` → cost/req = 2.2 + 2 = 4.2 → 90,000 × 4.2 = **378,000**\n3. **ตัด context** จาก top-8 เหลือ top-4 (เอกสาร 1,600 → 800 tokens) หลังวัดว่า recall ไม่ตก:\n   `input = 0.2 + ((800 + 400)/1,000 × 1) = 0.2 + 1.2 = 1.4` → cost/req = 1.4 + 2 = 3.4 → 90,000 × 3.4 = **306,000**\n\nรวมแล้ว 600,000 → 306,000 คือ **ลดลง 49%** โดยยังใช้โมเดลเดิมและได้คำตอบสดใน 90% ของ request. โครงสร้าง cost เปลี่ยนไปแล้วด้วย: output กลายเป็น 2 จาก 3.4 หน่วย (≈59% ของที่เหลือ) — lever ถัดไปจึงเป็นการคุมความยาวคำตอบหรือ route ไปโมเดลถูกลง ไม่ใช่บีบ input ต่อ. ระวังว่าขั้นที่ 3 แลก cost กับคุณภาพตรง ๆ ต้องมีตัวเลข recall ยืนยัน.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"เปิด semantic cache แล้วประหยัดฟรี\"** — ยังจ่ายค่า embedding ทุกคำถามแม้ตอน miss และค่า vector store.\n- **\"cache hit rate น่าจะสูง เพราะลูกค้าถามซ้ำ ๆ\"** — hit rate ต้อง **วัด** ไม่ใช่เดา. tag ทุก response ว่ามาจาก exact hit / semantic hit / live call (`llm-observability`).\n- **\"ดู cost จาก dashboard ของ provider ตอนสิ้นเดือนก็พอ\"** — ช้าไปหนึ่งเดือน และเป็นก้อนเดียวจนบอกไม่ได้ว่า route ไหนเป็นตัวกิน. ต้อง log token ทั้งสองฝั่งต่อ request แล้วคำนวณ cost เองแบบ near-real-time ให้ alert ทำงานได้ระหว่างเดือน.\n\n## ขีดจำกัด / trade-off\n\n- **caching ไม่คุ้มเมื่อ traffic เป็น long-tail หรือ personalized สูง** — ถ้าคำถามแทบไม่ซ้ำ hit rate จะต่ำจนไม่คุ้มกับ infrastructure และ bug ที่เพิ่มมา. วัดจาก log จริงก่อนตัดสินใจสร้าง.\n- **ห้าม cache ข้าม user เมื่อคำตอบมีข้อมูลส่วนบุคคล** — คำตอบที่มี PII หรืออิงข้อมูลบัญชีต้อง scope ด้วย user/tenant ใน key หรือไม่ cache เลย. leak ข้ามผู้ใช้เป็น incident ด้าน privacy (`pii-and-moderation`).\n- **semantic cache ไม่เหมาะกับโดเมนที่ผิดแล้วแพง** — ค่าธรรมเนียม เงื่อนไขสัญญา คำแนะนำการเงิน: false hit ครั้งเดียวอาจแพงกว่าที่ประหยัดทั้งเดือน. ถ้าใช้ ให้จำกัดที่ FAQ ที่ curated แล้ว และ sample cache hit ไปวัด false hit rate จริง.\n- **cache เพิ่ม stateful component และทำให้ eval เพี้ยน** — มี eviction, ช่วง cold หลัง deploy, invalidation bug; และ online metric ปนกันระหว่างคำตอบสดกับคำตอบเก่าถ้าไม่ tag. ทีมที่ traffic ยังน้อยควรเริ่มจาก lever ที่ไม่มี state ก่อน.\n- **prefix caching ก็มีเงื่อนไข** — ต้องมี prefix ที่ซ้ำจริงและถูกใช้ซ้ำภายในอายุ cache; ถ้า traffic บางหรือ prompt ถูกประกอบใหม่จนต้นไม่ตรง ประโยชน์หายไป และบาง provider คิดค่าเขียน cache แพงกว่า input ปกติ workload ที่ hit น้อยจึงแพงขึ้นกว่าเดิมได้.\n\n## มุมสัมภาษณ์\n\n- **\"บิลโตขึ้นสามเท่าในเดือนเดียว จะหาสาเหตุยังไง\"** → log token สองฝั่งต่อ request พร้อม tag (route, prompt version, tenant) → แยกว่าจำนวน request เพิ่มหรือ token ต่อ request เพิ่ม → ค่อยเลือก lever ให้ตรงสาเหตุ. ตอบว่า \"เปิด cache\" ทันทีคือข้ามขั้นวัด และบ่อยครั้งบิลส่วนใหญ่มาจาก endpoint เดียว.\n- **\"จะ cache คำตอบ LLM ยังไงให้ปลอดภัย\"** → cache key ที่รวม prompt version + model + context version + scope ของ tenant/user, TTL, invalidate ตอน publish, และคลาสคำถามที่ห้าม cache.\n- **\"ต้องลด cost 40% โดยคุณภาพห้ามตก\"** → ไล่ตามลำดับความเสี่ยง: prefix caching + ตัด context ที่ไม่ถูกใช้ (เสี่ยงต่ำ) → cache คำตอบของคำถามซ้ำ (กลาง) → routing ไปโมเดลถูกลง (สูงสุด) แล้วผูกทุกขั้นกับตัวเลขคุณภาพก่อน/หลัง.\n- **\"tenant เดียวใช้งบหมดทั้งระบบ จะกันยังไง\"** → quota ต่อ tenant ที่ gateway + policy ตอนงบหมด (ปฏิเสธ, ลดโมเดล, เข้าคิว) ที่ตกลงกับ product ล่วงหน้า.\n",
+  "recall_checks": [
+    {
+      "q": "cost ของระบบ LLM คำนวณจากอะไร และทำไม input กับ output ต้องคิดแยกกัน?",
+      "expected_answer": "cost = จำนวน request × cost ต่อ request โดย cost ต่อ request = input tokens × ราคา input + output tokens × ราคา output ต้องคิดแยกเพราะโดยทั่วไปราคาต่อ token ของ output สูงกว่า input",
+      "type": "short_answer"
+    },
+    {
+      "q": "ความเสี่ยงหลักของ semantic cache คืออะไร?",
+      "expected_answer": "คืนคำตอบของคำถามที่ใกล้กันเชิงความหมายแต่คนละเจตนา (false hit)",
+      "type": "mcq",
+      "options": [
+        "ทำให้ latency สูงขึ้นเพราะต้อง embed ทุกคำถามก่อนเสมอ จึงช้ากว่าการเรียกโมเดลตรง ๆ ในเกือบทุกกรณี",
+        "คืนคำตอบของคำถามที่ใกล้กันเชิงความหมายแต่คนละเจตนา (false hit)",
+        "ทำให้ token ต่อ request สูงขึ้น เพราะต้องแนบคำถามใกล้เคียงที่หาเจอเข้าไปใน prompt ด้วยทุกครั้ง"
+      ]
+    },
+    {
+      "q": "cache key ของคำตอบ LLM ต้องประกอบด้วยอะไรเป็นอย่างน้อย เพื่อไม่ให้เสิร์ฟคำตอบเก่า?",
+      "expected_answer": "prompt version, model, version ของ knowledge base และ scope ของ tenant",
+      "type": "mcq",
+      "options": [
+        "timestamp ของ request เพื่อให้ทุก key ไม่ซ้ำกัน จะได้มั่นใจว่าไม่มีคำตอบเก่าค้างอยู่ในระบบเลย",
+        "จำนวน token ของคำตอบที่คาดว่าจะได้ เพื่อให้ประมาณ cost ล่วงหน้าและตั้ง budget ต่อ request ได้",
+        "prompt version, model, version ของ knowledge base และ scope ของ tenant"
+      ]
+    },
+    {
+      "q": "prefix caching ฝั่ง provider ต่างจาก response cache อย่างไร?",
+      "expected_answer": "response cache ตัดการเรียกโมเดลทิ้งทั้ง call แล้วคืนคำตอบเดิม ส่วน prefix caching ยังเรียกโมเดลจริงทุกครั้ง เพียงแต่ส่วนต้น prompt ที่ซ้ำถูกคิดถูกลงและเร็วขึ้น คำตอบจึงยังสด",
+      "type": "short_answer"
+    },
+    {
+      "q": "ควรจัดลำดับ prompt อย่างไรเพื่อให้ prefix caching ใช้งานได้จริง?",
+      "expected_answer": "วางส่วนที่คงที่ไว้ต้น prompt แล้ววางส่วนที่แปรผันไว้ท้าย",
+      "type": "mcq",
+      "options": [
+        "วางส่วนที่คงที่ไว้ต้น prompt แล้ววางส่วนที่แปรผันไว้ท้าย",
+        "วางชื่อผู้ใช้และ timestamp ไว้บรรทัดแรกเสมอ เพื่อให้ provider แยก cache ของแต่ละผู้ใช้ออกจากกันได้ชัดเจน",
+        "สลับลำดับ few-shot example ในทุก request เพื่อไม่ให้โมเดลยึดติดกับรูปแบบเดิมจนคำตอบซ้ำซาก"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "GPTCache: An Open-Source Semantic Cache for LLM Applications Enabling Faster Answers and Cost Savings",
+      "source": "Fu Bang, Proceedings of the 3rd Workshop for Natural Language Processing Open Source Software (NLP-OSS), EMNLP 2023",
+      "why": "อ่านการออกแบบ semantic cache จริง ทั้งเรื่อง embedding, similarity threshold และการวัด hit rate"
+    },
+    {
+      "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention",
+      "source": "Kwon et al., SOSP 2023 (arXiv:2309.06180)",
+      "why": "deep-dive เสริม (ไม่จำเป็นต่อการเข้าใจบทนี้): อ่านว่า KV cache ในชั้น serving engine ของฝั่ง provider ทำงานอย่างไร จึงเป็นเหตุผลว่าทำไมการแชร์ prefix ที่ซ้ำกันถึงลดงานประมวลผลได้จริง"
+    },
+    {
+      "title": "SGLang: Efficient Execution of Structured Language Model Programs",
+      "source": "Zheng et al., NeurIPS 2024 (arXiv:2312.07104)",
+      "why": "deep-dive เสริม (ไม่จำเป็นต่อการเข้าใจบทนี้): อ่าน RadixAttention กลไก reuse KV cache ข้าม request ในชั้น infra ฝั่ง provider ที่อยู่เบื้องหลัง prefix caching"
+    },
+    {
+      "title": "AI Engineering — บทว่าด้วย Inference Optimization",
+      "source": "Chip Huyen, 'AI Engineering' (O'Reilly, 2025), บท Inference Optimization",
+      "why": "อ่านภาพรวมว่า cost, latency และคุณภาพถูกแลกกันอย่างไรในระบบ production"
+    }
+  ]
+}

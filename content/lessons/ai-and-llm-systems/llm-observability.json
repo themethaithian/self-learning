@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "llm-observability",
+  "version": 1,
+  "title_en": "LLM Observability",
+  "est_minutes": 10,
+  "body_md": "# LLM Observability\n\n## ทำไมถึงสำคัญ\n\nลูกค้าโทรมาบอกว่า \"bot ตอบสถานะเคสผิด เมื่อวานตอนบ่าย\" แล้วคุณต้องหาให้เจอว่าพังตรงไหน. ปัญหาคือหนึ่ง user request ในระบบ LLM ไม่ได้มี LLM call เดียว — มี guardrail, retrieval, LLM call หลายรอบ, tool call, retry, fallback ปนกันอยู่ log แบบบรรทัดต่อบรรทัดจึงต่อกันเป็นเรื่องเดียวไม่ได้. และที่อันตรายกว่านั้น dashboard ระบบเขียวหมดได้ทั้งที่คุณภาพคำตอบพังไปแล้วหลายวัน.\n\n## แก่นของแนวคิด\n\n### 1. หน่วยของ observability คือ trace ไม่ใช่ log line\n\nนี่คือปัญหาเดียวกับ distributed tracing: ผูกทุกอย่างที่เกิดใน request เดียวด้วย **trace id** เดียว แล้วแต่ละขั้นตอนเป็น **span** ที่มี parent/child, เวลาเริ่ม-จบ และ attribute ของตัวเอง. ต่างกันตรงที่ span ในระบบ LLM ไม่ใช่ \"HTTP call ไป service B\" แต่คือ prompt/completion หนึ่งรอบ, tool call หนึ่งครั้ง, retrieval หนึ่งครั้ง, guardrail หนึ่งด่าน. ถ้าไม่มี trace id ร้อยไว้ คุณจะได้ log กระจัดกระจายจากหลาย component ที่ประกอบกลับเป็นเรื่องเดียวไม่ได้.\n\n```mermaid\nflowchart TD\n  R[\"Trace: one user request\"] --> A[\"span: input guardrail\"]\n  A --> B[\"span: retrieval\"]\n  B --> C[\"span: LLM call 1 - plan\"]\n  C --> D[\"span: tool call get_case_status\"]\n  D --> E[\"span: LLM call 2 - answer\"]\n  E --> F[\"span: output guardrail\"]\n  F --> G[\"span: stream to client\"]\n  C -.-> M1[\"attrs: model + params + prompt_version\"]\n  D -.-> M2[\"attrs: tool name + args + result status\"]\n  E -.-> M3[\"attrs: tokens in/out + cost + finish reason\"]\n  B -.-> M4[\"attrs: chunk ids actually put in prompt\"]\n```\n\n### 2. สิ่งที่ต้องเก็บต่อหนึ่ง request\n\n- **prompt version id** — ถ้าไม่มี คุณ rollback ไม่เป็น เพราะไม่รู้ว่า traffic ที่พังใช้ prompt ตัวไหน (`prompt-versioning`)\n- **model id + parameter** ที่ใช้จริง (เช่น temperature, max output tokens) — โมเดลถูกสลับหรืออัปเวอร์ชันได้โดยที่โค้ดไม่เปลี่ยน\n- **input/output จริง** หรือฉบับ redact/hash ถ้าเป็นข้อมูลอ่อนไหว (ดูข้อ 5)\n- **token in/out** และ cost ที่คำนวณจากมัน\n- **latency อย่างน้อยสองตัว**: TTFT (time to first token) กับ total — ระบบที่ stream ให้ user เห็นตัวอักษรแรกเร็ว รู้สึกเร็วกว่ามากแม้ total เท่ากัน (`token-streaming-sse`)\n- **tool call ที่เกิดขึ้น**: ชื่อ tool, argument, ผลลัพธ์หรือ error status\n- **retrieval context ที่ใช้จริง**: id ของ chunk ที่ถูกใส่เข้า prompt ไม่ใช่แค่ \"ค้นเจอกี่ชิ้น\"\n- **error, retry count, fallback** ที่ยิงไป (`retries-fallback-multi-provider`)\n- **user id / session id / request id** เพื่อย้อนจากคำร้องเรียนของลูกค้ามาที่ trace ให้ได้\n\nหลักตัดสินใจง่าย ๆ: ต้อง **reconstruct ได้ว่า prompt ที่ส่งเข้าโมเดลในนาทีนั้นหน้าตาอย่างไร** ไม่ใช่เดาจาก template ปัจจุบัน.\n\n### 3. Metric ที่ควรมี dashboard และ alert\n\n- latency p50/p95/p99 แยก TTFT กับ total — อย่าดู average อย่างเดียว มันกลบ tail\n- error rate และ rate-limit rate **แยกกัน** — โดน throttle เป็นเรื่อง capacity ไม่ใช่ bug ในโค้ด\n- token และ cost ต่อวัน / ต่อ user / ต่อ feature (`caching-and-cost-control`)\n- cache hit rate — ตกเมื่อไหร่ cost เด้งทันทีทั้งที่ traffic เท่าเดิม\n- fallback rate ไปโมเดลหรือ provider สำรอง และ escalation/handoff rate ไป human (`handoff-orchestration`)\n- refusal rate — ปฏิเสธเยอะผิดปกติมักแปลว่า prompt หรือ guardrail เพิ่งเปลี่ยน\n- eval score จาก sample ของ traffic จริง (`online-eval-and-ab-testing`)\n\n### 4. จุดที่ต่างจาก observability ปกติ: quality ต้องเป็น signal ด้วย\n\nService ทั่วไปแยก \"ถูก\" กับ \"พัง\" ได้ด้วย status code. LLM ตอบ 200 พร้อมข้อความที่อ่านลื่นแต่ผิดข้อเท็จจริงได้สบาย — นี่คือ **silent quality regression**: latency ปกติ, error rate ศูนย์, cost เท่าเดิม, แต่คำตอบแย่ลงตั้งแต่ deploy เมื่อวาน และไม่มี alert ตัวไหนดัง. ดังนั้น quality signal ต้องอยู่ในระบบ observability ไม่ใช่อยู่แค่ในไฟล์ eval ที่รันตอน CI:\n\n- **sampled automated judge** บน production traffic (`llm-as-judge`) เก็บผลเป็น metric ที่มี dashboard เหมือน error rate\n- **human review** บน sample — โดยเฉพาะ trace ที่มี fallback, refusal หรือ confidence ต่ำ (`confidence-and-fallback`)\n- **user feedback** ทั้ง explicit (thumbs) และ implicit (ถามซ้ำ, กด escalate, ปิดหน้าจอกลางคัน)\n\n### 5. Log คือข้อมูลลูกค้า\n\nเก็บ prompt/completion คือเก็บสิ่งที่ลูกค้าพิมพ์เข้ามา ซึ่งเต็มไปด้วย PII. ต้อง redact ก่อนเขียนลง trace (`pii-and-moderation`), ตั้ง retention policy ให้ payload หมดอายุ, และจำกัดสิทธิ์เข้าถึง trace ที่มี raw text. log ที่เก็บมั่วซั่วเป็นทั้ง cost และ liability พร้อมกัน.\n\n## ตัวอย่าง (fintech: dispute assistant ตอบสถานะผิด)\n\nลูกค้าบ่นว่า bot ตอบ \"เคสของคุณปิดแล้ว\" ทั้งที่เคสยังเปิดอยู่. เอา session id ไปเปิด trace แล้วไล่ทีละ span:\n\n1. input guardrail — ผ่าน\n2. retrieval — ดึง 5 chunk เข้า prompt ซึ่งเป็นเอกสารนโยบาย \"ปิดเคสอัตโนมัติเมื่อครบ 45 วัน\" ไม่มี chunk ไหนเป็นสถานะเคสของลูกค้าคนนี้เลย\n3. LLM call 1 — ตัดสินใจเรียก tool `get_case_status`\n4. tool span — คืน error: timeout\n5. retry — timeout อีกครั้ง แล้วเลิก\n6. LLM call 2 — ตอบโดยไม่มีผลจาก tool จึงอนุมานเอาจากนโยบาย 45 วันที่ retrieval ป้อนให้\n\nถ้ามีแค่ log ระดับ request คุณจะเห็นบรรทัดเดียวว่า \"200, 3.1s, ok\" แล้วจบ. trace บอกรากของปัญหาได้ทันทีว่าเป็น **tool timeout ที่ไม่ถูกปฏิบัติเหมือน error** — prompt ไม่ได้สั่งให้ยอมบอกว่าไม่รู้เมื่อ tool ล้มเหลว โมเดลเลยเดาจาก context ที่บังเอิญมีอยู่. fix สองจุด: ทำให้ tool error เป็น hard stop และตั้ง alert ที่ tool error rate.\n\nเราสรุปแบบนี้ได้เพราะเก็บ **chunk id ที่เข้า prompt จริง** ไว้ใน span. ถ้าเก็บแค่ `retrieval: ok` จะไม่มีทางรู้ว่านโยบาย 45 วันโผล่มาจากไหน และจะสรุปผิดว่าโมเดล hallucinate เอง.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"log request กับ response ก็พอแล้ว\"** — บอกได้แค่ว่าคำตอบสุดท้ายแย่ ไม่ได้บอกว่าแย่เพราะ retrieval ผิด, tool ล้ม, หรือ prompt เวอร์ชันใหม่ — bug อยู่ที่ขั้นตอนกลาง\n- **\"dashboard เขียวหมด แปลว่าระบบสุขภาพดี\"** — metric ระบบจับ silent quality regression ไม่ได้เลย เพราะคำตอบที่ผิดก็ยังคืน 200 ในเวลาปกติ\n- **\"เก็บทุกอย่างดิบ ๆ ไว้ก่อน เดี๋ยวค่อยคิดเรื่อง privacy\"** — retention กับ redaction ย้อนหลังทำยากกว่าที่คิด และระหว่างนั้นคือช่วงที่ความเสี่ยงสะสม\n- **\"observability คือการซื้อ tool มาเสียบ\"** — ส่วนที่ยากคือการตัดสินใจว่าอะไรควรเป็น span, attribute ไหนจำเป็น, sample เท่าไหร่, redact อะไร\n\n## ขีดจำกัด / trade-off\n\n- **ต้นทุนของ trace เอง** — span ที่เก็บ prompt/completion เต็มรูปแบบใหญ่กว่า log ปกติมาก เพราะ prompt เดียวอาจยาวหลายพัน token. ทางออกคือ sampling rate ต่ำสำหรับ trace ปกติ, เก็บเต็มเฉพาะ trace ที่ error หรือคะแนนต่ำ, และแยก retention สั้นสำหรับ payload กับยาวสำหรับ metric ที่ aggregate แล้ว\n- **latency overhead** — export span แบบ synchronous ใน critical path ทำให้ user ช้าลง; ทำ async/batch แล้วแลกด้วยความเสี่ยงว่าจะเสีย trace เมื่อ process ตายกะทันหัน\n- **liability** — trace ที่มี raw customer text คือ data store อีกชุดที่ต้องมี access control, audit และแผนตอบสนองเมื่อรั่ว\n- **quality metric จาก sample ก็ noisy** — คะแนนจาก sample เล็กแกว่งตามธรรมชาติ ตั้ง alert ตรง ๆ บนคะแนนรายวันจะได้ false alarm เยอะ ควรดูเป็น trend เทียบ baseline ไม่ใช่ threshold แข็ง ๆ\n- **เมื่อไหร่ลงทุนเบาได้** — internal prototype ที่มีคนอ่าน output ทุกครั้งก่อนใช้ เก็บ prompt/response/token/latency ลงตารางเดียวก็พอ. แต่ทันทีที่คำตอบถึงลูกค้าโดยตรง หรือไป trigger action ทางการเงิน ต้นทุนของการเดาสุ่มจะสูงกว่าค่า trace มาก\n\n## มุมสัมภาษณ์\n\n- **\"user บอกว่าคำตอบผิดเมื่อวาน คุณจะ debug ยังไง\"** → ตอบเป็นลำดับ: จาก session id → trace → ไล่ span ทีละขั้น (retrieval ให้อะไรมา, tool คืนอะไร, prompt version ไหน) ไม่ใช่ \"ลองถามใหม่ดู\"\n- **\"จะรู้ได้ยังไงว่าคุณภาพตกโดยที่ไม่มีใครร้องเรียน\"** → ต้องมี quality signal ต่อเนื่องใน production: sampled judge + user feedback + review trace ที่ fallback/refusal ไม่ใช่พึ่ง metric ระบบ\n- **\"จะเก็บอะไรบ้างใน log ของ LLM call\"** → เช็กว่านึกถึง prompt version, model+params, token, TTFT vs total, tool call, retrieval context, cost, session id — และ redaction ด้วยไหม\n- **\"เก็บ prompt ของลูกค้าไว้ตลอดไปได้ไหม\"** → คำตอบที่ผ่านคือ redact + retention + จำกัดสิทธิ์ ไม่ใช่ \"เก็บไว้หมดจะได้ debug ง่าย\"\n\n## ปิดบท\n\nObservability คือฐานที่ทำให้ทุกอย่างในบทนี้ทำงานได้จริง: `prompt-versioning` จะ rollback ได้ก็ต่อเมื่อรู้ว่าเวอร์ชันไหนพัง; การทยอย rollout ต้องมี metric แยกกลุ่มถึงจะเทียบได้; `retries-fallback-multi-provider` จะ tune ได้ต้องเห็น fallback rate จริง; `caching-and-cost-control` ต้องเห็น token ต่อ feature; และ eval ในบทที่แล้วจะย้ายจาก offline มาวัด production ได้ก็เพราะมี trace ให้ sample. ไม่มี observability ระบบ LLM ก็ยังรันได้ — แค่ debug ไม่ได้ และไม่รู้ว่าพังตั้งแต่เมื่อไหร่.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม log แบบบรรทัดต่อบรรทัดจึง debug ระบบ LLM ไม่พอ และต้องใช้ trace/span แทน?",
+      "expected_answer": "เพราะหนึ่ง user request มีหลายขั้นตอน (retrieval, LLM call หลายรอบ, tool call, retry, fallback) ที่ต้องผูกด้วย trace id เดียวและแยกเป็น span จึงจะรู้ว่าพังที่ขั้นไหน ไม่ใช่รู้แค่ว่าคำตอบสุดท้ายแย่",
+      "type": "short_answer"
+    },
+    {
+      "q": "silent quality regression ในระบบ LLM หมายถึงอะไร?",
+      "expected_answer": "คุณภาพคำตอบแย่ลงได้ทั้งที่ latency, error rate และ cost ยังปกติ",
+      "type": "mcq",
+      "options": [
+        "ระบบเริ่มคืน error ถี่ขึ้นทีละน้อยจนกว่าจะข้าม threshold ของ alert ที่ทีมตั้งไว้แล้วค่อยมีคนเห็น",
+        "คุณภาพคำตอบแย่ลงได้ทั้งที่ latency, error rate และ cost ยังปกติ",
+        "cost ต่อ request ค่อย ๆ สูงขึ้นเงียบ ๆ เพราะ cache hit rate ตกลงโดยที่ traffic ยังเท่าเดิมทุกวัน"
+      ]
+    },
+    {
+      "q": "ต้องเก็บ field ใดไว้ในแต่ละ trace เพื่อให้ rollback prompt ตอนคุณภาพตกทำได้จริง และทำไม?",
+      "expected_answer": "prompt version id เพราะถ้าไม่รู้ว่า traffic ที่พังใช้ prompt เวอร์ชันไหน ก็ระบุไม่ได้ว่าต้องย้อนกลับไปเวอร์ชันใด",
+      "type": "short_answer"
+    },
+    {
+      "q": "latency ของ LLM call ควรเก็บอย่างน้อยกี่ตัวและตัวไหน?",
+      "expected_answer": "TTFT (time to first token) และ total latency",
+      "type": "mcq",
+      "options": [
+        "TTFT (time to first token) และ total latency",
+        "ค่า average latency ของทุก request รวมกันในหนึ่งวัน เพราะเพียงพอต่อการดูภาพรวมของระบบแล้ว",
+        "เวลาที่ใช้ในขั้น retrieval อย่างเดียว เพราะเป็นขั้นตอนที่ช้าที่สุดเสมอในระบบ LLM ทุกแบบ"
+      ]
+    },
+    {
+      "q": "ข้อใดอธิบาย trade-off ของการเก็บ prompt และ completion ดิบไว้ใน trace ได้ถูกต้อง?",
+      "expected_answer": "มันคือข้อมูลลูกค้า จึงต้อง redact ตั้ง retention และจำกัดสิทธิ์เข้าถึง",
+      "type": "mcq",
+      "options": [
+        "prompt ที่ยาวทำให้ตัว export ส่ง span ไม่ทัน ระบบจึงต้องลดขนาด context window ลงเพื่อให้ log ครบทุก request",
+        "ควรเก็บ input/output ดิบไว้ทั้งหมดเสมอ เพราะเป็นข้อมูลชุดเดียวที่ทำให้คำนวณ cost ต่อ request ย้อนหลังได้อย่างแม่นยำ",
+        "มันคือข้อมูลลูกค้า จึงต้อง redact ตั้ง retention และจำกัดสิทธิ์เข้าถึง"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Dapper, a Large-Scale Distributed Systems Tracing Infrastructure",
+      "source": "Sigelman et al., Google Technical Report dapper-2010-1, 2010",
+      "why": "อ่านต้นทางของแนวคิด trace/span และเหตุผลว่าทำไมต้อง sampling เมื่อ trace มีต้นทุน"
+    },
+    {
+      "title": "OpenTelemetry — Semantic Conventions for Generative AI",
+      "source": "OpenTelemetry Semantic Conventions, หมวด Generative AI — ค้นจาก opentelemetry.io/docs/specs/semconv/",
+      "why": "อ่านว่ามาตรฐานกลางกำหนด attribute อะไรบ้างสำหรับ span ของ LLM call และ tool call — spec ยังเป็น experimental ตำแหน่งเอกสารย้ายได้ ให้ค้นจากหน้า semantic conventions ปัจจุบัน"
+    },
+    {
+      "title": "Site Reliability Engineering — Chapter 6: Monitoring Distributed Systems",
+      "source": "Google SRE Book (O'Reilly, 2016), sre.google/sre-book/monitoring-distributed-systems/",
+      "why": "อ่านหลักการ four golden signals และวินัยเรื่อง alert ที่ต้องมี action รองรับ"
+    },
+    {
+      "title": "Designing Machine Learning Systems — Chapter 8: Data Distribution Shifts and Monitoring",
+      "source": "Chip Huyen (O'Reilly, 2022)",
+      "why": "อ่านว่าทำไม metric ระบบอย่างเดียวไม่พอ และ quality/feedback signal ต้องอยู่ในระบบ monitoring ด้วย"
+    }
+  ]
+}

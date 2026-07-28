@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "retries-fallback-multi-provider",
+  "version": 1,
+  "title_en": "Retries, Fallback, and Multi-Provider Setups",
+  "est_minutes": 10,
+  "body_md": "# Retries, Fallback, and Multi-Provider Setups\n\n## ทำไมถึงสำคัญ\n\nLLM API คือ network dependency ที่ล้มได้ — ต่างกันตรงที่ latency สูงกว่า ถูก throttle ง่ายกว่า และมี failure ที่ service ปกติไม่มีคือ \"ตอบสำเร็จแต่เนื้อหาผิดรูป\". ฟีเจอร์ที่เรียก LLM โดยไม่มี retry policy จะมี availability เท่ากับของ provider พอดี. คำถามระดับ senior คือ \"retry error ตัวไหน กี่ครั้ง ภายในเวลาเท่าไหร่ และถ้าไม่ได้จะ degrade ไปทางไหน\".\n\n## แก่นของแนวคิด\n\n### 1. แยก retryable กับ non-retryable ก่อนอย่างอื่น\n\n| ประเภท | ตัวอย่าง | ทำอะไร |\n| --- | --- | --- |\n| retryable (transient) | throttle (429), server error (5xx), overloaded, connect/read timeout | retry ได้ |\n| non-retryable (deterministic) | request ผิด schema (400), auth ผิด, input เกิน context window, content ถูกบล็อก | fail fast |\n| ก้ำกึ่ง | ตอบสำเร็จแต่ parse ไม่ผ่าน / ไม่ตรง schema | retry ได้จำกัดครั้ง แต่รากปัญหาอยู่ที่ prompt (`input-output-validation`) |\n\nretry error กลุ่ม deterministic คือการจ่ายเงินซื้อคำตอบผิดซ้ำ: request เดิม prompt เดิม ยิงกี่ครั้งก็ได้ผลเดิม แถมกิน retry budget ที่ควรเก็บไว้ให้ failure จริง. ตั้ง **default = ไม่ retry** แล้วเปิดเป็นรายชนิด error ที่พิสูจน์แล้วว่า transient.\n\n### 2. retry ให้ถูก: backoff + jitter + เพดาน + deadline\n\n- **exponential backoff** — หน่วงเพิ่มเป็นเท่าตัวทุกครั้ง ให้ปลายทางที่กำลังล้นได้หายใจ\n- **jitter** — สุ่มเวลาหน่วงจริงในช่วง 0 ถึงค่า backoff ที่คำนวณได้ (full jitter). ถ้าทุก client หน่วงเท่ากันเป๊ะ client ที่ล้มพร้อมกันจะกลับมายิงพร้อมกันอีกเป็นระลอก — thundering herd / retry storm ที่ซ้ำเติม provider ที่กำลังฟื้น\n- **เพดานจำนวนครั้ง + overall deadline** — retry ไม่จำกัดคือการ DoS ตัวเอง แต่ deadline สำคัญกว่าจำนวนครั้ง เพราะแต่ละ attempt กินเวลาไม่เท่ากัน ต้องมีทั้ง per-attempt timeout และ budget รวม อันไหนถึงก่อนหยุดอันนั้น\n- **retry budget ระดับ service** — คุมสัดส่วน retry ต่อ traffic กัน retry amplification ที่ขยาย outage เล็กเป็น cascading failure\n\nตัวอย่าง policy (ต้อง tune เอง): base 200 ms, factor 2, retry สูงสุด 3 ครั้ง, per-attempt timeout 3 วินาที, overall deadline 8 วินาที → หน่วงจริงสุ่มในช่วง [0, 200 ms], [0, 400 ms], [0, 800 ms]. นับเป็น 1 initial + retry 3 ครั้ง = 4 attempts; แค่เวลาของ 4 attempts เฉย ๆ (ยังไม่นับเวลาหน่วง backoff ที่สะสมเพิ่มอีก) ก็ 4 x 3 = 12 วินาที เกิน deadline 8 วินาทีไปแล้ว — deadline จึงเป็นตัวตัดจริง จำนวนครั้งเป็นเพดานสำรอง.\n\n### 3. idempotency: retry ขา generate ได้ ขา execute ไม่ได้\n\nใน agentic loop (`agentic-tool-loop`) สองขานี้ความเสี่ยงไม่เท่ากัน. **ขา generate** (ให้โมเดลเสนอ tool call) side effect เดียวคือ token ที่จ่าย retry ได้ตามปกติ. แต่ **ขา execute** (tool ที่ทำ action จริง เช่นโอนเงิน) timeout **ไม่ได้แปลว่าไม่สำเร็จ** แต่แปลว่า *ไม่รู้ผล*: ปลายทางอาจทำเสร็จแล้วแต่ response หายกลางทาง retry ไร้เดียงสาจึงกลายเป็นโอนซ้ำ.\n\nทางแก้คือ **idempotency key** — ตัวระบุที่ผูกกับ \"เจตนาหนึ่งครั้ง\" ของผู้ใช้ ส่งไปกับทุก attempt ปลายทางเจอ key เดิมก็คืนผลเดิมโดยไม่ทำงานซ้ำ. จุดที่พลาดบ่อย: key ต้องเกิดจาก user intent (ตอนกดยืนยัน) **ไม่ใช่สุ่มใหม่ทุกครั้งที่ retry** และอย่าให้โมเดลสร้างเองเพราะ output เป็น non-deterministic; tool ที่ไม่รองรับ idempotency ห้าม retry อัตโนมัติ ให้ไปเช็คสถานะก่อน (`tool-error-handling`). ผลคือ retry policy ของสองขาต้องคนละชุด ไม่ใช่ห่อทั้ง loop ด้วย `retry(3)` ตัวเดียว.\n\n### 4. circuit breaker: หยุด retry เมื่อมันไม่ใช่แค่สะดุด\n\nถ้า provider ล่มยาว การ retry ทุก request เสียสองต่อ — เพิ่ม load ให้ระบบที่กำลังเจ็บ และทำให้ผู้ใช้ทุกคนรอจน deadline หมดก่อนได้ error. breaker ให้ request ถัดไป **fail fast ไป fallback ทันที** และต้องแยกต่อ route.\n\n```mermaid\nstateDiagram-v2\n  [*] --> Closed\n  Closed --> Open: error rate over threshold\n  Open --> HalfOpen: cool-down elapsed\n  HalfOpen --> Closed: probe succeeds\n  HalfOpen --> Open: probe fails\n```\n\n### 5. fallback ladder: degrade เป็นขั้น ไม่ใช่ล้มทั้งฟีเจอร์\n\n```mermaid\nflowchart TD\n  R[\"Incoming request\"] --> CB{\"Breaker open?\"}\n  CB -->|yes| F[\"Enter fallback ladder\"]\n  CB -->|no| P[\"Call primary model\"]\n  P --> E{\"Outcome\"}\n  E -->|success| OK[\"Return answer\"]\n  E -->|\"non-retryable: bad request, auth, blocked\"| X[\"Fail fast, no retry\"]\n  E -->|\"retryable: throttle, 5xx, timeout\"| B{\"Attempts and deadline left?\"}\n  B -->|yes| W[\"Sleep: backoff with full jitter\"]\n  W --> P\n  B -->|no| F\n  F --> S{\"Smaller model or secondary provider\"}\n  S -->|ok| OK\n  S -->|fails| C{\"Cached or canned response\"}\n  C -->|hit| OK\n  C -->|miss| H[\"Tell user plainly, escalate to human\"]\n```\n\nหยุดที่ขั้นแรกที่สำเร็จ ไม่ต้องไล่จนสุด. คุณภาพลดลงทีละขั้นแต่ระบบยังตอบได้ = graceful degradation ดีกว่าล้มทั้งฟีเจอร์ (ขั้น cached/canned เชื่อมกับ `caching-and-cost-control` ขั้นสุดท้ายคือ `handoff-orchestration` / `human-in-the-loop`). สองข้อบังคับ: นิยามให้ชัดว่า **เมื่อไหร่ห้าม fallback** (`confidence-and-fallback`) และทุกขั้นต้อง **วัดแยก** ไม่งั้น dashboard เขียวทั้งที่ผู้ใช้ได้ของด้อยกว่า (`llm-observability`).\n\n### 6. multi-provider: ได้อะไร จ่ายอะไร\n\n**ได้**: ลด single-vendor risk (outage ยาว, เปลี่ยนราคา, deprecate โมเดล), ต่อรอง quota ได้, เลือกเส้นทางต่องานได้ (`llm-gateway-and-routing`). **จ่าย** — ต้นทุนจริงไม่ได้อยู่ที่ adapter:\n\n- **prompt ไม่ portable** — prompt ที่ tune จนดีกับโมเดลหนึ่ง ย้ายไปอีกโมเดลแล้วคุณภาพไม่เท่าเดิม ต้อง tune ใหม่ = maintain หลายชุดต่อฟีเจอร์ (`prompt-versioning`)\n- **สัญญาและพฤติกรรมต่างกัน** — รูปแบบการประกาศ/ส่ง tool call ไม่เหมือนกัน และความกล้าเดากับความเข้มของ safety filter ก็ต่างกัน เคสที่เคยผ่านอาจถูกปฏิเสธที่อีกฝั่ง\n- **ต้อง eval ทุก provider ด้วย golden set เดียวกัน** (`golden-sets-and-offline-eval`) ไม่งั้น fallback = ส่ง traffic ไปเส้นทางที่ไม่เคยวัด\n\n**fallback path ที่ไม่เคย eval และไม่เคยถูกยิงจริง คือ path ที่พังตอนที่ต้องใช้พอดี** — ต้องซ้อมด้วย traffic ส่วนน้อยเป็นประจำ.\n\n## ตัวอย่าง (fintech: ผู้ช่วยใน mobile banking)\n\nผู้ช่วยทำสองงาน: (ก) สรุปรายการใช้จ่ายเดือนนี้ (ข) โอนเงินผ่าน tool `transfer`. ช่วงหัวค่ำ provider เริ่ม throttle ถี่ขึ้น:\n\n- **งาน (ก)** — retry ภายใน deadline 8 วินาที; ไม่สำเร็จ → โมเดลเล็กที่สรุปหยาบกว่า → สรุปที่ cache ไว้พร้อมกำกับ \"ข้อมูล ณ 18:05\" → ข้อความบอกว่าผู้ช่วยขัดข้อง ให้ไปดูหน้า statement\n- **งาน (ข)** — app สร้าง idempotency key ตอนกด \"ยืนยันโอน 5,000\" ไม่ใช่ตอนเรียก tool. ล้ม *ก่อน* execute → retry ปลอดภัย; execute แล้ว timeout → **ไม่ retry อัตโนมัติ** ให้เช็คสถานะด้วย key เดิม. เมื่อ breaker เปิด งานนี้ปิดชั่วคราว เพราะ path ที่มีเงินจริงไม่ควร degrade\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"retry ทุก error ไว้ก่อน ปลอดภัยกว่า\"** — deterministic error ยิงซ้ำก็ได้ผลเดิมและเสียเงินเพิ่ม แถม retry ตอนปลายทางกำลังเจ็บคือการเติม load\n- **\"timeout แปลว่าไม่สำเร็จ\"** — timeout แปลว่าไม่รู้ผล คนละเรื่องกัน และเป็นที่มาของ idempotency ทั้งหมด\n- **\"มี provider ที่สอง = ทนทานแล้ว\"** — เส้นสำรองที่ไม่เคย eval แค่เปลี่ยน \"ล่ม\" เป็น \"ตอบผิดเงียบ ๆ\"\n\n## ขีดจำกัด / trade-off\n\n- **retry แลก latency และเงินกับ success rate** — ทุก retry คือเวลารอที่เพิ่ม บวก token ที่จ่ายซ้ำ. งาน interactive จึง retry ได้น้อยครั้ง deadline สั้น ส่วน batch/async ยาวได้กว่ามาก — policy ชุดเดียวทั้งระบบคือกลิ่นของการออกแบบที่ยังไม่ได้คิด\n- **breaker ที่ตั้ง threshold ผิดทำร้ายเอง** — ไวเกินจะตัด provider ที่แค่สะดุดชั่วครู่ ผู้ใช้ได้ของด้อยกว่าโดยไม่จำเป็น; ช้าเกินก็ไม่ช่วย. และบันได fallback แต่ละขั้นคือพฤติกรรมที่ต้อง eval และ log เพิ่ม\n- **บาง flow ไม่ควรมี fallback เลย** — งานที่ต้อง audit ตัวเลขได้ เช่นอนุมัติวงเงิน ควรปฏิเสธแล้วส่งต่อคน\n- **multi-provider มักมาเร็วเกินไป** — abstraction กดดันให้ใช้เฉพาะความสามารถที่ทั้งสองฝั่งมีร่วมกัน จึงใช้ของเด่นของ provider หลักได้ไม่เต็มที่. ทีมเล็กมักคุ้มกว่าถ้าเริ่มจากรายเดียว + fallback เป็นโมเดลเล็ก แล้วค่อยเพิ่มรายที่สองเมื่อเจ็บจริง\n\n## มุมสัมภาษณ์\n\n- **\"LLM API เริ่มโดน throttle บ่อย ทำยังไง\"** → ต้องตอบเป็นชั้น: classify error → backoff + jitter ภายใน deadline → breaker → fallback ladder. ตอบแค่ \"ก็ retry\" ตกทันที\n- **\"agent สั่ง tool โอนเงินแล้ว timeout ทำยังไง\"** → วัดว่ารู้ไหมว่า timeout = ไม่รู้ผล แล้วตอบเรื่อง idempotency key + แยก retry policy สองขา\n- **\"จะเพิ่ม provider ที่สองยังไงให้ปลอดภัย\"** → eval สองฝั่งด้วย golden set เดียวกัน, prompt แยก version, ซ้อมเส้นสำรองสม่ำเสมอ. ต่อยอดด้วย \"แล้ว bill ขึ้นเท่าไหร่\" — คนตอบดีจะเชื่อม reliability กับ cost ได้\n",
+  "recall_checks": [
+    {
+      "q": "ทำไมจึงไม่ควร retry error อย่าง request ผิด schema, auth ผิด หรือ content ที่ถูก policy block?",
+      "expected_answer": "เพราะเป็น deterministic error — request เดิม prompt เดิม credential เดิม ยิงซ้ำกี่ครั้งก็ได้ผลเหมือนเดิม เสียเวลาและเงินเปล่า แถมกิน retry budget ที่ควรเก็บไว้ให้ transient failure จริง ต้องไปแก้ที่ตัว request แทน",
+      "type": "short_answer"
+    },
+    {
+      "q": "jitter ในสูตร backoff มีไว้เพื่ออะไร?",
+      "expected_answer": "กระจายเวลา retry ของ client ที่ล้มพร้อมกัน ไม่ให้กลับมายิงพร้อมกันอีก",
+      "type": "mcq",
+      "options": [
+        "ทำให้ระยะห่างระหว่าง retry แต่ละครั้งเพิ่มขึ้นเป็นเท่าตัวอย่างสม่ำเสมอ ปลายทางที่กำลังล้นจะได้มีเวลาฟื้นตัวเต็มที่",
+        "กระจายเวลา retry ของ client ที่ล้มพร้อมกัน ไม่ให้กลับมายิงพร้อมกันอีก",
+        "ทำให้ request ที่โดน throttle ถูกจัดคิวใหม่ฝั่ง provider"
+      ]
+    },
+    {
+      "q": "agent สั่ง tool โอนเงินไปแล้ว แต่ call นั้น timeout ควรทำอย่างไร?",
+      "expected_answer": "เช็คสถานะรายการด้วย idempotency key เดิมก่อน แล้วค่อยตัดสินใจ",
+      "type": "mcq",
+      "options": [
+        "retry ทันทีด้วย exponential backoff เพราะ timeout จัดเป็น retryable error เสมอ ไม่ว่า request นั้นจะมี side effect หรือไม่ก็ตาม",
+        "สลับไปใช้ provider สำรอง ให้โมเดลตัวสำรองสั่งโอนซ้ำ",
+        "เช็คสถานะรายการด้วย idempotency key เดิมก่อน แล้วค่อยตัดสินใจ"
+      ]
+    },
+    {
+      "q": "ทำไมการจำกัดจำนวนครั้งของ retry อย่างเดียวจึงไม่พอ ต้องมี overall deadline ด้วย?",
+      "expected_answer": "เพราะจำนวนครั้งไม่ได้ผูกกับเวลารวมที่ผู้ใช้ต้องรอ แต่ละ attempt กินเวลาไม่เท่ากัน",
+      "type": "mcq",
+      "options": [
+        "เพราะจำนวนครั้งไม่ได้ผูกกับเวลารวมที่ผู้ใช้ต้องรอ แต่ละ attempt กินเวลาไม่เท่ากัน",
+        "เพราะ provider จะปฏิเสธ request ที่ไม่ได้ระบุค่า deadline มาใน header",
+        "เพราะ deadline เป็นตัวกำหนดว่า circuit breaker จะเปลี่ยนสถานะจาก open ไปเป็น half-open เมื่อไหร่"
+      ]
+    },
+    {
+      "q": "ต้นทุนจริงของการทำ multi-provider คืออะไร นอกเหนือจากการเขียน adapter เพิ่ม?",
+      "expected_answer": "prompt ไม่ portable — ที่ tune จนดีกับโมเดลหนึ่งย้ายไปอีกโมเดลแล้วคุณภาพไม่เท่าเดิม จึงต้อง maintain prompt หลายชุดต่อหนึ่งฟีเจอร์, รูปแบบการประกาศและส่ง tool call ต่างกัน, พฤติกรรมกับ safety filter ต่างกัน และต้อง re-eval ทุก provider ด้วย golden set เดียวกัน ไม่งั้น fallback คือการส่ง traffic ไปเส้นทางที่ไม่เคยวัดคุณภาพ",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Exponential Backoff And Jitter",
+      "source": "Marc Brooker, AWS Architecture Blog (2015) — https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/",
+      "why": "อ่านหลักฐานเชิงตัวเลขว่าทำไม backoff เฉย ๆ ไม่พอ และ full jitter ลดงานรวมของระบบได้อย่างไร"
+    },
+    {
+      "title": "Making retries safe with idempotent APIs",
+      "source": "Malcolm Featonby, Amazon Builders' Library — https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/",
+      "why": "อ่านวิธีออกแบบ idempotency key ให้ retry request ที่มี side effect ได้อย่างปลอดภัย"
+    },
+    {
+      "title": "Site Reliability Engineering — Chapter 22: Addressing Cascading Failures",
+      "source": "Mike Ulrich, Google SRE Book — https://sre.google/sre-book/addressing-cascading-failures/",
+      "why": "อ่านว่า retry amplification ขยาย outage เล็กให้เป็น cascading failure ได้อย่างไร และ retry budget ช่วยยังไง"
+    },
+    {
+      "title": "Release It! (2nd ed.) — Stability Patterns",
+      "source": "Michael T. Nygard, Pragmatic Bookshelf (2018), ส่วน Stability Patterns (Timeouts, Circuit Breaker, Fail Fast)",
+      "why": "อ่านที่มาของ circuit breaker และ graceful degradation ในฐานะ pattern ระดับสถาปัตยกรรม ไม่ใช่แค่ library"
+    }
+  ]
+}
