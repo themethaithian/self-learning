@@ -15,6 +15,8 @@ import (
 
 	curriculumapp "github.com/themethaithian/self-learning/internal/curriculum/app"
 	curriculuminfra "github.com/themethaithian/self-learning/internal/curriculum/infra"
+	learningapp "github.com/themethaithian/self-learning/internal/learning/app"
+	learninginfra "github.com/themethaithian/self-learning/internal/learning/infra"
 	"github.com/themethaithian/self-learning/internal/platform/config"
 	"github.com/themethaithian/self-learning/internal/platform/httpserver"
 	"github.com/themethaithian/self-learning/internal/platform/middleware"
@@ -64,7 +66,11 @@ func run(logger *slog.Logger) error {
 	prefsService := prefsapp.NewService(prefsRepo)
 	prefsHandler := prefsinfra.NewHandler(prefsService, logger)
 
-	mux := httpserver.NewMux(db, cfg.APIBearerToken, curriculumHandler, prefsHandler)
+	learningRepo := learninginfra.NewRepository(db)
+	learningService := learningapp.NewService(learningRepo)
+	learningHandler := learninginfra.NewHandler(learningService, logger)
+
+	mux := httpserver.NewMux(db, cfg.APIBearerToken, curriculumHandler, prefsHandler, learningHandler)
 	handler := middleware.Logging(logger)(middleware.Recovery(logger)(middleware.CORS(cfg.CORSAllowedOrigin)(mux)))
 	srv := httpserver.New(fmt.Sprintf(":%d", cfg.APIPort), handler)
 
