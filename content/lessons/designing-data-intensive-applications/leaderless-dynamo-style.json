@@ -26,8 +26,8 @@
       "expected_answer": "เพิ่ม write availability โดยยอมรับ write บน node นอก home set แล้วค่อยส่งต่อภายหลัง แต่ทำให้แม้ตั้ง w + r > n ก็ไม่การันตีว่าจะอ่านเจอค่าล่าสุด",
       "type": "mcq",
       "options": [
-        "เพิ่ม write availability โดยยอมรับ write บน node นอก home set แล้วค่อยส่งต่อภายหลัง แต่ทำให้แม้ตั้ง w + r > n ก็ไม่การันตีว่าจะอ่านเจอค่าล่าสุด",
         "บังคับให้ทุก write ต้องผ่าน leader เพื่อรับประกัน ordering",
+        "เพิ่ม write availability โดยยอมรับ write บน node นอก home set แล้วค่อยส่งต่อภายหลัง แต่ทำให้แม้ตั้ง w + r > n ก็ไม่การันตีว่าจะอ่านเจอค่าล่าสุด",
         "ลด storage โดยเก็บข้อมูลไว้แค่ replica เดียวเท่านั้นในทั้งคลัสเตอร์ เพื่อประหยัดพื้นที่ดิสก์ให้ได้มากที่สุดโดยไม่สนใจเรื่อง availability ของ write เลยแม้แต่น้อย"
       ]
     },
@@ -36,9 +36,9 @@
       "expected_answer": "concurrent write ทำให้เกิดหลาย version (siblings) แล้วการ merge แบบ union ตอนอ่านกลืนการลบทิ้งไป ทำให้ item ที่ถูกลบกลับมา",
       "type": "mcq",
       "options": [
-        "concurrent write ทำให้เกิดหลาย version (siblings) แล้วการ merge แบบ union ตอนอ่านกลืนการลบทิ้งไป ทำให้ item ที่ถูกลบกลับมา",
         "เพราะ leader ส่ง replication log ผิดลำดับ",
-        "เพราะ read repair process เข้าใจผิดแล้วไปลบข้อมูลเวอร์ชันใหม่ล่าสุดทิ้งโดยไม่ตั้งใจทุกครั้งที่มันทำงานประสานกับ anti-entropy background process"
+        "เพราะ read repair process เข้าใจผิดแล้วไปลบข้อมูลเวอร์ชันใหม่ล่าสุดทิ้งโดยไม่ตั้งใจทุกครั้งที่มันทำงานประสานกับ anti-entropy background process",
+        "concurrent write ทำให้เกิดหลาย version (siblings) แล้วการ merge แบบ union ตอนอ่านกลืนการลบทิ้งไป ทำให้ item ที่ถูกลบกลับมา"
       ]
     },
     {

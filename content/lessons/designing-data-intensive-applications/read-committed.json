@@ -26,8 +26,8 @@
       "expected_answer": "จำ old committed value ไว้ให้ reader อ่าน ระหว่างที่ writer ยังถือค่าใหม่ที่ยังไม่ commit แทนการใช้ lock",
       "type": "mcq",
       "options": [
-        "จำ old committed value ไว้ให้ reader อ่าน ระหว่างที่ writer ยังถือค่าใหม่ที่ยังไม่ commit แทนการใช้ lock",
         "ใช้ read lock แบบ shared lock บน row ทุกแถวที่อ่าน แล้วถือ lock นั้นไว้ตลอดตราบใดที่ writer ยังถือ lock การเขียนอยู่จนกว่าจะปล่อย",
+        "จำ old committed value ไว้ให้ reader อ่าน ระหว่างที่ writer ยังถือค่าใหม่ที่ยังไม่ commit แทนการใช้ lock",
         "ปฏิเสธ read ทั้งหมดจนกว่า writer จะ commit"
       ]
     },
@@ -41,9 +41,9 @@
       "expected_answer": "non-repeatable read / read skew (และ lost update)",
       "type": "mcq",
       "options": [
-        "non-repeatable read / read skew (และ lost update)",
         "dirty read",
-        "dirty write (การเขียนทับ row ที่ transaction อื่นยังไม่ commit)"
+        "dirty write (การเขียนทับ row ที่ transaction อื่นยังไม่ commit)",
+        "non-repeatable read / read skew (และ lost update)"
       ]
     }
   ],

@@ -16,9 +16,9 @@
       "expected_answer": "ถ้า transaction ล้มกลางคัน จะ rollback ทุก write เหมือนไม่เคยเริ่ม (all-or-nothing)",
       "type": "mcq",
       "options": [
-        "ถ้า transaction ล้มกลางคัน จะ rollback ทุก write เหมือนไม่เคยเริ่ม (all-or-nothing)",
         "transaction ที่รันพร้อมกันหลายตัวจะไม่รบกวนกันแม้อ่านหรือเขียนข้อมูลชุดเดียวกันพร้อมกันก็ตาม",
-        "ข้อมูลที่ commit แล้วจะไม่หายแม้ไฟดับ"
+        "ข้อมูลที่ commit แล้วจะไม่หายแม้ไฟดับ",
+        "ถ้า transaction ล้มกลางคัน จะ rollback ทุก write เหมือนไม่เคยเริ่ม (all-or-nothing)"
       ]
     },
     {
@@ -41,8 +41,8 @@
       "expected_answer": "throughput ต่ำลงและ latency สูงขึ้นจาก coordination/locking, fsync และการ scale ข้าม node ที่ยากขึ้น",
       "type": "mcq",
       "options": [
-        "throughput ต่ำลงและ latency สูงขึ้นจาก coordination/locking, fsync และการ scale ข้าม node ที่ยากขึ้น",
         "ใช้ disk น้อยลงมากเพราะไม่ต้องเก็บ write-ahead log หรือทำ replication ข้อมูลไปยัง node อื่นเลยแม้แต่น้อยเมื่อเทียบกับระบบ NoSQL ทั่วไป",
+        "throughput ต่ำลงและ latency สูงขึ้นจาก coordination/locking, fsync และการ scale ข้าม node ที่ยากขึ้น",
         "ทำให้ระบบ available มากขึ้นเสมอ"
       ]
     }

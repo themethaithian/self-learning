@@ -16,8 +16,8 @@
       "expected_answer": "สลับลำดับ A-B แล้วรวมผลทั้งสองรอบ",
       "type": "mcq",
       "options": [
-        "เพิ่ม temperature ของ judge",
         "สลับลำดับ A-B แล้วรวมผลทั้งสองรอบ",
+        "เพิ่ม temperature ของ judge",
         "ใช้ judge ตัวเดียวกับโมเดลที่ generate คำตอบ"
       ]
     },
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "ขยาย golden set ให้ถึงหลักพันเคสก่อนเริ่มใช้งานจริง",
-        "เปลี่ยนไปใช้ judge model รุ่นใหม่ที่สุด",
-        "วัด agreement กับ human rating บน sample"
+        "วัด agreement กับ human rating บน sample",
+        "เปลี่ยนไปใช้ judge model รุ่นใหม่ที่สุด"
       ]
     },
     {
@@ -41,9 +41,9 @@
       "expected_answer": "งาน extraction ที่ตรวจด้วย assertion ได้",
       "type": "mcq",
       "options": [
-        "งาน extraction ที่ตรวจด้วย assertion ได้",
         "การเทียบ system prompt สองเวอร์ชัน",
-        "การให้คะแนนน้ำเสียงของคำตอบ support assistant"
+        "การให้คะแนนน้ำเสียงของคำตอบ support assistant",
+        "งาน extraction ที่ตรวจด้วย assertion ได้"
       ]
     }
   ],

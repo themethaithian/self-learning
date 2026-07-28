@@ -26,9 +26,9 @@
       "expected_answer": "ส่ง result กลับให้โมเดลตอบ",
       "type": "mcq",
       "options": [
-        "ส่ง result กลับให้โมเดลตอบ",
         "ให้ผู้ใช้อ่าน result เองโดยตรง",
-        "ทิ้ง result ไป ไม่ต้องใช้"
+        "ทิ้ง result ไป ไม่ต้องใช้",
+        "ส่ง result กลับให้โมเดลตอบ"
       ]
     },
     {
@@ -41,9 +41,9 @@
       "expected_answer": "เพิ่ม latency และ attack surface",
       "type": "mcq",
       "options": [
+        "เพิ่ม latency และ attack surface",
         "ทำให้ระบบตอบสนองได้เร็วขึ้นทุกครั้ง",
-        "แทบไม่มีต้นทุนอะไรเพิ่มขึ้นเลย",
-        "เพิ่ม latency และ attack surface"
+        "แทบไม่มีต้นทุนอะไรเพิ่มขึ้นเลย"
       ]
     }
   ],

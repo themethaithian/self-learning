@@ -16,8 +16,8 @@
       "expected_answer": "ลด perceived latency แต่ total เท่าเดิม",
       "type": "mcq",
       "options": [
-        "ลด total response time ทุก request",
         "ลด perceived latency แต่ total เท่าเดิม",
+        "ลด total response time ทุก request",
         "ลดทั้ง perceived และ total time พร้อมกันเสมอ"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "เมื่อ prefix ของ prompt ซ้ำกัน",
       "type": "mcq",
       "options": [
-        "เมื่อ prefix ของ prompt ซ้ำกัน",
         "เมื่อ output สั้นมาก",
+        "เมื่อ prefix ของ prompt ซ้ำกัน",
         "เมื่อทุก request มี prompt ต่างกัน"
       ]
     },

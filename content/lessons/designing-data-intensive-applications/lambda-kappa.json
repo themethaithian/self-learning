@@ -16,8 +16,8 @@
       "expected_answer": "ต้องดูแล logic เดียวกันสองชุดขนานกัน",
       "type": "mcq",
       "options": [
-        "speed layer คำนวณ approximate ไม่ได้เลย",
         "ต้องดูแล logic เดียวกันสองชุดขนานกัน",
+        "speed layer คำนวณ approximate ไม่ได้เลย",
         "เก็บ log ย้อนหลังไว้ replay ไม่ได้"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "replay log ทั้งหมดผ่าน stream code เดิม",
       "type": "mcq",
       "options": [
-        "replay log ทั้งหมดผ่าน stream code เดิม",
         "รัน batch job แยกอีกชุดขนานเหมือน Lambda",
+        "replay log ทั้งหมดผ่าน stream code เดิม",
         "คัดลอกผลจาก speed layer มาแก้มือ"
       ]
     },

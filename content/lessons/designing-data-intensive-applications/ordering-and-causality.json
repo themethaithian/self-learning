@@ -16,8 +16,8 @@
       "expected_answer": "version vector",
       "type": "mcq",
       "options": [
-        "Lamport timestamp เพียงอย่างเดียวโดยไม่ใช้ version vector ร่วมด้วย",
         "version vector",
+        "Lamport timestamp เพียงอย่างเดียวโดยไม่ใช้ version vector ร่วมด้วย",
         "wall-clock"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "บอกได้ว่า 'ถ้า a→b แล้ว L(a)<L(b)' แต่ทางกลับไม่จริง — L(a)<L(b) ไม่ได้แปลว่า a→b เพราะสอง event ที่ concurrent ก็มี L ต่างกันได้",
       "type": "mcq",
       "options": [
-        "บอกได้ว่า 'ถ้า a→b แล้ว L(a)<L(b)' แต่ทางกลับไม่จริง — L(a)<L(b) ไม่ได้แปลว่า a→b เพราะสอง event ที่ concurrent ก็มี L ต่างกันได้",
         "บอกได้เสมอว่า a เกิดก่อน b ในเชิง causal (a→b) อย่างแน่นอนโดยไม่มีข้อยกเว้นใด ๆ เลยไม่ว่ากรณีใดก็ตามในระบบกระจายที่มีหลาย node ทำงานพร้อมกัน",
+        "บอกได้ว่า 'ถ้า a→b แล้ว L(a)<L(b)' แต่ทางกลับไม่จริง — L(a)<L(b) ไม่ได้แปลว่า a→b เพราะสอง event ที่ concurrent ก็มี L ต่างกันได้",
         "บอกได้ทันทีว่า a กับ b เป็น concurrent"
       ]
     },

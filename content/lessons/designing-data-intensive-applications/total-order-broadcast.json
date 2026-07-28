@@ -16,8 +16,8 @@
       "expected_answer": "consensus",
       "type": "mcq",
       "options": [
-        "CRDT ซึ่งให้ replica merge ค่ากันเองทีหลังโดยไม่ต้องมี ordering ร่วม",
         "consensus",
+        "CRDT ซึ่งให้ replica merge ค่ากันเองทีหลังโดยไม่ต้องมี ordering ร่วม",
         "leader"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "apply operation จาก ordered log เดียวกันตามลำดับเดียวกัน บน replica ที่ deterministic",
       "type": "mcq",
       "options": [
-        "apply operation จาก ordered log เดียวกันตามลำดับเดียวกัน บน replica ที่ deterministic",
         "ให้แต่ละ replica รับ write ตามลำดับที่ตัวเองได้ยินก่อนโดยไม่ต้องรอ coordinate กับ replica ตัวอื่นเลยแม้แต่น้อย",
+        "apply operation จาก ordered log เดียวกันตามลำดับเดียวกัน บน replica ที่ deterministic",
         "sync ค่า balance ตรง ๆ ระหว่าง replica ทุก 1 วินาที"
       ]
     },

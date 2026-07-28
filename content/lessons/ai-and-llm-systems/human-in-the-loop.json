@@ -26,9 +26,9 @@
       "expected_answer": "human overload จนกด approve แบบ rubber-stamp",
       "type": "mcq",
       "options": [
-        "human overload จนกด approve แบบ rubber-stamp",
         "cost การเรียก LLM เพิ่มขึ้นแบบทวีคูณตามจำนวน gate",
-        "โมเดลจะ hallucinate บ่อยขึ้นเมื่อรอนาน"
+        "โมเดลจะ hallucinate บ่อยขึ้นเมื่อรอนาน",
+        "human overload จนกด approve แบบ rubber-stamp"
       ]
     },
     {

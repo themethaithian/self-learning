@@ -17,8 +17,8 @@
       "type": "mcq",
       "options": [
         "เพราะ SQL รันบน database server ที่มี spec แรงกว่า application server ขององค์กรอยู่เสมอ ไม่ว่า workload หรือขนาดข้อมูลจะซับซ้อนแค่ไหนก็ตาม",
-        "เพราะ declarative ไม่ได้ระบุลำดับขั้นตอน/execution strategy ตายตัว optimizer จึงเลือกและเปลี่ยน plan รวมถึงกระจายงานข้าม core ได้เอง",
-        "เพราะ imperative code เขียนผิด syntax บ่อยกว่า"
+        "เพราะ imperative code เขียนผิด syntax บ่อยกว่า",
+        "เพราะ declarative ไม่ได้ระบุลำดับขั้นตอน/execution strategy ตายตัว optimizer จึงเลือกและเปลี่ยน plan รวมถึงกระจายงานข้าม core ได้เอง"
       ]
     },
     {
@@ -37,8 +37,8 @@
       "type": "mcq",
       "options": [
         "เมื่อต้องการให้ database engine upgrade เป็นเวอร์ชันใหม่แล้ว query เดิมที่เขียนไว้เร็วขึ้นเองโดยอัตโนมัติ โดยไม่ต้องแก้โค้ดหรือแก้ query ใด ๆ เลยแม้แต่นิดเดียว",
-        "เมื่อต้องการ scan และ aggregate ข้อมูลจำนวนมากให้เร็วที่สุด",
-        "เมื่อ logic เป็น algorithm ที่ query language แสดงไม่ได้ หรือจำเป็นต้องคุม execution เอง (เช่น stateful/streaming ที่ต้อง early-exit)"
+        "เมื่อ logic เป็น algorithm ที่ query language แสดงไม่ได้ หรือจำเป็นต้องคุม execution เอง (เช่น stateful/streaming ที่ต้อง early-exit)",
+        "เมื่อต้องการ scan และ aggregate ข้อมูลจำนวนมากให้เร็วที่สุด"
       ]
     },
     {
@@ -47,8 +47,8 @@
       "type": "mcq",
       "options": [
         "declarative ปล่อยให้ query optimizer เลือก execution plan เอง",
-        "เขียน loop filter/aggregate เองใน app ใกล้ metal กว่า จึงเร็วกว่า SQL เสมอ",
-        "declarative query สามารถ parallelize ได้ดีเพราะไม่ได้กำหนดลำดับ operation ตายตัว"
+        "declarative query สามารถ parallelize ได้ดีเพราะไม่ได้กำหนดลำดับ operation ตายตัว",
+        "เขียน loop filter/aggregate เองใน app ใกล้ metal กว่า จึงเร็วกว่า SQL เสมอ"
       ]
     }
   ],

@@ -16,8 +16,8 @@
       "expected_answer": "เพราะมันผลิต token ที่ likely ไม่ใช่ token จริง",
       "type": "mcq",
       "options": [
-        "เพราะมันค้น database ภายในแล้วเจอข้อมูลที่ผิด",
         "เพราะมันผลิต token ที่ likely ไม่ใช่ token จริง",
+        "เพราะมันค้น database ภายในแล้วเจอข้อมูลที่ผิด",
         "เพราะการเชื่อมต่อ network ระหว่างการเรียกใช้งานมีปัญหา"
       ]
     },
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "ในไฟล์ database ที่ query ตอน runtime",
-        "ในไฟล์ log ที่บันทึกทุก request",
-        "ใน weights เป็น statistical pattern"
+        "ใน weights เป็น statistical pattern",
+        "ในไฟล์ log ที่บันทึกทุก request"
       ]
     },
     {

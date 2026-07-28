@@ -26,8 +26,8 @@
       "expected_answer": "dataset ทั้งหมดเข้า memory และแต่ละ transaction สั้น/เร็ว",
       "type": "mcq",
       "options": [
-        "dataset ทั้งหมดเข้า memory และแต่ละ transaction สั้น/เร็ว",
         "dataset ใหญ่เกิน memory และมี transaction ที่รอ user input นาน",
+        "dataset ทั้งหมดเข้า memory และแต่ละ transaction สั้น/เร็ว",
         "มี transaction ข้าม partition จำนวนมาก"
       ]
     },
@@ -36,9 +36,9 @@
       "expected_answer": "abort/retry rate พุ่งสูง งานถูกทำทิ้งแล้ว retry ซ้ำ ๆ",
       "type": "mcq",
       "options": [
-        "abort/retry rate พุ่งสูง งานถูกทำทิ้งแล้ว retry ซ้ำ ๆ",
         "deadlock เกิดขึ้นถี่มากขึ้นเรื่อย ๆ จนระบบต้อง detect แล้วเลือก abort transaction ตัวใดตัวหนึ่งทิ้งไป",
-        "ทุก transaction ถูกบังคับให้รันทีละตัวบน single core"
+        "ทุก transaction ถูกบังคับให้รันทีละตัวบน single core",
+        "abort/retry rate พุ่งสูง งานถูกทำทิ้งแล้ว retry ซ้ำ ๆ"
       ]
     },
     {

@@ -16,8 +16,8 @@
       "expected_answer": "เติม event แต่ละตัวด้วยข้อมูลจาก table",
       "type": "mcq",
       "options": [
-        "buffer สองฝั่งแล้ว join ตามเวลา",
         "เติม event แต่ละตัวด้วยข้อมูลจาก table",
+        "buffer สองฝั่งแล้ว join ตามเวลา",
         "รวม changelog สองฝั่งเป็น materialized view"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "การเดาว่าไม่มี event เก่ากว่า T อีกแล้ว",
       "type": "mcq",
       "options": [
-        "การเดาว่าไม่มี event เก่ากว่า T อีกแล้ว",
         "เวลาปัจจุบันของนาฬิกาเครื่อง processor",
+        "การเดาว่าไม่มี event เก่ากว่า T อีกแล้ว",
         "timestamp ที่ producer ฝังมากับ event ตั้งแต่ต้นทาง"
       ]
     },

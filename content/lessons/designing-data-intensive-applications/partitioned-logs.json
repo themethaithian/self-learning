@@ -16,8 +16,8 @@
       "expected_answer": "ภายใน partition เดียวเท่านั้น",
       "type": "mcq",
       "options": [
-        "ข้ามทุก partition",
         "ภายใน partition เดียวเท่านั้น",
+        "ข้ามทุก partition",
         "ทุก consumer ที่อ่าน topic นั้น"
       ]
     },
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "จำนวน node ทั้งหมด",
-        "จำนวน message ใน log ปัจจุบัน",
-        "จำนวน partition ของ topic"
+        "จำนวน partition ของ topic",
+        "จำนวน message ใน log ปัจจุบัน"
       ]
     },
     {
@@ -41,9 +41,9 @@
       "expected_answer": "ข้าม message ช้าทีละอันได้ยาก",
       "type": "mcq",
       "options": [
-        "ข้าม message ช้าทีละอันได้ยาก",
         "ไม่รองรับหลาย consumer group",
-        "order ภายใน partition ไม่คงที่"
+        "order ภายใน partition ไม่คงที่",
+        "ข้าม message ช้าทีละอันได้ยาก"
       ]
     }
   ],

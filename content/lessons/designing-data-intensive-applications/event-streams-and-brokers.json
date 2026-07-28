@@ -16,8 +16,8 @@
       "expected_answer": "buffer event เมื่อ consumer ช้าหรือหลุดไป",
       "type": "mcq",
       "options": [
-        "การันตี event ทุกตัวถึง consumer โดยไม่ซ้ำกันเลย",
         "buffer event เมื่อ consumer ช้าหรือหลุดไป",
+        "การันตี event ทุกตัวถึง consumer โดยไม่ซ้ำกันเลย",
         "ลบ duplicate ให้อัตโนมัติด้วย hash"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "ไปที่ consumer เพียงตัวเดียวในกลุ่ม",
       "type": "mcq",
       "options": [
-        "ไปที่ consumer เพียงตัวเดียวในกลุ่ม",
         "ไปที่ consumer ทุกตัวในกลุ่มพร้อมกัน",
+        "ไปที่ consumer เพียงตัวเดียวในกลุ่ม",
         "ไปที่ producer ตัวถัดไปในคิว"
       ]
     },

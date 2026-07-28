@@ -12,8 +12,8 @@
       "type": "mcq",
       "options": [
         "เพื่อบีบอัดข้อมูลให้ page เล็กลง",
-        "เพราะการแก้แบบ in-place (เช่น page split) อาจเขียน page ไม่ครบเมื่อ crash ทำให้ index พัง; WAL ให้ replay กลับสู่ state ที่ consistent",
-        "เพื่อให้ query อ่านข้อมูลจากหลาย SSTable พร้อมกันได้เร็วขึ้นโดยไม่ต้องรอ compaction เบื้องหลังให้เสร็จก่อน เหมือนกลไกที่ LSM-tree ใช้จัดการ read path"
+        "เพื่อให้ query อ่านข้อมูลจากหลาย SSTable พร้อมกันได้เร็วขึ้นโดยไม่ต้องรอ compaction เบื้องหลังให้เสร็จก่อน เหมือนกลไกที่ LSM-tree ใช้จัดการ read path",
+        "เพราะการแก้แบบ in-place (เช่น page split) อาจเขียน page ไม่ครบเมื่อ crash ทำให้ index พัง; WAL ให้ replay กลับสู่ state ที่ consistent"
       ]
     },
     {
@@ -37,8 +37,8 @@
       "type": "mcq",
       "options": [
         "จากการเก็บ key เดียวกันไว้หลาย copy กระจายอยู่ในหลาย SSTable ที่ยังไม่ถูกรวมเข้าด้วยกันด้วย compaction กระบวนการเบื้องหลัง",
-        "จากการรัน compaction เบื้องหลังตลอดเวลา",
-        "ทุก write ต้องเขียนทั้ง WAL และ page (และเขียนซ้ำอีกเมื่อ page split) อีกทั้งต้องเขียนทั้ง page แม้แก้ไม่กี่ byte"
+        "ทุก write ต้องเขียนทั้ง WAL และ page (และเขียนซ้ำอีกเมื่อ page split) อีกทั้งต้องเขียนทั้ง page แม้แก้ไม่กี่ byte",
+        "จากการรัน compaction เบื้องหลังตลอดเวลา"
       ]
     },
     {

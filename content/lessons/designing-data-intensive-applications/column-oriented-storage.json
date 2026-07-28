@@ -16,9 +16,9 @@
       "expected_answer": "เพราะค่าใน column เดียวกันมี type/domain เดียวกันและมักซ้ำ (low cardinality) จึงใช้ bitmap/run-length encoding ได้ดี",
       "type": "mcq",
       "options": [
-        "เพราะค่าใน column เดียวกันมี type/domain เดียวกันและมักซ้ำ (low cardinality) จึงใช้ bitmap/run-length encoding ได้ดี",
         "เพราะ column store ใช้ compression algorithm รุ่นใหม่กว่าและมีประสิทธิภาพสูงกว่า row store โดยเนื้อแท้อยู่แล้วไม่เกี่ยวกับการจัดเรียงข้อมูล",
-        "เพราะ column store แปลงข้อมูลทุกอย่างเป็น text ล้วนซึ่งบีบอัดง่ายกว่า binary"
+        "เพราะ column store แปลงข้อมูลทุกอย่างเป็น text ล้วนซึ่งบีบอัดง่ายกว่า binary",
+        "เพราะค่าใน column เดียวกันมี type/domain เดียวกันและมักซ้ำ (low cardinality) จึงใช้ bitmap/run-length encoding ได้ดี"
       ]
     },
     {
@@ -26,8 +26,8 @@
       "expected_answer": "เพราะ field ของแถวเดียวกระจายอยู่คนละ column file ที่ถูก sort/compress แยกกัน การเขียนแถวเดียวจึงต้องแตะหลายไฟล์",
       "type": "mcq",
       "options": [
-        "เพราะ column store ไม่มี index รองรับการเขียนเลยจึงต้อง scan ทั้งตารางทุก column file ก่อนเขียนทุกครั้งที่มีแถวใหม่เข้ามา",
         "เพราะ field ของแถวเดียวกระจายอยู่คนละ column file ที่ถูก sort/compress แยกกัน การเขียนแถวเดียวจึงต้องแตะหลายไฟล์",
+        "เพราะ column store ไม่มี index รองรับการเขียนเลยจึงต้อง scan ทั้งตารางทุก column file ก่อนเขียนทุกครั้งที่มีแถวใหม่เข้ามา",
         "เพราะ column store เก็บข้อมูลไว้ใน memory เท่านั้นจึงเขียนลง disk ไม่ได้"
       ]
     },
@@ -37,8 +37,8 @@
       "type": "mcq",
       "options": [
         "OLTP: point lookup และ update ทีละแถวจำนวนมาก",
-        "งานที่ต้องอ่าน/เขียนทั้งแถวด้วย primary key บ่อย ๆ และต้องเห็นข้อมูลทันที",
-        "OLAP: analytic query ที่ scan บาง column จากข้อมูลจำนวนมหาศาล"
+        "OLAP: analytic query ที่ scan บาง column จากข้อมูลจำนวนมหาศาล",
+        "งานที่ต้องอ่าน/เขียนทั้งแถวด้วย primary key บ่อย ๆ และต้องเห็นข้อมูลทันที"
       ]
     },
     {

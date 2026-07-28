@@ -16,8 +16,8 @@
       "expected_answer": "ใน context window ของ call ปัจจุบัน",
       "type": "mcq",
       "options": [
-        "ใน vector store ภายนอกเสมอ",
         "ใน context window ของ call ปัจจุบัน",
+        "ใน vector store ภายนอกเสมอ",
         "ใน session ที่ provider เก็บให้อัตโนมัติ"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "เก็บนอก window แล้วดึงกลับเมื่อเกี่ยวข้อง",
       "type": "mcq",
       "options": [
-        "เก็บนอก window แล้วดึงกลับเมื่อเกี่ยวข้อง",
         "ประวัติแชทที่ยังอยู่ใน context window",
+        "เก็บนอก window แล้วดึงกลับเมื่อเกี่ยวข้อง",
         "state ที่ provider เก็บจำให้เองข้ามทุก call"
       ]
     },

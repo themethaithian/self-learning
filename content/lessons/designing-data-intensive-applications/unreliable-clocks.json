@@ -11,8 +11,8 @@
       "expected_answer": "monotonic clock เพราะเดินหน้าอย่างเดียว ไม่ถอยหลัง",
       "type": "mcq",
       "options": [
-        "time-of-day clock เพราะ sync กับ NTP จึงบอกเวลาจริงตามปฏิทินได้แม่นที่สุด",
         "monotonic clock เพราะเดินหน้าอย่างเดียว ไม่ถอยหลัง",
+        "time-of-day clock เพราะ sync กับ NTP จึงบอกเวลาจริงตามปฏิทินได้แม่นที่สุด",
         "แบบไหนก็ได้ ไม่ต่างกัน"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "write ที่ใหม่กว่าจริงถูกทิ้งเงียบ ๆ เพราะ timestamp น้อยกว่า",
       "type": "mcq",
       "options": [
-        "write ที่ใหม่กว่าจริงถูกทิ้งเงียบ ๆ เพราะ timestamp น้อยกว่า",
         "ระบบ throw error ให้ client retry",
+        "write ที่ใหม่กว่าจริงถูกทิ้งเงียบ ๆ เพราะ timestamp น้อยกว่า",
         "ระบบเก็บทั้งสอง version ไว้แล้วให้ผู้ใช้เลือก merge เองด้วย version vector"
       ]
     },

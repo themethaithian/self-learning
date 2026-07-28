@@ -26,8 +26,8 @@
       "expected_answer": "ตาม distribution ของข้อมูลเพื่อ balance load โดยไม่จำเป็นต้องเว้นระยะเท่ากัน",
       "type": "mcq",
       "options": [
-        "ตาม distribution ของข้อมูลเพื่อ balance load โดยไม่จำเป็นต้องเว้นระยะเท่ากัน",
         "เว้นระยะช่วง key ให้เท่ากันเสมอเพื่อความง่ายในการคำนวณ ไม่ต้องสนใจว่าข้อมูลจริงกระจายตัวแบบไหน",
+        "ตาม distribution ของข้อมูลเพื่อ balance load โดยไม่จำเป็นต้องเว้นระยะเท่ากัน",
         "ให้แต่ละ partition ถือจำนวน key เท่ากันเสมอ"
       ]
     },
@@ -41,9 +41,9 @@
       "expected_answer": "เสียความสามารถทำ efficient range query ข้าม partition",
       "type": "mcq",
       "options": [
-        "เสียความสามารถทำ efficient range query ข้าม partition",
         "เสีย durability ของข้อมูล",
-        "เสียความสามารถประมาณขนาดของแต่ละ partition ล่วงหน้าได้แม่นยำเท่ากับที่ key-range partitioning ทำได้"
+        "เสียความสามารถประมาณขนาดของแต่ละ partition ล่วงหน้าได้แม่นยำเท่ากับที่ key-range partitioning ทำได้",
+        "เสียความสามารถทำ efficient range query ข้าม partition"
       ]
     }
   ],

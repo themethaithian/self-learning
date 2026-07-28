@@ -26,9 +26,9 @@
       "expected_answer": "handoff = โอนบทสนทนาให้คน; HITL = ให้คนอนุมัติ action",
       "type": "mcq",
       "options": [
-        "handoff = โอนบทสนทนาให้คน; HITL = ให้คนอนุมัติ action",
         "handoff = ให้คนอนุมัติ action; HITL = โอนบทสนทนาให้คน",
-        "handoff และ HITL เป็นชื่อเรียกกลไกเดียวกันทุกอย่าง"
+        "handoff และ HITL เป็นชื่อเรียกกลไกเดียวกันทุกอย่าง",
+        "handoff = โอนบทสนทนาให้คน; HITL = ให้คนอนุมัติ action"
       ]
     },
     {
@@ -36,9 +36,9 @@
       "expected_answer": "deflection rate ตก และเปลืองเวลา human agent",
       "type": "mcq",
       "options": [
+        "deflection rate ตก และเปลืองเวลา human agent",
         "ลูกค้าหงุดหงิดเพราะต้องวนอยู่กับ bot นานเกินไป",
-        "context หายระหว่างโอนสายให้ agent รับช่วงต่อ",
-        "deflection rate ตก และเปลืองเวลา human agent"
+        "context หายระหว่างโอนสายให้ agent รับช่วงต่อ"
       ]
     },
     {

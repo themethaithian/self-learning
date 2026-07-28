@@ -16,9 +16,9 @@
       "expected_answer": "เพราะสถาปัตยกรรมที่ scale ดีถูกออกแบบรอบ ๆ ข้อสมมติเรื่อง load parameters เฉพาะของระบบนั้น",
       "type": "mcq",
       "options": [
-        "เพราะสถาปัตยกรรมที่ scale ดีถูกออกแบบรอบ ๆ ข้อสมมติเรื่อง load parameters เฉพาะของระบบนั้น",
         "เพราะฮาร์ดแวร์ปัจจุบันยังแรงไม่พอสำหรับทุก workload จึงต้องรอให้ CPU และ RAM รุ่นใหม่ออกมาก่อนถึงจะ scale ได้จริง",
-        "เพราะแต่ละทีมเลือกใช้ database คนละยี่ห้อกัน"
+        "เพราะแต่ละทีมเลือกใช้ database คนละยี่ห้อกัน",
+        "เพราะสถาปัตยกรรมที่ scale ดีถูกออกแบบรอบ ๆ ข้อสมมติเรื่อง load parameters เฉพาะของระบบนั้น"
       ]
     },
     {
@@ -26,8 +26,8 @@
       "expected_answer": "stateful data system (database)",
       "type": "mcq",
       "options": [
-        "stateless app tier ที่อยู่หลัง load balancer",
         "stateful data system (database)",
+        "stateless app tier ที่อยู่หลัง load balancer",
         "load balancer ที่กระจาย request"
       ]
     },
@@ -37,8 +37,8 @@
       "type": "mcq",
       "options": [
         "เขียนโค้ด application ได้ช้าลง",
-        "ต้นทุนฮาร์ดแวร์ต่อเครื่องแพงขึ้นแบบไม่เชิงเส้นจนงบประมาณบานปลายเกินควบคุมทุกไตรมาส",
-        "operational และ distributed-systems complexity ที่สูงขึ้นมาก"
+        "operational และ distributed-systems complexity ที่สูงขึ้นมาก",
+        "ต้นทุนฮาร์ดแวร์ต่อเครื่องแพงขึ้นแบบไม่เชิงเส้นจนงบประมาณบานปลายเกินควบคุมทุกไตรมาส"
       ]
     },
     {

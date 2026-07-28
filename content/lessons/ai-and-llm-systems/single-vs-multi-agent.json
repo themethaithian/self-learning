@@ -16,8 +16,8 @@
       "expected_answer": "เพิ่ม coordination + error propagation",
       "type": "mcq",
       "options": [
-        "ลด coordination overhead ระหว่าง agent",
         "เพิ่ม coordination + error propagation",
+        "ลด coordination overhead ระหว่าง agent",
         "ทำให้ debug ง่ายและ deterministic ขึ้น"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "รับงาน route ไป agent แล้วรวมผล",
       "type": "mcq",
       "options": [
-        "รับงาน route ไป agent แล้วรวมผล",
         "รันทุก tool call แทน agent อื่น",
+        "รับงาน route ไป agent แล้วรวมผล",
         "เก็บ long-term memory ให้ทุก agent"
       ]
     },

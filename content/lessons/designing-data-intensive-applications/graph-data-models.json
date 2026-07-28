@@ -46,8 +46,8 @@
       "expected_answer": "ข้อมูลที่มี many-to-many ต้องใช้ graph database เสมอ",
       "type": "mcq",
       "options": [
-        "Cypher เป็นภาษา query ที่ออกแบบมาสำหรับ traverse property graph โดยเฉพาะ ใช้ pattern matching syntax ที่ต่างจาก SQL",
         "ข้อมูลที่มี many-to-many ต้องใช้ graph database เสมอ",
+        "Cypher เป็นภาษา query ที่ออกแบบมาสำหรับ traverse property graph โดยเฉพาะ ใช้ pattern matching syntax ที่ต่างจาก SQL",
         "triple-store query ด้วย SPARQL"
       ]
     }

@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "เลือก framework ที่ดาวเยอะสุดบน GitHub ไว้ก่อน",
-        "เขียนทุกอย่างเองจาก raw API ทุกกรณีโดยไม่ต้องเรียน primitive",
-        "เข้าใจ primitive ของ agent ก่อนแล้วค่อยเลือก framework"
+        "เข้าใจ primitive ของ agent ก่อนแล้วค่อยเลือก framework",
+        "เขียนทุกอย่างเองจาก raw API ทุกกรณีโดยไม่ต้องเรียน primitive"
       ]
     },
     {
@@ -42,8 +42,8 @@
       "type": "mcq",
       "options": [
         "ควรรอจน framework นิ่งสนิทก่อนแล้วค่อยเริ่มเรียนทีหลัง",
-        "เรียน concept/primitive มากกว่าผูกกับ library เดียว",
-        "ควรใช้ทุก framework พร้อมกันเพื่อไม่ตกเทรนด์ใหม่"
+        "ควรใช้ทุก framework พร้อมกันเพื่อไม่ตกเทรนด์ใหม่",
+        "เรียน concept/primitive มากกว่าผูกกับ library เดียว"
       ]
     }
   ],

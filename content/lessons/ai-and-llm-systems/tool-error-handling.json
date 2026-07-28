@@ -16,8 +16,8 @@
       "expected_answer": "retry ซ้ำจะคืนเงินซ้ำจริง ต้องมี idempotency key",
       "type": "mcq",
       "options": [
-        "retry ซ้ำจะทำให้ tool schema ของโมเดลเพี้ยนถาวรทันที",
         "retry ซ้ำจะคืนเงินซ้ำจริง ต้องมี idempotency key",
+        "retry ซ้ำจะทำให้ tool schema ของโมเดลเพี้ยนถาวรทันที",
         "retry ซ้ำจะรีเซ็ต context window ของโมเดลทิ้งหมด"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "timeout / 503 / rate limit ควร retry แบบ backoff มี cap",
       "type": "mcq",
       "options": [
-        "timeout / 503 / rate limit ควร retry แบบ backoff มี cap",
         "validation error ควร retry ซ้ำไปเรื่อย ๆ จนกว่าจะผ่านเอง",
+        "timeout / 503 / rate limit ควร retry แบบ backoff มี cap",
         "not-found ควร retry รัว ๆ ได้เลยไม่ต้อง cap จำนวน"
       ]
     },

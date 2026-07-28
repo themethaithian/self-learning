@@ -16,8 +16,8 @@
       "expected_answer": "เพราะ deserialize สามารถ instantiate arbitrary class และทริกเกอร์ side-effect ระหว่างสร้าง object นำไปสู่ remote code execution",
       "type": "mcq",
       "options": [
-        "เพราะ payload จะมีขนาดใหญ่จน memory เต็ม",
         "เพราะ deserialize สามารถ instantiate arbitrary class และทริกเกอร์ side-effect ระหว่างสร้าง object นำไปสู่ remote code execution",
+        "เพราะ payload จะมีขนาดใหญ่จน memory เต็ม",
         "เพราะข้อมูลจะถูกเข้ารหัสด้วย algorithm ที่รัดกุมเกินไปจนแม้แต่ฝั่งที่ถูกต้องเองก็ยังถอดรหัสกลับมาอ่านไม่ได้เหมือนเดิมทุกครั้งที่พยายาม"
       ]
     },
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "queue ส่วนใหญ่ไม่รองรับ binary data",
-        "pickle ช้ากว่า JSON จนใช้กับ queue ที่ต้องการ throughput สูงในระบบที่มี traffic หนักไม่ได้เลยไม่ว่ากรณีใด",
-        "byte ที่ได้ผูกกับภาษาเดียว service ที่เขียนด้วยภาษาอื่น decode กลับไม่ได้ (ไม่ interoperable)"
+        "byte ที่ได้ผูกกับภาษาเดียว service ที่เขียนด้วยภาษาอื่น decode กลับไม่ได้ (ไม่ interoperable)",
+        "pickle ช้ากว่า JSON จนใช้กับ queue ที่ต้องการ throughput สูงในระบบที่มี traffic หนักไม่ได้เลยไม่ว่ากรณีใด"
       ]
     },
     {
@@ -36,9 +36,9 @@
       "expected_answer": "ข้อมูล transient ภายในภาษาเดียว ที่ producer/consumer deploy พร้อมกันและ input เชื่อถือได้",
       "type": "mcq",
       "options": [
-        "ข้อมูล transient ภายในภาษาเดียว ที่ producer/consumer deploy พร้อมกันและ input เชื่อถือได้",
         "event log ที่เก็บถาวรเป็นสิบปีในฐานะ source of truth เดียวของทั้งระบบให้หลาย service ย้อนอ่านได้ตลอดเวลา",
-        "message queue ที่มี consumer หลายภาษาอ่านร่วมกัน"
+        "message queue ที่มี consumer หลายภาษาอ่านร่วมกัน",
+        "ข้อมูล transient ภายในภาษาเดียว ที่ producer/consumer deploy พร้อมกันและ input เชื่อถือได้"
       ]
     },
     {

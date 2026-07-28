@@ -26,8 +26,8 @@
       "expected_answer": "มันทิ้ง concurrent write ที่แพ้ไปเงียบ ๆ เป็น data loss และพึ่ง clock ที่เชื่อไม่ได้",
       "type": "mcq",
       "options": [
-        "มันทิ้ง concurrent write ที่แพ้ไปเงียบ ๆ เป็น data loss และพึ่ง clock ที่เชื่อไม่ได้",
         "มันทำให้ write ช้าลงมากเพราะต้องรอให้ leader ทุกตัวตอบกลับมายืนยันก่อนถึงจะถือว่า write สำเร็จ",
+        "มันทิ้ง concurrent write ที่แพ้ไปเงียบ ๆ เป็น data loss และพึ่ง clock ที่เชื่อไม่ได้",
         "มันบังคับให้ระบบใช้ synchronous replication เสมอ"
       ]
     },
@@ -36,9 +36,9 @@
       "expected_answer": "account balance / ledger ที่ resolve conflict ผิดแล้วเงินหาย",
       "type": "mcq",
       "options": [
-        "account balance / ledger ที่ resolve conflict ผิดแล้วเงินหาย",
         "notification preference ของ user",
-        "calendar events บน device หลายเครื่องที่ผู้ใช้แก้ไขตอน offline แล้วค่อย sync ทีหลัง"
+        "calendar events บน device หลายเครื่องที่ผู้ใช้แก้ไขตอน offline แล้วค่อย sync ทีหลัง",
+        "account balance / ledger ที่ resolve conflict ผิดแล้วเงินหาย"
       ]
     },
     {

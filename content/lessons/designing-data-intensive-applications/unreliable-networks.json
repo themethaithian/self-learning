@@ -11,9 +11,9 @@
       "expected_answer": "สรุปได้แค่ว่าไม่มี reply มาถึงในเวลาที่รอ ยังแยก dead กับ slow ไม่ออก",
       "type": "mcq",
       "options": [
+        "สรุปได้แค่ว่าไม่มี reply มาถึงในเวลาที่รอ ยังแยก dead กับ slow ไม่ออก",
         "node ปลายทางตายแน่นอน จึงควร failover ไป node อื่นทันทีโดยไม่ต้องเช็คอะไรเพิ่มเติมเลย",
-        "request ไปไม่ถึงปลายทางแน่นอน เพราะถ้าถึงต้องมี reply กลับมาเสมอ",
-        "สรุปได้แค่ว่าไม่มี reply มาถึงในเวลาที่รอ ยังแยก dead กับ slow ไม่ออก"
+        "request ไปไม่ถึงปลายทางแน่นอน เพราะถ้าถึงต้องมี reply กลับมาเสมอ"
       ]
     },
     {
@@ -26,8 +26,8 @@
       "expected_answer": "false positive — ประกาศว่า node ที่แค่ช้าว่าตาย ทำให้ failover ซ้ำและเสี่ยง cascading failure",
       "type": "mcq",
       "options": [
-        "false positive — ประกาศว่า node ที่แค่ช้าว่าตาย ทำให้ failover ซ้ำและเสี่ยง cascading failure",
         "ตรวจจับ failure ช้าเกินไปจนระบบต้องค้างรอ node ที่ตายจริงนานเกินจำเป็นก่อนจะ failover ไปที่อื่น",
+        "false positive — ประกาศว่า node ที่แค่ช้าว่าตาย ทำให้ failover ซ้ำและเสี่ยง cascading failure",
         "ใช้ bandwidth มากขึ้นจากการ retry ซ้ำ ๆ จนเครือข่ายเต็มและ throughput โดยรวมของระบบตกลง"
       ]
     },
@@ -37,8 +37,8 @@
       "type": "mcq",
       "options": [
         "retry ทันทีทุกครั้งที่ไม่ได้ reply โดยไม่ต้องเช็คว่า capture สำเร็จไปแล้วหรือยัง",
-        "ทำ operation ให้ idempotent ด้วย idempotency key เพื่อให้ retry ไม่ capture ซ้ำ",
-        "ยกเลิกรายการแล้วให้ลูกค้าเริ่มใหม่เสมอ แม้เสี่ยงยกเลิกรายการที่สำเร็จไปแล้ว"
+        "ยกเลิกรายการแล้วให้ลูกค้าเริ่มใหม่เสมอ แม้เสี่ยงยกเลิกรายการที่สำเร็จไปแล้ว",
+        "ทำ operation ให้ idempotent ด้วย idempotency key เพื่อให้ retry ไม่ capture ซ้ำ"
       ]
     },
     {

@@ -26,8 +26,8 @@
       "expected_answer": "วิธี rebalance/กระจายข้อมูลเมื่อเพิ่มหรือลด node ไม่เกี่ยวกับ replica หรือ ACID consistency",
       "type": "mcq",
       "options": [
-        "วิธี rebalance/กระจายข้อมูลเมื่อเพิ่มหรือลด node ไม่เกี่ยวกับ replica หรือ ACID consistency",
         "การรับประกันว่าทุก replica ในระบบจะเห็นข้อมูลชุดเดียวกันตรงกันเสมอทุกครั้งไม่ว่าจะอ่านจาก node ไหนก็ตาม",
+        "วิธี rebalance/กระจายข้อมูลเมื่อเพิ่มหรือลด node ไม่เกี่ยวกับ replica หรือ ACID consistency",
         "การรับประกัน ACID consistency ของ transaction ที่ข้าม partition"
       ]
     },
@@ -41,9 +41,9 @@
       "expected_answer": "ใช้ compound key: hash เฉพาะ partition key ส่วนแรก แล้วเก็บ clustering columns ที่เหลือแบบ sorted → range scan ได้ภายใน partition key เดียว",
       "type": "mcq",
       "options": [
-        "ใช้ compound key: hash เฉพาะ partition key ส่วนแรก แล้วเก็บ clustering columns ที่เหลือแบบ sorted → range scan ได้ภายใน partition key เดียว",
         "hash ทั้ง key ทั้งหมดแล้วเก็บ secondary index ที่ sort ตามค่า hash ไว้ต่างหาก ทำให้ range query ที่ข้าม partition ใช้ index นั้นแทนการ scatter-gather ได้",
-        "เปลี่ยนไปใช้ key-range partitioning ทั้งตารางเมื่อมี range query"
+        "เปลี่ยนไปใช้ key-range partitioning ทั้งตารางเมื่อมี range query",
+        "ใช้ compound key: hash เฉพาะ partition key ส่วนแรก แล้วเก็บ clustering columns ที่เหลือแบบ sorted → range scan ได้ภายใน partition key เดียว"
       ]
     }
   ],

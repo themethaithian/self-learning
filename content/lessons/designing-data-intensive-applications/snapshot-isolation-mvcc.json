@@ -26,8 +26,8 @@
       "expected_answer": "หลาย DB ใช้ \"repeatable read\" เรียก snapshot isolation ซึ่งให้ guarantee ต่างจากนิยาม REPEATABLE READ ใน SQL standard",
       "type": "mcq",
       "options": [
-        "หลาย DB ใช้ \"repeatable read\" เรียก snapshot isolation ซึ่งให้ guarantee ต่างจากนิยาม REPEATABLE READ ใน SQL standard",
         "เพราะ repeatable read เป็นชื่อเดียวกับ serializable ในทุก vendor โดยไม่มีความแตกต่างด้าน guarantee หรือ implementation ใด ๆ เลยแม้แต่น้อย",
+        "หลาย DB ใช้ \"repeatable read\" เรียก snapshot isolation ซึ่งให้ guarantee ต่างจากนิยาม REPEATABLE READ ใน SQL standard",
         "เพราะ repeatable read ไม่มีจริงใน DB ใด ๆ"
       ]
     },
@@ -36,9 +36,9 @@
       "expected_answer": "มันปักหมุดไม่ให้ garbage collection ลบ version เก่าที่ยังมองเห็นได้ ทำให้ version สะสมบวม (bloat)",
       "type": "mcq",
       "options": [
-        "มันปักหมุดไม่ให้ garbage collection ลบ version เก่าที่ยังมองเห็นได้ ทำให้ version สะสมบวม (bloat)",
         "มันทำให้ writer ทุกตัว block จนระบบค้างทั้งหมดและไม่สามารถประมวลผล transaction ใหม่ใด ๆ ได้อีกต่อไปจนกว่าจะ restart",
-        "มันลบ version ใหม่ทิ้งทำให้ข้อมูลที่เพิ่ง commit หายไป"
+        "มันลบ version ใหม่ทิ้งทำให้ข้อมูลที่เพิ่ง commit หายไป",
+        "มันปักหมุดไม่ให้ garbage collection ลบ version เก่าที่ยังมองเห็นได้ ทำให้ version สะสมบวม (bloat)"
       ]
     },
     {

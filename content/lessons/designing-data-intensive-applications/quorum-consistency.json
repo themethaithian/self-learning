@@ -15,15 +15,19 @@
       "q": "ระบบมี n=5 replica ตั้ง w=3 ถ้าต้องการให้ read set ทับกับ write set เสมอ r ต้องอย่างน้อยเท่าไหร่?",
       "expected_answer": "3",
       "type": "mcq",
-      "options": ["3", "2", "1"]
+      "options": [
+        "3",
+        "2",
+        "1"
+      ]
     },
     {
       "q": "ข้อใดถูกต้องเกี่ยวกับสิ่งที่ w + r > n รับประกัน?",
       "expected_answer": "รับประกันว่า read เห็นค่าที่ write set ถืออยู่ แต่ไม่รับประกัน linearizability เมื่อมี concurrent write หรือ sloppy quorum",
       "type": "mcq",
       "options": [
-        "รับประกันว่า read เห็นค่าที่ write set ถืออยู่ แต่ไม่รับประกัน linearizability เมื่อมี concurrent write หรือ sloppy quorum",
         "รับประกัน linearizability ในทุกกรณี",
+        "รับประกันว่า read เห็นค่าที่ write set ถืออยู่ แต่ไม่รับประกัน linearizability เมื่อมี concurrent write หรือ sloppy quorum",
         "ทำให้ concurrent write ทุกคู่ถูกจัดลำดับ (ordered) โดยอัตโนมัติผ่านกลไก quorum โดยไม่ต้องพึ่งพา version vector หรือ LWW เพิ่มเติมแต่อย่างใด"
       ]
     },
@@ -37,9 +41,9 @@
       "expected_answer": "write อาจถูกรับไว้ที่ node นอกกลุ่ม home ของ key ทำให้ read quorum อาจไม่ทับกับ node ที่รับ write",
       "type": "mcq",
       "options": [
-        "write อาจถูกรับไว้ที่ node นอกกลุ่ม home ของ key ทำให้ read quorum อาจไม่ทับกับ node ที่รับ write",
         "มันเพิ่มจำนวน replica n ของ key นั้นโดยอัตโนมัติเพื่อชดเชย node ที่ล่ม ทำให้ w และ r ต้องถูกคำนวณใหม่ทุกครั้งที่มี node หาย",
-        "มันบังคับให้ r ต้องเท่ากับ n เสมอ"
+        "มันบังคับให้ r ต้องเท่ากับ n เสมอ",
+        "write อาจถูกรับไว้ที่ node นอกกลุ่ม home ของ key ทำให้ read quorum อาจไม่ทับกับ node ที่รับ write"
       ]
     }
   ],

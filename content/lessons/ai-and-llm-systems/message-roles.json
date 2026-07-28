@@ -16,8 +16,8 @@
       "expected_answer": "system message",
       "type": "mcq",
       "options": [
-        "user message",
         "system message",
+        "user message",
         "assistant message"
       ]
     },
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "เพราะโมเดลจำได้แต่ยืนยันซ้ำ",
-        "เพื่อบังคับ output เป็น JSON เสมอ",
-        "เพราะ chat API เป็น stateless"
+        "เพราะ chat API เป็น stateless",
+        "เพื่อบังคับ output เป็น JSON เสมอ"
       ]
     },
     {
@@ -36,9 +36,9 @@
       "expected_answer": "ไม่ได้เต็มร้อย ต้อง validate เพิ่ม",
       "type": "mcq",
       "options": [
-        "ไม่ได้เต็มร้อย ต้อง validate เพิ่ม",
         "ได้ เพราะเป็น hard security boundary",
-        "ได้ ถ้า system prompt ยาวพอ"
+        "ได้ ถ้า system prompt ยาวพอ",
+        "ไม่ได้เต็มร้อย ต้อง validate เพิ่ม"
       ]
     },
     {

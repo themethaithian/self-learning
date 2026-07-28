@@ -11,9 +11,9 @@
       "expected_answer": "consensus ต้องการแค่ majority ของ node เห็นชอบ จึงทน minority ล่มได้ ส่วน 2PC ต้องได้เสียงครบทุก participant (unanimous)",
       "type": "mcq",
       "options": [
-        "consensus ต้องการแค่ majority ของ node เห็นชอบ จึงทน minority ล่มได้ ส่วน 2PC ต้องได้เสียงครบทุก participant (unanimous)",
         "consensus ต้องได้เสียงครบทุก node (unanimous) เพื่อความปลอดภัยสูงสุด ส่วน 2PC ต้องการแค่เสียงข้างมาก (majority) ก็เพียงพอแล้วในการ commit",
-        "ทั้งคู่ต้องได้เสียงครบเท่ากัน ต่างกันแค่ชื่อเรียก"
+        "ทั้งคู่ต้องได้เสียงครบเท่ากัน ต่างกันแค่ชื่อเรียก",
+        "consensus ต้องการแค่ majority ของ node เห็นชอบ จึงทน minority ล่มได้ ส่วน 2PC ต้องได้เสียงครบทุก participant (unanimous)"
       ]
     },
     {
@@ -26,8 +26,8 @@
       "expected_answer": "Raft, Paxos, Zab, Viewstamped Replication",
       "type": "mcq",
       "options": [
-        "Two-Phase Commit, Three-Phase Commit, Chain Replication",
         "Raft, Paxos, Zab, Viewstamped Replication",
+        "Two-Phase Commit, Three-Phase Commit, Chain Replication",
         "Gossip protocol, CRDT, Vector clocks"
       ]
     },
@@ -37,8 +37,8 @@
       "type": "mcq",
       "options": [
         "ZooKeeper ยังรับ write ได้ปกติจาก node ที่เหลือ",
-        "ZooKeeper สลับไปเป็น eventual consistency อัตโนมัติเพื่อคง availability",
-        "ZooKeeper หยุดรับ write เพราะเลือก consistency เหนือ availability"
+        "ZooKeeper หยุดรับ write เพราะเลือก consistency เหนือ availability",
+        "ZooKeeper สลับไปเป็น eventual consistency อัตโนมัติเพื่อคง availability"
       ]
     },
     {

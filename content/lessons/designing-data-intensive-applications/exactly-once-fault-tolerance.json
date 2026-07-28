@@ -16,8 +16,8 @@
       "expected_answer": "idempotence หรือ atomic commit",
       "type": "mcq",
       "options": [
-        "เพิ่มจำนวน replica ของ broker ให้มากขึ้น",
         "idempotence หรือ atomic commit",
+        "เพิ่มจำนวน replica ของ broker ให้มากขึ้น",
         "ตั้ง network timeout ให้สั้นลง"
       ]
     },
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "at-least-once อาจทำให้ผลลัพธ์บางส่วนหายไป",
-        "at-least-once ช้ากว่า exactly-once เสมอ",
-        "at-least-once อาจทำให้ effect เกิดซ้ำได้"
+        "at-least-once อาจทำให้ effect เกิดซ้ำได้",
+        "at-least-once ช้ากว่า exactly-once เสมอ"
       ]
     },
     {
@@ -36,9 +36,9 @@
       "expected_answer": "coordination overhead ทำให้ throughput ลด",
       "type": "mcq",
       "options": [
-        "coordination overhead ทำให้ throughput ลด",
         "ต้องเพิ่มจำนวน node ในคลัสเตอร์อย่างน้อยสองเท่า",
-        "ทำให้ event ordering ผิดเพี้ยนไป"
+        "ทำให้ event ordering ผิดเพี้ยนไป",
+        "coordination overhead ทำให้ throughput ลด"
       ]
     },
     {

@@ -16,8 +16,8 @@
       "expected_answer": "linearizability = recency ของ object เดียวตามเวลาจริง; serializability = isolation ของ transaction ที่ให้ผลเหมือนรันเรียงกันทีละตัว",
       "type": "mcq",
       "options": [
-        "ทั้งสองเป็นคำเดียวกัน ใช้แทนกันได้",
         "linearizability = recency ของ object เดียวตามเวลาจริง; serializability = isolation ของ transaction ที่ให้ผลเหมือนรันเรียงกันทีละตัว",
+        "ทั้งสองเป็นคำเดียวกัน ใช้แทนกันได้",
         "linearizability พูดเรื่อง transaction ที่แตะหลาย object พร้อมกัน ส่วน serializability พูดเรื่อง object เดียวและไม่เกี่ยวกับเวลาจริงเลยแม้แต่น้อย"
       ]
     },
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "ยังตอบทุก request ได้ตามปกติโดยไม่กระทบอะไร",
-        "เพิ่ม replica ใหม่ขึ้นมาโดยอัตโนมัติเพื่อคง availability เอาไว้ให้ได้มากที่สุดผ่านการ vote ของ replica ฝั่งข้างมาก",
-        "ฝั่งที่ติดต่อ quorum ไม่ได้ต้องปฏิเสธ request เพื่อไม่คืนค่าเก่า (ยอมเสีย availability)"
+        "ฝั่งที่ติดต่อ quorum ไม่ได้ต้องปฏิเสธ request เพื่อไม่คืนค่าเก่า (ยอมเสีย availability)",
+        "เพิ่ม replica ใหม่ขึ้นมาโดยอัตโนมัติเพื่อคง availability เอาไว้ให้ได้มากที่สุดผ่านการ vote ของ replica ฝั่งข้างมาก"
       ]
     },
     {
@@ -37,8 +37,8 @@
       "type": "mcq",
       "options": [
         "การแสดงจำนวน like บนโพสต์",
-        "การรับประกันว่า account number ไม่ซ้ำ (uniqueness constraint)",
-        "การสร้างรายงาน analytics ประจำวันที่ดึงข้อมูลย้อนหลังมาสรุปผลให้ผู้บริหารดู"
+        "การสร้างรายงาน analytics ประจำวันที่ดึงข้อมูลย้อนหลังมาสรุปผลให้ผู้บริหารดู",
+        "การรับประกันว่า account number ไม่ซ้ำ (uniqueness constraint)"
       ]
     },
     {
