@@ -21,3 +21,8 @@ web/out/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Scratch files that shouldn't be committed
+*.tmp
+diff_output.txt
+scratchpad*

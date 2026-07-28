@@ -3,20 +3,95 @@ services:
     image: mysql:8.4
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-changeme_root}
+      MYSQL_DATABASE: ${DB_NAME:-self_learning}
+      MYSQL_USER: ${DB_USER:-app}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-changeme}
     ports:
       - "127.0.0.1:${DB_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    # start_period is long: a fresh volume's first boot (data dir init +
+    # temp-server restart cycle) measured ~100s on this machine, well past
+    # the original 30s + 10*5s budget, which made `docker compose up` abort
+    # with a false "dependency failed to start" before mysqld ever bound
+    # port 3306.
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 30s
+      start_period: 90s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-self_learning}
+      DB_USER: ${DB_USER:-app}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      API_PORT: 8080
+      API_BEARER_TOKEN: ${API_BEARER_TOKEN:-local-dev-token}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-sk-ant-placeholder}
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:3000}
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    environment:
+      # Explicit http:// scheme (not a bare "localhost") tells Caddy to skip
+      # automatic HTTPS for this site block. A bare hostname still triggers
+      # Caddy's internal-CA auto-HTTPS + HTTP->HTTPS redirect to :443, which
+      # this compose file never publishes and whose redirect target
+      # (https://localhost/) drops the custom host port anyway.
+      DOMAIN: http://localhost
+      ACME_EMAIL: placeholder@localhost.invalid
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # One-shot content seed, idempotent (upsert by slug). No profile: runs
+  # automatically on `docker compose up` so a fresh clone needs zero manual
+  # import steps.
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-self_learning}
+      DB_USER: ${DB_USER:-app}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      API_BEARER_TOKEN: ${API_BEARER_TOKEN:-local-dev-token}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-sk-ant-placeholder}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/app/import-curriculum -dir /app/content/curriculum && /app/import-lessons -dir /app/content/lessons"]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   mysql_data:
