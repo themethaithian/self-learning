@@ -41,6 +41,44 @@ interface NavInfo {
 
 const LEARN_CRUMB: Crumb = { label: "Learn", href: "/learn" };
 
+function NextPanelContent({
+  next,
+  trackSlug,
+  emphasis,
+}: {
+  next: NextLessonResult;
+  trackSlug: string;
+  emphasis: "primary" | "secondary";
+}) {
+  switch (next.kind) {
+    case "next":
+      return (
+        <LinkButton
+          variant={emphasis === "primary" ? "primary" : "ghost"}
+          href={`/lesson?topic=${encodeURIComponent(next.topic)}&concept=${encodeURIComponent(next.concept)}`}
+          className="max-w-full"
+        >
+          {/* Concept titles are plain strings of unknown length/script. */}
+          <span className="min-w-0 break-words">{next.title} →</span>
+        </LinkButton>
+      );
+    case "end-of-track":
+    case "not-found":
+      return (
+        <>
+          <p className="text-sm text-muted">You&apos;ve reached the end of the available lessons in this track.</p>
+          <LinkButton variant="ghost" href={`/learn?track=${encodeURIComponent(trackSlug)}`}>
+            Back to track
+          </LinkButton>
+        </>
+      );
+    default: {
+      const exhaustive: never = next;
+      return exhaustive;
+    }
+  }
+}
+
 function NextPanel({
   next,
   trackSlug,
@@ -53,24 +91,7 @@ function NextPanel({
   return (
     <Card className="space-y-3">
       <h2 className="text-xs font-medium uppercase tracking-wide text-faint">Next</h2>
-      {next.kind === "next" ? (
-        <LinkButton
-          variant={emphasis === "primary" ? "primary" : "ghost"}
-          href={`/lesson?topic=${encodeURIComponent(next.topic)}&concept=${encodeURIComponent(next.concept)}`}
-          className="max-w-full"
-        >
-          {/* Concept titles are plain strings of unknown length/script — break-words
-              lets the browser wrap inside the button instead of overflowing it. */}
-          <span className="min-w-0 break-words">{next.title} →</span>
-        </LinkButton>
-      ) : (
-        <>
-          <p className="text-sm text-muted">You&apos;ve reached the end of the available lessons in this track.</p>
-          <LinkButton variant="ghost" href={`/learn?track=${encodeURIComponent(trackSlug)}`}>
-            Back to track
-          </LinkButton>
-        </>
-      )}
+      <NextPanelContent next={next} trackSlug={trackSlug} emphasis={emphasis} />
     </Card>
   );
 }
@@ -88,7 +109,13 @@ function LessonView() {
   const [alreadyPassed, setAlreadyPassed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
-  const nextPanelRef = useRef<HTMLDivElement>(null);
+  const finishedBannerRef = useRef<HTMLDivElement>(null);
+  // The single source of truth for "which lesson is actually on screen right
+  // now" — finish() is owned by a click handler, not the effect below, so it
+  // can't rely on that effect's own `cancelled` flag (that guard only covers
+  // async work the effect itself started). Cleared the instant navigation
+  // starts, (re)set once the new lesson is confirmed current.
+  const currentIdentityRef = useRef<{ topic: string; concept: string } | null>(null);
 
   // One effect owns both the lesson fetch and the mark-in-progress write so
   // they share a single `cancelled` flag. Navigating lesson -> Next -> Back
@@ -102,6 +129,7 @@ function LessonView() {
     }
 
     let cancelled = false;
+    currentIdentityRef.current = null;
     setState({ status: "loading" });
     setRatings({});
     setFinishState({ status: "idle" });
@@ -126,6 +154,7 @@ function LessonView() {
       }
       if (cancelled) return;
       setState({ status: "success", lesson });
+      currentIdentityRef.current = { topic: lesson.topic, concept: lesson.concept };
 
       try {
         const entry = await setProgress(lesson.topic, lesson.concept, "in_progress");
@@ -180,8 +209,11 @@ function LessonView() {
   // Finish unmounts on success, which would otherwise drop focus to <body>;
   // only the user's own click should steal focus, not a page load that
   // starts out already-passed, so this keys off finishState, not `finished`.
+  // Focus goes to the banner itself, not the Next panel below it — a screen
+  // reader announces whatever receives focus, and that's more reliable than
+  // counting on a freshly-mounted role="status" region being read at all.
   useEffect(() => {
-    if (finishState.status === "saved") nextPanelRef.current?.focus({ preventScroll: true });
+    if (finishState.status === "saved") finishedBannerRef.current?.focus({ preventScroll: true });
   }, [finishState.status]);
 
   if (state.status === "loading") {
@@ -237,11 +269,21 @@ function LessonView() {
   const allRated = ratedCount === totalChecks;
 
   async function finish() {
+    const identity = { topic: lesson.topic, concept: lesson.concept };
+    const stillCurrent = () =>
+      currentIdentityRef.current?.topic === identity.topic && currentIdentityRef.current?.concept === identity.concept;
+
     setFinishState({ status: "saving" });
     try {
-      await setProgress(lesson.topic, lesson.concept, "passed");
+      await setProgress(identity.topic, identity.concept, "passed");
+      // The user may have navigated to a different lesson while this PUT was
+      // in flight (Next is visible before Finish resolves, by design) — a
+      // late response for the lesson we started this from must never mutate
+      // whatever's on screen now.
+      if (!stillCurrent()) return;
       setFinishState({ status: "saved" });
     } catch (err) {
+      if (!stillCurrent()) return;
       if (err instanceof UnauthorizedError) {
         router.replace("/token");
         return;
@@ -315,8 +357,10 @@ function LessonView() {
         <div className="space-y-2">
           {finished ? (
             <div
+              ref={finishedBannerRef}
+              tabIndex={-1}
               role="status"
-              className="flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3 text-sm font-medium text-success-strong"
+              className="flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3 text-sm font-medium text-success-strong focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2"
             >
               <CheckIcon />
               Lesson finished
@@ -350,21 +394,19 @@ function LessonView() {
           )}
         </div>
 
-        <div ref={nextPanelRef} tabIndex={-1} className="rounded-2xl focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2">
-          {navInfo ? (
-            <NextPanel next={navInfo.next} trackSlug={navInfo.location.track} emphasis={finished ? "primary" : "secondary"} />
-          ) : (
-            finished && (
-              <Card className="space-y-3">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-faint">Next</h2>
-                <p className="text-sm text-muted">Couldn&apos;t figure out what&apos;s next right now.</p>
-                <LinkButton variant="ghost" href="/learn">
-                  Back to Learn
-                </LinkButton>
-              </Card>
-            )
-          )}
-        </div>
+        {navInfo ? (
+          <NextPanel next={navInfo.next} trackSlug={navInfo.location.track} emphasis={finished ? "primary" : "secondary"} />
+        ) : (
+          finished && (
+            <Card className="space-y-3">
+              <h2 className="text-xs font-medium uppercase tracking-wide text-faint">Next</h2>
+              <p className="text-sm text-muted">Couldn&apos;t figure out what&apos;s next right now.</p>
+              <LinkButton variant="ghost" href="/learn">
+                Back to Learn
+              </LinkButton>
+            </Card>
+          )
+        )}
       </section>
     </div>
   );

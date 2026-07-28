@@ -22,9 +22,13 @@ export function Breadcrumb({ items }: { items: Crumb[] }) {
                 </span>
               )}
               {item.href ? (
+                // A link can never be the current page, so aria-current never
+                // applies here — only isLast among the no-href crumbs below
+                // decides that, which also keeps a single-crumb degraded
+                // breadcrumb (always a link, e.g. "Learn") from being
+                // mislabeled as the page the user is actually on.
                 <Link
                   href={item.href}
-                  aria-current={isLast ? "page" : undefined}
                   className="rounded font-medium text-accent underline-offset-2 hover:text-accent-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
                 >
                   {item.label}

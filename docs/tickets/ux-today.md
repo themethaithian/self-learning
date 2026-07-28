@@ -262,8 +262,17 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
   - ทำไมอ่าน state จาก **response ของ PUT in_progress** พอ ไม่ต้องมี `GET
     /api/v1/progress` แยกอีกเส้น?
   - ทำไม "Finished" ต้องนับจาก "รีวิวครบทุกข้อ" ไม่ใช่ "ผ่านทุกข้อ"?
-  - ทำไม `findNextLesson` คืน `null` เหมือนกันทั้งกรณี "หมด track" กับ "concept slug ไม่อยู่ใน
-    tree เลย" ทั้งที่เป็นคนละสาเหตุ?
+  - ทำไม `findNextLesson` ต้องคืน discriminated union (`"next" | "end-of-track" | "not-found"`)
+    แทนที่จะคืน `null` เฉย ๆ สำหรับทั้งสองกรณีที่ไม่มี next?
+- **Known debt จาก code review (บันทึกไว้ ตั้งใจไม่แก้ใน ticket นี้)**:
+  - **S12 — `ratings` (recall check pass/fail ต่อข้อ) เป็น page-local state ไม่เคย persist**:
+    rate 3 จาก 4 ข้อแล้วออกจากหน้าไปโดยไม่กด Finish หายเงียบ ๆ — วันนี้ไม่มีผลอะไร (ยังไม่มีที่ไหน
+    เก็บ per-check rating ลง DB เลย, มีแค่ aggregate "passed" ทั้ง lesson ที่ Finish เขียน) แต่พอ
+    SM-2 / recall-attempt write ลงจริง (สัปดาห์ 4, Drill tickets T16–T21) จุดนี้จะกลายเป็น data
+    loss ของจริงทันที — ต้อง revisit ตอนนั้น ไม่ใช่ ticket นี้
+  - **S15 — `Button`'s `"danger"` variant ไม่มีใครเรียกใช้เลยทั้งแอป, `text-danger` (rose-600) บน
+    cream วัดได้ ~4.39:1 ซึ่ง**จะ fail AA**ทันทีที่มีคนเอาไปใช้จริง (14px ต้องการ 4.5:1) — บันทึกไว้
+    เป็น debt เฉย ๆ ไม่เพิ่ม caller ปลอมขึ้นมาเพื่อ "justify" การมีอยู่ของ variant นี้
 - Status: `implemented, PR pending`
 
 ## UX-6 — Today page + IA switch

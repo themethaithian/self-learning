@@ -21,7 +21,7 @@
   --color-focus: #8b5cf6; /* violet-500 — focus ring only */
 
   --color-success: #059669; /* emerald-600 */
-  --color-success-strong: #047857; /* emerald-700 — text on bg-success/10 over cream (~5.5:1, AA); also the only AA-safe solid chip background with white text at 12px */
+  --color-success-strong: #047857; /* emerald-700 — text on bg-success/10 over cream, ~4.56:1, AA */
   --color-warning: #d97706; /* amber-600 */
   --color-danger: #e11d48; /* rose-600 */
   --color-danger-strong: #be123c; /* rose-700 — text on bg-danger/10 over cream, ~5:1, AA */
