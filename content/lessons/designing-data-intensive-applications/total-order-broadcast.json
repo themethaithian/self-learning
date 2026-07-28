@@ -37,7 +37,7 @@
       "type": "mcq",
       "options": [
         "ไม่มี trade-off เพราะ partition ได้อิสระเต็มที่โดยไม่ต้องผ่าน ordering step ร่วมกันเลยแม้แต่ node เดียว",
-        "เปลืองแค่ RAM มากขึ้นเท่านั้น",
+        "เปลืองแค่ RAM มากขึ้นเท่านั้น โดยไม่กระทบ throughput หรือ latency ของระบบเมื่อเพิ่มจำนวน node เข้าร่วม cluster",
         "ทุก message ต้องผ่าน ordering step ร่วมอันเดียว throughput จึงติดเพดานที่กำลังของ node เดียว"
       ]
     },

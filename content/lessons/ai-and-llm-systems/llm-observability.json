@@ -33,7 +33,7 @@
       "options": [
         "ค่า average latency ของทุก request รวมกันในหนึ่งวัน เพราะเพียงพอต่อการดูภาพรวมของระบบแล้ว",
         "TTFT (time to first token) และ total latency",
-        "เวลาที่ใช้ในขั้น retrieval อย่างเดียว"
+        "เวลาที่ใช้ในขั้น retrieval อย่างเดียว โดยไม่ต้องนับเวลาที่เหลือของ pipeline"
       ]
     },
     {

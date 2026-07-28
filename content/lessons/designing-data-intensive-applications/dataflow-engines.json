@@ -22,7 +22,7 @@
       "type": "mcq",
       "options": [
         "MapReduce start job ใหม่ทุก iteration และอ่าน dataset เต็มจาก HDFS ซ้ำ ส่วน dataflow cache working set ใน memory ข้าม iteration",
-        "MapReduce จำกัดจำนวน iteration ไว้ที่ 10 รอบต่อ job ส่วน dataflow วนได้ไม่จำกัดและ merge ผลอัตโนมัติทุกรอบจน model converge",
+        "MapReduce จำกัดจำนวน iteration ไว้ที่ 10 รอบต่อ job ส่วน dataflow วนได้ไม่จำกัดและ merge ผลอัตโนมัติทุกรอบจน model converge โดยไม่ต้องเขียนโค้ดควบคุมเพิ่มเติมเอง",
         "MapReduce ต้องรัน reduce ก่อน map ทุกรอบ ทำให้ต้องกลับลำดับ ส่วน dataflow จัด operator ใหม่ให้เองทุก iteration โดยไม่ต้องอ่าน HDFS"
       ]
     },

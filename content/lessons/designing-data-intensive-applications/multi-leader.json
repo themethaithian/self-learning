@@ -18,7 +18,7 @@
       "options": [
         "offline clients ที่ต้องเขียนได้ตอน offline แล้ว sync ทีหลัง",
         "การเพิ่ม read replica จำนวนมากเพื่อ scale read อย่างเดียวโดยไม่เกี่ยวกับการเขียนเลย",
-        "การรับประกัน strong consistency ข้าม datacenter"
+        "การรับประกัน strong consistency ข้าม datacenter ทุกแห่งโดยไม่ต้องรอให้กระบวนการ replication เสร็จสิ้นก่อน"
       ]
     },
     {

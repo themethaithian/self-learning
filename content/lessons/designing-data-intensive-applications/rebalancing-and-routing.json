@@ -41,7 +41,7 @@
       "expected_answer": "เก็บ mapping partition->node ที่เชื่อถือได้ แล้วแจ้ง routing tier เมื่อ assignment เปลี่ยน",
       "type": "mcq",
       "options": [
-        "เก็บข้อมูลจริงของทุก partition แทนตัว node",
+        "เก็บข้อมูลจริงของทุก partition แทนตัว node โดยทำหน้าที่เป็น storage หลักของข้อมูลทั้งหมดแทนที่จะเป็นแค่ metadata store",
         "ทำหน้าที่คำนวณ hash function ของแต่ละ key เพื่อตัดสินใจว่า key นั้นควรไปอยู่ partition ไหนตั้งแต่แรกเริ่ม",
         "เก็บ mapping partition->node ที่เชื่อถือได้ แล้วแจ้ง routing tier เมื่อ assignment เปลี่ยน"
       ]

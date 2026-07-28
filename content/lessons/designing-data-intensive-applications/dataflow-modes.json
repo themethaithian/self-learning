@@ -28,7 +28,7 @@
       "options": [
         "RPC มี partial failure และ latency ไม่แน่นอน จึงต้อง idempotency สำหรับ retry",
         "RPC ช้ากว่า local call เสมอเพราะต้อง serialize payload เป็น JSON ก่อนส่งทุกครั้งไม่ว่ากรณีใด",
-        "RPC เรียกได้แค่ function ที่ return void"
+        "RPC เรียกได้แค่ function ที่ return void เท่านั้น ไม่รองรับการส่งค่ากลับเป็น object หรือโครงสร้างข้อมูลอื่นใดกลับมาให้ผู้เรียก"
       ]
     },
     {

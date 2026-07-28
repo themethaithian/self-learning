@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "มันเชื่อว่าตัวเองยังถือ lease อยู่และเขียนข้อมูลทับ ทั้งที่ node อื่น take over ไปแล้ว → split-brain / double-write",
-        "lease service จะตรวจพบว่ามี lease ของ payment เดียวกันสองใบ แล้ว crash หรือ reject ทั้งคู่จน worker ค้าง",
+        "lease service จะตรวจพบว่ามี lease ของ payment เดียวกันสองใบ แล้ว crash หรือ reject ทั้งคู่จน worker ค้าง เพราะเข้าใจว่า lease service สามารถรู้ได้เองว่ามีการชนกันของ lease เกิดขึ้น",
         "node ที่ฟื้นจะตรวจเจอเองว่า lease หมดอายุระหว่าง pause แล้ว restart process ของตัวเองใหม่ทั้งหมดโดยอัตโนมัติก่อนเขียน"
       ]
     },

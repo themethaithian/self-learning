@@ -41,7 +41,7 @@
       "expected_answer": "non-repeatable read / read skew (และ lost update)",
       "type": "mcq",
       "options": [
-        "dirty read",
+        "dirty read คือการเห็นข้อมูลที่ transaction อื่นเขียนไว้แต่ยังไม่ commit ซึ่ง read committed ป้องกันไว้แล้วด้วยการให้ reader เห็นแต่ค่าเก่าที่ commit แล้ว",
         "dirty write (การเขียนทับ row ที่ transaction อื่นยังไม่ commit)",
         "non-repeatable read / read skew (และ lost update)"
       ]

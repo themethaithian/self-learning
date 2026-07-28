@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "ใน context window ของ call ปัจจุบัน",
-        "ใน vector store ภายนอกเสมอ",
+        "ใน vector store ภายนอกเสมอ ที่ต้อง retrieve กลับเข้า context ก่อนถึงจะใช้ได้",
         "ใน session ที่ provider เก็บให้อัตโนมัติ"
       ]
     },

@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "tag number คือตัวตนของ field ใน Protobuf ทำให้ rename ชื่อ field ได้โดยไม่พังความเข้ากันได้",
-        "Avro ต้องส่ง writer's schema แบบ out-of-band เพราะไบต์ไม่มี schema",
+        "Avro ต้องส่ง writer's schema แบบ out-of-band เพราะไบต์ไม่มี schema เช่น เขียนไว้หัวไฟล์ของไฟล์ใหญ่ หรือใช้ version number ชี้ไป schema registry",
         "Protobuf เก็บชื่อ field ไว้ในไบต์ จึง decode ได้เองโดยไม่ต้องมี schema"
       ]
     }

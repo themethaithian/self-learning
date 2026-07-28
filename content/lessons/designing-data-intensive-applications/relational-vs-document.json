@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "document model เหมาะกับความสัมพันธ์แบบ one-to-many tree-structured ที่มักถูกอ่านพร้อมกันทั้งก้อนเพราะได้ประโยชน์จาก locality",
-        "relational จัดการ many-to-many ได้ดีกว่าด้วย join ผ่าน foreign key",
+        "relational จัดการ many-to-many ได้ดีกว่าด้วย join ผ่าน foreign key เพราะเก็บของที่ถูกแชร์ไว้ที่เดียวแล้วชี้ด้วย foreign key",
         "join ทำได้เฉพาะใน relational database เท่านั้น เป็นไปไม่ได้เลยในฝั่ง document"
       ]
     }

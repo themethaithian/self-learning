@@ -13,7 +13,7 @@
       "options": [
         "การ traverse ความสัมพันธ์ลึก/variable-length path ได้ตรง ๆ",
         "การเก็บข้อมูลแบบ tabular ที่มี column กว้างมากและต้องทำ column-store scan อย่างมีประสิทธิภาพในทุก query",
-        "การทำ aggregate scan ทั้งตารางให้เร็ว"
+        "การทำ aggregate scan ทั้งตารางให้เร็วขึ้นสำหรับรายงานสรุปยอดรวมของธุรกิจ"
       ]
     },
     {
@@ -48,7 +48,7 @@
       "options": [
         "ข้อมูลที่มี many-to-many ต้องใช้ graph database เสมอ",
         "Cypher เป็นภาษา query ที่ออกแบบมาสำหรับ traverse property graph โดยเฉพาะ ใช้ pattern matching syntax ที่ต่างจาก SQL",
-        "triple-store query ด้วย SPARQL"
+        "triple-store query ด้วยภาษา SPARQL ซึ่งเป็นอีกสไตล์หนึ่งของ graph model ที่ต่างจาก property graph"
       ]
     }
   ],

@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "เพราะ deserialize สามารถ instantiate arbitrary class และทริกเกอร์ side-effect ระหว่างสร้าง object นำไปสู่ remote code execution",
-        "เพราะ payload จะมีขนาดใหญ่จน memory เต็ม",
+        "เพราะ payload จะมีขนาดใหญ่จน memory เต็ม เนื่องจากรูปแบบ serialization ของภาษาต่าง ๆ มักฝัง class metadata และรายละเอียดของ object เข้าไปในทุก record จนขนาดข้อมูลบวมขึ้นมากกว่าที่ควรจะเป็น",
         "เพราะข้อมูลจะถูกเข้ารหัสด้วย algorithm ที่รัดกุมเกินไปจนแม้แต่ฝั่งที่ถูกต้องเองก็ยังถอดรหัสกลับมาอ่านไม่ได้เหมือนเดิมทุกครั้งที่พยายาม"
       ]
     },

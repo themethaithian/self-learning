@@ -28,7 +28,7 @@
       "options": [
         "two-way channel เปิดค้างสองทางเหมือน WebSocket",
         "one-way HTTP stream จาก server ไปยัง client",
-        "การ poll endpoint ซ้ำเป็นช่วง ๆ ทุกวินาที"
+        "การ poll endpoint ซ้ำเป็นช่วง ๆ ทุกวินาทีแทนที่จะเปิด stream ค้างไว้"
       ]
     },
     {

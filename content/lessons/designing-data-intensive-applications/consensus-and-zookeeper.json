@@ -28,7 +28,7 @@
       "options": [
         "Raft, Paxos, Zab, Viewstamped Replication",
         "Two-Phase Commit, Three-Phase Commit, Chain Replication",
-        "Gossip protocol, CRDT, Vector clocks"
+        "Gossip protocol, CRDT, Vector clocks ที่ใช้แก้ปัญหาคนละแบบกัน"
       ]
     },
     {

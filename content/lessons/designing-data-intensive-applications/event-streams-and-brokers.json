@@ -18,7 +18,7 @@
       "options": [
         "buffer event เมื่อ consumer ช้าหรือหลุดไป",
         "การันตี event ทุกตัวถึง consumer โดยไม่ซ้ำกันเลย",
-        "ลบ duplicate ให้อัตโนมัติด้วย hash"
+        "ลบ duplicate ให้อัตโนมัติด้วย hash ของเนื้อหาข้อความ"
       ]
     },
     {

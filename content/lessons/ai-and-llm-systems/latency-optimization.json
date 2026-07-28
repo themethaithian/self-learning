@@ -26,7 +26,7 @@
       "expected_answer": "เมื่อ prefix ของ prompt ซ้ำกัน",
       "type": "mcq",
       "options": [
-        "เมื่อ output สั้นมาก",
+        "เมื่อ output สั้นมากจนใช้เวลา generate ต่อจากนั้นไม่นาน",
         "เมื่อ prefix ของ prompt ซ้ำกัน",
         "เมื่อทุก request มี prompt ต่างกัน"
       ]

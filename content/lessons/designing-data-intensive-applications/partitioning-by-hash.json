@@ -18,7 +18,7 @@
       "options": [
         "เพราะ key เดียวกันอาจได้ค่า hash ต่างกันคนละ process จึงไม่ deterministic พอสำหรับ partitioning",
         "เพราะมันไม่ได้ออกแบบมาให้ deterministic ข้าม process แต่กลับคำนวณช้าเกินไปสำหรับงาน partitioning ที่ต้อง hash ข้อมูลจำนวนมหาศาลตลอดเวลา",
-        "เพราะมันคืนค่าเป็น string ไม่ใช่ตัวเลข map ไป partition ไม่ได้"
+        "เพราะมันคืนค่าเป็น string ไม่ใช่ตัวเลข จึงไม่สามารถนำไป map เป็น partition number ได้โดยตรงเหมือนที่ hash function สำหรับงาน partitioning ต้องการ"
       ]
     },
     {

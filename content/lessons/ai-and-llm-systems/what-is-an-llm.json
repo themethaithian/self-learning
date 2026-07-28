@@ -28,7 +28,7 @@
       "options": [
         "ในไฟล์ database ที่ query ตอน runtime",
         "ใน weights เป็น statistical pattern",
-        "ในไฟล์ log ที่บันทึกทุก request"
+        "ในไฟล์ log ที่บันทึกทุก request ไว้เป็นประวัติการใช้งาน"
       ]
     },
     {

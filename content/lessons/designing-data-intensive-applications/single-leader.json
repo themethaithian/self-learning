@@ -41,7 +41,7 @@
       "expected_answer": "scale read เท่านั้น",
       "type": "mcq",
       "options": [
-        "scale ทั้งคู่",
+        "scale ทั้งคู่ ทั้ง read และ write เพราะ follower ช่วยแบ่งเบาภาระของ leader ได้ในทุกด้าน",
         "scale write เท่านั้น เพราะ leader ยังเป็นจุดเดียวที่รับ write",
         "scale read เท่านั้น"
       ]

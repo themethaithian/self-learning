@@ -26,7 +26,7 @@
       "expected_answer": "filter ด้วย metadata tenant_id ตอน query",
       "type": "mcq",
       "options": [
-        "เข้ารหัส vector แยกไฟล์ต่อ tenant",
+        "เข้ารหัส vector แยกไฟล์ต่อ tenant แล้วเก็บไว้คนละที่กัน",
         "filter ด้วย metadata tenant_id ตอน query",
         "สร้าง embedding model แยกต่อ tenant แต่ละราย"
       ]

@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "เพราะ event ทุกตัวถูก timestamp พร้อมกันเสมอ",
-        "เพราะ table ไม่ได้ sync ด้วย CDC",
+        "เพราะ table ที่ใช้ enrich ไม่ได้ sync ด้วย CDC จึงมีข้อมูลเก่ากว่าที่ควร",
         "เพราะ delay/outage ทำให้ event กองผิดช่วง"
       ]
     }

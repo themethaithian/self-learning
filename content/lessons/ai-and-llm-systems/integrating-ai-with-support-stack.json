@@ -26,7 +26,7 @@
       "expected_answer": "เพราะ prompt ไม่ใช่ security control ข้อมูลที่เข้ามาใน context แล้วมีโอกาสหลุด และ audit log บอกไม่ได้ว่าอ่านแทนใคร",
       "type": "mcq",
       "options": [
-        "เพราะ service account ทำให้จำนวน token ต่อ request สูงขึ้นจนคุมต้นทุนไม่ได้",
+        "เพราะ service account ทำให้จำนวน token ต่อ request สูงขึ้นจนคุมต้นทุนไม่ได้ เนื่องจากต้องแนบข้อมูลของลูกค้าทุกคนเข้ามาใน context ไว้ล่วงหน้าเผื่อใช้",
         "เพราะ prompt ไม่ใช่ security control ข้อมูลที่เข้ามาใน context แล้วมีโอกาสหลุด และ audit log บอกไม่ได้ว่าอ่านแทนใคร",
         "เพราะระบบปลายทางจะปฏิเสธ request ที่ไม่มี token ของผู้ใช้จริง ทำให้ tool call ทุกตัวคืน error และ AI ตอบอะไรไม่ได้เลยตั้งแต่ต้น"
       ]

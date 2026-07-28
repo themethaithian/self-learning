@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "เพราะ JSON number ถูก parse เป็น IEEE 754 double ค่าที่เกิน 2^53 จึงเสีย precision",
-        "เพราะ string ค้นหาได้เร็วกว่า number",
+        "เพราะ string ค้นหาได้เร็วกว่า number เมื่อระบบต้อง query หรือเทียบค่า id ซ้ำ ๆ กันบ่อยครั้งในฐานข้อมูล",
         "เพราะ XML ไม่มี native integer type จึงต้องแปลงตัวเลขทุกตัวเป็น string ก่อนส่งตามธรรมเนียมของทีม backend"
       ]
     },

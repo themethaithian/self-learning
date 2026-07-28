@@ -28,7 +28,7 @@
       "options": [
         "validation error ควร retry ซ้ำไปเรื่อย ๆ จนกว่าจะผ่านเอง",
         "timeout / 503 / rate limit ควร retry แบบ backoff มี cap",
-        "not-found ควร retry รัว ๆ ได้เลยไม่ต้อง cap จำนวน"
+        "not-found ควร retry รัว ๆ ได้เลยไม่ต้อง cap จำนวนครั้งไว้เลย"
       ]
     },
     {

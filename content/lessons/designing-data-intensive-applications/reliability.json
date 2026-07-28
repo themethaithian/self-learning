@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "ทำให้โค้ดเขียนง่ายขึ้นมากและลด latency ของทุก request ลงได้เสมอโดยไม่มีข้อแลกเปลี่ยนใด ๆ ทั้งสิ้น",
-        "ทำให้ software bug ที่ correlated หายไปด้วย redundancy",
+        "ทำให้ software bug ที่ correlated หายไปด้วย redundancy เพราะการมีหลาย instance รันขนานกันจะช่วยชดเชยจุดที่โค้ดพลาดได้เหมือนกับที่มันช่วยเรื่อง hardware fault",
         "ต้องแลกด้วย redundancy และ complexity ที่เพิ่มขึ้น จึงไม่ควรลงทุนระดับเท่ากันทุก path"
       ]
     }

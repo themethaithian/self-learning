@@ -18,7 +18,7 @@
       "options": [
         "version vector",
         "Lamport timestamp เพียงอย่างเดียวโดยไม่ใช้ version vector ร่วมด้วย",
-        "wall-clock"
+        "wall-clock ของแต่ละเครื่องที่มักไม่ sync กันข้าม node"
       ]
     },
     {

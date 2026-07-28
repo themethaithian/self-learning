@@ -28,7 +28,7 @@
       "options": [
         "ขยาย golden set ให้ถึงหลักพันเคสก่อนเริ่มใช้งานจริง",
         "วัด agreement กับ human rating บน sample",
-        "เปลี่ยนไปใช้ judge model รุ่นใหม่ที่สุด"
+        "เปลี่ยนไปใช้ judge model รุ่นใหม่ที่สุดโดยไม่ต้อง re-baseline"
       ]
     },
     {

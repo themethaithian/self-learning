@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "fan-out-on-write ดีกว่าเสมอในทุกสถานการณ์อย่างไม่มีข้อยกเว้นเพราะทำให้อ่านเร็วกว่ามากโดยไม่มีข้อเสียด้านการเขียนหรือ storage ที่เพิ่มขึ้นเลยแม้แต่น้อยนิด",
-        "fan-out-on-read ดีกว่าเสมอเพราะเขียนถูก",
+        "fan-out-on-read ดีกว่าเสมอเพราะเขียนถูก โดยไม่ต้องพิจารณา read:write ratio หรือ follower distribution ของระบบเลย เพราะงานเขียนที่ถูกกว่าสำคัญกว่าทุกปัจจัยอื่น",
         "ขึ้นกับ load parameter จริง (read:write ratio, follower distribution) และระบบจริงมักใช้ hybrid — คนทั่วไป fan-out-on-write, celebrity fan-out-on-read"
       ]
     }

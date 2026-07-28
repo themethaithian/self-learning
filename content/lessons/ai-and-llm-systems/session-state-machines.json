@@ -28,7 +28,7 @@
       "options": [
         "ตัดสินใจ transition ระหว่าง state แทน machine",
         "จัดการภาษาที่ยืดหยุ่นภายใน state ปัจจุบัน",
-        "เก็บ state และ slot ลง database"
+        "เก็บ state และ slot ลง database เพื่อบันทึกไว้เป็นข้อมูลถาวร"
       ]
     },
     {

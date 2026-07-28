@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "ภายใน partition เดียวเท่านั้น",
-        "ข้ามทุก partition",
+        "ข้ามทุก partition ของ topic เดียวกัน รวมถึง event ที่ถูก key ไปตกคนละ partition กัน",
         "ทุก consumer ที่อ่าน topic นั้น"
       ]
     },

@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "model-driven design เพราะโค้ดสั้นและตรงไปตรงมา ทำให้ domain expert อ่านแล้วเข้าใจการโอนเงินได้ทันที",
-        "aggregate root ที่ถูกต้อง",
+        "aggregate root ที่ถูกต้องแล้วตามหลัก DDD เพราะห่อ logic การโอนเงินไว้ในที่เดียวอย่างเหมาะสม",
         "data-driven / transaction script ที่ concept ของ domain หายไป"
       ]
     },

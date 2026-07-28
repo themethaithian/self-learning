@@ -12,7 +12,7 @@
       "type": "mcq",
       "options": [
         "เพราะ mean ถูก outlier ดึงและซ่อน request ที่ช้าที่สุดไว้ ส่วน percentile อธิบาย tail ได้ตรง",
-        "เพราะ mean ใช้ CPU คำนวณมากกว่า percentile",
+        "เพราะ mean ใช้ CPU คำนวณมากกว่า percentile เนื่องจากต้องบวกค่าทุก request แล้วหารด้วยจำนวน request ทั้งหมดทุกครั้งที่คำนวณ",
         "เพราะ percentile ให้ค่าต่ำกว่า mean เสมอในทุก distribution ทำให้รายงานตัวเลข performance ดูดีขึ้น"
       ]
     },

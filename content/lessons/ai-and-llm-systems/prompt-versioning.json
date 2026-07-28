@@ -26,7 +26,7 @@
       "expected_answer": "repo ได้ review และ CI มาให้ฟรีแต่แก้ต้อง deploy ส่วน config store แก้ได้เร็วแต่ต้องสร้าง review, audit และ rollback เอง",
       "type": "mcq",
       "options": [
-        "การเก็บไว้ใน config store ปลอดภัยกว่าเสมอ เพราะมี rollback ให้โดยอัตโนมัติ",
+        "การเก็บไว้ใน config store ปลอดภัยกว่าเสมอ เพราะมี rollback ให้โดยอัตโนมัติโดยไม่ต้องออกแบบ audit trail หรือ immutable version เพิ่มเองเลย",
         "repo ได้ review และ CI มาให้ฟรีแต่แก้ต้อง deploy ส่วน config store แก้ได้เร็วแต่ต้องสร้าง review, audit และ rollback เอง",
         "repo เหมาะกับ prompt ที่ยาวเท่านั้น ส่วน config store เหมาะกับ prompt สั้นที่มีตัวแปรแทรกจำนวนมาก เพราะข้อจำกัดเรื่องขนาดไฟล์ของระบบ version control"
       ]

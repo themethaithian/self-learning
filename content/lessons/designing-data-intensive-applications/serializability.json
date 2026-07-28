@@ -37,7 +37,7 @@
       "type": "mcq",
       "options": [
         "deadlock เกิดขึ้นถี่มากขึ้นเรื่อย ๆ จนระบบต้อง detect แล้วเลือก abort transaction ตัวใดตัวหนึ่งทิ้งไป",
-        "ทุก transaction ถูกบังคับให้รันทีละตัวบน single core",
+        "ทุก transaction ถูกบังคับให้รันทีละตัวบน single core เหมือนกับที่ literal serial execution ทำ โดยไม่มี concurrency เกิดขึ้นเลย",
         "abort/retry rate พุ่งสูง งานถูกทำทิ้งแล้ว retry ซ้ำ ๆ"
       ]
     },

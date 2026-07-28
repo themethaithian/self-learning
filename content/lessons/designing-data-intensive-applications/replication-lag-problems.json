@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "user เห็น write ของตัวเองที่เพิ่งทำไปช้ากว่าปกติ; ปัญหานี้เกิดจาก replication lag ทั่วไปเวลา read ไปตกที่ replica ที่ยังตามไม่ทัน ไม่เกี่ยวกับลำดับเชิงเหตุของ writes",
-        "read มี latency สูง; มักโผล่เมื่อ leader โหลดหนัก",
+        "read มี latency สูง; มักโผล่เมื่อ leader โหลดหนักจนตอบ query ช้ากว่าปกติ โดยไม่เกี่ยวข้องกับลำดับเชิงเหตุของ writes หรือการที่แต่ละ partition replicate อิสระจากกัน",
         "reader เห็น writes ผิดลำดับ causal (เห็นคำตอบก่อนคำถาม); มักโผล่ในระบบ partitioned/sharded ที่แต่ละ partition replicate อิสระด้วย lag ต่างกัน"
       ]
     }

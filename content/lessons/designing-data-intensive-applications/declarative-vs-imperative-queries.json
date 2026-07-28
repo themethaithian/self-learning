@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "คุณเสีย control ตรง ๆ over execution — optimizer อาจเลือก plan ที่แย่บน query ซับซ้อนหรือ statistics เก่า และคุณแก้ได้แค่ทางอ้อม (index, rewrite, hint)",
-        "declarative query ไม่สามารถทำ aggregate เช่น SUM หรือ GROUP BY ได้",
+        "declarative query ไม่สามารถทำ aggregate เช่น SUM หรือ GROUP BY ได้เลย ต้องดึงข้อมูลทุกแถวออกมาคำนวณผลรวมเองในฝั่ง application เหมือนกับที่ต้อง filter และ accumulate ทีละแถวด้วยตัวเอง",
         "declarative query ผูกกับ execution strategy เดียวตายตัวตั้งแต่ตอนเขียนโค้ด เปลี่ยน plan ไม่ได้เลยแม้จะมี index ใหม่หรือ statistics ของตารางเปลี่ยนไปในภายหลังก็ตาม"
       ]
     },

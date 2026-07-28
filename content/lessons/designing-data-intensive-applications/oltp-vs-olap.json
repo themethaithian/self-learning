@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "SUM ยอดธุรกรรมของทุก merchant ย้อนหลัง 90 วัน แล้ว group by จังหวัด",
-        "ดึง balance ปัจจุบันของ account เลข 123 มาแสดงบนหน้า dashboard",
+        "ดึง balance ปัจจุบันของ account เลข 123 มาแสดงบนหน้า dashboard ด้วย point lookup ผ่าน key ที่ต้องเสร็จภายในเวลาไม่กี่สิบมิลลิวินาที",
         "insert ledger posting ใหม่หนึ่งแถวทันทีเมื่อ payment หนึ่งรายการดำเนินการสำเร็จเรียบร้อยแล้ว"
       ]
     },

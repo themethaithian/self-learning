@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "map จาก key ไปยัง byte offset ของ record ล่าสุดใน log และเก็บทั้งหมดใน memory",
-        "map จาก key ไปยัง value ทั้งก้อน เก็บบน disk",
+        "map จาก key ไปยัง value ทั้งก้อน เก็บบน disk แทนที่จะเก็บแค่ตำแหน่ง offset ไว้ใน memory เหมือนที่ระบบทำจริง",
         "sorted index ของทุก key เรียงลำดับไว้บน disk ในรูปแบบ B-tree ที่ต้องเดิน tree หลายชั้นทุกครั้งที่ query"
       ]
     },

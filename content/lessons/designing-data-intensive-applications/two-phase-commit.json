@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "บังคับใช้ 2PC เสมอเพราะเป็น protocol เดียวที่ให้ atomicity แบบ all-or-nothing ข้าม node ได้จริงเท่านั้น โดยไม่มีทางเลือกอื่นใดในอุตสาหกรรมที่ทำแบบเดียวกันนี้ได้เลยแม้แต่ตัวเดียว",
-        "เพิ่ม coordinator หลายตัวให้แต่ละตัวตัดสินใจเองอิสระ",
+        "เพิ่ม coordinator หลายตัวให้แต่ละตัวตัดสินใจเองอิสระ โดยไม่ต้องประสานงานกัน เพื่อให้แต่ละ node ตัดสินใจ commit หรือ abort transaction ของตัวเองแยกจากกันไปเลย",
         "saga (local transaction + compensating action) หรือ outbox/idempotency ที่ยอมรับ eventual consistency ได้ ไม่ block ทั้งระบบเมื่อ node เดียวล่ม"
       ]
     }

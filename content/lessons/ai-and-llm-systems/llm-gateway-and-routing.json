@@ -31,7 +31,7 @@
       "expected_answer": "คำตอบแต่ละอันมาจากคนละโมเดล จึงต้อง log model และ route reason และ eval แยกตาม route",
       "type": "mcq",
       "options": [
-        "router บังคับให้ทุก request ผ่านโมเดลเล็กก่อน ทำให้ trace ยาวและอ่านยากขึ้น",
+        "router บังคับให้ทุก request ผ่านโมเดลเล็กก่อน ทำให้ trace ยาวและอ่านยากขึ้นทุกครั้งที่มีการ escalate",
         "คำตอบแต่ละอันมาจากคนละโมเดล จึงต้อง log model และ route reason และ eval แยกตาม route",
         "gateway ทำให้ token count ที่ provider รายงานกลับมาไม่ตรงกับที่แอปนับเอง จึงเทียบคุณภาพข้ามรุ่นไม่ได้"
       ]

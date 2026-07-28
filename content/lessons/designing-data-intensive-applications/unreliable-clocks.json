@@ -37,7 +37,7 @@
       "type": "mcq",
       "options": [
         "จุดเวลาที่แม่นยำจุดเดียว หลังจาก sync กับ NTP server สำเร็จแล้ว",
-        "monotonic counter",
+        "monotonic counter ที่เดินหน้าอย่างเดียวโดยไม่มีความหมายเชิงปฏิทิน",
         "confidence interval [earliest, latest]"
       ]
     },

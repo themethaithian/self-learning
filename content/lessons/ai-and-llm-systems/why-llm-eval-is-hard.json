@@ -43,7 +43,7 @@
       "options": [
         "ทำให้ระบบใช้ token ต่อ request มากขึ้นจนต้นทุน inference ในการรัน eval แต่ละรอบสูงเกินงบ",
         "overfitting กับชุดเคส ทำให้คะแนนขึ้นแต่ผู้ใช้จริงไม่ได้ดีขึ้น",
-        "ทำให้ inter-annotator disagreement หายไปหมดโดยอัตโนมัติ"
+        "ทำให้ inter-annotator disagreement หายไปหมดโดยอัตโนมัติ โดยไม่ต้องปรับ rubric เพิ่มเติม"
       ]
     }
   ],

@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "ต้องรองรับ workload ใหม่ที่หนักขึ้นจนระบบเดิมรับไม่ไหวอีกต่อไป",
-        "ทีมมี ops maturity รัน streaming ได้เองแล้ว",
+        "ทีมมี ops maturity รัน streaming ได้เองแล้ว จึงพร้อมดูแล component หลายตัวและ pipeline ที่ซับซ้อนขึ้นได้สบาย",
         "ต้องการ strong consistency ข้าม derived store"
       ]
     }
