@@ -67,7 +67,16 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
     เวลาอ่านโชว์ `~{est_minutes} min` เฉพาะตอนเป็น number จริง, เป็น `null` ไม่ render
     ข้อความเวลาเลย (ไม่ใช่ `~0 min`)
   - เพิ่ม pure function `countAvailableLessons(concepts): { available, total }` ใน
-    `web/lib/curriculum.ts` ใหม่ (แยกจาก `web/lib/api.ts` ที่โฟกัส fetch/types)
+    `web/lib/curriculum.ts` ใหม่ (แยกจาก `web/lib/api.ts` ที่โฟกัส fetch/types), เรียกใช้
+    ทั้งใน `TrackTopics.tsx` (header ระดับ chapter) และ `learn/page.tsx` (`computeStats`
+    ระดับ track) เพื่อไม่ให้ definition ของ "lesson ready" ซ้ำกันสองที่
+- **Review focus**:
+  - ทำไม concept ที่ `has_lesson=false` ต้อง render เป็น `<div>` เฉย ๆ แทนที่จะเป็น
+    `<a aria-disabled="true">`?
+  - ทำไมเช็ค `est_minutes` ด้วย `typeof concept.est_minutes === "number"` แทนที่จะเช็คแค่
+    `concept.est_minutes ?? 0` หรือ `!= null`?
+  - ทำไมเลขลำดับหน้าแต่ละ concept ใช้ array index (`index + 1`) แทนที่จะใช้ `concept.position`
+    ตรง ๆ จาก API?
 - Status: `implemented, PR pending`
 
 ## UX-4 — API: learning progress (read + write)
