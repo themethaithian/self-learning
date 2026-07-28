@@ -1,7 +1,7 @@
 .PHONY: up test vet run dev dev-down dev-reset seed logs
 
 up:
-	docker compose up -d
+	docker compose up -d mysql
 
 test:
 	go test ./...

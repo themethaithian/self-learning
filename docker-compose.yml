@@ -20,7 +20,7 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 16
       start_period: 90s
 
   api:
@@ -71,9 +71,8 @@ services:
       api:
         condition: service_healthy
 
-  # One-shot content seed, idempotent (upsert by slug). No profile: runs
-  # automatically on `docker compose up` so a fresh clone needs zero manual
-  # import steps.
+  # No profile: runs automatically on `docker compose up` so a fresh clone
+  # needs zero manual import steps.
   seed:
     build:
       context: .
