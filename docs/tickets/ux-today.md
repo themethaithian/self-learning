@@ -57,15 +57,20 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
   (กดแล้วเจอ "no lesson yet" ที่ `/lesson`) และ `ChapterRow` โชว์จำนวน concept รวมของ chapter
   แทนจำนวนที่มี lesson จริง — ticket นี้ปิด gap ทั้งสองจุด:
   - concept ที่ `has_lesson=false` render เป็น `<div>` เฉย ๆ (ไม่ใช่ `<Link>`, ไม่มี `href`,
-    tab ไปไม่ถึง) โชว์ข้อความ `No lesson yet` แทนเวลาอ่าน, ใช้ `text-faint` เดิม (contrast
-    4.76:1 ผ่าน AA อยู่แล้ว ไม่ต้องเพิ่ม token ใหม่)
-  - header ของ chapter เปลี่ยนจาก `{concepts.length} concepts` เป็น `{n}/{N} lessons`
-    (`n` = concept ที่มี lesson จริง) รวมถึง edge case `concepts: []` → `0/0 lessons`
-    ไม่ crash และ accordion ยังกดขยายได้ปกติแม้ `n === 0`
+    tab ไปไม่ถึง, `cursor-default`) หัวข้อใช้ `text-muted` (7.61:1 ต่อ AA สูงกว่า `text-body`
+    ปกติของแถวที่มี lesson เพื่อให้เห็นความต่างแม้บนมือถือที่ไม่มี hover) โชว์ข้อความ
+    `No lesson yet` แทนเวลาอ่าน ด้วย `text-faint` (contrast 4.76:1 ผ่าน AA)
+  - header ของ chapter เปลี่ยนจาก `{concepts.length} concepts` เป็น `{n}/{N} ready`
+    (`n` = concept ที่มี lesson จริง, เลี่ยงคำว่า "lessons" เพราะ `N` คือจำนวน concept
+    ไม่ใช่จำนวน lesson จริง) รวมถึง edge case `concepts: []` → `0/0 ready` ไม่ crash และ
+    accordion ยังกดขยายได้ปกติแม้ `n === 0`; `<ul>` ของ concept list render อยู่เสมอ
+    (toggle ด้วย Tailwind `hidden` แทนที่จะไม่ render เลยตอนปิด) เพื่อให้ `aria-controls`
+    ของปุ่ม toggle ชี้ไปยัง element ที่มีอยู่จริงเสมอ
   - แต่ละแถว concept โชว์เลขลำดับ (`index + 1` ในรายการที่ backend sort ตาม `position`
     มาแล้ว) แทนที่ `#{position} · {slug}` เดิม — เลิกโชว์ raw slug (debug info) บนหน้านี้;
-    เวลาอ่านโชว์ `~{est_minutes} min` เฉพาะตอนเป็น number จริง, เป็น `null` ไม่ render
-    ข้อความเวลาเลย (ไม่ใช่ `~0 min`)
+    เวลาอ่านโชว์ `~{est_minutes} min` เฉพาะตอนเป็น number ที่ `> 0` เท่านั้น — กัน `null`
+    (ไม่มี estimate) และ `0` (ค่าที่ domain layer ไม่ตั้งใจเขียนแต่ schema ไม่ได้ห้ามไว้)
+    แยกจากกันทั้งคู่ ไม่ render ข้อความเวลาเลยในทั้งสองกรณี
   - เพิ่ม pure function `countAvailableLessons(concepts): { available, total }` ใน
     `web/lib/curriculum.ts` ใหม่ (แยกจาก `web/lib/api.ts` ที่โฟกัส fetch/types), เรียกใช้
     ทั้งใน `TrackTopics.tsx` (header ระดับ chapter) และ `learn/page.tsx` (`computeStats`
@@ -73,10 +78,12 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
 - **Review focus**:
   - ทำไม concept ที่ `has_lesson=false` ต้อง render เป็น `<div>` เฉย ๆ แทนที่จะเป็น
     `<a aria-disabled="true">`?
-  - ทำไมเช็ค `est_minutes` ด้วย `typeof concept.est_minutes === "number"` แทนที่จะเช็คแค่
-    `concept.est_minutes ?? 0` หรือ `!= null`?
+  - ทำไมต้องกันทั้งกรณี `est_minutes = null` และ `est_minutes = 0` แยกจากกัน ทั้งที่
+    domain layer ไม่เคยตั้งใจเขียน 0 ลง DB?
   - ทำไมเลขลำดับหน้าแต่ละ concept ใช้ array index (`index + 1`) แทนที่จะใช้ `concept.position`
     ตรง ๆ จาก API?
+  - ทำไม `<ul>` ของ concept list ต้อง render อยู่เสมอ (toggle ด้วย `hidden` class) แทนที่จะ
+    conditional-render แบบ `{open && <ul>...}` เหมือนเดิม?
 - Status: `implemented, PR pending`
 
 ## UX-4 — API: learning progress (read + write)

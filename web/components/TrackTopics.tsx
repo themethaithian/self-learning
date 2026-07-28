@@ -8,16 +8,17 @@ import { ChevronIcon } from "@/components/icons";
 
 function ConceptRow({ topicSlug, concept, step }: { topicSlug: string; concept: Concept; step: number }) {
   const trailing = concept.has_lesson
-    ? typeof concept.est_minutes === "number"
+    ? typeof concept.est_minutes === "number" && concept.est_minutes > 0
       ? `~${concept.est_minutes} min`
       : null
     : "No lesson yet";
 
   const rowClassName =
     "-mx-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg px-2 py-1 text-sm";
+  const titleClassName = concept.has_lesson ? "text-body" : "text-muted";
   const content = (
     <>
-      <span className="min-w-0 break-words text-body">
+      <span className={`min-w-0 break-words ${titleClassName}`}>
         <span className="mr-2 text-xs text-faint">{step}.</span>
         {concept.title}
       </span>
@@ -26,7 +27,7 @@ function ConceptRow({ topicSlug, concept, step }: { topicSlug: string; concept: 
   );
 
   if (!concept.has_lesson) {
-    return <div className={rowClassName}>{content}</div>;
+    return <div className={`${rowClassName} cursor-default`}>{content}</div>;
   }
 
   return (
@@ -58,19 +59,20 @@ function ChapterRow({ topicSlug, chapter }: { topicSlug: string; chapter: Chapte
           <span className="break-words">{chapter.title}</span>
         </span>
         <span className="shrink-0 text-xs text-faint">
-          {available}/{total} lessons
+          {available}/{total} ready
         </span>
       </button>
 
-      {open && (
-        <ul id={conceptsId} className="space-y-1 border-t border-subtle px-4 py-3 pl-9">
-          {chapter.concepts.map((concept, index) => (
-            <li key={concept.slug}>
-              <ConceptRow topicSlug={topicSlug} concept={concept} step={index + 1} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul
+        id={conceptsId}
+        className={`space-y-1 border-t border-subtle px-4 py-3 pl-9 ${open ? "" : "hidden"}`}
+      >
+        {chapter.concepts.map((concept, index) => (
+          <li key={concept.slug}>
+            <ConceptRow topicSlug={topicSlug} concept={concept} step={index + 1} />
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
