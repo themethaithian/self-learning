@@ -20,7 +20,7 @@ func TestNewLessonRef(t *testing.T) {
 		{name: "leading hyphen", raw: "-aggregate", wantErr: ErrInvalidLessonRef},
 		{name: "trailing hyphen", raw: "aggregate-", wantErr: ErrInvalidLessonRef},
 		{name: "consecutive hyphens", raw: "aggregate--root", wantErr: ErrInvalidLessonRef},
-		{name: "too long", raw: strings.Repeat("a", maxLessonRefLen+1), wantErr: ErrInvalidLessonRef},
+		{name: "too long", raw: strings.Repeat("a", maxSlugShapeLen+1), wantErr: ErrInvalidLessonRef},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
