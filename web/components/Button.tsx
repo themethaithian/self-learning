@@ -18,9 +18,14 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Button({ variant = "primary", className = "", ...props }: ButtonProps) {
+  // aria-disabled never triggers the native :disabled pseudo-class (that
+  // needs the disabled attribute, which we deliberately avoid — see
+  // RecallCheckCard/lesson page), so it needs its own visual signal here,
+  // same as TrackCard's inline aria-disabled button.
+  const isAriaDisabled = props["aria-disabled"] === true || props["aria-disabled"] === "true";
   return (
     <button
-      className={`${BASE_CLASSES} disabled:pointer-events-none disabled:opacity-50 ${VARIANT_CLASSES[variant]} ${className}`}
+      className={`${BASE_CLASSES} disabled:pointer-events-none disabled:opacity-50 ${isAriaDisabled ? "opacity-50" : ""} ${VARIANT_CLASSES[variant]} ${className}`}
       {...props}
     />
   );

@@ -22,12 +22,10 @@ export interface LessonBreadcrumb {
   conceptTitle: string;
 }
 
-export interface NextLesson {
-  track: string;
-  topic: string;
-  concept: string;
-  title: string;
-}
+export type NextLessonResult =
+  | { kind: "next"; track: string; topic: string; concept: string; title: string }
+  | { kind: "end-of-track" }
+  | { kind: "not-found" };
 
 interface FlatConcept {
   track: string;
@@ -67,17 +65,15 @@ export function locateLessonBreadcrumb(tracks: Track[], topicSlug: string, conce
   return null;
 }
 
-// Next concept after (topicSlug, conceptSlug) in reading order, crossing
-// chapter and topic boundaries but staying inside the same track, skipping
-// concepts with no lesson yet. Null if the position isn't in the tree at all,
-// or nothing with a lesson is left in the track.
-export function findNextLesson(tracks: Track[], topicSlug: string, conceptSlug: string): NextLesson | null {
+export function findNextLesson(tracks: Track[], topicSlug: string, conceptSlug: string): NextLessonResult {
   for (const track of tracks) {
     const flat = flattenTrack(track);
     const fromIndex = flat.findIndex((c) => c.topic === topicSlug && c.concept === conceptSlug);
     if (fromIndex === -1) continue;
     const next = flat.slice(fromIndex + 1).find((c) => c.hasLesson);
-    return next ? { track: next.track, topic: next.topic, concept: next.concept, title: next.title } : null;
+    return next
+      ? { kind: "next", track: next.track, topic: next.topic, concept: next.concept, title: next.title }
+      : { kind: "end-of-track" };
   }
-  return null;
+  return { kind: "not-found" };
 }

@@ -195,13 +195,17 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
     ไปเลยโดยไม่รู้ตัว — `TestRepositoryTransition_CanonicalSlugsReturned` สาธิตพฤติกรรมนี้อยู่แล้ว
     (เรียก `repo.Transition` ตรง ๆ ด้วย `"DDIA"`/`"B-Trees"` แล้วผ่าน เพราะ shape validation อยู่ที่
     `Service` เท่านั้น) — การแก้แบบเต็ม (thread VO ผ่าน `Transition`) เป็นงานใหญ่กว่าที่ตัดสินใจไม่ทำรอบนี้
-  - `concepts` unique key คือ `(chapter_id, slug)` ไม่ใช่ต่อ topic — สองบทใน topic เดียวกันที่ใช้
-    concept slug ซ้ำกันจะทำให้ query ของ ticket นี้ (JOIN topics→chapters→concepts บน
-    `t.slug + co.slug`) แมตช์ได้มากกว่า 1 แถว ตอนนี้ยังไม่มี concept slug ซ้ำแบบนี้ใน
-    `content/curriculum/*.json` จริง และ identity model นี้สืบทอดมาจาก `lessonreader.go` เดิม
-    (curriculum's read path) แต่ UX-4 เปลี่ยนมันจาก read-only ไปเป็น **write path** แล้ว — mitigate
-    แล้วด้วย `lockLesson` fail loudly (error แทนเขียนแถวผิด) แต่ยังไม่ได้แก้ schema/unique
-    constraint จริง — ต้องคิดใหม่ทั้งระบบ ไม่ใช่แค่ ticket นี้
+  - `concepts` unique key คือ `(chapter_id, slug)` ไม่ใช่ต่อ topic ที่ระดับ schema จริง — **แก้ไขหลัง
+    UX-5's code review**: สรุปเดิมของ note นี้ผิด บอกว่าสองบทใน topic เดียวกันที่ใช้ concept slug
+    ซ้ำกันจะทำให้ UX-4's PUT progress "เขียนแถวผิดเงียบ ๆ" ได้ — ที่จริงไปไม่ถึงจุดนั้นเลย เพราะ
+    `domain.NewTopic` (`internal/curriculum/domain/topic.go:64-70`, เรียกจาก curriculum's read path
+    เองใน `internal/curriculum/infra/repository.go`) บังคับ concept slug ไม่ให้ซ้ำกัน **ทั้ง topic**
+    ตอน assemble แล้ว — ถ้ามีข้อมูลซ้ำแบบนี้จริงใน DB, **`GET /api/v1/curriculum` จะ error (500) ทั้ง
+    topic นั้นทันที** ก่อนที่ PUT progress จะมีโอกาสเจอแถวซ้ำด้วยซ้ำ — failure mode ที่แท้จริงคือ
+    "curriculum tree พังทั้งก้อนแบบเห็นชัด" ไม่ใช่ "เขียนข้อมูลผิดแบบเงียบ ๆ" `lockLesson`'s
+    Query-not-QueryRow ยังเป็น defense-in-depth ที่ดีอยู่ แต่กันไว้สำหรับสถานการณ์ที่ curriculum's
+    domain layer เองก็ไม่ปล่อยให้ถึง live system อยู่แล้ว — schema/unique constraint จริงยังไม่ได้แก้
+    (debt เดิมยังอยู่ แค่ความเสี่ยงต่ำกว่าที่ note เดิมประเมินไว้มาก)
   - lock-wait timeout / deadlock (MySQL error 1205/1213) จาก `FOR UPDATE OF l` ยังไม่ map เป็น
     status ที่วินิจฉัยได้ (เช่น 409/503) — ตอนนี้ตกไปที่ 500 ทั่วไปเหมือน error อื่น ๆ; เคสที่จะเจอจริง
     คือรัน `import-lessons`/`import-curriculum` พร้อม API รับ traffic (lock wait default 50s ใกล้

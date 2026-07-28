@@ -79,7 +79,7 @@ export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 ${
                   rating === opt.value
                     ? opt.value === "pass"
-                      ? "bg-success text-white"
+                      ? "bg-success-strong text-white"
                       : "bg-danger text-white"
                     : "border border-subtle text-muted hover:bg-page"
                 }`}

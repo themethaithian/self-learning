@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   getCurriculum,
@@ -11,7 +11,7 @@ import {
   type Lesson,
   type Track,
 } from "@/lib/api";
-import { findNextLesson, locateLessonBreadcrumb, type NextLesson } from "@/lib/curriculum";
+import { findNextLesson, locateLessonBreadcrumb, type NextLessonResult } from "@/lib/curriculum";
 import { trackLabel } from "@/lib/trackMeta";
 import { LessonBody } from "@/components/LessonBody";
 import { RecallCheckCard, type RecallRating } from "@/components/RecallCheckCard";
@@ -34,18 +34,34 @@ type FinishState =
   | { status: "saved" }
   | { status: "error"; message: string };
 
+interface NavInfo {
+  location: { track: string; chapterTitle: string };
+  next: NextLessonResult;
+}
+
 const LEARN_CRUMB: Crumb = { label: "Learn", href: "/learn" };
 
-function NextPanel({ next, trackSlug }: { next: NextLesson | null; trackSlug: string }) {
+function NextPanel({
+  next,
+  trackSlug,
+  emphasis,
+}: {
+  next: NextLessonResult;
+  trackSlug: string;
+  emphasis: "primary" | "secondary";
+}) {
   return (
     <Card className="space-y-3">
       <h2 className="text-xs font-medium uppercase tracking-wide text-faint">Next</h2>
-      {next ? (
+      {next.kind === "next" ? (
         <LinkButton
-          variant="primary"
+          variant={emphasis === "primary" ? "primary" : "ghost"}
           href={`/lesson?topic=${encodeURIComponent(next.topic)}&concept=${encodeURIComponent(next.concept)}`}
+          className="max-w-full"
         >
-          {next.title} →
+          {/* Concept titles are plain strings of unknown length/script — break-words
+              lets the browser wrap inside the button instead of overflowing it. */}
+          <span className="min-w-0 break-words">{next.title} →</span>
         </LinkButton>
       ) : (
         <>
@@ -70,52 +86,65 @@ function LessonView() {
   const [ratings, setRatings] = useState<Record<number, RecallRating>>({});
   const [finishState, setFinishState] = useState<FinishState>({ status: "idle" });
   const [alreadyPassed, setAlreadyPassed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
   const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const nextPanelRef = useRef<HTMLDivElement>(null);
 
-  const markInProgress = useCallback(
-    async (topic: string, concept: string) => {
-      try {
-        const entry = await setProgress(topic, concept, "in_progress");
-        if (entry.state === "passed") setAlreadyPassed(true);
-      } catch (err) {
-        if (err instanceof UnauthorizedError) router.replace("/token");
-      }
-    },
-    [router],
-  );
-
-  const load = useCallback(async () => {
+  // One effect owns both the lesson fetch and the mark-in-progress write so
+  // they share a single `cancelled` flag. Navigating lesson -> Next -> Back
+  // -> Forward re-runs this effect without remounting the page (same route,
+  // new searchParams) — without this guard a late response for the OLD
+  // lesson could set state for whatever lesson is on screen now.
+  useEffect(() => {
     if (!topicSlug || !conceptSlug) {
       setState({ status: "error", message: "Missing topic or concept in the URL." });
       return;
     }
+
+    let cancelled = false;
     setState({ status: "loading" });
     setRatings({});
     setFinishState({ status: "idle" });
     setAlreadyPassed(false);
-    try {
-      const lesson = await getLesson(topicSlug, conceptSlug);
-      setState({ status: "success", lesson });
-      void markInProgress(topicSlug, conceptSlug);
-    } catch (err) {
-      if (err instanceof UnauthorizedError) {
-        router.replace("/token");
-        return;
-      }
-      if (err instanceof NotFoundError) {
-        setState({ status: "not-found" });
-        return;
-      }
-      setState({
-        status: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
-      });
-    }
-  }, [topicSlug, conceptSlug, router, markInProgress]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+    async function run() {
+      let lesson: Lesson;
+      try {
+        lesson = await getLesson(topicSlug, conceptSlug);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof UnauthorizedError) {
+          router.replace("/token");
+          return;
+        }
+        if (err instanceof NotFoundError) {
+          setState({ status: "not-found" });
+          return;
+        }
+        setState({ status: "error", message: err instanceof Error ? err.message : "Something went wrong" });
+        return;
+      }
+      if (cancelled) return;
+      setState({ status: "success", lesson });
+
+      try {
+        const entry = await setProgress(lesson.topic, lesson.concept, "in_progress");
+        if (cancelled) return;
+        if (entry.state === "passed") setAlreadyPassed(true);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof UnauthorizedError) router.replace("/token");
+        // Any other failure here is safe to drop silently: the upsert's
+        // COALESCE keeps first_passed_at correct regardless of whether this
+        // visit gets recorded, and Finish still writes progress explicitly.
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [topicSlug, conceptSlug, router, retryToken]);
 
   // The curriculum tree only powers the breadcrumb and Next — its failure
   // must never turn a successfully loaded lesson into a page-level error.
@@ -137,6 +166,24 @@ function LessonView() {
     setRatings((prev) => ({ ...prev, [position]: value }));
   }, []);
 
+  const currentLesson = state.status === "success" ? state.lesson : null;
+
+  const navInfo = useMemo<NavInfo | null>(() => {
+    if (!tracks || !currentLesson) return null;
+    const location = locateLessonBreadcrumb(tracks, currentLesson.topic, currentLesson.concept);
+    if (!location) return null;
+    return { location, next: findNextLesson(tracks, currentLesson.topic, currentLesson.concept) };
+  }, [tracks, currentLesson]);
+
+  const finished = alreadyPassed || finishState.status === "saved";
+
+  // Finish unmounts on success, which would otherwise drop focus to <body>;
+  // only the user's own click should steal focus, not a page load that
+  // starts out already-passed, so this keys off finishState, not `finished`.
+  useEffect(() => {
+    if (finishState.status === "saved") nextPanelRef.current?.focus({ preventScroll: true });
+  }, [finishState.status]);
+
   if (state.status === "loading") {
     return (
       <div className="space-y-6">
@@ -153,7 +200,7 @@ function LessonView() {
         <EmptyState
           icon={<WarningIcon />}
           message={`Could not load this lesson: ${state.message}`}
-          action={<Button onClick={load}>Retry</Button>}
+          action={<Button onClick={() => setRetryToken((t) => t + 1)}>Retry</Button>}
         />
       </div>
     );
@@ -177,12 +224,10 @@ function LessonView() {
   }
 
   const { lesson } = state;
-  const location = tracks ? locateLessonBreadcrumb(tracks, topicSlug, conceptSlug) : null;
-  const next = tracks ? findNextLesson(tracks, topicSlug, conceptSlug) : null;
-  const crumbs: Crumb[] = location
+  const crumbs: Crumb[] = navInfo
     ? [
-        { label: trackLabel(location.track), href: `/learn?track=${encodeURIComponent(location.track)}` },
-        { label: location.chapterTitle },
+        { label: trackLabel(navInfo.location.track), href: `/learn?track=${encodeURIComponent(navInfo.location.track)}` },
+        { label: navInfo.location.chapterTitle },
         { label: lesson.title_en },
       ]
     : [LEARN_CRUMB, { label: lesson.title_en }];
@@ -190,12 +235,11 @@ function LessonView() {
   const totalChecks = lesson.recall_checks.length;
   const ratedCount = lesson.recall_checks.filter((check) => ratings[check.position] != null).length;
   const allRated = ratedCount === totalChecks;
-  const finished = alreadyPassed || finishState.status === "saved";
 
   async function finish() {
     setFinishState({ status: "saving" });
     try {
-      await setProgress(topicSlug, conceptSlug, "passed");
+      await setProgress(lesson.topic, lesson.concept, "passed");
       setFinishState({ status: "saved" });
     } catch (err) {
       if (err instanceof UnauthorizedError) {
@@ -215,7 +259,7 @@ function LessonView() {
       const firstUnrated = lesson.recall_checks.find((check) => ratings[check.position] == null);
       const el = firstUnrated ? cardRefs.current[firstUnrated.position] : null;
       el?.scrollIntoView({ behavior: "smooth", block: "center" });
-      el?.focus();
+      el?.focus({ preventScroll: true });
       return;
     }
     void finish();
@@ -268,36 +312,59 @@ function LessonView() {
       )}
 
       <section className="max-w-[68ch] space-y-4">
-        {finished ? (
-          <div className="flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3 text-sm font-medium text-success">
-            <CheckIcon />
-            Lesson finished
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <Button aria-disabled={!allRated || finishState.status === "saving"} onClick={handleFinishClick}>
-              {finishState.status === "saving" ? "Saving…" : "Finish lesson"}
-            </Button>
-            {!allRated && (
-              <p className="text-xs text-muted">
-                Rate all {totalChecks} check{totalChecks === 1 ? "" : "s"} to finish ({ratedCount}/{totalChecks} rated)
-              </p>
-            )}
-            {finishState.status === "error" && (
-              <div
-                role="alert"
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger-strong"
+        <div className="space-y-2">
+          {finished ? (
+            <div
+              role="status"
+              className="flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3 text-sm font-medium text-success-strong"
+            >
+              <CheckIcon />
+              Lesson finished
+            </div>
+          ) : (
+            <>
+              <Button
+                aria-disabled={!allRated || finishState.status === "saving"}
+                aria-describedby={!allRated ? "finish-hint" : undefined}
+                onClick={handleFinishClick}
               >
-                <span>Could not save: {finishState.message}</span>
-                <Button variant="ghost" onClick={handleFinishClick}>
-                  Retry
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+                {finishState.status === "saving" ? "Saving…" : "Finish lesson"}
+              </Button>
+              {!allRated && (
+                <p id="finish-hint" className="text-xs text-muted">
+                  Rate all {totalChecks} check{totalChecks === 1 ? "" : "s"} to finish ({ratedCount}/{totalChecks} rated)
+                </p>
+              )}
+              {finishState.status === "error" && (
+                <div
+                  role="alert"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger-strong"
+                >
+                  <span>Could not save: {finishState.message}</span>
+                  <Button variant="ghost" onClick={handleFinishClick}>
+                    Retry
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
-        {finished && location && <NextPanel next={next} trackSlug={location.track} />}
+        <div ref={nextPanelRef} tabIndex={-1} className="rounded-2xl focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2">
+          {navInfo ? (
+            <NextPanel next={navInfo.next} trackSlug={navInfo.location.track} emphasis={finished ? "primary" : "secondary"} />
+          ) : (
+            finished && (
+              <Card className="space-y-3">
+                <h2 className="text-xs font-medium uppercase tracking-wide text-faint">Next</h2>
+                <p className="text-sm text-muted">Couldn&apos;t figure out what&apos;s next right now.</p>
+                <LinkButton variant="ghost" href="/learn">
+                  Back to Learn
+                </LinkButton>
+              </Card>
+            )
+          )}
+        </div>
       </section>
     </div>
   );
