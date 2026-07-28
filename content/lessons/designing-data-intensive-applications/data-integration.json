@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "เพราะ storage engine ของแต่ละระบบไม่รองรับ ACID transaction",
-        "เพราะ stream processing มี latency สูงกว่า batch เสมอจึงตามข้อมูลไม่ทัน",
+        "เพราะ stream processing latency สูงกว่า batch จึงตามข้อมูลไม่ทัน",
         "เพราะเจอ partial failure และไม่มี total order ข้อมูลแต่ละระบบเลย drift"
       ]
     },

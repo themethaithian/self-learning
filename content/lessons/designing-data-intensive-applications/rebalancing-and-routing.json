@@ -26,7 +26,7 @@
       "expected_answer": "client จะรู้ได้ยังไงว่า key ที่ต้องการอยู่บน node ไหน หลัง partition ถูกย้าย",
       "type": "mcq",
       "options": [
-        "จะเลือกใช้ hash function แบบไหนเพื่อให้ load กระจายสม่ำเสมอระหว่าง node ทุกตัวในระบบโดยไม่มี hot spot",
+        "จะเลือกใช้ hash function แบบไหนเพื่อให้ load กระจายสม่ำเสมอระหว่าง node",
         "client จะรู้ได้ยังไงว่า key ที่ต้องการอยู่บน node ไหน หลัง partition ถูกย้าย",
         "จะเก็บ row หลาย version พร้อมกันได้ยังไง"
       ]

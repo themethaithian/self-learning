@@ -26,7 +26,7 @@
       "expected_answer": "disposable — replay log เพื่อ rebuild ใหม่ได้เสมอ",
       "type": "mcq",
       "options": [
-        "authoritative — เป็น source of truth ที่ replay ไม่ได้",
+        "authoritative — source of truth replay ไม่ได้",
         "disposable — replay log เพื่อ rebuild ใหม่ได้เสมอ",
         "immutable — สร้างแล้วแก้ไขหรือลบทิ้งไม่ได้เลย"
       ]

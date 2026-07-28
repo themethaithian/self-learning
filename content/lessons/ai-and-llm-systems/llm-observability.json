@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "คุณภาพคำตอบแย่ลงได้ทั้งที่ latency, error rate และ cost ยังปกติ",
-        "ระบบเริ่มคืน error ถี่ขึ้นทีละน้อยจนกว่าจะข้าม threshold ของ alert ที่ทีมตั้งไว้แล้วค่อยมีคนเห็น",
+        "ระบบเริ่มคืน error ถี่ขึ้นทีละน้อยจนข้าม threshold ของ alert",
         "cost ต่อ request สูงขึ้นเงียบ ๆ เพราะ cache hit rate ตกลง"
       ]
     },

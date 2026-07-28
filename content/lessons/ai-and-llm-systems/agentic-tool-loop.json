@@ -41,7 +41,7 @@
       "expected_answer": "capability สูงขึ้น แต่ latency และ cost ก็สูงตาม",
       "type": "mcq",
       "options": [
-        "latency ลดลงเพราะแบ่งงานเป็นหลายรอบเล็ก ๆ ที่เร็วกว่า",
+        "latency ลดลงเพราะแบ่งงานเป็นหลายรอบเล็ก",
         "cost คงที่ไม่ว่าจะวนกี่รอบก็ตาม",
         "capability สูงขึ้น แต่ latency และ cost ก็สูงตาม"
       ]

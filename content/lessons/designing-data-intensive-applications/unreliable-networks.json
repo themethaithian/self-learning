@@ -26,7 +26,7 @@
       "expected_answer": "false positive — ประกาศว่า node ที่แค่ช้าว่าตาย ทำให้ failover ซ้ำและเสี่ยง cascading failure",
       "type": "mcq",
       "options": [
-        "ตรวจจับ failure ช้าเกินไปจนระบบต้องค้างรอ node ที่ตายจริงนานเกินจำเป็นก่อนจะ failover ไปที่อื่น",
+        "ตรวจจับ failure ช้าเกินไปจนระบบต้องค้างรอ node ที่ตายจริงนานเกินจำเป็นก่อนจะ failover",
         "false positive — ประกาศว่า node ที่แค่ช้าว่าตาย ทำให้ failover ซ้ำและเสี่ยง cascading failure",
         "ใช้ bandwidth มากขึ้นจากการ retry ซ้ำ ๆ จนเครือข่ายเต็มและ throughput โดยรวมของระบบตกลง"
       ]

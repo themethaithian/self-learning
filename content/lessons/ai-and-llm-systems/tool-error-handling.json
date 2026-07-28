@@ -17,8 +17,8 @@
       "type": "mcq",
       "options": [
         "retry ซ้ำจะคืนเงินซ้ำจริง ต้องมี idempotency key",
-        "retry ซ้ำจะทำให้ tool schema ของโมเดลเพี้ยนถาวรทันที",
-        "retry ซ้ำจะรีเซ็ต context window ของโมเดลทิ้งหมด"
+        "retry ซ้ำจะทำให้ tool schema เพี้ยนถาวรทันที",
+        "retry ซ้ำจะรีเซ็ต context window ทิ้งหมด"
       ]
     },
     {

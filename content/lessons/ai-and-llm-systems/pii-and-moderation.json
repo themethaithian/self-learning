@@ -18,7 +18,7 @@
       "options": [
         "ทั้ง input และ output",
         "เฉพาะ output",
-        "เฉพาะ input ที่ผู้ใช้ส่งมา"
+        "เฉพาะ input"
       ]
     },
     {

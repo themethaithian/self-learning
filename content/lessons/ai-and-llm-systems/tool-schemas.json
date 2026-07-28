@@ -17,8 +17,8 @@
       "type": "mcq",
       "options": [
         "เพราะโมเดลใช้ description ตัดสินว่าจะเลือก tool ตัวไหน",
-        "เพราะ description ถูก compile เป็นโค้ดที่รัน tool จริง",
-        "เพราะ description ถูกเก็บไว้ใน tool registry ฝั่ง server"
+        "เพราะ description ถูก compile เป็นโค้ดรัน tool จริง",
+        "เพราะ description ถูกเก็บใน tool registry ฝั่ง server"
       ]
     },
     {

@@ -41,7 +41,7 @@
       "expected_answer": "fact table ตรงกลาง (หนึ่งแถวต่อหนึ่ง event) ล้อมด้วย dimension table (customer, merchant, date ฯลฯ)",
       "type": "mcq",
       "options": [
-        "หนึ่งตารางใหญ่ที่ denormalize รวมทุกอย่างไว้ด้วยกันเป็นตารางเดียวโดยไม่มีการแยก fact กับ dimension ออกจากกันเลย",
+        "หนึ่งตารางใหญ่ที่ denormalize รวมทุกอย่างไว้ด้วยกันเป็นตารางเดียวโดยไม่แยก fact กับ dimension",
         "หลาย fact table ที่ join กันเองโดยไม่มี dimension table",
         "fact table ตรงกลาง (หนึ่งแถวต่อหนึ่ง event) ล้อมด้วย dimension table (customer, merchant, date ฯลฯ)"
       ]

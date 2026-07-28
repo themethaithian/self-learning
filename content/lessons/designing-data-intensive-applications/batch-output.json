@@ -22,7 +22,7 @@
       "type": "mcq",
       "options": [
         "search index ที่ build แบบ bulk แล้ว swap เข้าไปทั้งชุด",
-        "read replica ที่ sync กับ production DB แบบ real-time ทันที",
+        "read replica ที่ sync กับ production DB real-time",
         "transaction lock ที่กันการเขียนพร้อมกันข้าม node"
       ]
     },

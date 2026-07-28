@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "ไม่รองรับหลาย consumer group",
-        "order ภายใน partition ไม่คงที่",
+        "order ใน partition ไม่คงที่",
         "ข้าม message ช้าทีละอันได้ยาก"
       ]
     }

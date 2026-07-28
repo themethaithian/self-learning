@@ -28,7 +28,7 @@
       "options": [
         "ระบบ throw error ให้ client retry",
         "write ที่ใหม่กว่าจริงถูกทิ้งเงียบ ๆ เพราะ timestamp น้อยกว่า",
-        "ระบบเก็บทั้งสอง version ไว้แล้วให้ผู้ใช้เลือก merge เองด้วย version vector"
+        "ระบบเก็บทั้งสอง version ไว้แล้วให้ผู้ใช้เลือก merge เอง"
       ]
     },
     {

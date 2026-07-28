@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "เสีย durability ของข้อมูล",
-        "เสียความสามารถประมาณขนาดของแต่ละ partition ล่วงหน้าได้แม่นยำเท่ากับที่ key-range partitioning ทำได้",
+        "เสียความสามารถประมาณขนาด partition ได้แม่นยำ",
         "เสียความสามารถทำ efficient range query ข้าม partition"
       ]
     }

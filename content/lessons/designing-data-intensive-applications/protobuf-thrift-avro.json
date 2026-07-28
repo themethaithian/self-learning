@@ -23,7 +23,7 @@
       "options": [
         "Avro เก็บ tag number เหมือนกันแต่ใช้เลขจากศูนย์",
         "Avro ไม่เก็บ tag หรือชื่อ field ในไบต์ แต่ resolve field ด้วยชื่อผ่าน writer's schema กับ reader's schema (schema resolution)",
-        "Avro เก็บชื่อ field เป็นสตริงเต็มรูปแบบพร้อม type information กำกับไว้ในทุก message ที่ส่งออกไป ทำให้ decode ได้เองทันทีโดยไม่ต้องพึ่งพา writer's schema หรือ reader's schema เลย"
+        "Avro เก็บชื่อ field เป็นสตริงพร้อม type information ในทุก message ทำให้ decode ได้เองโดยไม่ต้องพึ่ง schema เลย"
       ]
     },
     {

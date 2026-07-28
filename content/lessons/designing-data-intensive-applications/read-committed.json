@@ -26,7 +26,7 @@
       "expected_answer": "จำ old committed value ไว้ให้ reader อ่าน ระหว่างที่ writer ยังถือค่าใหม่ที่ยังไม่ commit แทนการใช้ lock",
       "type": "mcq",
       "options": [
-        "ใช้ read lock แบบ shared lock บน row ทุกแถวที่อ่าน แล้วถือ lock นั้นไว้ตลอดตราบใดที่ writer ยังถือ lock การเขียนอยู่จนกว่าจะปล่อย",
+        "ใช้ shared lock บน row ทุกแถวที่อ่าน แล้วถือไว้จนกว่า writer จะปล่อย lock",
         "จำ old committed value ไว้ให้ reader อ่าน ระหว่างที่ writer ยังถือค่าใหม่ที่ยังไม่ commit แทนการใช้ lock",
         "ปฏิเสธ read ทั้งหมดจนกว่า writer จะ commit"
       ]

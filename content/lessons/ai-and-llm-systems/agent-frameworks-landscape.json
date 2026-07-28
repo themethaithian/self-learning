@@ -41,7 +41,7 @@
       "expected_answer": "เรียน concept/primitive มากกว่าผูกกับ library เดียว",
       "type": "mcq",
       "options": [
-        "ควรรอจน framework นิ่งสนิทก่อนแล้วค่อยเริ่มเรียนทีหลัง",
+        "ควรรอจน framework นิ่งก่อนแล้วค่อยเริ่มเรียน",
         "ควรใช้ทุก framework พร้อมกันเพื่อไม่ตกเทรนด์ใหม่",
         "เรียน concept/primitive มากกว่าผูกกับ library เดียว"
       ]

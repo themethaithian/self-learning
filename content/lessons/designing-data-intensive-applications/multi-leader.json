@@ -37,7 +37,7 @@
       "type": "mcq",
       "options": [
         "notification preference ของ user",
-        "calendar events บน device หลายเครื่องที่ผู้ใช้แก้ไขตอน offline แล้วค่อย sync ทีหลัง",
+        "calendar events บน device ที่แก้ไขตอน offline",
         "account balance / ledger ที่ resolve conflict ผิดแล้วเงินหาย"
       ]
     },

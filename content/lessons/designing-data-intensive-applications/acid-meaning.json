@@ -28,7 +28,7 @@
       "options": [
         "เป็นหน้าที่ของ application ในการรักษา invariant; database การันตีให้เองไม่ได้ทั้งหมด",
         "database รับประกัน invariant ทางธุรกิจทุกข้อให้อัตโนมัติ",
-        "มันคือ linearizability แบบเดียวกับ consistency ใน CAP theorem เพราะทั้งคู่วัดว่าทุก node เห็นข้อมูลตรงกันหรือไม่"
+        "มันคือ linearizability แบบเดียวกับ consistency ใน CAP theorem"
       ]
     },
     {

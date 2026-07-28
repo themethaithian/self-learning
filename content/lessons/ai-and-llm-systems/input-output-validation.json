@@ -18,7 +18,7 @@
       "options": [
         "output เป็น untrusted อาจผิด schema/rule",
         "output ช้าเกินไปต้องรอ validate ก่อน",
-        "ต้องนับ token ที่โมเดลใช้ให้ครบก่อนนำไปใช้"
+        "ต้องนับ token ที่โมเดลใช้ให้ครบก่อน"
       ]
     },
     {

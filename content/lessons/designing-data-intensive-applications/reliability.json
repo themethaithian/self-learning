@@ -26,7 +26,7 @@
       "expected_answer": "tolerate fault ด้วย redundancy/การออกแบบ ไม่ให้ fault กลายเป็น failure",
       "type": "mcq",
       "options": [
-        "พยายามป้องกันไม่ให้ fault ทุกชนิดเกิดขึ้นเลยแม้แต่ครั้งเดียวในระบบทั้งหมดตั้งแต่ต้น",
+        "พยายามป้องกันไม่ให้ fault ทุกชนิดเกิดขึ้นเลยตั้งแต่ต้น",
         "tolerate fault ด้วย redundancy/การออกแบบ ไม่ให้ fault กลายเป็น failure",
         "restart ทั้งระบบทุกครั้งที่เจอ fault"
       ]

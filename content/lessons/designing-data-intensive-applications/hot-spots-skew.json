@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "การ write ช้าลงเพราะต้องเขียนซ้ำทุก partition",
-        "storage เพิ่มขึ้นเป็นสองเท่าเพราะต้องเก็บ key สำรองไว้อีกชุดหนึ่งแยกต่างหากจากของเดิมเพื่อใช้ตอน fail over",
+        "storage เพิ่มขึ้นเพราะต้องเก็บ key สำรองแยกไว้ใช้ตอน fail over",
         "การ read ต้อง query รวมจากทุก suffix (หลาย partition) แล้ว recombine"
       ]
     },

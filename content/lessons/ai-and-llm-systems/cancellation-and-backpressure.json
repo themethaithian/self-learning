@@ -36,8 +36,8 @@
       "expected_answer": "ส่งต่อ context cancellation (ctx)",
       "type": "mcq",
       "options": [
-        "เพิ่ม worker goroutine ให้มากขึ้น",
-        "retry การเรียก provider ใหม่ทันทีที่หลุด",
+        "เพิ่ม worker goroutine ให้มาก",
+        "retry การเรียก provider ใหม่",
         "ส่งต่อ context cancellation (ctx)"
       ]
     },

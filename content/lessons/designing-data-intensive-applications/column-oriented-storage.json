@@ -16,7 +16,7 @@
       "expected_answer": "เพราะค่าใน column เดียวกันมี type/domain เดียวกันและมักซ้ำ (low cardinality) จึงใช้ bitmap/run-length encoding ได้ดี",
       "type": "mcq",
       "options": [
-        "เพราะ column store ใช้ compression algorithm รุ่นใหม่กว่าและมีประสิทธิภาพสูงกว่า row store โดยเนื้อแท้อยู่แล้วไม่เกี่ยวกับการจัดเรียงข้อมูล",
+        "เพราะ column store ใช้ compression algorithm ที่ดีกว่า row store โดยไม่เกี่ยวกับการจัดเรียงข้อมูล",
         "เพราะ column store แปลงข้อมูลทุกอย่างเป็น text ล้วนซึ่งบีบอัดง่ายกว่า binary",
         "เพราะค่าใน column เดียวกันมี type/domain เดียวกันและมักซ้ำ (low cardinality) จึงใช้ bitmap/run-length encoding ได้ดี"
       ]

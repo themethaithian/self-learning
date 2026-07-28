@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "เก็บหลาย version ของแถวเพื่อให้ reader ไม่ block writer",
-        "รวมหลาย transaction ที่แก้ไขข้อมูลคนละแถวให้ commit พร้อมกันเป็น batch เดียวเพื่อลด overhead ของการเขียน log และเพิ่ม throughput โดยรวมของทั้งระบบ",
+        "รวมหลาย transaction ที่แก้ไขข้อมูลคนละแถวให้ commit พร้อมกันเป็น batch เดียวเพื่อลด overhead",
         "สร้างแถว lock แทน phantom เพื่อกัน write skew เมื่อ FOR UPDATE ล็อกไม่ติด เป็น last resort ที่ยุ่งและผิดง่าย"
       ]
     }

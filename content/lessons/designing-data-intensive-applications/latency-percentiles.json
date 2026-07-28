@@ -36,8 +36,8 @@
       "expected_answer": "รวม raw data หรือ merge histogram ของทุก server ก่อน แล้วค่อยคำนวณ percentile",
       "type": "mcq",
       "options": [
-        "เอา p99 ของแต่ละ server มาบวกกันแล้วหารด้วยจำนวน server เพื่อให้ได้ค่าเฉลี่ยของทั้ง fleet",
-        "เลือก p99 ที่สูงที่สุดในบรรดา server ทั้งหมดมาเป็นค่าตัวแทน p99 ของทั้ง fleet",
+        "เอา p99 ของแต่ละ server มาบวกแล้วหารด้วยจำนวน server เป็นค่าเฉลี่ยของ fleet",
+        "เลือก p99 สูงสุดในบรรดา server ทั้งหมดเป็นค่าตัวแทนของ fleet",
         "รวม raw data หรือ merge histogram ของทุก server ก่อน แล้วค่อยคำนวณ percentile"
       ]
     },

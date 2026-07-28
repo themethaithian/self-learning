@@ -41,7 +41,7 @@
       "expected_answer": "เพราะ message ที่ถูก nack จะถูก redeliver ทีหลัง",
       "type": "mcq",
       "options": [
-        "เพราะ broker เรียง message ตาม timestamp ใหม่เสมอ",
+        "เพราะ broker เรียง message ตาม timestamp ใหม่",
         "เพราะ producer ส่ง event ไม่เรียงมาตั้งแต่ต้น",
         "เพราะ message ที่ถูก nack จะถูก redeliver ทีหลัง"
       ]

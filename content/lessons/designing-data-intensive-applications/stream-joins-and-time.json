@@ -28,7 +28,7 @@
       "options": [
         "เวลาปัจจุบันของนาฬิกาเครื่อง processor",
         "การเดาว่าไม่มี event เก่ากว่า T อีกแล้ว",
-        "timestamp ที่ producer ฝังมากับ event ตั้งแต่ต้นทาง"
+        "timestamp ที่ producer ฝังมากับ event"
       ]
     },
     {

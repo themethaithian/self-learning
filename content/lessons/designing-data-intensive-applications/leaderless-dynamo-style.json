@@ -37,7 +37,7 @@
       "type": "mcq",
       "options": [
         "เพราะ leader ส่ง replication log ผิดลำดับ",
-        "เพราะ read repair process เข้าใจผิดแล้วไปลบข้อมูลเวอร์ชันใหม่ล่าสุดทิ้งโดยไม่ตั้งใจทุกครั้งที่มันทำงานประสานกับ anti-entropy background process",
+        "เพราะ read repair process เข้าใจผิดแล้วไปลบข้อมูลเวอร์ชันล่าสุดทิ้งโดยไม่ตั้งใจ",
         "concurrent write ทำให้เกิดหลาย version (siblings) แล้วการ merge แบบ union ตอนอ่านกลืนการลบทิ้งไป ทำให้ item ที่ถูกลบกลับมา"
       ]
     },

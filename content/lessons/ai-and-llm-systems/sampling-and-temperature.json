@@ -18,7 +18,7 @@
       "options": [
         "งาน extraction ที่ต้องการผลลัพธ์คงที่",
         "งาน brainstorm หาไอเดียใหม่",
-        "งาน creative writing ที่ต้องการสำนวนใหม่"
+        "งาน creative writing สำนวนใหม่"
       ]
     },
     {
@@ -41,7 +41,7 @@
       "expected_answer": "แบน distribution ลง สุ่มมากขึ้น หลุดง่าย",
       "type": "mcq",
       "options": [
-        "แหลม distribution ขึ้น ผลนิ่ง ซ้ำมากขึ้น",
+        "แหลม distribution ขึ้น ผลนิ่งซ้ำ",
         "คง distribution เดิม เพิ่มความเร็วประมวลผล",
         "แบน distribution ลง สุ่มมากขึ้น หลุดง่าย"
       ]

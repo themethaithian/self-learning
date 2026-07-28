@@ -41,8 +41,8 @@
       "expected_answer": "เมื่อต้อง replay history ขนาดใหญ่มาก",
       "type": "mcq",
       "options": [
-        "เมื่อ business logic ทั้งระบบง่ายมาก",
-        "เมื่อ speed layer แม่นกว่า batch layer",
+        "เมื่อ business logic ง่ายมาก",
+        "เมื่อ speed layer แม่นกว่า batch",
         "เมื่อต้อง replay history ขนาดใหญ่มาก"
       ]
     }

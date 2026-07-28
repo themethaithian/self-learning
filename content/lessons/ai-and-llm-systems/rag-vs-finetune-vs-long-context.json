@@ -12,7 +12,7 @@
       "type": "mcq",
       "options": [
         "RAG (retrieve แล้ว ground)",
-        "Fine-tune โมเดลด้วยข้อมูลใหม่",
+        "Fine-tune ด้วยข้อมูลใหม่",
         "เพิ่ม temperature"
       ]
     },

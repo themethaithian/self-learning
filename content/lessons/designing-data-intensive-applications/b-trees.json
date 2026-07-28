@@ -28,7 +28,7 @@
       "options": [
         "แต่ละ key อยู่ในที่เดียวเป๊ะใน index ทำให้ read predictable ไม่ต้องเช็คหลาย SSTable และยังเอื้อ transactional locking",
         "B-tree ไม่ต้องเขียน WAL จึงเขียนเร็วกว่า",
-        "B-tree เขียนข้อมูลแบบ sequential เหมือน LSM-tree ทำให้ write throughput สูงกว่าและลด write amplification ได้มากกว่าด้วย"
+        "B-tree เขียนข้อมูลแบบ sequential เหมือน LSM-tree ทำให้ write throughput สูงกว่าและลด write amplification ได้มากกว่า"
       ]
     },
     {

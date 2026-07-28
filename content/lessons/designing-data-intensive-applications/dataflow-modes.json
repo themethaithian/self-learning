@@ -11,7 +11,7 @@
       "expected_answer": "เพราะ data outlives code และระหว่าง rolling upgrade โค้ดเก่ากับโค้ดใหม่อ่าน/เขียน DB ตัวเดียวกันพร้อมกัน",
       "type": "mcq",
       "options": [
-        "เพราะ database เก็บข้อมูลเป็น binary เสมอไม่ว่า encoding format ไหน จึงต้อง encode สองรอบทุกครั้งก่อนเขียนลง disk จริง",
+        "เพราะ database เก็บข้อมูลเป็น binary เสมอ จึงต้อง encode สองรอบก่อนเขียนลง disk จริง",
         "เพราะทุก query ต้องผ่าน ORM ที่ตรวจ schema สองด้าน",
         "เพราะ data outlives code และระหว่าง rolling upgrade โค้ดเก่ากับโค้ดใหม่อ่าน/เขียน DB ตัวเดียวกันพร้อมกัน"
       ]

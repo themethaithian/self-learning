@@ -36,7 +36,7 @@
       "expected_answer": "ข้อมูล transient ภายในภาษาเดียว ที่ producer/consumer deploy พร้อมกันและ input เชื่อถือได้",
       "type": "mcq",
       "options": [
-        "event log ที่เก็บถาวรเป็นสิบปีในฐานะ source of truth เดียวของทั้งระบบให้หลาย service ย้อนอ่านได้ตลอดเวลา",
+        "event log ที่เก็บถาวรเป็นสิบปีเป็น source of truth ให้หลาย service ย้อนอ่านได้",
         "message queue ที่มี consumer หลายภาษาอ่านร่วมกัน",
         "ข้อมูล transient ภายในภาษาเดียว ที่ producer/consumer deploy พร้อมกันและ input เชื่อถือได้"
       ]

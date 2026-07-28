@@ -12,7 +12,7 @@
       "type": "mcq",
       "options": [
         "บีบอัด output ของทุก stage ด้วย codec ที่เร็วกว่าก่อนเขียนลง HDFS แล้วอ่านกลับแบบขนานหลาย thread",
-        "replicate intermediate state เป็น 5 ชุดแทน 3 ชุด แล้วกระจายอ่านจากหลาย replica พร้อมกันเพื่อลด latency",
+        "replicate intermediate state เป็น 5 ชุดแทน 3 ชุด อ่านจากหลาย replica พร้อมกันลด latency",
         "ไม่เขียน intermediate state ลง distributed filesystem ระหว่างทุก stage แต่ pipeline ต่อกันใน memory"
       ]
     },

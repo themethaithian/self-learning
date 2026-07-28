@@ -28,7 +28,7 @@
       "options": [
         "รับประกัน linearizability ในทุกกรณี",
         "รับประกันว่า read เห็นค่าที่ write set ถืออยู่ แต่ไม่รับประกัน linearizability เมื่อมี concurrent write หรือ sloppy quorum",
-        "ทำให้ concurrent write ทุกคู่ถูกจัดลำดับ (ordered) โดยอัตโนมัติผ่านกลไก quorum โดยไม่ต้องพึ่งพา version vector หรือ LWW เพิ่มเติมแต่อย่างใด"
+        "ทำให้ concurrent write ทุกคู่ถูกจัดลำดับโดยอัตโนมัติผ่านกลไก quorum โดยไม่ต้องพึ่งพา version vector หรือ LWW"
       ]
     },
     {

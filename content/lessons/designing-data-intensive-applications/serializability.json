@@ -26,7 +26,7 @@
       "expected_answer": "dataset ทั้งหมดเข้า memory และแต่ละ transaction สั้น/เร็ว",
       "type": "mcq",
       "options": [
-        "dataset ใหญ่เกิน memory และมี transaction ที่รอ user input นาน",
+        "dataset ใหญ่เกิน memory และ transaction รอ user input",
         "dataset ทั้งหมดเข้า memory และแต่ละ transaction สั้น/เร็ว",
         "มี transaction ข้าม partition จำนวนมาก"
       ]

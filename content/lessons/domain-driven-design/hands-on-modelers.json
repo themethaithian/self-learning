@@ -31,7 +31,7 @@
       "expected_answer": "modeling เป็นกิจกรรมต่อเนื่องที่ฝังอยู่ในการเขียนโค้ด และปรับตัวตาม feedback จาก implementation",
       "type": "mcq",
       "options": [
-        "modeling เป็น phase แรกที่ architect หรือ analyst ต้องทำให้เสร็จสมบูรณ์เพียงครั้งเดียวก่อนที่จะเริ่มลงมือเขียนโค้ดจริงในระบบทั้งหมด",
+        "modeling เป็น phase แรกที่ architect หรือ analyst ต้องทำให้เสร็จก่อนเริ่มเขียนโค้ด",
         "modeling เป็นกิจกรรมต่อเนื่องที่ฝังอยู่ในการเขียนโค้ด และปรับตัวตาม feedback จาก implementation",
         "modeling เป็นหน้าที่ของ architect เท่านั้น dev ไม่ควรเข้ามายุ่ง"
       ]

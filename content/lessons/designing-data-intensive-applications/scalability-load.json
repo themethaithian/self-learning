@@ -26,7 +26,7 @@
       "expected_answer": "fan-out-on-write precompute timeline ตอนเขียนจึงอ่านถูก ส่วน fan-out-on-read ประกอบ timeline ตอนอ่านจึงเขียนถูกแต่อ่านแพง",
       "type": "mcq",
       "options": [
-        "fan-out-on-write ทำงานหนักตอนอ่านเพราะต้อง query และ merge สดทุกครั้งที่เปิดแอป ส่วน fan-out-on-read ทำงานหนักตอนเขียนเพราะต้อง precompute cache ล่วงหน้า",
+        "fan-out-on-write ทำงานหนักตอนอ่านเพราะต้อง query และ merge สดทุกครั้งที่เปิดแอป ส่วน fan-out-on-read ทำงานหนักตอนเขียน",
         "fan-out-on-write precompute timeline ตอนเขียนจึงอ่านถูก ส่วน fan-out-on-read ประกอบ timeline ตอนอ่านจึงเขียนถูกแต่อ่านแพง",
         "ทั้งสองแบบทำงานเท่ากันทุกจุด ต่างแค่ชื่อเรียก"
       ]

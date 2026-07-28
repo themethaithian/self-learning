@@ -12,7 +12,7 @@
       "type": "mcq",
       "options": [
         "ยืนยันกับ node ข้างเคียงว่าตัวเองยัง alive",
-        "รอ ping node อื่นทีละตัวจนครบ quorum เพื่อยืนยันสถานะของตัวเองก่อนค่อยตัดสินใจ step down",
+        "รอ ping node อื่นจนครบ quorum ก่อนตัดสินใจ step down",
         "ต้อง step down และเลิกทำหน้าที่ leader แม้ตัวเองจะรู้สึกว่ายัง alive"
       ]
     },
@@ -47,7 +47,7 @@
       "type": "mcq",
       "options": [
         "safety วัดที่ latency ของแต่ละ request ส่วน liveness วัดที่ throughput รวมของทั้งระบบต่อวินาที",
-        "safety ใช้กับ operation แบบ read อย่างเดียว ส่วน liveness ใช้กับ write ที่เปลี่ยน state ของระบบเท่านั้น จึงต้องออกแบบการรับประกันแยกกันคนละชั้น",
+        "safety ใช้กับ operation แบบ read อย่างเดียว ส่วน liveness ใช้กับ write ที่เปลี่ยน state เท่านั้น",
         "safety = สิ่งเลวจะไม่เกิดขึ้น (ละเมิดแล้วชี้จุดเวลาที่พังได้และย้อนคืนไม่ได้), liveness = สิ่งดีจะเกิดขึ้นในที่สุด"
       ]
     }

@@ -36,7 +36,7 @@
       "expected_answer": "causal consistency ยัง available ตอน partition ได้ (เป็นโมเดลที่แข็งสุดที่ยังทำได้) ส่วน linearizability ทำไม่ได้ตาม CAP",
       "type": "mcq",
       "options": [
-        "ทั้งคู่ต้องเสีย availability เท่ากันเมื่อเกิด network partition เพราะทั้งสองโมเดลต้องรอ quorum ของ node ตอบกลับก่อนจึงจะยืนยัน write ได้",
+        "ทั้งคู่ต้องเสีย availability เท่ากันเมื่อเกิด network partition เพราะต้องรอ quorum ตอบกลับก่อน",
         "linearizability ยัง available แต่ causal ทำไม่ได้",
         "causal consistency ยัง available ตอน partition ได้ (เป็นโมเดลที่แข็งสุดที่ยังทำได้) ส่วน linearizability ทำไม่ได้ตาม CAP"
       ]

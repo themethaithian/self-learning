@@ -28,7 +28,7 @@
       "options": [
         "ลบ event นั้นออกจาก log แล้ว rebuild ใหม่",
         "append compensating event เข้าไปใหม่",
-        "แก้ payload ของ event เดิมให้ถูกต้อง"
+        "แก้ payload event เดิมให้ถูกต้อง"
       ]
     },
     {
@@ -36,8 +36,8 @@
       "expected_answer": "คำขอให้ทำบางอย่าง อาจถูก reject ได้",
       "type": "mcq",
       "options": [
-        "ข้อเท็จจริงที่เกิดขึ้นแล้ว เปลี่ยนไม่ได้",
-        "snapshot ของ state ที่ fold เก็บไว้",
+        "ข้อเท็จจริงที่เกิด เปลี่ยนไม่ได้",
+        "snapshot ของ state ที่เก็บไว้",
         "คำขอให้ทำบางอย่าง อาจถูก reject ได้"
       ]
     },

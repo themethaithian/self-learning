@@ -36,7 +36,7 @@
       "expected_answer": "coordination overhead ทำให้ throughput ลด",
       "type": "mcq",
       "options": [
-        "ต้องเพิ่มจำนวน node ในคลัสเตอร์อย่างน้อยสองเท่า",
+        "ต้องเพิ่ม node ในคลัสเตอร์สองเท่า",
         "ทำให้ event ordering ผิดเพี้ยนไป",
         "coordination overhead ทำให้ throughput ลด"
       ]

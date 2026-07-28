@@ -36,7 +36,7 @@
       "expected_answer": "recursive join (WITH RECURSIVE CTE)",
       "type": "mcq",
       "options": [
-        "GROUP BY กับ aggregate function ที่ต้องคำนวณผ่านหลายชั้นซ้อนกันตามลำดับที่ query planner เลือกเอง",
+        "GROUP BY กับ aggregate function",
         "index scan บน primary key",
         "recursive join (WITH RECURSIVE CTE)"
       ]

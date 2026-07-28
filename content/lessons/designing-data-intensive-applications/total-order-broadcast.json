@@ -26,7 +26,7 @@
       "expected_answer": "apply operation จาก ordered log เดียวกันตามลำดับเดียวกัน บน replica ที่ deterministic",
       "type": "mcq",
       "options": [
-        "ให้แต่ละ replica รับ write ตามลำดับที่ตัวเองได้ยินก่อนโดยไม่ต้องรอ coordinate กับ replica ตัวอื่นเลยแม้แต่น้อย",
+        "ให้แต่ละ replica รับ write ตามลำดับที่ได้ยินเองโดยไม่ต้อง coordinate กัน",
         "apply operation จาก ordered log เดียวกันตามลำดับเดียวกัน บน replica ที่ deterministic",
         "sync ค่า balance ตรง ๆ ระหว่าง replica ทุก 1 วินาที"
       ]

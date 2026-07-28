@@ -26,7 +26,7 @@
       "expected_answer": "เพราะมันมี knowledge cutoff",
       "type": "mcq",
       "options": [
-        "เพราะ context window เล็กเกินไปมาก",
+        "เพราะ context window เล็ก",
         "เพราะตั้ง temperature ต่ำ",
         "เพราะมันมี knowledge cutoff"
       ]

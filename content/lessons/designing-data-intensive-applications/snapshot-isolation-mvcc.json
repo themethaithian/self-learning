@@ -26,7 +26,7 @@
       "expected_answer": "หลาย DB ใช้ \"repeatable read\" เรียก snapshot isolation ซึ่งให้ guarantee ต่างจากนิยาม REPEATABLE READ ใน SQL standard",
       "type": "mcq",
       "options": [
-        "เพราะ repeatable read เป็นชื่อเดียวกับ serializable ในทุก vendor โดยไม่มีความแตกต่างด้าน guarantee หรือ implementation ใด ๆ เลยแม้แต่น้อย",
+        "เพราะ repeatable read เป็นชื่อเดียวกับ serializable ในทุก vendor โดยไม่ต่างด้าน guarantee หรือ implementation",
         "หลาย DB ใช้ \"repeatable read\" เรียก snapshot isolation ซึ่งให้ guarantee ต่างจากนิยาม REPEATABLE READ ใน SQL standard",
         "เพราะ repeatable read ไม่มีจริงใน DB ใด ๆ"
       ]

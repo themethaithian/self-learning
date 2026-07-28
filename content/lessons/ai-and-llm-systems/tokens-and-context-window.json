@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "input บวก output รวมกัน",
-        "เฉพาะ input จากผู้ใช้เท่านั้น",
+        "เฉพาะ input เท่านั้น",
         "เฉพาะ output"
       ]
     },
