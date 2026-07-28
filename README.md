@@ -27,8 +27,10 @@ MySQL first-boot ที่ใช้เวลาราว 100 วินาที 
 ไว้ยาวถึง 90s). รอบถัดไป (มี volume/cache แล้ว) เร็วกว่านี้มาก
 
 เปิด **http://localhost:3000** แล้ววาง token `local-dev-token` ที่หน้า `/token`
-(นี่คือ dev-only default ที่ hardcode ไว้ใน `docker-compose.yml` เท่านั้น — ของจริงบน
-prod ไม่มีทางใช้ค่านี้)
+— ค่านี้ใช้ได้ทั้งตอนไม่มีไฟล์ `.env` เลย (compose ตั้ง default ไว้เป็นค่านี้) และตอน
+copy `.env.example` มาเป็น `.env` (ค่าใน `.env.example` ก็เป็น `local-dev-token`
+เหมือนกัน) เว้นแต่คุณจะไปแก้ `API_BEARER_TOKEN` ในไฟล์ `.env` ของตัวเองเป็นค่าอื่น
+ก็ต้องใช้ค่านั้นแทน — นี่คือ dev-only default เท่านั้น ของจริงบน prod ไม่มีทางใช้ค่านี้
 
 คำสั่งอื่นที่ใช้บ่อย:
 
