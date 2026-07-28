@@ -21,3 +21,7 @@ web/out/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Scratch files that shouldn't be committed
+*.tmp
+/.scratch/

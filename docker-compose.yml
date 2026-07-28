@@ -3,20 +3,99 @@ services:
     image: mysql:8.4
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-changeme_root}
+      MYSQL_DATABASE: ${DB_NAME:-self_learning}
+      MYSQL_USER: ${DB_USER:-app}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-changeme}
     ports:
       - "127.0.0.1:${DB_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    # Fresh-volume cold boot measured ~100s here; start_period only masks
+    # false failures during that window — retries carries the rest of the
+    # budget past it.
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 16
+      start_period: 90s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-self_learning}
+      DB_USER: ${DB_USER:-app}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      API_PORT: 8080
+      API_BEARER_TOKEN: ${API_BEARER_TOKEN:-local-dev-token}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-sk-ant-placeholder}
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:3000}
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    environment:
+      # ":80" = listen on port 80 with no host restriction, so it answers on
+      # localhost, 127.0.0.1, or a LAN/WSL IP alike; having no hostname also
+      # means Caddy never attempts automatic HTTPS for this site block.
+      DOMAIN: ":80"
+      ACME_EMAIL: placeholder@localhost.invalid
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      # Ordering only (not service_healthy): Caddy can serve static files
+      # before api is ready, and a not-yet-healthy api just means /api/*
+      # returns 502 instead of the page not loading at all.
+      - api
+
+  # No profile: runs automatically on `docker compose up` so a fresh clone
+  # needs zero manual import steps.
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-self_learning}
+      DB_USER: ${DB_USER:-app}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      API_BEARER_TOKEN: ${API_BEARER_TOKEN:-local-dev-token}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-sk-ant-placeholder}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/app/import-curriculum -dir /app/content/curriculum && /app/import-lessons -dir /app/content/lessons"]
+    # Bind-mounted so `make seed` picks up JSON edited on the host without
+    # rebuilding the image (the Dockerfile's own COPY content/ would
+    # otherwise silently reimport stale, baked-in content).
+    volumes:
+      - ./content:/app/content:ro
+    depends_on:
+      # api healthy => its startup migration already ran, so this never
+      # races a second migrator against a not-yet-migrated schema.
+      api:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   mysql_data:
