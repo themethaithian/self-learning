@@ -18,7 +18,7 @@
       "options": [
         "การตอบคำถาม FAQ ทั่วไปที่ลูกค้าถามซ้ำบ่อย",
         "การคืนเงิน refund เกินวงเงินที่อนุมัติ",
-        "การจัดหมวดหมู่ ticket ก่อน route"
+        "การจัดหมวดหมู่ ticket ก่อน route ซึ่งแก้ไขย้อนหลังได้ง่ายถ้าผิดพลาด"
       ]
     },
     {
@@ -26,9 +26,9 @@
       "expected_answer": "human overload จนกด approve แบบ rubber-stamp",
       "type": "mcq",
       "options": [
-        "human overload จนกด approve แบบ rubber-stamp",
         "cost การเรียก LLM เพิ่มขึ้นแบบทวีคูณตามจำนวน gate",
-        "โมเดลจะ hallucinate บ่อยขึ้นเมื่อรอนาน"
+        "โมเดลจะ hallucinate บ่อยขึ้นเมื่อรอนาน",
+        "human overload จนกด approve แบบ rubber-stamp"
       ]
     },
     {

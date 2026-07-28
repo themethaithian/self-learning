@@ -16,9 +16,9 @@
       "expected_answer": "RAG ลด hallucination ได้เมื่อ retrieval ดี",
       "type": "mcq",
       "options": [
-        "RAG กำจัด hallucination ได้ทุกกรณีเสมอไป",
         "RAG ลด hallucination ได้เมื่อ retrieval ดี",
-        "RAG เพิ่ม hallucination เพราะ context ที่ยาว"
+        "RAG กำจัด hallucination ได้ทุกกรณีเสมอไป",
+        "RAG เพิ่ม hallucination จาก context ยาว"
       ]
     },
     {
@@ -32,8 +32,8 @@
       "type": "mcq",
       "options": [
         "ทำให้ prompt สั้นลงและประหยัด token มากขึ้น",
-        "ทำให้คำตอบดูยาวและน่าเชื่อถือกว่าเดิม",
-        "ให้ผู้ใช้ตรวจสอบแหล่งที่มาของคำตอบได้"
+        "ให้ผู้ใช้ตรวจสอบแหล่งที่มาของคำตอบได้",
+        "ทำให้คำตอบดูยาวและน่าเชื่อถือกว่าเดิม"
       ]
     },
     {
@@ -41,9 +41,9 @@
       "expected_answer": "เพิ่ม latency และ complexity ให้ระบบ",
       "type": "mcq",
       "options": [
-        "เพิ่ม latency และ complexity ให้ระบบ",
         "โมเดลไม่จำเป็นต้องใช้ context ในการตอบอีก",
-        "vector index ไม่มีวันล้าสมัยเลย"
+        "vector index ไม่มีวันล้าสมัยเลย",
+        "เพิ่ม latency และ complexity ให้ระบบ"
       ]
     }
   ],

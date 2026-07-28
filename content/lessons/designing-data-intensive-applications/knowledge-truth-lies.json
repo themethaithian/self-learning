@@ -12,8 +12,8 @@
       "type": "mcq",
       "options": [
         "ยืนยันกับ node ข้างเคียงว่าตัวเองยัง alive",
-        "ต้อง step down และเลิกทำหน้าที่ leader แม้ตัวเองจะรู้สึกว่ายัง alive",
-        "รอ ping node อื่นทีละตัวจนครบ quorum เพื่อยืนยันสถานะของตัวเองก่อนค่อยตัดสินใจ step down"
+        "รอ ping node อื่นจนครบ quorum ก่อนตัดสินใจ step down",
+        "ต้อง step down และเลิกทำหน้าที่ leader แม้ตัวเองจะรู้สึกว่ายัง alive"
       ]
     },
     {
@@ -21,9 +21,9 @@
       "expected_answer": "เพราะ token เพิ่มขึ้นทางเดียว (monotonic) token ที่เล็กกว่าจึงแปลว่าผู้ส่งถูก supersede ไปแล้ว",
       "type": "mcq",
       "options": [
+        "เพราะ token เพิ่มขึ้นทางเดียว (monotonic) token ที่เล็กกว่าจึงแปลว่าผู้ส่งถูก supersede ไปแล้ว",
         "เพราะ token เก่าหมดอายุตามเวลา (TTL) ที่ lock service กำหนดไว้ตอน grant ledger จึงถือว่ามันใช้ไม่ได้แล้ว",
-        "เพราะ node เก่าส่ง token ผิด format",
-        "เพราะ token เพิ่มขึ้นทางเดียว (monotonic) token ที่เล็กกว่าจึงแปลว่าผู้ส่งถูก supersede ไปแล้ว"
+        "เพราะ node เก่าส่ง token ผิด format จนระบบ parse ค่าตัวเลขของ token นั้นไม่ออกและไม่สามารถเปรียบเทียบกับ token ล่าสุดที่เคยเห็นได้เลย"
       ]
     },
     {
@@ -36,8 +36,8 @@
       "expected_answer": "crash-recovery ถือว่า node อาจ crash แล้วกลับมาใหม่ได้ โดยข้อมูลบน stable storage รอด ส่วน crash-stop ถือว่า node ที่ crash แล้วหายไปเลยไม่กลับมา",
       "type": "mcq",
       "options": [
-        "crash-recovery ถือว่า node อาจ crash แล้วกลับมาใหม่ได้ โดยข้อมูลบน stable storage รอด ส่วน crash-stop ถือว่า node ที่ crash แล้วหายไปเลยไม่กลับมา",
         "crash-recovery ถือว่า node อาจโกหกหรือส่งข้อมูลผิดเพี้ยนแบบ arbitrary ได้ ส่วน crash-stop ถือว่า node ทุกตัวซื่อสัตย์และตอบตรงเสมอ",
+        "crash-recovery ถือว่า node อาจ crash แล้วกลับมาใหม่ได้ โดยข้อมูลบน stable storage รอด ส่วน crash-stop ถือว่า node ที่ crash แล้วหายไปเลยไม่กลับมา",
         "ทั้งสอง model เหมือนกันทุกอย่างในทางปฏิบัติ ต่างแค่ชื่อเรียกตามยุคของงานวิจัยที่คิดขึ้นมา จะเลือกใช้ตัวไหนก็ได้เพราะไม่มีผลต่อ correctness ของ algorithm"
       ]
     },
@@ -46,9 +46,9 @@
       "expected_answer": "safety = สิ่งเลวจะไม่เกิดขึ้น (ละเมิดแล้วชี้จุดเวลาที่พังได้และย้อนคืนไม่ได้), liveness = สิ่งดีจะเกิดขึ้นในที่สุด",
       "type": "mcq",
       "options": [
-        "safety = สิ่งเลวจะไม่เกิดขึ้น (ละเมิดแล้วชี้จุดเวลาที่พังได้และย้อนคืนไม่ได้), liveness = สิ่งดีจะเกิดขึ้นในที่สุด",
         "safety วัดที่ latency ของแต่ละ request ส่วน liveness วัดที่ throughput รวมของทั้งระบบต่อวินาที",
-        "safety ใช้กับ operation แบบ read อย่างเดียว ส่วน liveness ใช้กับ write ที่เปลี่ยน state ของระบบเท่านั้น จึงต้องออกแบบการรับประกันแยกกันคนละชั้น"
+        "safety ใช้กับ operation แบบ read อย่างเดียว ส่วน liveness ใช้กับ write ที่เปลี่ยน state เท่านั้น",
+        "safety = สิ่งเลวจะไม่เกิดขึ้น (ละเมิดแล้วชี้จุดเวลาที่พังได้และย้อนคืนไม่ได้), liveness = สิ่งดีจะเกิดขึ้นในที่สุด"
       ]
     }
   ],

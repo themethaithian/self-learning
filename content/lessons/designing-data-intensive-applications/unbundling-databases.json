@@ -26,9 +26,9 @@
       "expected_answer": "disposable — replay log เพื่อ rebuild ใหม่ได้เสมอ",
       "type": "mcq",
       "options": [
-        "authoritative — เป็น source of truth ที่ replay ไม่ได้",
-        "immutable — สร้างแล้วแก้ไขหรือลบทิ้งไม่ได้เลย",
-        "disposable — replay log เพื่อ rebuild ใหม่ได้เสมอ"
+        "authoritative — source of truth replay ไม่ได้",
+        "disposable — replay log เพื่อ rebuild ใหม่ได้เสมอ",
+        "immutable — สร้างแล้วแก้ไขหรือลบทิ้งไม่ได้เลย"
       ]
     },
     {
@@ -42,8 +42,8 @@
       "type": "mcq",
       "options": [
         "ต้องรองรับ workload ใหม่ที่หนักขึ้นจนระบบเดิมรับไม่ไหวอีกต่อไป",
-        "ต้องการ strong consistency ข้าม derived store",
-        "ทีมมี ops maturity รัน streaming ได้เองแล้ว"
+        "ทีมมี ops maturity รัน streaming ได้เองแล้ว จึงพร้อมดูแล component หลายตัวและ pipeline ที่ซับซ้อนขึ้นได้สบาย",
+        "ต้องการ strong consistency ข้าม derived store"
       ]
     }
   ],

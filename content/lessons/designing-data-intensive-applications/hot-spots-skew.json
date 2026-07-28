@@ -16,9 +16,9 @@
       "expected_answer": "การ read ต้อง query รวมจากทุก suffix (หลาย partition) แล้ว recombine",
       "type": "mcq",
       "options": [
-        "การ read ต้อง query รวมจากทุก suffix (หลาย partition) แล้ว recombine",
         "การ write ช้าลงเพราะต้องเขียนซ้ำทุก partition",
-        "storage เพิ่มขึ้นเป็นสองเท่าเพราะต้องเก็บ key สำรองไว้อีกชุดหนึ่งแยกต่างหากจากของเดิมเพื่อใช้ตอน fail over"
+        "storage เพิ่มขึ้นเพราะต้องเก็บ key สำรองแยกไว้ใช้ตอน fail over",
+        "การ read ต้อง query รวมจากทุก suffix (หลาย partition) แล้ว recombine"
       ]
     },
     {
@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "ควรเติม random suffix ให้ทุก key เพื่อกันไว้ก่อน",
-        "ควรทำเฉพาะ key ที่รู้ว่าร้อนจริง",
+        "ควรทำเฉพาะ key ที่รู้ว่าร้อนจริงเท่านั้น ไม่ใช่ทำกับทุก key ในระบบ",
         "แอปต้องเก็บ metadata ว่า key ไหนถูก split เป็นกี่ shard"
       ]
     },
@@ -41,8 +41,8 @@
       "expected_answer": "application layer เพราะ database ส่วนใหญ่ไม่ตรวจจับและ split hot key ให้อัตโนมัติ",
       "type": "mcq",
       "options": [
-        "application layer เพราะ database ส่วนใหญ่ไม่ตรวจจับและ split hot key ให้อัตโนมัติ",
         "database ทำให้อัตโนมัติทุกเจ้า",
+        "application layer เพราะ database ส่วนใหญ่ไม่ตรวจจับและ split hot key ให้อัตโนมัติ",
         "load balancer ที่อยู่หน้าคลัสเตอร์เป็นคนตรวจจับ hot key แล้วกระจาย request ให้เองโดยอัตโนมัติทุกครั้ง"
       ]
     }

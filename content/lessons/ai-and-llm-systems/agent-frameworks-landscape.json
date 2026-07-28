@@ -18,7 +18,7 @@
       "options": [
         "ควบคุม core loop ได้น้อยลงและ lock-in กับ abstraction",
         "ค่าใช้จ่ายต่อ token สูงขึ้นเสมอเพราะ framework overhead",
-        "โมเดลตอบผิดบ่อยขึ้นเพราะ framework แทรกแซง prompt"
+        "โมเดลตอบผิดบ่อยขึ้นเพราะ framework แทรกแซง prompt จนคำสั่งเดิมของทีมเพี้ยนไปโดยไม่รู้ตัว"
       ]
     },
     {
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "เลือก framework ที่ดาวเยอะสุดบน GitHub ไว้ก่อน",
-        "เขียนทุกอย่างเองจาก raw API ทุกกรณีโดยไม่ต้องเรียน primitive",
-        "เข้าใจ primitive ของ agent ก่อนแล้วค่อยเลือก framework"
+        "เข้าใจ primitive ของ agent ก่อนแล้วค่อยเลือก framework",
+        "เขียนทุกอย่างเองจาก raw API ทุกกรณีโดยไม่ต้องเรียน primitive"
       ]
     },
     {
@@ -41,9 +41,9 @@
       "expected_answer": "เรียน concept/primitive มากกว่าผูกกับ library เดียว",
       "type": "mcq",
       "options": [
-        "ควรรอจน framework นิ่งสนิทก่อนแล้วค่อยเริ่มเรียนทีหลัง",
-        "เรียน concept/primitive มากกว่าผูกกับ library เดียว",
-        "ควรใช้ทุก framework พร้อมกันเพื่อไม่ตกเทรนด์ใหม่"
+        "ควรรอจน framework นิ่งก่อนแล้วค่อยเริ่มเรียน",
+        "ควรใช้ทุก framework พร้อมกันเพื่อไม่ตกเทรนด์ใหม่",
+        "เรียน concept/primitive มากกว่าผูกกับ library เดียว"
       ]
     }
   ],

@@ -11,9 +11,9 @@
       "expected_answer": "ไม่เขียน intermediate state ลง distributed filesystem ระหว่างทุก stage แต่ pipeline ต่อกันใน memory",
       "type": "mcq",
       "options": [
-        "ไม่เขียน intermediate state ลง distributed filesystem ระหว่างทุก stage แต่ pipeline ต่อกันใน memory",
         "บีบอัด output ของทุก stage ด้วย codec ที่เร็วกว่าก่อนเขียนลง HDFS แล้วอ่านกลับแบบขนานหลาย thread",
-        "replicate intermediate state เป็น 5 ชุดแทน 3 ชุด แล้วกระจายอ่านจากหลาย replica พร้อมกันเพื่อลด latency"
+        "replicate intermediate state เป็น 5 ชุดแทน 3 ชุด อ่านจากหลาย replica พร้อมกันลด latency",
+        "ไม่เขียน intermediate state ลง distributed filesystem ระหว่างทุก stage แต่ pipeline ต่อกันใน memory"
       ]
     },
     {
@@ -21,8 +21,8 @@
       "expected_answer": "MapReduce start job ใหม่ทุก iteration และอ่าน dataset เต็มจาก HDFS ซ้ำ ส่วน dataflow cache working set ใน memory ข้าม iteration",
       "type": "mcq",
       "options": [
-        "MapReduce จำกัดจำนวน iteration ไว้ที่ 10 รอบต่อ job ส่วน dataflow วนได้ไม่จำกัดและ merge ผลอัตโนมัติทุกรอบจน model converge",
         "MapReduce start job ใหม่ทุก iteration และอ่าน dataset เต็มจาก HDFS ซ้ำ ส่วน dataflow cache working set ใน memory ข้าม iteration",
+        "MapReduce จำกัดจำนวน iteration ไว้ที่ 10 รอบต่อ job ส่วน dataflow วนได้ไม่จำกัดและ merge ผลอัตโนมัติทุกรอบจน model converge โดยไม่ต้องเขียนโค้ดควบคุมเพิ่มเติมเอง",
         "MapReduce ต้องรัน reduce ก่อน map ทุกรอบ ทำให้ต้องกลับลำดับ ส่วน dataflow จัด operator ใหม่ให้เองทุก iteration โดยไม่ต้องอ่าน HDFS"
       ]
     },
@@ -37,8 +37,8 @@
       "type": "mcq",
       "options": [
         "lineage บันทึกได้เฉพาะ operator แบบ map เท่านั้น ไม่รองรับ join หรือ group เลยแม้แต่น้อย จึงต้อง fallback ไปเขียนลง HDFS ทุกครั้งที่มี stage ใหม่เกิดขึ้น",
-        "lineage ต้องถูก replicate 3 ชุดข้าม cluster ทำให้ใช้ disk มากกว่า MapReduce เสมอ และยิ่งช้าลงเมื่อ pipeline สั้น",
-        "ถ้าข้อมูลกลางปลาย pipeline หาย อาจต้อง recompute ย้อน lineage ที่ยาว ซึ่งแพงกว่าการ re-run task เดียวจาก input บน disk"
+        "ถ้าข้อมูลกลางปลาย pipeline หาย อาจต้อง recompute ย้อน lineage ที่ยาว ซึ่งแพงกว่าการ re-run task เดียวจาก input บน disk",
+        "lineage ต้องถูก replicate 3 ชุดข้าม cluster ทำให้ใช้ disk มากกว่า MapReduce เสมอ และยิ่งช้าลงเมื่อ pipeline สั้น"
       ]
     },
     {

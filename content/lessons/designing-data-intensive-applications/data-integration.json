@@ -17,8 +17,8 @@
       "type": "mcq",
       "options": [
         "เพราะ storage engine ของแต่ละระบบไม่รองรับ ACID transaction",
-        "เพราะเจอ partial failure และไม่มี total order ข้อมูลแต่ละระบบเลย drift",
-        "เพราะ stream processing มี latency สูงกว่า batch เสมอจึงตามข้อมูลไม่ทัน"
+        "เพราะ stream processing latency สูงกว่า batch จึงตามข้อมูลไม่ทัน",
+        "เพราะเจอ partial failure และไม่มี total order ข้อมูลแต่ละระบบเลย drift"
       ]
     },
     {
@@ -26,9 +26,9 @@
       "expected_answer": "eventually consistent มี lag ตามหลัง log อยู่เสมอ",
       "type": "mcq",
       "options": [
+        "eventually consistent มี lag ตามหลัง log อยู่เสมอ",
         "strongly consistent ตรงกับ source ทุก write ทันที",
-        "consistent เฉพาะช่วงที่ batch job กำลังรันอยู่เท่านั้น",
-        "eventually consistent มี lag ตามหลัง log อยู่เสมอ"
+        "consistent เฉพาะช่วงที่ batch job กำลังรันอยู่เท่านั้น"
       ]
     },
     {
@@ -41,8 +41,8 @@
       "expected_answer": "log กลายเป็น critical infrastructure ที่ต้อง operate เอง",
       "type": "mcq",
       "options": [
-        "log กลายเป็น critical infrastructure ที่ต้อง operate เอง",
         "derived system ทุกตัวจะกลายเป็น strongly consistent อัตโนมัติ",
+        "log กลายเป็น critical infrastructure ที่ต้อง operate เอง",
         "ทุก read query ต้องวิ่งผ่าน log ทำให้ช้าลง"
       ]
     }

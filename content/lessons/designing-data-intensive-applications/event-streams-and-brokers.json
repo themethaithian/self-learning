@@ -16,9 +16,9 @@
       "expected_answer": "buffer event เมื่อ consumer ช้าหรือหลุดไป",
       "type": "mcq",
       "options": [
-        "การันตี event ทุกตัวถึง consumer โดยไม่ซ้ำกันเลย",
         "buffer event เมื่อ consumer ช้าหรือหลุดไป",
-        "ลบ duplicate ให้อัตโนมัติด้วย hash"
+        "การันตี event ทุกตัวถึง consumer โดยไม่ซ้ำกันเลย",
+        "ให้ consumer หลายตัวประมวลผล event เดียวกันพร้อมกันเสมอในทุกกรณี"
       ]
     },
     {
@@ -26,8 +26,8 @@
       "expected_answer": "ไปที่ consumer เพียงตัวเดียวในกลุ่ม",
       "type": "mcq",
       "options": [
-        "ไปที่ consumer เพียงตัวเดียวในกลุ่ม",
         "ไปที่ consumer ทุกตัวในกลุ่มพร้อมกัน",
+        "ไปที่ consumer เพียงตัวเดียวในกลุ่ม",
         "ไปที่ producer ตัวถัดไปในคิว"
       ]
     },
@@ -41,7 +41,7 @@
       "expected_answer": "เพราะ message ที่ถูก nack จะถูก redeliver ทีหลัง",
       "type": "mcq",
       "options": [
-        "เพราะ broker เรียง message ตาม timestamp ใหม่เสมอ",
+        "เพราะ broker เรียง message ตาม timestamp ใหม่",
         "เพราะ producer ส่ง event ไม่เรียงมาตั้งแต่ต้น",
         "เพราะ message ที่ถูก nack จะถูก redeliver ทีหลัง"
       ]

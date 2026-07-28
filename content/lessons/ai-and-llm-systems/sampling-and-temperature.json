@@ -16,9 +16,9 @@
       "expected_answer": "งาน extraction ที่ต้องการผลลัพธ์คงที่",
       "type": "mcq",
       "options": [
-        "งาน brainstorm หาไอเดียใหม่",
         "งาน extraction ที่ต้องการผลลัพธ์คงที่",
-        "งาน creative writing ที่ต้องการสำนวนใหม่"
+        "งาน brainstorm หาไอเดียใหม่",
+        "งาน creative writing สำนวนใหม่"
       ]
     },
     {
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "argmax token ตัวเดียวที่ probability สูงสุด",
-        "ทุก token แบบ uniform ไม่สนน้ำหนัก",
-        "เซตเล็กสุดที่ probability รวมถึงค่า p"
+        "เซตเล็กสุดที่ probability รวมถึงค่า p",
+        "ทุก token แบบ uniform ไม่สนน้ำหนัก probability ของแต่ละตัวเลย"
       ]
     },
     {
@@ -41,9 +41,9 @@
       "expected_answer": "แบน distribution ลง สุ่มมากขึ้น หลุดง่าย",
       "type": "mcq",
       "options": [
-        "แบน distribution ลง สุ่มมากขึ้น หลุดง่าย",
-        "แหลม distribution ขึ้น ผลนิ่ง ซ้ำมากขึ้น",
-        "คง distribution เดิม เพิ่มความเร็วประมวลผล"
+        "แหลม distribution ขึ้น ผลนิ่งซ้ำ",
+        "คง distribution เดิม เพิ่มความเร็วประมวลผล",
+        "แบน distribution ลง สุ่มมากขึ้น หลุดง่าย"
       ]
     }
   ],

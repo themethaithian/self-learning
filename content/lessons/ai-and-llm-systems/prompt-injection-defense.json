@@ -18,7 +18,7 @@
       "options": [
         "เพราะโมเดลถูก manipulate ได้เสมอ จึงต้องคุมความเสียหายแทน",
         "เพราะ system prompt ที่เขียนดีพอกัน injection ได้หมดแล้ว",
-        "เพราะ classifier สมัยใหม่ตรวจจับ injection ได้แม่นเกือบสมบูรณ์"
+        "เพราะ classifier ตรวจจับ injection ได้เกือบสมบูรณ์"
       ]
     },
     {
@@ -28,7 +28,7 @@
       "options": [
         "system prompt กับ config ภายในที่ทีมเขียนขึ้นเอง",
         "retrieved document และ tool result ที่ดึงเข้ามา",
-        "ค่า temperature และ token limit ของโมเดลเอง"
+        "ค่า temperature และ token limit ของโมเดลเองที่ทีม config ไว้ล่วงหน้า"
       ]
     },
     {

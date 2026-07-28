@@ -16,8 +16,8 @@
       "expected_answer": "integrity รักษาได้; timeliness ยอม relax",
       "type": "mcq",
       "options": [
-        "timeliness รักษาได้; integrity ยอม relax",
         "integrity รักษาได้; timeliness ยอม relax",
+        "timeliness รักษาได้; integrity ยอม relax",
         "รักษาได้ทั้งคู่โดยไม่ต้องออกแบบเพิ่ม"
       ]
     },
@@ -26,8 +26,8 @@
       "expected_answer": "route request ของ number เข้า partition เดียว ให้ consumer ตัวเดียวตัดสิน",
       "type": "mcq",
       "options": [
-        "route request ของ number เข้า partition เดียว ให้ consumer ตัวเดียวตัดสิน",
         "ให้ทุก node ล็อกตาราง account พร้อมกันก่อนจะ insert ทุกครั้งที่มี request",
+        "route request ของ number เข้า partition เดียว ให้ consumer ตัวเดียวตัดสิน",
         "สุ่มกระจาย request ของ number ไปทั่วทุก partition เพื่อ balance โหลด"
       ]
     },

@@ -16,7 +16,7 @@
       "expected_answer": "application code ของเรา",
       "type": "mcq",
       "options": [
-        "provider API เป็นคนรัน",
+        "provider API เป็นคนรันแทนโค้ดฝั่งเรา",
         "application code ของเรา",
         "โมเดล LLM รันด้วยตัวมันเอง"
       ]
@@ -26,9 +26,9 @@
       "expected_answer": "ส่ง result กลับให้โมเดลตอบ",
       "type": "mcq",
       "options": [
-        "ส่ง result กลับให้โมเดลตอบ",
         "ให้ผู้ใช้อ่าน result เองโดยตรง",
-        "ทิ้ง result ไป ไม่ต้องใช้"
+        "ทิ้ง result ไป ไม่ต้องใช้",
+        "ส่ง result กลับให้โมเดลตอบ"
       ]
     },
     {
@@ -41,9 +41,9 @@
       "expected_answer": "เพิ่ม latency และ attack surface",
       "type": "mcq",
       "options": [
-        "ทำให้ระบบตอบสนองได้เร็วขึ้นทุกครั้ง",
-        "แทบไม่มีต้นทุนอะไรเพิ่มขึ้นเลย",
-        "เพิ่ม latency และ attack surface"
+        "เพิ่ม latency และ attack surface",
+        "ทำให้ระบบตอบสนองได้เร็วขึ้น",
+        "แทบไม่มีต้นทุนอะไรเพิ่มขึ้นเลย"
       ]
     }
   ],

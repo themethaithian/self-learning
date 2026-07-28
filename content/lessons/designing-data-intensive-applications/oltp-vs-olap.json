@@ -16,9 +16,9 @@
       "expected_answer": "SUM ยอดธุรกรรมของทุก merchant ย้อนหลัง 90 วัน แล้ว group by จังหวัด",
       "type": "mcq",
       "options": [
-        "ดึง balance ปัจจุบันของ account เลข 123 มาแสดงบนหน้า dashboard",
-        "insert ledger posting ใหม่หนึ่งแถวทันทีเมื่อ payment หนึ่งรายการดำเนินการสำเร็จเรียบร้อยแล้ว",
-        "SUM ยอดธุรกรรมของทุก merchant ย้อนหลัง 90 วัน แล้ว group by จังหวัด"
+        "SUM ยอดธุรกรรมของทุก merchant ย้อนหลัง 90 วัน แล้ว group by จังหวัด",
+        "ดึง balance ปัจจุบันของ account เลข 123 มาแสดงบนหน้า dashboard ด้วย point lookup ผ่าน key ที่ต้องเสร็จภายในเวลาไม่กี่สิบมิลลิวินาที",
+        "insert ledger posting ใหม่หนึ่งแถวทันทีเมื่อ payment หนึ่งรายการดำเนินการสำเร็จเรียบร้อยแล้ว"
       ]
     },
     {
@@ -26,8 +26,8 @@
       "expected_answer": "เพราะ analytic query ที่ scan ข้อมูลมหาศาลจะแย่ง I/O/CPU/cache ไปจาก transaction ที่ user กำลังรออยู่ ทำให้ latency ฝั่ง OLTP พัง",
       "type": "mcq",
       "options": [
-        "เพราะ analytic query ที่ scan ข้อมูลมหาศาลจะแย่ง I/O/CPU/cache ไปจาก transaction ที่ user กำลังรออยู่ ทำให้ latency ฝั่ง OLTP พัง",
         "เพราะ data warehouse ถูกออกแบบมาให้ป้องกันการโจมตีทางไซเบอร์ได้ดีกว่า production database ด้วยการเข้ารหัสข้อมูลและระบบ access control ที่เข้มงวดกว่า",
+        "เพราะ analytic query ที่ scan ข้อมูลมหาศาลจะแย่ง I/O/CPU/cache ไปจาก transaction ที่ user กำลังรออยู่ ทำให้ latency ฝั่ง OLTP พัง",
         "เพราะ production database เก็บข้อมูลย้อนหลังหลายปีไม่ได้"
       ]
     },
@@ -41,9 +41,9 @@
       "expected_answer": "fact table ตรงกลาง (หนึ่งแถวต่อหนึ่ง event) ล้อมด้วย dimension table (customer, merchant, date ฯลฯ)",
       "type": "mcq",
       "options": [
-        "หนึ่งตารางใหญ่ที่ denormalize รวมทุกอย่างไว้ด้วยกันเป็นตารางเดียวโดยไม่มีการแยก fact กับ dimension ออกจากกันเลย",
-        "fact table ตรงกลาง (หนึ่งแถวต่อหนึ่ง event) ล้อมด้วย dimension table (customer, merchant, date ฯลฯ)",
-        "หลาย fact table ที่ join กันเองโดยไม่มี dimension table"
+        "หนึ่งตารางใหญ่ที่ denormalize รวมทุกอย่างไว้ด้วยกันเป็นตารางเดียวโดยไม่แยก fact กับ dimension",
+        "หลาย fact table ที่ join กันเองโดยไม่มี dimension table",
+        "fact table ตรงกลาง (หนึ่งแถวต่อหนึ่ง event) ล้อมด้วย dimension table (customer, merchant, date ฯลฯ)"
       ]
     }
   ],

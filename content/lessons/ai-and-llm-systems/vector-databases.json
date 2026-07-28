@@ -16,8 +16,8 @@
       "expected_answer": "recall — อาจพลาดเพื่อนบ้านบางตัว",
       "type": "mcq",
       "options": [
-        "จำนวน vector สูงสุดที่ index รองรับได้",
         "recall — อาจพลาดเพื่อนบ้านบางตัว",
+        "จำนวน vector สูงสุดที่รองรับได้",
         "ความแม่นของ metadata filter"
       ]
     },
@@ -26,9 +26,9 @@
       "expected_answer": "filter ด้วย metadata tenant_id ตอน query",
       "type": "mcq",
       "options": [
-        "เข้ารหัส vector แยกไฟล์ต่อ tenant",
-        "สร้าง embedding model แยกต่อ tenant แต่ละราย",
-        "filter ด้วย metadata tenant_id ตอน query"
+        "เข้ารหัส vector ทุก tenant ด้วย key เดียวกันแล้วเก็บรวมไว้ในตารางเดียวกัน",
+        "filter ด้วย metadata tenant_id ตอน query",
+        "ใช้ hybrid search ผสม keyword กับ vector similarity แทนการทำ metadata filter ตอน query"
       ]
     },
     {
@@ -36,9 +36,9 @@
       "expected_answer": "ข้อมูลเล็ก และมี Postgres อยู่แล้ว",
       "type": "mcq",
       "options": [
-        "ข้อมูลเล็ก และมี Postgres อยู่แล้ว",
         "query throughput ของ vector เยอะ",
-        "ต้องการ latency ต่ำที่สุดตอน scale ใหญ่มาก"
+        "ต้องการ latency ต่ำที่สุดตอน scale ใหญ่มาก",
+        "ข้อมูลเล็ก และมี Postgres อยู่แล้ว"
       ]
     },
     {

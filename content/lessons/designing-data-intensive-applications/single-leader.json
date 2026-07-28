@@ -26,8 +26,8 @@
       "expected_answer": "ถ้า sync ทุกตัว เครื่องเดียวช้า/ล่ม จะบล็อก write ทั้งระบบ; semi-synchronous ให้ sync แค่ตัวเดียวจึงยังทนต่อ follower ตัวอื่นล่มได้",
       "type": "mcq",
       "options": [
+        "เพราะ synchronous replication เมื่อใช้กับ follower ทุกตัวพร้อมกันจะทำให้ข้อมูลบน follower แต่ละตัวไม่ตรงกับ leader อยู่เสมอ",
         "ถ้า sync ทุกตัว เครื่องเดียวช้า/ล่ม จะบล็อก write ทั้งระบบ; semi-synchronous ให้ sync แค่ตัวเดียวจึงยังทนต่อ follower ตัวอื่นล่มได้",
-        "เพราะ synchronous replication เมื่อใช้กับ follower ทุกตัวพร้อมกันจะทำให้ข้อมูลบน follower แต่ละตัวไม่ตรงกับ leader อยู่เสมอไม่ว่ากรณีใด",
         "เพราะ semi-synchronous ทำให้ write throughput ของ leader สูงกว่า"
       ]
     },
@@ -41,9 +41,9 @@
       "expected_answer": "scale read เท่านั้น",
       "type": "mcq",
       "options": [
-        "scale read เท่านั้น",
-        "scale ทั้งคู่",
-        "scale write เท่านั้น เพราะ leader ยังเป็นจุดเดียวที่รับ write"
+        "scale ทั้งคู่ ทั้ง read และ write เพราะ follower ช่วยแบ่งเบาภาระของ leader ได้ในทุกด้าน",
+        "scale write เท่านั้น เพราะ leader ยังเป็นจุดเดียวที่รับ write",
+        "scale read เท่านั้น"
       ]
     }
   ],

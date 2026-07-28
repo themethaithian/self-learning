@@ -16,9 +16,9 @@
       "expected_answer": "1 query ดึง list แล้วยิงอีก N query แยก ต่อ 1 record เพื่อโหลด association",
       "type": "mcq",
       "options": [
-        "query เดียวที่ join N ตารางพร้อมกันในครั้งเดียว",
         "1 query ดึง list แล้วยิงอีก N query แยก ต่อ 1 record เพื่อโหลด association",
-        "การ retry query เดิมซ้ำไปเรื่อย ๆ ทั้งหมด N+1 ครั้งทุกครั้งที่เกิด connection fail ระหว่างทาง"
+        "query เดียวที่ join N ตารางพร้อมกันในครั้งเดียว โดยไม่ต้องแยกยิงคำสั่งเพิ่มเติมทีหลังสำหรับแต่ละ record ที่ดึงมาได้เลย",
+        "การรวม query ทั้งหมดเป็นคำสั่งเดียวที่ join ทุกตารางที่เกี่ยวข้องพร้อมกันในครั้งเดียว"
       ]
     },
     {
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "ORM เก็บ cache ข้อมูลไว้นานเกินไปจน stale",
-        "database ล็อกแถวทุกแถวที่เกี่ยวข้องไว้จนกว่า association ทั้งหมดของทุก record จะถูกโหลดเสร็จสมบูรณ์",
-        "collection ดูเหมือน in-memory list แต่การ touch มันยิง SQL เพิ่มโดยไม่ปรากฏชัดจาก call site"
+        "collection ดูเหมือน in-memory list แต่การ touch มันยิง SQL เพิ่มโดยไม่ปรากฏชัดจาก call site",
+        "database ล็อกแถวทุกแถวที่เกี่ยวข้องไว้จนกว่า association ทั้งหมดของทุก record จะถูกโหลดเสร็จสมบูรณ์"
       ]
     },
     {
@@ -36,9 +36,9 @@
       "expected_answer": "ลด boilerplate การ map object เป็น table แต่ซ่อน query cost ทำให้เกิด performance surprise ตอน production",
       "type": "mcq",
       "options": [
-        "ลด boilerplate การ map object เป็น table แต่ซ่อน query cost ทำให้เกิด performance surprise ตอน production",
         "ทำให้ query เร็วขึ้นเสมอเพราะ ORM optimize ให้อัตโนมัติ",
-        "กำจัด impedance mismatch ได้เพราะมันสร้างตารางใหม่ให้ตรงกับโครงสร้าง object graph โดยอัตโนมัติทุกครั้งที่ schema เปลี่ยนแปลง"
+        "กำจัด impedance mismatch ได้เพราะมันสร้างตารางใหม่ให้ตรงกับโครงสร้าง object graph โดยอัตโนมัติ",
+        "ลด boilerplate การ map object เป็น table แต่ซ่อน query cost ทำให้เกิด performance surprise ตอน production"
       ]
     },
     {

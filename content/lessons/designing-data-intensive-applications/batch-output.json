@@ -11,9 +11,9 @@
       "expected_answer": "เพราะ input เดิมยังอยู่ครบ แก้โค้ดแล้ว re-run ได้ output ใหม่ทั้งก้อน",
       "type": "mcq",
       "options": [
-        "เพราะ input เดิมยังอยู่ครบ แก้โค้ดแล้ว re-run ได้ output ใหม่ทั้งก้อน",
         "เพราะ job ตรวจจับ record ที่ผิดใน production แล้วเขียนทับให้ถูกต้องเองโดยอัตโนมัติทุกครั้งที่ re-run",
-        "เพราะ input ถูก validate ไว้จน bug ในโค้ดเกิดขึ้นไม่ได้เลย"
+        "เพราะ input ถูก validate ไว้จน bug ในโค้ดเกิดขึ้นไม่ได้เลย",
+        "เพราะ input เดิมยังอยู่ครบ แก้โค้ดแล้ว re-run ได้ output ใหม่ทั้งก้อน"
       ]
     },
     {
@@ -21,8 +21,8 @@
       "expected_answer": "search index ที่ build แบบ bulk แล้ว swap เข้าไปทั้งชุด",
       "type": "mcq",
       "options": [
-        "read replica ที่ sync กับ production DB แบบ real-time ทันที",
         "search index ที่ build แบบ bulk แล้ว swap เข้าไปทั้งชุด",
+        "read replica ที่ sync กับ production DB real-time",
         "transaction lock ที่กันการเขียนพร้อมกันข้าม node"
       ]
     },
@@ -37,8 +37,8 @@
       "type": "mcq",
       "options": [
         "ทำให้ input เปลี่ยนแปลงไปเองระหว่างที่ job กำลังรัน จน output ออกมาไม่ deterministic",
-        "ทำให้ rollback กลับเวอร์ชันเก่าทำไม่ได้ เพราะ output เก่าถูกลบทิ้งทุกครั้งที่ swap",
-        "ใช้ storage มากขึ้น (เก็บ input + หลาย output version) และใช้เวลา recompute มากกว่า"
+        "ใช้ storage มากขึ้น (เก็บ input + หลาย output version) และใช้เวลา recompute มากกว่า",
+        "ทำให้ rollback กลับเวอร์ชันเก่าทำไม่ได้ เพราะ output เก่าถูกลบทิ้งทุกครั้งที่ swap โดยไม่มีการเก็บสำรองไว้เลย"
       ]
     },
     {

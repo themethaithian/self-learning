@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "database engine ตอน write",
-        "network / transport layer",
-        "application code ตอน read"
+        "application code ตอน read",
+        "network / transport layer"
       ]
     },
     {
@@ -42,8 +42,8 @@
       "type": "mcq",
       "options": [
         "เมื่อ structure ของข้อมูลเปลี่ยนแปลงบ่อยมากในทุกสัปดาห์และแต่ละ item มีรูปร่างที่ heterogeneous แตกต่างกันไปตามแหล่งที่มาอย่างมาก",
-        "เมื่อข้อมูล homogeneous มีหลาย reader และต้องการ data integrity สูง — ยอมจ่ายค่า migration เพื่อจับ error ตั้งแต่ write",
-        "เมื่ออยากหลีกเลี่ยง migration ในทุกกรณี"
+        "เมื่ออยากหลีกเลี่ยง migration ในทุกกรณี เพราะมองว่าการเขียนโค้ด handle รูปเก่ากับใหม่ที่ layer application ถูกกว่าการทำ ALTER TABLE และ backfill",
+        "เมื่อข้อมูล homogeneous มีหลาย reader และต้องการ data integrity สูง — ยอมจ่ายค่า migration เพื่อจับ error ตั้งแต่ write"
       ]
     }
   ],

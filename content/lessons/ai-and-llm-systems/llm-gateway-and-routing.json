@@ -16,9 +16,9 @@
       "expected_answer": "เมื่อ escalation rate เกิน 95% ต้นทุนรวมจะแพงกว่าส่งไปโมเดลใหญ่ตรง ๆ",
       "type": "mcq",
       "options": [
-        "เมื่อ escalation rate เกิน 5% เพราะการเรียกโมเดลเล็กที่ผลไม่ผ่าน validator ถือเป็นต้นทุนที่สูญเปล่าทั้งหมด",
-        "ไม่มีจุดที่เลิกคุ้ม เพราะโมเดลเล็กย่อมถูกกว่าเสมอ",
-        "เมื่อ escalation rate เกิน 95% ต้นทุนรวมจะแพงกว่าส่งไปโมเดลใหญ่ตรง ๆ"
+        "เมื่อ escalation rate เกิน 95% ต้นทุนรวมจะแพงกว่าส่งไปโมเดลใหญ่ตรง ๆ",
+        "เมื่อ escalation rate เกิน 5%",
+        "ไม่มีจุดที่เลิกคุ้ม เพราะโมเดลเล็กย่อมถูกกว่าเสมอ"
       ]
     },
     {
@@ -31,8 +31,8 @@
       "expected_answer": "คำตอบแต่ละอันมาจากคนละโมเดล จึงต้อง log model และ route reason และ eval แยกตาม route",
       "type": "mcq",
       "options": [
+        "router บังคับให้ทุก request ผ่านโมเดลเล็กก่อน ทำให้ trace ยาวและอ่านยากขึ้นทุกครั้งที่มีการ escalate",
         "คำตอบแต่ละอันมาจากคนละโมเดล จึงต้อง log model และ route reason และ eval แยกตาม route",
-        "router บังคับให้ทุก request ผ่านโมเดลเล็กก่อน ทำให้ trace ยาวและอ่านยากขึ้น",
         "gateway ทำให้ token count ที่ provider รายงานกลับมาไม่ตรงกับที่แอปนับเอง จึงเทียบคุณภาพข้ามรุ่นไม่ได้"
       ]
     },
@@ -42,8 +42,8 @@
       "type": "mcq",
       "options": [
         "ทำให้ต้องเลือก provider เพียงรายเดียวตลอดอายุระบบ เพราะ interface กลางผูกกับ provider ตัวแรกที่นำมาต่อ",
-        "เป็น single point of failure และเพิ่ม network hop ให้ทุก request",
-        "ทำให้ prompt แต่ละเวอร์ชันถูก cache ไว้ถาวรจน rollback ไม่ได้"
+        "ทำให้ prompt แต่ละเวอร์ชันถูก cache ไว้ถาวรจน rollback ไม่ได้",
+        "เป็น single point of failure และเพิ่ม network hop ให้ทุก request"
       ]
     }
   ],

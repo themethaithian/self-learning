@@ -12,8 +12,8 @@
       "type": "mcq",
       "options": [
         "scatter-gather ไปทุก partition แล้ว merge ผลลัพธ์",
-        "ยิงไป partition เดียวที่ถือ term นั้นโดยตรง",
-        "อ่านจาก primary key ได้เลยโดยไม่ต้องแตะ index เพราะข้อมูลทุก partition เรียงตาม primary key อยู่แล้ว"
+        "ยิงไป partition เดียวที่ถือ term นั้นโดยตรง เหมือนกับที่ global (term-partitioned) index ทำได้เพราะแบ่ง index ตามค่าที่ index เอง",
+        "ค้นหาได้เร็วในทุกกรณีโดยไม่ต้องกระจายไปหา node อื่นเลยแม้แต่ node เดียว ไม่ว่า partition จะมีจำนวนมากเพียงใดก็ตาม"
       ]
     },
     {
@@ -26,8 +26,8 @@
       "expected_answer": "local = write ถูกแต่ read ต้อง scatter-gather; global = read ถูกแต่ write ต้องอัปเดตหลาย partition แบบ async",
       "type": "mcq",
       "options": [
-        "local = write ถูกแต่ read ต้อง scatter-gather; global = read ถูกแต่ write ต้องอัปเดตหลาย partition แบบ async",
         "local = read ถูกแต่ write ต้องอัปเดตหลาย partition ต่อ document เดียว; global = write ถูกแต่ read ต้อง scatter-gather ไปทุก node เพื่อรวมผล",
+        "local = write ถูกแต่ read ต้อง scatter-gather; global = read ถูกแต่ write ต้องอัปเดตหลาย partition แบบ async",
         "ทั้งสองแบบทั้ง read และ write ถูกเท่ากัน ต่างแค่ชื่อเรียก"
       ]
     },
@@ -36,9 +36,9 @@
       "expected_answer": "เพราะเอกสารเดียวอาจมีหลาย term (เช่น merchant และ category) ที่อยู่คนละ index partition จึงต้องอัปเดต index หลายที่",
       "type": "mcq",
       "options": [
-        "เพราะเอกสารเดียวอาจมีหลาย term (เช่น merchant และ category) ที่อยู่คนละ index partition จึงต้องอัปเดต index หลายที่",
         "เพราะต้อง scatter-gather ไปทุก partition ก่อนจึงจะเขียนได้",
-        "เพราะ global index บังคับให้เก็บสำเนา document ทั้งก้อนซ้ำไว้ในทุก partition ของ cluster เพื่อให้ query อ่านได้ครบโดยไม่ต้องแตะ partition อื่น"
+        "เพราะ global index บังคับให้เก็บสำเนา document ทั้งก้อนซ้ำไว้ในทุก partition ของ cluster",
+        "เพราะเอกสารเดียวอาจมีหลาย term (เช่น merchant และ category) ที่อยู่คนละ index partition จึงต้องอัปเดต index หลายที่"
       ]
     },
     {

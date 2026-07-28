@@ -16,9 +16,9 @@
       "expected_answer": "เป็น domain event ที่ออกแบบและตั้งชื่อไว้ตั้งแต่ต้น",
       "type": "mcq",
       "options": [
-        "เป็น row-level diff ที่ database generate ให้อัตโนมัติ",
         "เป็น domain event ที่ออกแบบและตั้งชื่อไว้ตั้งแต่ต้น",
-        "เป็น snapshot ของ state ปัจจุบันในแต่ละช่วงเวลา"
+        "เป็น row-level diff ที่ database generate ให้อัตโนมัติ",
+        "เป็น snapshot ของ state ปัจจุบันในแต่ละช่วงเวลาที่เก็บไว้เป็นระยะ"
       ]
     },
     {
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "ลบ event นั้นออกจาก log แล้ว rebuild ใหม่",
-        "แก้ payload ของ event เดิมให้ถูกต้อง",
-        "append compensating event เข้าไปใหม่"
+        "append compensating event เข้าไปใหม่",
+        "แก้ payload event เดิมให้ถูกต้อง"
       ]
     },
     {
@@ -36,9 +36,9 @@
       "expected_answer": "คำขอให้ทำบางอย่าง อาจถูก reject ได้",
       "type": "mcq",
       "options": [
-        "คำขอให้ทำบางอย่าง อาจถูก reject ได้",
-        "ข้อเท็จจริงที่เกิดขึ้นแล้ว เปลี่ยนไม่ได้",
-        "snapshot ของ state ที่ fold เก็บไว้"
+        "ข้อเท็จจริงที่เกิด เปลี่ยนไม่ได้",
+        "snapshot ของ state ที่เก็บไว้",
+        "คำขอให้ทำบางอย่าง อาจถูก reject ได้"
       ]
     },
     {

@@ -16,9 +16,9 @@
       "expected_answer": "ต้องดูแล logic เดียวกันสองชุดขนานกัน",
       "type": "mcq",
       "options": [
-        "speed layer คำนวณ approximate ไม่ได้เลย",
         "ต้องดูแล logic เดียวกันสองชุดขนานกัน",
-        "เก็บ log ย้อนหลังไว้ replay ไม่ได้"
+        "speed layer คำนวณ approximate ไม่ได้เลย",
+        "เก็บ log ย้อนหลังไว้ replay ไม่ได้อีกต่อไป"
       ]
     },
     {
@@ -26,8 +26,8 @@
       "expected_answer": "replay log ทั้งหมดผ่าน stream code เดิม",
       "type": "mcq",
       "options": [
-        "replay log ทั้งหมดผ่าน stream code เดิม",
         "รัน batch job แยกอีกชุดขนานเหมือน Lambda",
+        "replay log ทั้งหมดผ่าน stream code เดิม",
         "คัดลอกผลจาก speed layer มาแก้มือ"
       ]
     },
@@ -41,8 +41,8 @@
       "expected_answer": "เมื่อต้อง replay history ขนาดใหญ่มาก",
       "type": "mcq",
       "options": [
-        "เมื่อ business logic ทั้งระบบง่ายมาก",
-        "เมื่อ speed layer แม่นกว่า batch layer",
+        "เมื่อ business logic ง่ายมาก",
+        "เมื่อ speed layer แม่นกว่า batch",
         "เมื่อต้อง replay history ขนาดใหญ่มาก"
       ]
     }

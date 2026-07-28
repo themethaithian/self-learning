@@ -26,8 +26,8 @@
       "expected_answer": "อ่านซ้ำแล้วจะไม่เห็นข้อมูลย้อนเวลาถอยหลัง (สิ่งที่เคยเห็นแล้วจะไม่หายไป)",
       "type": "mcq",
       "options": [
+        "user เห็น write ล่าสุดของทุกคนในระบบเสมอทันทีโดยไม่มี lag เลย",
         "อ่านซ้ำแล้วจะไม่เห็นข้อมูลย้อนเวลาถอยหลัง (สิ่งที่เคยเห็นแล้วจะไม่หายไป)",
-        "user เห็น write ล่าสุดของทุกคนในระบบเสมอทันทีโดยไม่มี lag เลย เทียบเท่า strong consistency",
         "writes ที่มีความสัมพันธ์เชิงเหตุจะถูกอ่านตามลำดับที่ถูกต้อง"
       ]
     },
@@ -41,9 +41,9 @@
       "expected_answer": "reader เห็น writes ผิดลำดับ causal (เห็นคำตอบก่อนคำถาม); มักโผล่ในระบบ partitioned/sharded ที่แต่ละ partition replicate อิสระด้วย lag ต่างกัน",
       "type": "mcq",
       "options": [
-        "reader เห็น writes ผิดลำดับ causal (เห็นคำตอบก่อนคำถาม); มักโผล่ในระบบ partitioned/sharded ที่แต่ละ partition replicate อิสระด้วย lag ต่างกัน",
         "user เห็น write ของตัวเองที่เพิ่งทำไปช้ากว่าปกติ; ปัญหานี้เกิดจาก replication lag ทั่วไปเวลา read ไปตกที่ replica ที่ยังตามไม่ทัน ไม่เกี่ยวกับลำดับเชิงเหตุของ writes",
-        "read มี latency สูง; มักโผล่เมื่อ leader โหลดหนัก"
+        "read มี latency สูง; มักโผล่เมื่อ leader โหลดหนักจนตอบ query ช้ากว่าปกติ โดยไม่เกี่ยวข้องกับลำดับเชิงเหตุของ writes หรือการที่แต่ละ partition replicate อิสระจากกัน",
+        "reader เห็น writes ผิดลำดับ causal (เห็นคำตอบก่อนคำถาม); มักโผล่ในระบบ partitioned/sharded ที่แต่ละ partition replicate อิสระด้วย lag ต่างกัน"
       ]
     }
   ],

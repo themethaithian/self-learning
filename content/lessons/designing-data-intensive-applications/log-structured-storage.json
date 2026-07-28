@@ -16,8 +16,8 @@
       "expected_answer": "map จาก key ไปยัง byte offset ของ record ล่าสุดใน log และเก็บทั้งหมดใน memory",
       "type": "mcq",
       "options": [
-        "map จาก key ไปยัง value ทั้งก้อน เก็บบน disk",
         "map จาก key ไปยัง byte offset ของ record ล่าสุดใน log และเก็บทั้งหมดใน memory",
+        "map จาก key ไปยัง value ทั้งก้อน เก็บบน disk แทนที่จะเก็บแค่ตำแหน่ง offset ไว้ใน memory เหมือนที่ระบบทำจริง",
         "sorted index ของทุก key เรียงลำดับไว้บน disk ในรูปแบบ B-tree ที่ต้องเดิน tree หลายชั้นทุกครั้งที่ query"
       ]
     },
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "ระบบเขียนทับ record เดิมเมื่อ key ซ้ำ",
-        "log ทั้งไฟล์ถูกบีบอัดด้วย gzip ใหม่ทุกครั้งที่มีการเขียน record เพิ่มเข้าไปแม้แต่ record เดียวก็ตาม",
-        "compaction/merge ที่เก็บเฉพาะค่าล่าสุดของแต่ละ key แล้วทิ้งค่าที่ถูกเขียนทับและ tombstone"
+        "compaction/merge ที่เก็บเฉพาะค่าล่าสุดของแต่ละ key แล้วทิ้งค่าที่ถูกเขียนทับและ tombstone",
+        "log ทั้งไฟล์ถูกบีบอัดด้วย gzip ใหม่ทุกครั้งที่มีการเขียน record เพิ่มเข้าไปแม้แต่ record เดียวก็ตาม"
       ]
     },
     {
@@ -36,9 +36,9 @@
       "expected_answer": "เพราะ hash index ไม่มี order ของ key จึงต้องไล่ทุก key ทีละตัว ทำ range scan อย่างมีประสิทธิภาพไม่ได้",
       "type": "mcq",
       "options": [
-        "เพราะ hash index ไม่มี order ของ key จึงต้องไล่ทุก key ทีละตัว ทำ range scan อย่างมีประสิทธิภาพไม่ได้",
         "เพราะ log อยู่บน disk ที่ช้า",
-        "เพราะ compaction process ลบ key ที่อยู่ในช่วง range ทิ้งไปโดยไม่ตั้งใจทุกครั้งที่ทำงานจนข้อมูลในช่วงนั้นหายไปหมด"
+        "เพราะ compaction process ลบ key ที่อยู่ในช่วง range ทิ้งไปโดยไม่ตั้งใจทุกครั้งที่ทำงาน",
+        "เพราะ hash index ไม่มี order ของ key จึงต้องไล่ทุก key ทีละตัว ทำ range scan อย่างมีประสิทธิภาพไม่ได้"
       ]
     },
     {

@@ -26,9 +26,9 @@
       "expected_answer": "ต้องจับคู่กับ content และ embedding model แล้ววัดด้วย eval",
       "type": "mcq",
       "options": [
-        "ต้องจับคู่กับ content และ embedding model แล้ววัดด้วย eval",
         "มี chunk size มาตรฐานตัวเดียวที่ดีที่สุดใช้ได้ทุกงาน",
-        "chunk ยิ่งเล็กยิ่งค้นแม่นขึ้นเรื่อย ๆ เสมอ ไม่มีข้อเสียใด ๆ เลย"
+        "chunk ยิ่งเล็กยิ่งค้นแม่นขึ้นเรื่อย ๆ เสมอ ไม่มีข้อเสียใด ๆ เลย",
+        "ต้องจับคู่กับ content และ embedding model แล้ววัดด้วย eval"
       ]
     },
     {
@@ -41,9 +41,9 @@
       "expected_answer": "เพิ่ม storage และเกิดข้อความซ้ำซ้อนตอน retrieve",
       "type": "mcq",
       "options": [
+        "เพิ่ม storage และเกิดข้อความซ้ำซ้อนตอน retrieve",
         "ทำให้ embedding model ประมวลผลช้าลงอย่างมีนัยสำคัญ",
-        "ลด recall ของการ retrieve ลงในแทบทุกกรณี",
-        "เพิ่ม storage และเกิดข้อความซ้ำซ้อนตอน retrieve"
+        "ลด recall ของการ retrieve ลงในแทบทุกกรณี"
       ]
     }
   ],

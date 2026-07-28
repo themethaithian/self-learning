@@ -15,16 +15,20 @@
       "q": "ระบบมี n=5 replica ตั้ง w=3 ถ้าต้องการให้ read set ทับกับ write set เสมอ r ต้องอย่างน้อยเท่าไหร่?",
       "expected_answer": "3",
       "type": "mcq",
-      "options": ["3", "2", "1"]
+      "options": [
+        "3",
+        "2",
+        "1"
+      ]
     },
     {
       "q": "ข้อใดถูกต้องเกี่ยวกับสิ่งที่ w + r > n รับประกัน?",
       "expected_answer": "รับประกันว่า read เห็นค่าที่ write set ถืออยู่ แต่ไม่รับประกัน linearizability เมื่อมี concurrent write หรือ sloppy quorum",
       "type": "mcq",
       "options": [
-        "รับประกันว่า read เห็นค่าที่ write set ถืออยู่ แต่ไม่รับประกัน linearizability เมื่อมี concurrent write หรือ sloppy quorum",
         "รับประกัน linearizability ในทุกกรณี",
-        "ทำให้ concurrent write ทุกคู่ถูกจัดลำดับ (ordered) โดยอัตโนมัติผ่านกลไก quorum โดยไม่ต้องพึ่งพา version vector หรือ LWW เพิ่มเติมแต่อย่างใด"
+        "รับประกันว่า read เห็นค่าที่ write set ถืออยู่ แต่ไม่รับประกัน linearizability เมื่อมี concurrent write หรือ sloppy quorum",
+        "ทำให้ concurrent write ทุกคู่ถูกจัดลำดับโดยอัตโนมัติผ่านกลไก quorum โดยไม่ต้องพึ่งพา version vector หรือ LWW"
       ]
     },
     {
@@ -37,9 +41,9 @@
       "expected_answer": "write อาจถูกรับไว้ที่ node นอกกลุ่ม home ของ key ทำให้ read quorum อาจไม่ทับกับ node ที่รับ write",
       "type": "mcq",
       "options": [
-        "write อาจถูกรับไว้ที่ node นอกกลุ่ม home ของ key ทำให้ read quorum อาจไม่ทับกับ node ที่รับ write",
-        "มันเพิ่มจำนวน replica n ของ key นั้นโดยอัตโนมัติเพื่อชดเชย node ที่ล่ม ทำให้ w และ r ต้องถูกคำนวณใหม่ทุกครั้งที่มี node หาย",
-        "มันบังคับให้ r ต้องเท่ากับ n เสมอ"
+        "write ทุกตัวของ key นั้นถูกปฏิเสธไปจนกว่า node หลักในกลุ่ม home จะกลับมาออนไลน์อีกครั้ง เพื่อรักษาความถูกต้องของข้อมูลไว้ก่อนเสมอในทุกกรณี",
+        "read จะเปลี่ยนไปอ่านจาก node สำรองที่เพิ่งรับ write ไว้แทนกลุ่ม home เสมอโดยอัตโนมัติทุกครั้งที่เกิด sloppy quorum ขึ้นในระบบ",
+        "write อาจถูกรับไว้ที่ node นอกกลุ่ม home ของ key ทำให้ read quorum อาจไม่ทับกับ node ที่รับ write"
       ]
     }
   ],

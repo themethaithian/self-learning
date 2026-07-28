@@ -17,8 +17,8 @@
       "type": "mcq",
       "options": [
         "2f + 1",
-        "3f + 1",
-        "f + 1"
+        "f + 1",
+        "3f + 1"
       ]
     },
     {
@@ -26,9 +26,9 @@
       "expected_answer": "blockchain / cryptocurrency ที่ผู้เข้าร่วมไม่ไว้ใจกันและมีแรงจูงใจโกง",
       "type": "mcq",
       "options": [
+        "blockchain / cryptocurrency ที่ผู้เข้าร่วมไม่ไว้ใจกันและมีแรงจูงใจโกง",
         "service ภายใน datacenter ขององค์กรเดียวที่คุมและ deploy/patch node เองทั้งหมดทุกเครื่อง",
-        "แอปมือถือที่เรียก REST API ตัวเดียว",
-        "blockchain / cryptocurrency ที่ผู้เข้าร่วมไม่ไว้ใจกันและมีแรงจูงใจโกง"
+        "แอปมือถือที่เรียก REST API ตัวเดียว"
       ]
     },
     {
@@ -36,8 +36,8 @@
       "expected_answer": "crash-fault-tolerant consensus + input validation + checksum",
       "type": "mcq",
       "options": [
-        "crash-fault-tolerant consensus + input validation + checksum",
         "full BFT ด้วย 3f + 1 node พร้อม signature verification ทุก request เสมอ",
+        "crash-fault-tolerant consensus + input validation + checksum",
         "ไม่ต้องมี consensus เลย เพราะ node ไว้ใจกันได้"
       ]
     },

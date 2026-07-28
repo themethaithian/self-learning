@@ -16,9 +16,9 @@
       "expected_answer": "เพราะโมเดลใช้ description ตัดสินว่าจะเลือก tool ตัวไหน",
       "type": "mcq",
       "options": [
-        "เพราะ description ถูก compile เป็นโค้ดที่รัน tool จริง",
         "เพราะโมเดลใช้ description ตัดสินว่าจะเลือก tool ตัวไหน",
-        "เพราะ description ถูกเก็บไว้ใน tool registry ฝั่ง server"
+        "เพราะ description ถูก compile เป็นโค้ดรัน tool จริง",
+        "เพราะ description ถูกเก็บใน tool registry ฝั่ง server"
       ]
     },
     {
@@ -26,8 +26,8 @@
       "expected_answer": "กิน token มากขึ้นและเสี่ยงเลือก tool ผิดมากขึ้น",
       "type": "mcq",
       "options": [
+        "ทำให้ tool ทุกตัวรันช้าลงเพราะแย่ง CPU ในการประมวลผลพร้อมกัน",
         "กิน token มากขึ้นและเสี่ยงเลือก tool ผิดมากขึ้น",
-        "ทำให้ tool ทุกตัวรันช้าลงเพราะแย่ง CPU",
         "ทำให้โมเดลตอบเป็นภาษาอื่นโดยไม่ได้ตั้งใจในบางครั้ง"
       ]
     },

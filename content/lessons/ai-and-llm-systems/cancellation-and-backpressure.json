@@ -16,9 +16,9 @@
       "expected_answer": "consumer รับ token ช้ากว่าที่ผลิต",
       "type": "mcq",
       "options": [
-        "provider ส่ง token เร็วกว่าปกติมาก",
         "consumer รับ token ช้ากว่าที่ผลิต",
-        "network latency สูงตอนเริ่มต้น"
+        "provider ส่ง token เร็วกว่าปกติมาก",
+        "network latency สูงตอนเริ่มต้นก่อนโทเค็นแรกจะมาถึงฝั่งผู้ใช้"
       ]
     },
     {
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "provider หยุดส่ง token ให้อัตโนมัติ",
-        "TTFT ของ request ถัดไปลดลง",
-        "memory โตไม่หยุดจนเกิด OOM ได้"
+        "memory โตไม่หยุดจนเกิด OOM ได้",
+        "TTFT ของ request ถัดไปลดลง"
       ]
     },
     {
@@ -36,9 +36,9 @@
       "expected_answer": "ส่งต่อ context cancellation (ctx)",
       "type": "mcq",
       "options": [
-        "ส่งต่อ context cancellation (ctx)",
-        "เพิ่ม worker goroutine ให้มากขึ้น",
-        "retry การเรียก provider ใหม่ทันทีที่หลุด"
+        "เพิ่ม worker goroutine ให้มาก",
+        "retry การเรียก provider ใหม่",
+        "ส่งต่อ context cancellation (ctx)"
       ]
     },
     {
@@ -46,9 +46,9 @@
       "expected_answer": "ตัดคำตอบยาวที่ยัง valid ทิ้งกลางคัน",
       "type": "mcq",
       "options": [
-        "ทำให้ provider คิดเงินเพิ่มเป็นสองเท่า",
         "ตัดคำตอบยาวที่ยัง valid ทิ้งกลางคัน",
-        "ทำให้ backpressure หายไปทั้งหมด"
+        "ทำให้ provider คิดเงินเพิ่มเป็นสองเท่า",
+        "เปิดช่องให้เกิด goroutine หรือ connection leak สะสมจนกระทบ server ในระยะยาว"
       ]
     }
   ],

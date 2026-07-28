@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "เพื่อย้อน debug ได้ว่าเคสที่พังใช้เวอร์ชันไหน และเพื่อ join metric ของ eval/A-B test แยกตามเวอร์ชัน",
-        "เพื่อให้ระบบฝั่ง provider รู้ว่าต้องหยิบ prompt cache ก้อนไหนมาใช้ และคิดค่าใช้จ่ายในอัตราที่ถูกลงสำหรับ request ที่ prefix ซ้ำกัน",
+        "เพื่อให้ระบบฝั่ง provider รู้ว่าต้องหยิบ prompt cache ก้อนไหนมาใช้ และคิดค่าใช้จ่ายในอัตราที่ถูกลง",
         "เพื่อบังคับให้ทุก request ที่ใช้เวอร์ชันเดียวกันได้ output เหมือนเดิมทุกครั้งที่เรียกซ้ำ"
       ]
     },
@@ -26,9 +26,9 @@
       "expected_answer": "repo ได้ review และ CI มาให้ฟรีแต่แก้ต้อง deploy ส่วน config store แก้ได้เร็วแต่ต้องสร้าง review, audit และ rollback เอง",
       "type": "mcq",
       "options": [
-        "การเก็บไว้ใน config store ปลอดภัยกว่าเสมอ เพราะมี rollback ให้โดยอัตโนมัติ",
+        "การเก็บไว้ใน config store ปลอดภัยกว่าเสมอ เพราะมี rollback ให้โดยอัตโนมัติโดยไม่ต้องออกแบบ audit trail หรือ immutable version เพิ่มเองเลย",
         "repo ได้ review และ CI มาให้ฟรีแต่แก้ต้อง deploy ส่วน config store แก้ได้เร็วแต่ต้องสร้าง review, audit และ rollback เอง",
-        "repo เหมาะกับ prompt ที่ยาวเท่านั้น ส่วน config store เหมาะกับ prompt สั้นที่มีตัวแปรแทรกจำนวนมาก เพราะข้อจำกัดเรื่องขนาดไฟล์ของระบบ version control"
+        "repo เหมาะกับ prompt ที่ต้องแก้บ่อยมากในแต่ละวัน ส่วน config store เหมาะกับ prompt ที่แทบไม่เคยเปลี่ยนแปลงเลยตลอดอายุการใช้งานของระบบ"
       ]
     },
     {

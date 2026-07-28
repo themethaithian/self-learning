@@ -17,8 +17,8 @@
       "type": "mcq",
       "options": [
         "เพราะ database ไม่เปิด replication log ให้อ่าน",
-        "การเขียนสองที่แข่งกัน ไม่มี ordering ร่วม",
-        "เพราะ search index เขียนช้ากว่า database"
+        "เพราะ search index เขียนช้ากว่า database",
+        "การเขียนสองที่แข่งกัน ไม่มี ordering ร่วม"
       ]
     },
     {
@@ -42,8 +42,8 @@
       "type": "mcq",
       "options": [
         "ต้องเขียนลง search index พร้อมกับ database ทุกครั้ง",
-        "ต้องล็อกตาราง database ทุกครั้งที่มี write",
-        "ผูกกับ replication log format ของ database ต้นทาง"
+        "ผูกกับ replication log format ของ database ต้นทาง",
+        "ต้องล็อกตาราง database ทุกครั้งที่มี write"
       ]
     }
   ],
