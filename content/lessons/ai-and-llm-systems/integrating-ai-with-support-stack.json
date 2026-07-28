@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "integrating-ai-with-support-stack",
+  "version": 1,
+  "title_en": "Integrating AI with the Support Stack",
+  "est_minutes": 10,
+  "body_md": "# Integrating AI with the Support Stack\n\n## ทำไมถึงสำคัญ\n\nAI ที่ตอบเก่งใน demo มักพังตอนต่อของจริง เพราะงาน support หนึ่งเคสต้องแตะระบบ 4-5 ตัว: ticketing, knowledge base, order/billing, identity, ช่องทางติดต่อ. คำถามระดับ senior จึงไม่ใช่ \"prompt เขียนยังไง\" แต่คือ \"AI อ่านจากไหน เขียนกลับที่ไหน ใครเป็นเจ้าของความจริง และถ้าระบบปลายทางล่มจะเกิดอะไรขึ้น\".\n\n## แก่น: ระบบเดิมเป็นเจ้าของ record ส่วน AI เป็น service\n\nหลักข้อเดียวที่ต้องยึด — **AI ไม่ใช่ system of record**. ticket, order, ยอดเงิน, สถานะลูกค้า ยังเป็นของระบบเดิมเสมอ. AI ทำได้สามอย่างคือ **อ่าน** เพื่อประกอบ context, **เสนอ** เป็น draft, และ **เขียนกลับ** ผ่าน API เดิมที่มี validation เดิม ไม่ใช่ยิงเข้า DB ตรง. ผลตามมา:\n\n- flow ต้องทำงานต่อได้แม้ AI ดับทั้งตัว — AI เป็น optional dependency ไม่ใช่ critical path\n- ทุกการเขียนผ่าน business rule เดิม (permission, workflow state, audit) ไม่ bypass\n- ทุก record ที่ AI แตะต้องบันทึก actor ว่าเป็น AI เพื่อให้ rollback และ audit ย้อนได้\n\n(ภาพรวมว่า AI เสริม workflow ของ CRM/ticketing อย่างไร อยู่ที่ `ai-in-crm-and-ticketing`; บทนี้โฟกัสการต่อหลายระบบพร้อมกัน)\n\n## สามรูปแบบการต่อ\n\n**1. API / tool call ตอน runtime** — เรียกระบบปลายทางสด ๆ ระหว่างตอบ (กลไกคือ tool calling ใน ch.3 `agentic-tool-loop`). ได้ข้อมูลล่าสุดเสมอ เหมาะกับสิ่งที่เปลี่ยนตลอด เช่นสถานะ transaction. ราคาที่จ่ายคือ **availability และ latency ของระบบปลายทางกลายเป็นของเรา** ต้องมี timeout ต่อ tool และ degrade โดยบอกตรง ๆ ว่าดึงส่วนนี้ไม่ได้ แทนที่จะเดา (`tool-error-handling`)\n\n**2. Sync / ETL เข้ามาเป็น index** — ดึงเอกสารและข้อมูลกึ่งนิ่งมาทำ retrieval index ของเราเอง. เร็ว คุมได้ ไม่โหลดระบบปลายทาง แต่ **stale ตามรอบ sync** — เอกสารนโยบายเหมาะ ยอดคงเหลือไม่เหมาะ\n\n**3. Event / webhook** — ระบบปลายทางยิง event เช่น ticket.created มา trigger งาน AI แบบ async. ไม่ต้อง poll และไม่กิน latency ของผู้ใช้ แต่ต้องรับมือ duplicate และ out-of-order จึงต้องทำ handler ให้ idempotent ด้วย key จากต้นทาง\n\nของจริงใช้ผสมกันในเคสเดียว: event เป็น trigger, index ให้ความรู้เชิงนโยบาย, tool call ดึงตัวเลขที่ต้องสด.\n\n```mermaid\nflowchart LR\n  CH[\"Channels: chat, email, voice\"] --> T[\"Ticketing and CRM: system of record\"]\n  T -->|\"event: ticket.created\"| AI[\"AI service\"]\n  KB[\"Knowledge base\"] -->|\"sync / ETL\"| IDX[\"Retrieval index\"]\n  IDX --> AI\n  AI -->|\"runtime tool call\"| ORD[\"Order and billing API\"]\n  IAM[\"Identity: acting-user scope\"] --> AI\n  AI --> S[\"Draft answer with citations\"]\n  S --> H[\"Human agent reviews\"]\n  H -->|\"approve\"| T\n  H -->|\"reject with reason\"| EV[\"Eval set and KB backlog\"]\n```\n\n## ตัวอย่าง: ลด swivel chair ในทีม support ของ payment app\n\nลูกค้าแจ้ง \"โอนแล้วเงินไม่เข้า\". เดิม agent ต้องสลับสี่หน้าจอ: ticket, โปรไฟล์ลูกค้า, ledger ของ transaction, หน้า KB เรื่องเวลาตัดรอบของแต่ละธนาคาร กว่าจะเริ่มพิมพ์คำตอบก็ผ่านไปหลายนาที.\n\nหลังต่อ AI: event `ticket.created` trigger งานหนึ่งชุด → tool call ดึง transaction ตาม reference id (สด), tool call ดึง tier และเคสย้อนหลังของลูกค้า (สด), retrieval จาก index ดึงนโยบายเวลาตัดรอบ (นิ่ง) → ประกอบเป็น brief หน้าเดียวพร้อม draft คำตอบและ citation แปะกลับที่ ticket. agent อ่าน ตรวจ แล้วกดส่ง.\n\nจุดที่ต้องออกแบบ: ถ้า ledger API timeout **ห้ามให้ AI เติมตัวเลขเอง** ต้องแสดงว่าส่วนนี้ว่างแล้วให้ agent เปิดเอง. brief ที่ขาดหนึ่งบล็อกยังใช้ได้ แต่ brief ที่มีตัวเลขมั่วทำลายความเชื่อถือทั้งระบบ.\n\n## Knowledge base คือคอขวดของคุณภาพ\n\nretrieval ที่ดีที่สุดก็ดึงได้แค่สิ่งที่มีอยู่: ถ้าเอกสารผิด ล้าสมัย หรือมีสามฉบับที่ขัดกัน AI จะตอบผิดอย่างมั่นใจพร้อม citation สวย ๆ. ปัญหานี้แก้ที่ pipeline ไม่ได้ ต้องแก้ที่ **KB ops**:\n\n- ทุกเอกสารมี **owner** ที่เป็นคน และมี **review date** — เลยกำหนดแล้วต้องถูกลดน้ำหนักตอน retrieve หรือติดธงว่าค้าง review\n- **ลบของซ้ำ** แทนการเพิ่มฉบับใหม่ทับ — เอกสารที่ขัดกันคือต้นทางของคำตอบที่เดี๋ยวถูกเดี๋ยวผิดแบบอธิบายไม่ได้\n- **feedback loop**: ทุกครั้งที่ agent แก้ draft หรือปฏิเสธ ให้บันทึกเหตุผลแบบ structured แล้ว route เข้าคิวแก้เอกสาร ไม่ใช่เก็บไว้เป็นสถิติเฉย ๆ\n- เคสที่ตอบผิดกลายเป็นรายการใน golden set ทันที (`eval-metrics-groundedness` วัดว่าคำตอบยึด source จริงไหม; retrieval อยู่ที่ `rag-pipeline-and-grounding`)\n\n## Identity, permission และ untrusted input\n\nข้อผิดพลาดที่แพงที่สุดในการต่อระบบคือให้ AI ใช้ **service account ที่เห็นทุกอย่าง**. พอ context เห็นข้อมูลข้ามลูกค้าได้ วันหนึ่งมันจะหลุดออกมาในคำตอบ และ log จะบอกได้แค่ว่า service account อ่าน ไม่รู้ว่าอ่านแทนใคร.\n\nหลักคือ **AI ทำงานภายใต้สิทธิ์ของ principal ที่กำลังทำงานอยู่**: propagate token/scope ของ agent หรือของลูกค้าคนนั้นลงไปทุก tool call ให้ระบบปลายทางเป็นคนบังคับ authorization. ประโยคใน prompt ว่า \"อย่าตอบเรื่องลูกค้าคนอื่น\" ไม่ใช่ security control.\n\nอีกด้านหนึ่ง **ทุกอย่างที่ดึงกลับมาจากระบบปลายทางคือ untrusted input** — เนื้อ ticket, อีเมลลูกค้า, comment ในเคส, แม้แต่หน้า KB ที่ใครก็แก้ได้ ล้วนแทรกคำสั่งไว้ได้ (`prompt-injection-defense`). ต้องแยกให้ชัดว่าอะไรคือ instruction อะไรคือ data และ redact PII ก่อนส่งออกนอกขอบเขต (`pii-and-moderation`).\n\n## Rollout ในองค์กรจริง\n\nอย่าเปิดจากศูนย์ไปอัตโนมัติ ให้ไล่เป็นขั้น:\n\n1. **Shadow mode** — AI ทำงานเต็มรูปแบบแต่ผลไม่โชว์ให้ใครเห็น ใช้เทียบกับสิ่งที่ agent ทำจริงเพื่อสร้าง baseline\n2. **Suggest** — โชว์ให้ agent เป็นคนตัดสินใจ วัด acceptance rate และ edit rate (`human-in-the-loop`)\n3. **Auto ในขอบเขตแคบ** — เฉพาะงานความเสี่ยงต่ำที่ eval ผ่านต่อเนื่อง แล้วขยายทีละกลุ่ม\n\nสิ่งที่ขาดไม่ได้: **kill switch** ระดับ feature ที่ปิดได้โดยไม่ต้อง deploy, เกณฑ์ว่าเมื่อไหร่ต้องส่งต่อคน (`confidence-and-fallback`), การเทรนทีมว่าเชื่อผลได้แค่ไหน, และการวัดผลก่อน-หลังจริง (`measuring-support-productivity`) ไม่ใช่ความรู้สึกว่าเร็วขึ้น.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ต่อ API ครบแล้วจบ\"** — ส่วนที่ยากคือ KB ops และ permission model ซึ่งเป็นงานองค์กร ไม่ใช่งาน integration\n- **\"ดึงมาไว้ใน index ให้หมดจะได้เร็ว\"** — ข้อมูลที่เปลี่ยนบ่อยเมื่ออยู่ใน index คือคำตอบที่ผิดแบบดูน่าเชื่อ\n- **\"ให้ AI เขียน record เองเลยจะได้ประหยัดคน\"** — write path คือที่ที่ error แพงที่สุด เริ่มจาก read และ suggest ก่อนเสมอ\n- **\"prompt สั่งไม่ให้เล่าข้อมูลลูกค้าคนอื่นก็พอ\"** — authorization ต้องบังคับที่ระบบปลายทาง\n\n## ขีดจำกัด / trade-off\n\n- **ต้นทุนที่มองไม่เห็นคือการดูแลสัญญาระหว่างระบบ** — schema ของ ticket เปลี่ยนไปหนึ่ง field tool ก็พังเงียบ ต้องมี contract test กับทุกระบบที่ต่อ และถือ tool schema เป็น versioned artifact\n- **fan-out ทำให้ latency แย่ลงและ debug ยากขึ้น** — เรียกห้าระบบต่อหนึ่งคำตอบ แปลว่า p99 ถูกกำหนดโดยระบบที่ช้าที่สุด ต้อง parallel เท่าที่ทำได้และมี budget รวมที่ตัดจบได้ (`latency-optimization`)\n- **โหลดที่ตกกับระบบปลายทาง** — AI ดึงข้อมูลถี่กว่าคนมาก ระบบภายในรุ่นเก่าอาจรับไม่ไหว ต้อง rate limit ฝั่งเรา\n- **องค์กรคือข้อจำกัดจริง** — ระบบปลายทางมักอยู่คนละทีมคนละรอบ release ความเร็วของงานนี้ถูกกำหนดโดยทีมอื่น ไม่ใช่โดยเทคโนโลยี\n- **เมื่อไหร่ยังไม่ควรทำ** — ถ้า KB ยังไม่มีเจ้าของหรือ permission model ยังมั่ว การต่อ AI จะขยายปัญหาให้เร็วขึ้นเท่านั้น ต้องแก้พื้นฐานก่อน; ถ้ามีระบบเดียวกับเคสน้อย การ orchestrate หลายระบบคือ over-engineering เริ่มจาก retrieval บน KB พอ\n\n## มุมสัมภาษณ์\n\n- **\"จะต่อ AI เข้ากับ support stack ที่มีอยู่ยังไง\"** → หลัก system of record บวกสามรูปแบบการต่อ และเกณฑ์เลือกระหว่างความสด โหลด ความเสี่ยง\n- **\"ระบบปลายทาง timeout ตอน AI กำลังตอบ ทำยังไง\"** → timeout ต่อ tool, ตอบแบบ degrade ที่ระบุว่าส่วนไหนขาด, ห้าม fabricate\n- **\"AI จะไม่เผลอเล่าข้อมูลลูกค้าคนอื่นได้ยังไง\"** → propagate สิทธิ์ของ principal จริงลงทุก tool call ไม่ใช้ service account ที่เห็นหมด และ audit ว่าอ่านแทนใคร\n- **\"RAG ตอบผิดบ่อย จะแก้ตรงไหน\"** → ดู KB ก่อน pipeline: เอกสารล้าสมัย ขัดกัน ซ้ำ แล้ววาง review cycle กับ feedback loop\n- **\"จะ roll out ยังไงไม่ให้พัง\"** → shadow แล้ว suggest แล้วค่อย auto แคบ ๆ พร้อม kill switch และ metric ก่อน-หลัง\n\n## ปิดท้าย track\n\nทั้ง 11 บทประกอบกันเป็นระบบเดียว: foundations บอกว่าโมเดลทำอะไรได้และคิดต้นทุนอย่างไร, prompting กับ tool calling ทำให้สั่งงานและต่อกับระบบภายนอกได้, RAG ให้ความรู้เฉพาะองค์กร, streaming ทำให้ผู้ใช้รู้สึกเร็ว, agents กับ conversational patterns จัดการงานหลายขั้นและการส่งต่อคน, guardrails กันเรื่องที่ยอมไม่ได้, eval บอกว่าดีขึ้นจริงไหม, production layer ทำให้ของอยู่รอดใต้ traffic จริง และบทสุดท้ายคือการเอาทั้งหมดไปวางบนระบบที่ธุรกิจใช้อยู่แล้ว ซึ่งเป็นจุดที่ระบบ AI ส่วนใหญ่แพ้หรือชนะจริง.\n",
+  "recall_checks": [
+    {
+      "q": "ในสถาปัตยกรรมนี้ ใครเป็นเจ้าของ record และ AI ได้รับอนุญาตให้ทำอะไรได้บ้าง?",
+      "expected_answer": "ระบบเดิม (ticketing/CRM, order/billing) ยังเป็น system of record เสมอ ส่วน AI เป็น service ที่ทำได้สามอย่าง: อ่านเพื่อประกอบ context, เสนอเป็น draft, และเขียนกลับผ่าน API เดิมที่มี validation และ permission เดิม โดยต้องบันทึก actor ว่าเป็น AI และ flow ต้องทำงานต่อได้แม้ AI ดับ",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อมูลยอดคงเหลือของลูกค้าที่เปลี่ยนตลอดเวลา ควรต่อด้วยรูปแบบไหน และเพราะอะไร?",
+      "expected_answer": "API/tool call ตอน runtime เพราะ index ที่มาจาก sync จะ stale ตามรอบ sync ซึ่งยอมรับไม่ได้กับตัวเลขที่ลูกค้าเอาไปตัดสินใจ",
+      "type": "mcq",
+      "options": [
+        "sync/ETL เข้ามาเป็น retrieval index เพราะการอ่านจาก index ของเราเองเร็วกว่าและไม่สร้างโหลดให้ระบบปลายทางในชั่วโมงเร่งด่วน",
+        "API/tool call ตอน runtime เพราะ index ที่มาจาก sync จะ stale ตามรอบ sync ซึ่งยอมรับไม่ได้กับตัวเลขที่ลูกค้าเอาไปตัดสินใจ",
+        "event/webhook เพราะระบบปลายทางจะยิงค่าล่าสุดมาให้เองทุกครั้งที่ตัวเลขเปลี่ยน"
+      ]
+    },
+    {
+      "q": "ทำไมการให้ AI ใช้ service account ที่เห็นข้อมูลทุกลูกค้าถึงเป็นปัญหา แม้จะเขียนใน prompt ห้ามเล่าข้ามลูกค้าแล้ว?",
+      "expected_answer": "เพราะ prompt ไม่ใช่ security control ข้อมูลที่เข้ามาใน context แล้วมีโอกาสหลุด และ audit log บอกไม่ได้ว่าอ่านแทนใคร",
+      "type": "mcq",
+      "options": [
+        "เพราะ service account ทำให้จำนวน token ต่อ request สูงขึ้นจนคุมต้นทุนไม่ได้",
+        "เพราะระบบปลายทางจะปฏิเสธ request ที่ไม่มี token ของผู้ใช้จริง ทำให้ tool call ทุกตัวคืน error และ AI ตอบอะไรไม่ได้เลยตั้งแต่ต้น",
+        "เพราะ prompt ไม่ใช่ security control ข้อมูลที่เข้ามาใน context แล้วมีโอกาสหลุด และ audit log บอกไม่ได้ว่าอ่านแทนใคร"
+      ]
+    },
+    {
+      "q": "ลำดับ rollout ที่บทนี้แนะนำสำหรับการเปิดใช้ AI ในงาน support คืออะไร?",
+      "expected_answer": "shadow mode ที่ผลไม่โชว์ ตามด้วย suggest ให้ agent ยืนยัน แล้วค่อย auto เฉพาะขอบเขตแคบที่ eval ผ่าน",
+      "type": "mcq",
+      "options": [
+        "shadow mode ที่ผลไม่โชว์ ตามด้วย suggest ให้ agent ยืนยัน แล้วค่อย auto เฉพาะขอบเขตแคบที่ eval ผ่าน",
+        "เปิด auto กับทุกงานพร้อมกันตั้งแต่แรกเพื่อเก็บข้อมูลจริงให้เร็วที่สุด แล้วค่อยถอยกลับมาเป็น suggest เฉพาะงานที่ metric ออกมาแย่",
+        "เริ่มที่ suggest แล้วข้ามไป auto ทั้งระบบทันทีเมื่อ agent ยอมรับ draft เกินครึ่ง"
+      ]
+    },
+    {
+      "q": "ทำไม knowledge base ถึงเป็นคอขวดของคุณภาพ และ KB ops ต้องมีอะไรบ้าง?",
+      "expected_answer": "เพราะ retrieval ดึงได้แค่สิ่งที่มีอยู่ ถ้าเอกสารผิด ล้าสมัย หรือขัดกันเอง AI จะตอบผิดอย่างมั่นใจพร้อม citation ซึ่งแก้ที่ pipeline ไม่ได้ KB ops ต้องมี owner ที่เป็นคนต่อเอกสาร, review date, การลบของซ้ำแทนการเพิ่มฉบับใหม่ทับ, และ feedback loop ที่เอาเหตุผลตอน agent แก้หรือปฏิเสธ draft ไป route เข้าคิวแก้เอกสารและเพิ่มเข้า golden set",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Enterprise Integration Patterns — Integration Styles",
+      "source": "Gregor Hohpe, Bobby Woolf, 'Enterprise Integration Patterns' (Addison-Wesley, 2003), หัวข้อ Integration Styles",
+      "why": "อ่านการเปรียบเทียบคลาสสิกระหว่างการต่อระบบด้วย remote call, shared data และ messaging ซึ่งเป็นรากของสามรูปแบบในบทนี้"
+    },
+    {
+      "title": "AI Engineering — AI Engineering Architecture and User Feedback",
+      "source": "Chip Huyen, 'AI Engineering' (O'Reilly, 2025), บท AI Engineering Architecture and User Feedback",
+      "why": "อ่านว่า retrieval, tool call, guardrail และ feedback loop ประกอบกันเป็น architecture เดียวได้อย่างไร"
+    },
+    {
+      "title": "OWASP Top 10 for Large Language Model Applications",
+      "source": "OWASP GenAI Security Project (genai.owasp.org), รายการ Prompt Injection และ Excessive Agency",
+      "why": "อ่านว่าทำไมข้อมูลจากระบบปลายทางถือเป็น untrusted input และทำไมการให้สิทธิ์ AI กว้างเกินจึงเป็นความเสี่ยงในตัวมันเอง"
+    },
+    {
+      "title": "Artificial Intelligence Risk Management Framework (AI RMF 1.0)",
+      "source": "NIST AI 100-1, National Institute of Standards and Technology, 2023",
+      "why": "อ่านโครง Govern/Map/Measure/Manage เพื่อเอาไปวางเป็นเหตุผลของ shadow mode, kill switch และการวัดผลก่อนขยาย scope"
+    }
+  ]
+}
