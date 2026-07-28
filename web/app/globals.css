@@ -23,6 +23,7 @@
   --color-success: #059669; /* emerald-600 */
   --color-warning: #d97706; /* amber-600 */
   --color-danger: #e11d48; /* rose-600 */
+  --color-danger-strong: #be123c; /* rose-700 — text on bg-danger/10 over cream, ~5:1, AA */
 
   --font-sans: var(--font-inter);
   --font-thai: var(--font-thai);

@@ -2,16 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { Chapter, Topic, Track } from "@/lib/api";
+import type { Chapter, Topic } from "@/lib/api";
 import { ChevronIcon } from "@/components/icons";
-
-const TRACK_LABELS: Record<string, string> = {
-  ddd: "Domain-Driven Design",
-  distsys: "Distributed Systems",
-  aws: "AWS (SAA-C03)",
-  go: "Go",
-  dsa: "DSA",
-};
 
 function ChapterRow({ topicSlug, chapter }: { topicSlug: string; chapter: Chapter }) {
   const [open, setOpen] = useState(false);
@@ -54,33 +46,36 @@ function ChapterRow({ topicSlug, chapter }: { topicSlug: string; chapter: Chapte
   );
 }
 
-function TopicSection({ topic }: { topic: Topic }) {
+function ChapterList({ topicSlug, chapters }: { topicSlug: string; chapters: Chapter[] }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-heading">{topic.title}</h3>
-      <div className="space-y-2">
-        {topic.chapters.map((chapter) => (
-          <ChapterRow key={chapter.slug} topicSlug={topic.slug} chapter={chapter} />
-        ))}
-      </div>
+      {chapters.map((chapter) => (
+        <ChapterRow key={chapter.slug} topicSlug={topicSlug} chapter={chapter} />
+      ))}
     </div>
   );
 }
 
-export function CurriculumTree({ tracks }: { tracks: Track[] }) {
+function TopicSection({ topic }: { topic: Topic }) {
   return (
-    <div className="space-y-10">
-      {tracks.map((track) => (
-        <section key={track.track} className="space-y-4">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-faint">
-            {TRACK_LABELS[track.track] ?? track.track}
-          </h2>
-          <div className="space-y-6 pl-1">
-            {track.topics.map((topic) => (
-              <TopicSection key={topic.slug} topic={topic} />
-            ))}
-          </div>
-        </section>
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-heading">{topic.title}</h3>
+      <ChapterList topicSlug={topic.slug} chapters={topic.chapters} />
+    </div>
+  );
+}
+
+// A single-topic track's topic title duplicates the page's own heading (the
+// curriculum currently models most tracks as one topic per book/subject), so
+// that layer is skipped and its chapters render directly.
+export function TrackTopics({ topics }: { topics: Topic[] }) {
+  if (topics.length === 1) {
+    return <ChapterList topicSlug={topics[0].slug} chapters={topics[0].chapters} />;
+  }
+  return (
+    <div className="space-y-6">
+      {topics.map((topic) => (
+        <TopicSection key={topic.slug} topic={topic} />
       ))}
     </div>
   );

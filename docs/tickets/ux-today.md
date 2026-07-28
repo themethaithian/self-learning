@@ -31,9 +31,55 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
   - ทำไม clear focus ต้องลบแถวแทนที่จะเก็บ `value = NULL`?
 - Status: `in review` (ดูสรุปรอบ 2/3 fix ใน PR)
 
-## UX-2 — `/today` page (ยังไม่เริ่ม)
+## UX-2 — Learn page: track cards + focus picker `[go-implementer]`
+
+- **Scope**: หน้า `/learn` ใหม่แทน `/read` — 7 `TrackCard` (ชื่อเต็มจาก `trackMeta.ts`,
+  จำนวน lesson ready/chapter/concept, focus chip/ปุ่ม `Set focus`), track ที่ยังไม่มี
+  lesson เลยไปอยู่ section "Coming soon" (ไม่ใช่ card, กดไม่ได้), focus picker ผูกกับ
+  `GET|PUT /api/v1/prefs/focus-track` (จาก UX-1b) แบบ optimistic update + revert เมื่อ
+  PUT fail, `/read` และ root/`/token` redirect ไป `/learn` (client-side redirect —
+  static export ไม่มี server redirect ให้ใช้)
+- **บทเรียนสำหรับ ticket ถัดไป**:
+  - progress bar ที่ตัวเศษ = ตัวส่วนเสมอ (บาร์เต็ม 100% ทุกใบ) แย่กว่าไม่มีบาร์เลย เพราะสื่อว่า
+    "เรียนจบแล้ว" ทั้งที่ยังไม่มี progress tracking จริง (v1 เลยไม่ render bar เลย โชว์
+    ตัวเลขตรง ๆ แทน จนกว่า progress API มา)
+  - วนจาก allowlist ที่ hardcode (เช่น track display order) ไปหา data ทำให้ track/ข้อมูล
+    ที่ backend ส่งมาแต่ยังไม่อยู่ใน list **หายไปเงียบ ๆ ไม่มี error** — ต้องวนจาก data จริง
+    เสมอ แล้วใช้ list เป็นแค่ sort key เท่านั้น
+- **Review focus**:
+  - ทำไม focus toggle บน `TrackCard` ต้องใช้ `aria-disabled` แทน `disabled` attribute ตรง ๆ?
+  - ทำไม `ProgressBar.tsx` ถึงยังเก็บไว้ในโค้ดทั้งที่ไม่มีหน้าไหนเรียกใช้ตอนนี้?
+- Status: `implemented, PR pending`
+
+## UX-3 — Track view: chapter accordion + availability
+
+- หน้า track detail (`/learn?track=`) ยังมี gap: concept ที่ `has_lesson=false` ยังเป็นลิงก์อยู่
+  (กดแล้วเจอ "no lesson yet" ที่ `/lesson`) และ `ChapterRow` โชว์จำนวน concept รวมของ chapter
+  แทนจำนวนที่มี lesson จริง — ticket นี้ปิด gap (ไม่ทำเป็น link ถ้าไม่มี lesson + โชว์ n/N ที่ระดับ chapter)
+- Status: `ยังไม่เริ่ม`
+
+## UX-4 — API: learning progress (read + write)
+
+- Endpoint `GET /api/v1/progress` (ดึง history ของ concept ที่ผู้ใช้เคยอ่านเพื่อรู้ "อ่านตัวนี้แล้วหรือยัง"),
+  `POST /api/v1/progress` (save recall grade ตัวต่อตัวหลังจากปล่อย answer)
+- Status: `ยังไม่เริ่ม`
+
+## UX-5 — Reader loop: breadcrumb + finish + next
+
+- Implement reader flow: breadcrumb (back to chapter), finish + next button (ปะปนกับ progress save),
+  next-up link/pill ชี้ concept ถัดไป
+- Status: `ยังไม่เริ่ม`
+
+## UX-6 — Today page + IA switch
 
 - ไล่ priority: focus track (จาก UX-1b) → concept ถัดไปที่ยังไม่ passed ตาม
   position → fallback track อื่นถ้า focus track เคลียร์หมดแล้ว
+- IA switch: ปุ่มสลับ focus track + visibility ของ track อื่น ๆ เพื่อ "เช็คสิ่งที่ยังค้างตามหลัง"
 - รอ UX-1b merge ก่อนเริ่ม
-- Status: `todo`
+- Status: `ยังไม่เริ่ม`
+
+## UX-7 — Progress page + chapter/track indicators
+
+- Progress indicator ที่เห็นคร่าว ๆ: ของ chapter (แต่ละบทเรียนเป็นไหนแล้ว) + ของ track (overview),
+  โชว์บน layout ทั่วแอป (progress bar, % เลยน้อย ๆ ที่หน้า reader หรือ learn)
+- Status: `ยังไม่เริ่ม`
