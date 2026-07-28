@@ -12,7 +12,7 @@ export default function TokenPage() {
 
   useEffect(() => {
     if (getToken()) {
-      router.replace("/read");
+      router.replace("/learn");
     }
   }, [router]);
 
@@ -21,7 +21,7 @@ export default function TokenPage() {
     const trimmed = value.trim();
     if (!trimmed) return;
     setToken(trimmed);
-    router.push("/read");
+    router.push("/learn");
   }
 
   return (

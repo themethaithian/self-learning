@@ -20,10 +20,10 @@ type ViewState =
 function BackLink() {
   return (
     <Link
-      href="/read"
+      href="/learn"
       className="inline-flex items-center gap-1 rounded-lg text-sm font-medium text-muted transition-colors duration-150 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
     >
-      ← Back to curriculum tree
+      ← Back to Learn
     </Link>
   );
 }
@@ -94,8 +94,8 @@ function LessonView() {
           icon={<BookIcon />}
           message="No lesson yet for this concept. Most of the curriculum doesn't have a lesson written yet — check back later."
           action={
-            <Button variant="ghost" onClick={() => router.push("/read")}>
-              Back to curriculum tree
+            <Button variant="ghost" onClick={() => router.push("/learn")}>
+              Back to Learn
             </Button>
           }
         />
