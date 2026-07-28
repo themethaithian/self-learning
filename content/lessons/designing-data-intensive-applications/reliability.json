@@ -26,7 +26,7 @@
       "expected_answer": "tolerate fault ด้วย redundancy/การออกแบบ ไม่ให้ fault กลายเป็น failure",
       "type": "mcq",
       "options": [
-        "พยายาม prevent ทุก fault ให้เกิด 0 ครั้ง",
+        "พยายามป้องกันไม่ให้ fault ทุกชนิดเกิดขึ้นเลยแม้แต่ครั้งเดียวในระบบทั้งหมดตั้งแต่ต้น",
         "restart ทั้งระบบทุกครั้งที่เจอ fault",
         "tolerate fault ด้วย redundancy/การออกแบบ ไม่ให้ fault กลายเป็น failure"
       ]
@@ -41,7 +41,7 @@
       "expected_answer": "ต้องแลกด้วย redundancy และ complexity ที่เพิ่มขึ้น จึงไม่ควรลงทุนระดับเท่ากันทุก path",
       "type": "mcq",
       "options": [
-        "ทำให้โค้ดเขียนง่ายขึ้นและลด latency ของทุก request เสมอ",
+        "ทำให้โค้ดเขียนง่ายขึ้นมากและลด latency ของทุก request ลงได้เสมอโดยไม่มีข้อแลกเปลี่ยนใด ๆ ทั้งสิ้น",
         "ต้องแลกด้วย redundancy และ complexity ที่เพิ่มขึ้น จึงไม่ควรลงทุนระดับเท่ากันทุก path",
         "ทำให้ software bug ที่ correlated หายไปด้วย redundancy"
       ]

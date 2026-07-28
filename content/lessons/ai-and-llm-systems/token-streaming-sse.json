@@ -37,7 +37,7 @@
       "type": "mcq",
       "options": [
         "streaming ป้องกัน error ทุกชนิดไม่ให้เกิดขึ้น",
-        "connection ค้างเปิดถาวรทุกครั้งที่เกิด error",
+        "connection ค้างเปิดถาวรเมื่อเกิด error",
         "error อาจมาถึงหลังส่ง partial output ไปแล้ว"
       ]
     },

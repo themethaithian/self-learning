@@ -28,7 +28,7 @@
       "options": [
         "human overload จนกด approve แบบ rubber-stamp",
         "cost การเรียก LLM เพิ่มขึ้นแบบทวีคูณตามจำนวน gate",
-        "โมเดลจะ hallucinate บ่อยขึ้นเมื่อรอ human นาน"
+        "โมเดลจะ hallucinate บ่อยขึ้นเมื่อรอนาน"
       ]
     },
     {

@@ -18,7 +18,7 @@
       "options": [
         "การกระจาย (distribution) ของจำนวน follower ต่อ user โดยเฉพาะ celebrity ที่มี follower มหาศาล",
         "จำนวน tweet ทั้งหมดที่เคยถูกโพสต์ในระบบ",
-        "ความยาวเฉลี่ยของตัวอักษรใน tweet แต่ละอัน"
+        "ความยาวเฉลี่ยของตัวอักษรใน tweet แต่ละอันที่ user แต่ละคนโพสต์เข้ามาในระบบทั้งหมดต่อวันโดยเฉลี่ยรวมทุก timezone"
       ]
     },
     {
@@ -26,7 +26,7 @@
       "expected_answer": "fan-out-on-write precompute timeline ตอนเขียนจึงอ่านถูก ส่วน fan-out-on-read ประกอบ timeline ตอนอ่านจึงเขียนถูกแต่อ่านแพง",
       "type": "mcq",
       "options": [
-        "fan-out-on-write ทำงานหนักตอนอ่าน ส่วน fan-out-on-read ทำงานหนักตอนเขียน",
+        "fan-out-on-write ทำงานหนักตอนอ่านเพราะต้อง query และ merge สดทุกครั้งที่เปิดแอป ส่วน fan-out-on-read ทำงานหนักตอนเขียนเพราะต้อง precompute cache ล่วงหน้า",
         "fan-out-on-write precompute timeline ตอนเขียนจึงอ่านถูก ส่วน fan-out-on-read ประกอบ timeline ตอนอ่านจึงเขียนถูกแต่อ่านแพง",
         "ทั้งสองแบบทำงานเท่ากันทุกจุด ต่างแค่ชื่อเรียก"
       ]
@@ -41,7 +41,7 @@
       "expected_answer": "ขึ้นกับ load parameter จริง (read:write ratio, follower distribution) และระบบจริงมักใช้ hybrid — คนทั่วไป fan-out-on-write, celebrity fan-out-on-read",
       "type": "mcq",
       "options": [
-        "fan-out-on-write ดีกว่าเสมอเพราะอ่านเร็ว",
+        "fan-out-on-write ดีกว่าเสมอในทุกสถานการณ์อย่างไม่มีข้อยกเว้นเพราะทำให้อ่านเร็วกว่ามากโดยไม่มีข้อเสียด้านการเขียนหรือ storage ที่เพิ่มขึ้นเลยแม้แต่น้อยนิด",
         "fan-out-on-read ดีกว่าเสมอเพราะเขียนถูก",
         "ขึ้นกับ load parameter จริง (read:write ratio, follower distribution) และระบบจริงมักใช้ hybrid — คนทั่วไป fan-out-on-write, celebrity fan-out-on-read"
       ]

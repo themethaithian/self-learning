@@ -16,7 +16,7 @@
       "expected_answer": "relational model เพราะ join ข้ามตารางผ่าน foreign key ทำได้ในตัว database (เก็บของที่แชร์ไว้ที่เดียว)",
       "type": "mcq",
       "options": [
-        "document model เพราะ nested JSON รองรับการอ้างอิงหลายทางได้ในตัว",
+        "document model เพราะ nested JSON array รองรับการอ้างอิงข้ามเอกสารได้หลายทางในตัวโดยไม่ต้องพึ่งพา foreign key หรือ join เลย",
         "relational model เพราะ join ข้ามตารางผ่าน foreign key ทำได้ในตัว database (เก็บของที่แชร์ไว้ที่เดียว)",
         "ทั้งสองเท่ากัน เพราะ many-to-many ไม่เกี่ยวกับ data model"
       ]
@@ -26,7 +26,7 @@
       "expected_answer": "ข้อมูลที่เกี่ยวข้องกันถูกเก็บรวมในเอกสารเดียว จึงอ่านได้ครบในการอ่านครั้งเดียว",
       "type": "mcq",
       "options": [
-        "ข้อมูลถูกกระจายไปหลาย partition โดยอัตโนมัติเพื่อความเร็ว",
+        "ข้อมูลถูกกระจายไปเก็บในหลาย partition หรือหลาย node โดยอัตโนมัติเพื่อเพิ่มความเร็วในการอ่านและเขียนพร้อมกัน",
         "database เก็บ index แยกไฟล์ออกจาก data file",
         "ข้อมูลที่เกี่ยวข้องกันถูกเก็บรวมในเอกสารเดียว จึงอ่านได้ครบในการอ่านครั้งเดียว"
       ]
@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "join ทำได้เฉพาะใน relational database เท่านั้น เป็นไปไม่ได้เลยในฝั่ง document",
-        "document model เหมาะกับ one-to-many tree ที่อ่านพร้อมกันเพราะ locality",
+        "document model เหมาะกับความสัมพันธ์แบบ one-to-many tree-structured ที่มักถูกอ่านพร้อมกันทั้งก้อนเพราะได้ประโยชน์จาก locality",
         "relational จัดการ many-to-many ได้ดีกว่าด้วย join ผ่าน foreign key"
       ]
     }

@@ -28,7 +28,7 @@
       "options": [
         "ตัดสินใจ transition ระหว่าง state แทน machine",
         "จัดการภาษาที่ยืดหยุ่นภายใน state ปัจจุบัน",
-        "เก็บ state และ slot ของ session ลง database"
+        "เก็บ state และ slot ลง database"
       ]
     },
     {
@@ -41,7 +41,7 @@
       "expected_answer": "single-turn FAQ ที่ตอบจบในคำถามเดียว",
       "type": "mcq",
       "options": [
-        "auth flow ที่ต้อง verify ก่อนเข้าถึงบัญชี",
+        "auth flow ที่ต้อง verify ก่อน",
         "payment flow ที่มี guardrail หลายขั้นตอน",
         "single-turn FAQ ที่ตอบจบในคำถามเดียว"
       ]

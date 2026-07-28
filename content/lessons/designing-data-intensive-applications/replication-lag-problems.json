@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "read-your-writes; อ่านข้อมูลที่ user แก้ไขเอง (เช่น balance ตัวเอง) จาก leader จนกว่า replica จะ catch up",
-        "consistent prefix reads; บังคับให้ทุก write อยู่ partition เดียวกัน",
+        "consistent prefix reads; แก้ด้วยการบังคับให้ writes ที่มีความสัมพันธ์เชิงเหตุไปอยู่ partition เดียวกัน เพื่อให้ reader เห็นตามลำดับที่เกิดขึ้นจริง",
         "monotonic reads; ให้ user อ่านจาก replica คนละตัวทุกครั้ง"
       ]
     },
@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "อ่านซ้ำแล้วจะไม่เห็นข้อมูลย้อนเวลาถอยหลัง (สิ่งที่เคยเห็นแล้วจะไม่หายไป)",
-        "user เห็น write ล่าสุดของทุกคนเสมอ (strong consistency)",
+        "user เห็น write ล่าสุดของทุกคนในระบบเสมอทันทีโดยไม่มี lag เลย เทียบเท่า strong consistency",
         "writes ที่มีความสัมพันธ์เชิงเหตุจะถูกอ่านตามลำดับที่ถูกต้อง"
       ]
     },
@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "reader เห็น writes ผิดลำดับ causal (เห็นคำตอบก่อนคำถาม); มักโผล่ในระบบ partitioned/sharded ที่แต่ละ partition replicate อิสระด้วย lag ต่างกัน",
-        "user เห็น write ของตัวเองช้าไป; มักโผล่เมื่อ replica เดียวตาย",
+        "user เห็น write ของตัวเองที่เพิ่งทำไปช้ากว่าปกติ; ปัญหานี้เกิดจาก replication lag ทั่วไปเวลา read ไปตกที่ replica ที่ยังตามไม่ทัน ไม่เกี่ยวกับลำดับเชิงเหตุของ writes",
         "read มี latency สูง; มักโผล่เมื่อ leader โหลดหนัก"
       ]
     }

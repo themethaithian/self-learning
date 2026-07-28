@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "participant จะ abort อัตโนมัติหลัง timeout แล้วปล่อย lock",
-        "participant ตัวหนึ่งจะขึ้นมาเป็น coordinator แทนทันที",
+        "participant ตัวหนึ่งจะขึ้นมาเป็น coordinator แทนทันทีโดยอัตโนมัติ แล้วอ่านข้อมูลจาก log ของตัวเองเพื่อตัดสินใจสั่ง commit หรือ abort ให้กับ participant ตัวอื่นที่เหลือทั้งหมดต่อไปโดยไม่ต้องรอการยืนยันจากใครอีก",
         "participant อยู่ใน in-doubt state: abort เองไม่ได้เพราะโหวต yes ไปแล้ว, commit เองไม่ได้เพราะไม่รู้ผลรวม จึงต้องถือ lock รอจนกว่า coordinator จะฟื้น"
       ]
     },
@@ -28,7 +28,7 @@
       "options": [
         "2PC ต้องการ participant ทุกตัวโหวต yes และ coordinator ที่ยังมีชีวิต ถ้าตัวใดล่มในจังหวะผิดก็ block; consensus ต้องการแค่ majority ก็เดินต่อได้แม้ minority ล่ม",
         "ไม่ต่างกัน ทั้งคู่ต้องการให้ทุก node ตอบตกลงเหมือนกัน",
-        "2PC ทน fault ได้ดีกว่าเพราะไม่มี coordinator เป็นจุดเดียว"
+        "2PC ทน fault ได้ดีกว่าเพราะไม่มี coordinator เป็นจุดเดียว และสามารถเดินหน้าต่อไปได้แม้ participant หลายตัวพร้อมกันจะล่มหายไปพร้อมกันทั้งหมดก็ตามโดยไม่กระทบ atomicity เลยแม้แต่น้อย"
       ]
     },
     {
@@ -41,7 +41,7 @@
       "expected_answer": "saga (local transaction + compensating action) หรือ outbox/idempotency ที่ยอมรับ eventual consistency ได้ ไม่ block ทั้งระบบเมื่อ node เดียวล่ม",
       "type": "mcq",
       "options": [
-        "บังคับใช้ 2PC เสมอเพราะเป็น protocol เดียวที่ให้ atomicity",
+        "บังคับใช้ 2PC เสมอเพราะเป็น protocol เดียวที่ให้ atomicity แบบ all-or-nothing ข้าม node ได้จริงเท่านั้น โดยไม่มีทางเลือกอื่นใดในอุตสาหกรรมที่ทำแบบเดียวกันนี้ได้เลยแม้แต่ตัวเดียว",
         "saga (local transaction + compensating action) หรือ outbox/idempotency ที่ยอมรับ eventual consistency ได้ ไม่ block ทั้งระบบเมื่อ node เดียวล่ม",
         "เพิ่ม coordinator หลายตัวให้แต่ละตัวตัดสินใจเองอิสระ"
       ]

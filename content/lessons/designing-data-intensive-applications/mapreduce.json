@@ -13,7 +13,7 @@
       "options": [
         "จัดกลุ่มและเรียง value ทั้งหมดตาม key (shuffle & sort)",
         "รวมทุก value ให้เหลือค่าเดียวต่อไฟล์ทันที",
-        "replicate input block ไปให้ครบทุกเครื่องใน cluster"
+        "replicate input block ไปให้ครบทุกเครื่องใน cluster ก่อนที่ map task ใดจะเริ่มประมวลผลได้เลย"
       ]
     },
     {
@@ -26,9 +26,9 @@
       "expected_answer": "มัน materialize output ของทุก job ลง distributed FS ก่อน job ถัดไปจะเริ่ม",
       "type": "mcq",
       "options": [
-        "map function ทำงานทีละ record จึงต้องรอ record ก่อนหน้าเสร็จก่อนเริ่มตัวถัดไปเสมอ",
+        "map function ประมวลผลทีละ record เรียงตามลำดับ จึงต้องรอ record ก่อนหน้าทำเสร็จสมบูรณ์ก่อนเริ่มตัวถัดไปได้ทุกครั้ง",
         "มัน materialize output ของทุก job ลง distributed FS ก่อน job ถัดไปจะเริ่ม",
-        "reduce ต้องโหลดข้อมูลทั้งหมดของทุก key มาไว้ในหน่วยความจำเครื่องเดียวก่อนเริ่มคำนวณ"
+        "reduce โหลดข้อมูลทั้งหมดในหน่วยความจำเครื่องเดียว"
       ]
     },
     {

@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "ทำให้ระบบตอบไม่ตรงกันในแต่ละครั้งจนผู้ใช้สับสนหนักขึ้น",
-        "ทำให้ schema validation ของ output พังบ่อยขึ้นกว่าเดิม",
+        "ทำให้ schema validation ของ output พังบ่อยขึ้น",
         "ต้อง sample หลายครั้ง จึงจ่าย token และ latency เพิ่ม"
       ]
     }

@@ -23,7 +23,7 @@
       "options": [
         "reject ทั้ง record ทิ้งไป",
         "ignore หรือข้าม field ที่ไม่รู้จัก แล้วอ่านส่วนที่เหลือต่อได้",
-        "แปลง field นั้นเป็น null แล้ว throw error"
+        "แปลง field ที่ไม่รู้จักนั้นให้เป็นค่า null แล้วยังคงพยายามอ่านต่อโดยไม่แจ้งเตือนใด ๆ"
       ]
     },
     {
@@ -31,7 +31,7 @@
       "expected_answer": "ตั้งเป็น optional หรือมี default และใช้ tag number ใหม่ที่ไม่เคยใช้",
       "type": "mcq",
       "options": [
-        "ตั้งเป็น required แล้ว reuse tag number เดิมที่ว่างอยู่",
+        "ตั้ง field ใหม่เป็น required เพื่อบังคับให้ทุก client ต้องส่งค่ามาด้วย แล้ว reuse tag number เดิมที่เคยว่างจาก field ที่ลบไปก่อนหน้านี้",
         "เปลี่ยน tag number ของ field ที่มีอยู่แล้วให้เรียงใหม่",
         "ตั้งเป็น optional หรือมี default และใช้ tag number ใหม่ที่ไม่เคยใช้"
       ]

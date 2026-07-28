@@ -16,7 +16,7 @@
       "expected_answer": "สลับลำดับ A-B แล้วรวมผลทั้งสองรอบ",
       "type": "mcq",
       "options": [
-        "เพิ่ม temperature ของ judge ให้ผลหลากหลายขึ้น",
+        "เพิ่ม temperature ของ judge",
         "สลับลำดับ A-B แล้วรวมผลทั้งสองรอบ",
         "ใช้ judge ตัวเดียวกับโมเดลที่ generate คำตอบ"
       ]
@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "ขยาย golden set ให้ถึงหลักพันเคสก่อนเริ่มใช้งานจริง",
-        "เปลี่ยนไปใช้ judge model รุ่นใหม่ที่สุดที่หาได้เสมอ",
+        "เปลี่ยนไปใช้ judge model รุ่นใหม่ที่สุด",
         "วัด agreement กับ human rating บน sample"
       ]
     },
@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "งาน extraction ที่ตรวจด้วย assertion ได้",
-        "การเทียบ system prompt สองเวอร์ชันบน golden set",
+        "การเทียบ system prompt สองเวอร์ชัน",
         "การให้คะแนนน้ำเสียงของคำตอบ support assistant"
       ]
     }

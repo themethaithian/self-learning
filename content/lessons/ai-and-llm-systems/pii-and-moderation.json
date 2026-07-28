@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "ทั้ง input และ output",
-        "เฉพาะ output ที่โมเดลสร้าง",
+        "เฉพาะ output",
         "เฉพาะ input ที่ผู้ใช้ส่งมา"
       ]
     },

@@ -16,7 +16,7 @@
       "expected_answer": "เติม event แต่ละตัวด้วยข้อมูลจาก table",
       "type": "mcq",
       "options": [
-        "buffer event สองฝั่งแล้ว join ในหน้าต่างเวลา",
+        "buffer สองฝั่งแล้ว join ตามเวลา",
         "เติม event แต่ละตัวด้วยข้อมูลจาก table",
         "รวม changelog สองฝั่งเป็น materialized view"
       ]

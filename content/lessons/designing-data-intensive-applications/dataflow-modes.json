@@ -12,7 +12,7 @@
       "type": "mcq",
       "options": [
         "เพราะ data outlives code และระหว่าง rolling upgrade โค้ดเก่ากับโค้ดใหม่อ่าน/เขียน DB ตัวเดียวกันพร้อมกัน",
-        "เพราะ database เก็บข้อมูลเป็น binary จึงต้อง encode สองรอบเสมอ",
+        "เพราะ database เก็บข้อมูลเป็น binary เสมอไม่ว่า encoding format ไหน จึงต้อง encode สองรอบทุกครั้งก่อนเขียนลง disk จริง",
         "เพราะทุก query ต้องผ่าน ORM ที่ตรวจ schema สองด้าน"
       ]
     },
@@ -26,7 +26,7 @@
       "expected_answer": "RPC มี partial failure และ latency ไม่แน่นอน จึงต้อง idempotency สำหรับ retry",
       "type": "mcq",
       "options": [
-        "RPC ช้ากว่าเพราะต้อง serialize เป็น JSON เสมอ",
+        "RPC ช้ากว่า local call เสมอเพราะต้อง serialize payload เป็น JSON ก่อนส่งทุกครั้งไม่ว่ากรณีใด",
         "RPC มี partial failure และ latency ไม่แน่นอน จึงต้อง idempotency สำหรับ retry",
         "RPC เรียกได้แค่ function ที่ return void"
       ]
@@ -36,7 +36,7 @@
       "expected_answer": "decouple sender/receiver พร้อม buffering, redelivery และ one-to-many",
       "type": "mcq",
       "options": [
-        "รับประกัน exactly-once delivery โดยไม่ต้องทำอะไรเพิ่ม",
+        "รับประกัน exactly-once delivery ให้อัตโนมัติโดยไม่ต้องทำอะไรเพิ่มเลยแม้แต่น้อย",
         "ได้ response กลับมาเร็วกว่า RPC เสมอ",
         "decouple sender/receiver พร้อม buffering, redelivery และ one-to-many"
       ]

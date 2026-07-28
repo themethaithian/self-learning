@@ -16,7 +16,7 @@
       "expected_answer": "ลด perceived latency แต่ total เท่าเดิม",
       "type": "mcq",
       "options": [
-        "ลด total response time โดยตรงทุก request",
+        "ลด total response time ทุก request",
         "ลด perceived latency แต่ total เท่าเดิม",
         "ลดทั้ง perceived และ total time พร้อมกันเสมอ"
       ]
@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "เมื่อ prefix ของ prompt ซ้ำกัน",
-        "เมื่อ output ที่ generate สั้นมาก",
+        "เมื่อ output สั้นมาก",
         "เมื่อทุก request มี prompt ต่างกัน"
       ]
     },
@@ -41,7 +41,7 @@
       "expected_answer": "คุณภาพคำตอบอาจตกในงานที่ยาก",
       "type": "mcq",
       "options": [
-        "TTFT จะสูงขึ้นกว่าโมเดลใหญ่",
+        "TTFT จะสูงขึ้น",
         "prompt caching จะใช้ไม่ได้อีกต่อไป",
         "คุณภาพคำตอบอาจตกในงานที่ยาก"
       ]

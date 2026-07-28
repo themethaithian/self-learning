@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "ไม่ต้อง migration — เขียน document ที่มี field ใหม่ได้เลย ส่วน document เก่ายังอยู่รูปเดิม",
-        "ต้อง ALTER TABLE แล้ว backfill ทั้งตารางก่อน",
+        "ต้อง ALTER TABLE เพิ่ม column ใหม่ แล้วรัน backfill ให้ครบทุกแถวในตารางทั้งหมดก่อนโค้ดใหม่จะเขียนได้",
         "ต้อง drop collection แล้วสร้างใหม่"
       ]
     },
@@ -41,7 +41,7 @@
       "expected_answer": "เมื่อข้อมูล homogeneous มีหลาย reader และต้องการ data integrity สูง — ยอมจ่ายค่า migration เพื่อจับ error ตั้งแต่ write",
       "type": "mcq",
       "options": [
-        "เมื่อ structure เปลี่ยนบ่อยและ item heterogeneous",
+        "เมื่อ structure ของข้อมูลเปลี่ยนแปลงบ่อยมากในทุกสัปดาห์และแต่ละ item มีรูปร่างที่ heterogeneous แตกต่างกันไปตามแหล่งที่มาอย่างมาก",
         "เมื่อข้อมูล homogeneous มีหลาย reader และต้องการ data integrity สูง — ยอมจ่ายค่า migration เพื่อจับ error ตั้งแต่ write",
         "เมื่ออยากหลีกเลี่ยง migration ในทุกกรณี"
       ]

@@ -26,7 +26,7 @@
       "expected_answer": "repo ได้ review และ CI มาให้ฟรีแต่แก้ต้อง deploy ส่วน config store แก้ได้เร็วแต่ต้องสร้าง review, audit และ rollback เอง",
       "type": "mcq",
       "options": [
-        "การเก็บไว้ใน config store ปลอดภัยกว่าเสมอ เพราะการที่ prompt อยู่ในฐานข้อมูลทำให้ระบบมี rollback ให้โดยอัตโนมัติอยู่แล้วโดยไม่ต้องออกแบบอะไรเพิ่ม",
+        "การเก็บไว้ใน config store ปลอดภัยกว่าเสมอ เพราะมี rollback ให้โดยอัตโนมัติ",
         "repo ได้ review และ CI มาให้ฟรีแต่แก้ต้อง deploy ส่วน config store แก้ได้เร็วแต่ต้องสร้าง review, audit และ rollback เอง",
         "repo เหมาะกับ prompt ที่ยาวเท่านั้น ส่วน config store เหมาะกับ prompt สั้นที่มีตัวแปรแทรกจำนวนมาก เพราะข้อจำกัดเรื่องขนาดไฟล์ของระบบ version control"
       ]
@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "prompt เวอร์ชันเก่าที่ถูก rollback กลับมาจะใช้ไม่ได้อีก เพราะการ deploy เวอร์ชันใหม่ทุกครั้งทำให้ template เดิมหมดอายุไปโดยอัตโนมัติ",
-        "การ rollback prompt ต้องรอ golden set รันจบทั้งชุดก่อนเสมอ จึงกู้สถานการณ์ได้ช้ากว่าการ rollback โค้ดอย่างมีนัยสำคัญ",
+        "การ rollback prompt ต้องรอ golden set รันจบก่อนเสมอ",
         "ผลที่เกิดไปแล้ว เช่น ticket ที่ถูกจัดหมวดผิด ไม่ย้อนกลับตาม prompt"
       ]
     }

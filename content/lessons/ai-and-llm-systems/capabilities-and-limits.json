@@ -28,7 +28,7 @@
       "options": [
         "เพราะ context window เล็กเกินไปมาก",
         "เพราะมันมี knowledge cutoff",
-        "เพราะตั้ง temperature ต่ำเกินไป"
+        "เพราะตั้ง temperature ต่ำ"
       ]
     },
     {

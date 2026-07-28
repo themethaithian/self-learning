@@ -26,7 +26,7 @@
       "expected_answer": "เพราะ chat API เป็น stateless",
       "type": "mcq",
       "options": [
-        "เพราะโมเดลจำได้แต่ต้องยืนยันซ้ำเสมอ",
+        "เพราะโมเดลจำได้แต่ยืนยันซ้ำ",
         "เพื่อบังคับ output เป็น JSON เสมอ",
         "เพราะ chat API เป็น stateless"
       ]

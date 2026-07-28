@@ -17,8 +17,8 @@
       "type": "mcq",
       "options": [
         "data-driven / transaction script ที่ concept ของ domain หายไป",
-        "model-driven design เพราะมี business logic ครบแล้ว",
-        "aggregate root ที่ออกแบบถูกต้องตามหลัก DDD"
+        "model-driven design เพราะโค้ดสั้นและตรงไปตรงมา ทำให้ domain expert อ่านแล้วเข้าใจการโอนเงินได้ทันที",
+        "aggregate root ที่ถูกต้อง"
       ]
     },
     {
@@ -27,8 +27,8 @@
       "type": "mcq",
       "options": [
         "model ก็คือ ER diagram หรือ UML class diagram",
-        "model สะท้อนอยู่ในโค้ดที่รันได้จริง",
-        "model ผูกกับ ubiquitous language ที่ทีมใช้"
+        "model คือโค้ดที่รันได้",
+        "model ผูกกับ ubiquitous language ที่ทีมใช้พูดคุยกันระหว่างทำงาน และสะท้อนอยู่ในชื่อ class กับ method ของโค้ดจริงเมื่อทีมตั้งใจดูแลรักษามันไว้"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "options": [
         "เพราะ model กับ code จะ diverge กันเสมอ ทำให้ analysis model ไร้ค่าในฐานะ design และ insight ที่ได้ตอน implement ไม่ถูกป้อนกลับไปที่โมเดล",
         "เพราะ analysis model ละเอียดกว่า design model เสมอ",
-        "เพราะ code ไม่ควรมี business logic เลย ต้องอยู่ใน diagram เท่านั้น"
+        "เพราะ code ไม่ควรมี business logic เพราะ logic ที่ซับซ้อนควรอยู่ใน diagram ที่ทุกคนในทีมอ่านและตรวจสอบร่วมกันได้ง่ายกว่าการไล่อ่านโค้ดจริงทีละบรรทัดทุกครั้งที่มีปัญหา"
       ]
     }
   ],
