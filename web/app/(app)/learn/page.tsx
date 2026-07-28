@@ -10,6 +10,7 @@ import {
   type Track,
 } from "@/lib/api";
 import { TrackTopics } from "@/components/TrackTopics";
+import { countAvailableLessons } from "@/lib/curriculum";
 import { TrackCard, type TrackStats } from "@/components/TrackCard";
 import { TrackCardsSkeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
@@ -30,8 +31,9 @@ function computeStats(track: Track): TrackStats {
   for (const topic of track.topics) {
     chapterCount += topic.chapters.length;
     for (const chapter of topic.chapters) {
-      totalConcepts += chapter.concepts.length;
-      lessonsReady += chapter.concepts.filter((concept) => concept.has_lesson).length;
+      const { available, total } = countAvailableLessons(chapter.concepts);
+      totalConcepts += total;
+      lessonsReady += available;
     }
   }
   return { track: track.track, label: trackLabel(track.track), totalConcepts, lessonsReady, chapterCount };
