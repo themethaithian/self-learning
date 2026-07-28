@@ -81,9 +81,12 @@ func TestCORS(t *testing.T) {
 				t.Errorf(`Vary = %q, want "Origin" (a shared cache must not replay this response cross-origin)`, got)
 			}
 
+			// wantMethods is a literal, not corsAllowedMethods: asserting
+			// against the same constant that produces the header would let a
+			// mutation of that constant pass silently.
 			wantMethods, wantHeaders, wantMaxAge := "", "", ""
 			if tt.wantAllowedCORSHeaders {
-				wantMethods, wantHeaders, wantMaxAge = corsAllowedMethods, corsAllowedHeaders, corsMaxAge
+				wantMethods, wantHeaders, wantMaxAge = "GET, POST, PATCH, PUT, OPTIONS", corsAllowedHeaders, corsMaxAge
 			}
 			if got := rec.Header().Get("Access-Control-Allow-Methods"); got != wantMethods {
 				t.Errorf("Access-Control-Allow-Methods = %q, want %q", got, wantMethods)

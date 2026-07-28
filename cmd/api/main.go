@@ -19,6 +19,8 @@ import (
 	"github.com/themethaithian/self-learning/internal/platform/httpserver"
 	"github.com/themethaithian/self-learning/internal/platform/middleware"
 	"github.com/themethaithian/self-learning/internal/platform/mysql"
+	prefsapp "github.com/themethaithian/self-learning/internal/prefs/app"
+	prefsinfra "github.com/themethaithian/self-learning/internal/prefs/infra"
 )
 
 // Shutdown returns as soon as in-flight requests finish; this deadline is
@@ -58,7 +60,11 @@ func run(logger *slog.Logger) error {
 	curriculumService := curriculumapp.NewService(curriculumRepo)
 	curriculumHandler := curriculuminfra.NewHandler(curriculumService, logger)
 
-	mux := httpserver.NewMux(db, cfg.APIBearerToken, curriculumHandler)
+	prefsRepo := prefsinfra.NewRepository(db)
+	prefsService := prefsapp.NewService(prefsRepo)
+	prefsHandler := prefsinfra.NewHandler(prefsService, logger)
+
+	mux := httpserver.NewMux(db, cfg.APIBearerToken, curriculumHandler, prefsHandler)
 	handler := middleware.Logging(logger)(middleware.Recovery(logger)(middleware.CORS(cfg.CORSAllowedOrigin)(mux)))
 	srv := httpserver.New(fmt.Sprintf(":%d", cfg.APIPort), handler)
 
