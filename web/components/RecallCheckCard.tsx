@@ -57,7 +57,7 @@ export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(
                   <li
                     key={option}
                     className={`rounded-lg border px-3 py-1.5 font-thai text-sm ${
-                      isCorrect ? "border-success/40 bg-success/10 text-success" : "border-subtle text-muted"
+                      isCorrect ? "border-success-strong bg-success/10 text-success-strong" : "border-subtle text-muted"
                     }`}
                   >
                     {option}
