@@ -10,15 +10,16 @@ import (
 )
 
 type fakeRepository struct {
-	topics []domain.Topic
-	err    error
+	topics       []domain.Topic
+	availability map[ConceptPath]int
+	err          error
 
 	lesson    domain.Lesson
 	lessonErr error
 }
 
-func (f fakeRepository) Topics(context.Context) ([]domain.Topic, error) {
-	return f.topics, f.err
+func (f fakeRepository) Topics(context.Context) ([]domain.Topic, map[ConceptPath]int, error) {
+	return f.topics, f.availability, f.err
 }
 
 func (f fakeRepository) LessonByConcept(context.Context, string, string) (domain.Lesson, error) {
@@ -140,14 +141,19 @@ func TestServiceLesson_RepositoryError(t *testing.T) {
 
 func TestServiceTree_Success(t *testing.T) {
 	want := []domain.Topic{mustTopic(t, "topic-a")}
-	svc := NewService(fakeRepository{topics: want})
+	path := ConceptPath{TopicSlug: "topic-a", ConceptSlug: "concept-a"}
+	wantAvailability := map[ConceptPath]int{path: 7}
+	svc := NewService(fakeRepository{topics: want, availability: wantAvailability})
 
-	got, err := svc.Tree(context.Background())
+	got, availability, err := svc.Tree(context.Background())
 	if err != nil {
 		t.Fatalf("Tree() unexpected error: %v", err)
 	}
 	if len(got) != len(want) || got[0].Slug().String() != want[0].Slug().String() {
 		t.Fatalf("Tree() = %v, want %v", got, want)
+	}
+	if availability[path] != 7 {
+		t.Fatalf("Tree() availability = %v, want %v", availability, wantAvailability)
 	}
 }
 
@@ -155,7 +161,7 @@ func TestServiceTree_RepositoryError(t *testing.T) {
 	repoErr := errors.New("connection lost")
 	svc := NewService(fakeRepository{err: repoErr})
 
-	_, err := svc.Tree(context.Background())
+	_, _, err := svc.Tree(context.Background())
 	if err == nil {
 		t.Fatal("Tree() expected error, got nil")
 	}

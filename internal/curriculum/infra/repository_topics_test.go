@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	curriculumapp "github.com/themethaithian/self-learning/internal/curriculum/app"
 )
 
 func TestRepositoryTopics_Success(t *testing.T) {
@@ -14,7 +16,7 @@ func TestRepositoryTopics_Success(t *testing.T) {
 	db := openStubDB(t, result)
 	repo := NewRepository(db)
 
-	got, err := repo.Topics(context.Background())
+	got, _, err := repo.Topics(context.Background())
 	if err != nil {
 		t.Fatalf("Topics() unexpected error: %v", err)
 	}
@@ -61,7 +63,7 @@ func TestRepositoryTopics_EmptyIsNonNilEmptySlice(t *testing.T) {
 	db := openStubDB(t, &stubResult{})
 	repo := NewRepository(db)
 
-	got, err := repo.Topics(context.Background())
+	got, _, err := repo.Topics(context.Background())
 	if err != nil {
 		t.Fatalf("Topics() unexpected error: %v", err)
 	}
@@ -84,7 +86,7 @@ func TestRepositoryTopics_ChildlessTopicFailsLoudly(t *testing.T) {
 	}})
 	repo := NewRepository(db)
 
-	_, err := repo.Topics(context.Background())
+	_, _, err := repo.Topics(context.Background())
 	if err == nil {
 		t.Fatal("Topics() expected an error for a childless topic, got nil")
 	}
@@ -108,7 +110,7 @@ func TestRepositoryTopics_QueryUsesLeftJoins(t *testing.T) {
 	db := openStubDB(t, result)
 	repo := NewRepository(db)
 
-	if _, err := repo.Topics(context.Background()); err != nil {
+	if _, _, err := repo.Topics(context.Background()); err != nil {
 		t.Fatalf("Topics() unexpected error: %v", err)
 	}
 
@@ -118,6 +120,9 @@ func TestRepositoryTopics_QueryUsesLeftJoins(t *testing.T) {
 	}
 	if !strings.Contains(query, "LEFT JOIN concepts") {
 		t.Errorf("query = %q, want it to LEFT JOIN concepts", query)
+	}
+	if !strings.Contains(query, "LEFT JOIN lessons l ON l.concept_id = co.id") {
+		t.Errorf("query = %q, want lessons joined on the UNIQUE concept_id (any other predicate risks fanning rows out)", query)
 	}
 }
 
@@ -136,7 +141,7 @@ func TestRepositoryTopics_ScanErrorClosesRows(t *testing.T) {
 	db := openStubDB(t, result)
 	repo := NewRepository(db)
 
-	if _, err := repo.Topics(context.Background()); err == nil {
+	if _, _, err := repo.Topics(context.Background()); err == nil {
 		t.Fatal("Topics() expected a scan error, got nil")
 	}
 	if rows := result.driverRows(); rows == nil || !rows.closed {
@@ -153,7 +158,7 @@ func TestRepositoryTopics_BrokenRowStreamIsAnError(t *testing.T) {
 	})
 	repo := NewRepository(db)
 
-	if _, err := repo.Topics(context.Background()); err == nil {
+	if _, _, err := repo.Topics(context.Background()); err == nil {
 		t.Fatal("Topics() expected an error from a broken row stream (rows.Err()), got nil")
 	}
 }
@@ -162,7 +167,7 @@ func TestRepositoryTopics_QueryErrorWraps(t *testing.T) {
 	db := openStubDB(t, &stubResult{queryErr: errors.New("stub: connection refused")})
 	repo := NewRepository(db)
 
-	if _, err := repo.Topics(context.Background()); err == nil {
+	if _, _, err := repo.Topics(context.Background()); err == nil {
 		t.Fatal("Topics() expected an error, got nil")
 	}
 }
@@ -176,7 +181,43 @@ func TestRepositoryTopics_ContextPropagatesToDriver(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if _, err := repo.Topics(ctx); err == nil {
+	if _, _, err := repo.Topics(ctx); err == nil {
 		t.Fatal("Topics() expected an error for an already-canceled context, got nil (ctx is not reaching the driver)")
+	}
+}
+
+// TestRepositoryTopics_AvailabilityMapMatchesTreeConcepts checks that
+// Repository.Topics's two independent passes over the same flat rows —
+// assembleTree and conceptAvailabilityFromRows — agree on which concepts
+// exist and which of those have a lesson. This is a fixture-based stub
+// test: it cannot prove a real LEFT JOIN in production MySQL is correct or
+// that ORDER BY still holds after adding it (the stub returns whatever rows
+// a test hands it, regardless of query text) — TestRepositoryTopics_
+// QueryUsesLeftJoins pins the query text itself for that.
+func TestRepositoryTopics_AvailabilityMapMatchesTreeConcepts(t *testing.T) {
+	withLesson := stubFullRow("go", "go-basics", "Go Basics", 1, "syntax", "Syntax", 1, "variables", "Variables", "outline", 1)
+	withLesson["l.est_minutes"] = 8
+	withoutLesson := stubFullRow("go", "go-basics", "Go Basics", 1, "syntax", "Syntax", 1, "loops", "Loops", "outline", 2)
+
+	db := openStubDB(t, &stubResult{rows: []stubRow{withLesson, withoutLesson}})
+	repo := NewRepository(db)
+
+	topics, availability, err := repo.Topics(context.Background())
+	if err != nil {
+		t.Fatalf("Topics() unexpected error: %v", err)
+	}
+
+	concepts := topics[0].Chapters()[0].Concepts()
+	if len(concepts) != 2 || concepts[0].Slug().String() != "variables" || concepts[1].Slug().String() != "loops" {
+		t.Fatalf("assembled concepts = %v, want [variables loops]", concepts)
+	}
+
+	variablesPath := curriculumapp.ConceptPath{TopicSlug: "go-basics", ConceptSlug: "variables"}
+	loopsPath := curriculumapp.ConceptPath{TopicSlug: "go-basics", ConceptSlug: "loops"}
+	if got, ok := availability[variablesPath]; !ok || got != 8 {
+		t.Errorf("availability[%v] = (%d, %v), want (8, true)", variablesPath, got, ok)
+	}
+	if _, ok := availability[loopsPath]; ok {
+		t.Errorf("availability contains %v, want absent (no lesson)", loopsPath)
 	}
 }

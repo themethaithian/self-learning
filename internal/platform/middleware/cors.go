@@ -3,7 +3,7 @@ package middleware
 import "net/http"
 
 const (
-	corsAllowedMethods = "GET, POST, PATCH, OPTIONS"
+	corsAllowedMethods = "GET, POST, PATCH, PUT, OPTIONS"
 	corsAllowedHeaders = "Authorization, Content-Type"
 	corsMaxAge         = "600"
 )

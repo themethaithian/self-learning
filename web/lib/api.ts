@@ -30,6 +30,8 @@ export interface Concept {
   slug: string;
   title: string;
   position: number;
+  has_lesson: boolean;
+  est_minutes: number | null;
 }
 
 export interface Chapter {
@@ -79,13 +81,20 @@ export interface Lesson {
   recall_checks: RecallCheck[];
 }
 
-async function apiFetch<T>(path: string): Promise<T> {
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
+  const headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string> | undefined),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(init?.body ? { "Content-Type": "application/json" } : {}),
+  };
 
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      ...init,
+      headers,
+      signal: init?.signal ?? AbortSignal.timeout(10_000),
     });
   } catch {
     throw new ApiError(0, "network request failed — is the API reachable?");
@@ -114,4 +123,27 @@ export function getCurriculum(): Promise<CurriculumResponse> {
 
 export function getLesson(topicSlug: string, conceptSlug: string): Promise<Lesson> {
   return apiFetch<Lesson>(`/api/v1/lessons/${encodeURIComponent(topicSlug)}/${encodeURIComponent(conceptSlug)}`);
+}
+
+export interface FocusTrack {
+  track: string | null;
+}
+
+// Focus track is an enhancement, not data the page needs to function — a
+// failure here shouldn't turn a successful curriculum load into a full-page
+// error. An expired token is the one failure the caller still needs to see.
+export async function getFocusTrack(): Promise<FocusTrack> {
+  try {
+    return await apiFetch<FocusTrack>("/api/v1/prefs/focus-track");
+  } catch (err) {
+    if (err instanceof UnauthorizedError) throw err;
+    return { track: null };
+  }
+}
+
+export function setFocusTrack(track: string | null): Promise<FocusTrack> {
+  return apiFetch<FocusTrack>("/api/v1/prefs/focus-track", {
+    method: "PUT",
+    body: JSON.stringify({ track }),
+  });
 }

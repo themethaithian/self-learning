@@ -8,7 +8,7 @@ export default function RootPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace(getToken() ? "/read" : "/token");
+    router.replace(getToken() ? "/learn" : "/token");
   }, [router]);
 
   return null;

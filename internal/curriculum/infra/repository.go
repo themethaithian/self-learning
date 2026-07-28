@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 
+	curriculumapp "github.com/themethaithian/self-learning/internal/curriculum/app"
 	"github.com/themethaithian/self-learning/internal/curriculum/domain"
 )
 
@@ -30,10 +31,12 @@ SELECT
 	co.slug,
 	co.title,
 	co.outline,
-	co.position
+	co.position,
+	l.est_minutes
 FROM topics t
 LEFT JOIN chapters c ON c.topic_id = t.id
 LEFT JOIN concepts co ON co.chapter_id = c.id
+LEFT JOIN lessons l ON l.concept_id = co.id
 ORDER BY t.position, t.id, c.position, c.id, co.position, co.id`
 
 // Repository is the MySQL adapter for app.Repository.
@@ -47,10 +50,10 @@ func NewRepository(db *sql.DB) *Repository {
 
 // Topics keeps the fold logic in assembleTree, which is testable without a
 // database.
-func (r *Repository) Topics(ctx context.Context) ([]domain.Topic, error) {
+func (r *Repository) Topics(ctx context.Context) ([]domain.Topic, map[curriculumapp.ConceptPath]int, error) {
 	rows, err := r.db.QueryContext(ctx, topicsQuery)
 	if err != nil {
-		return nil, fmt.Errorf("infra: query topics: %w", err)
+		return nil, nil, fmt.Errorf("infra: query topics: %w", err)
 	}
 	defer rows.Close()
 
@@ -61,37 +64,55 @@ func (r *Repository) Topics(ctx context.Context) ([]domain.Topic, error) {
 			&row.topicTrack, &row.topicSlug, &row.topicTitle, &row.topicPosition,
 			&row.chapterSlug, &row.chapterTitle, &row.chapterPosition,
 			&row.conceptSlug, &row.conceptTitle, &row.conceptOutline, &row.conceptPosition,
+			&row.lessonEstMinutes,
 		); err != nil {
-			return nil, fmt.Errorf("infra: scan topics row: %w", err)
+			return nil, nil, fmt.Errorf("infra: scan topics row: %w", err)
 		}
 		flat = append(flat, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("infra: read topics rows: %w", err)
+		return nil, nil, fmt.Errorf("infra: read topics rows: %w", err)
 	}
 
 	topics, err := assembleTree(flat)
 	if err != nil {
-		return nil, fmt.Errorf("infra: assemble topics: %w", err)
+		return nil, nil, fmt.Errorf("infra: assemble topics: %w", err)
 	}
-	return topics, nil
+	return topics, conceptAvailabilityFromRows(flat), nil
 }
 
 // conceptRow is one row of topicsQuery. Chapter and concept columns are
 // nullable: the LEFT JOIN leaves them NULL when a topic has no chapters, or
-// a chapter has no concepts.
+// a chapter has no concepts. lessonEstMinutes is NULL when the concept has
+// no lesson yet; lessons.concept_id is UNIQUE, so the lessons join can add
+// at most one row per concept row, never fan it out.
 type conceptRow struct {
-	topicTrack      string
-	topicSlug       string
-	topicTitle      string
-	topicPosition   int
-	chapterSlug     sql.NullString
-	chapterTitle    sql.NullString
-	chapterPosition sql.NullInt64
-	conceptSlug     sql.NullString
-	conceptTitle    sql.NullString
-	conceptOutline  sql.NullString
-	conceptPosition sql.NullInt64
+	topicTrack       string
+	topicSlug        string
+	topicTitle       string
+	topicPosition    int
+	chapterSlug      sql.NullString
+	chapterTitle     sql.NullString
+	chapterPosition  sql.NullInt64
+	conceptSlug      sql.NullString
+	conceptTitle     sql.NullString
+	conceptOutline   sql.NullString
+	conceptPosition  sql.NullInt64
+	lessonEstMinutes sql.NullInt64
+}
+
+// A missing key means no lesson exists — never a 0-minute lesson, which a
+// bare int wouldn't be able to tell apart.
+func conceptAvailabilityFromRows(rows []conceptRow) map[curriculumapp.ConceptPath]int {
+	out := make(map[curriculumapp.ConceptPath]int)
+	for _, row := range rows {
+		if !row.conceptSlug.Valid || !row.lessonEstMinutes.Valid {
+			continue
+		}
+		path := curriculumapp.ConceptPath{TopicSlug: row.topicSlug, ConceptSlug: row.conceptSlug.String}
+		out[path] = int(row.lessonEstMinutes.Int64)
+	}
+	return out
 }
 
 type chapterAcc struct {
