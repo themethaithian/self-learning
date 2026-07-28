@@ -29,7 +29,7 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
 - **Review focus**:
   - ทำไม validate แค่ slug format ห้ามเช็คว่า track มีจริงใน curriculum?
   - ทำไม clear focus ต้องลบแถวแทนที่จะเก็บ `value = NULL`?
-- Status: `in review` (ดูสรุปรอบ 2/3 fix ใน PR)
+- Status: `merged, PR #41`
 
 ## UX-2 — Learn page: track cards + focus picker `[go-implementer]`
 
@@ -49,14 +49,26 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
 - **Review focus**:
   - ทำไม focus toggle บน `TrackCard` ต้องใช้ `aria-disabled` แทน `disabled` attribute ตรง ๆ?
   - ทำไม `ProgressBar.tsx` ถึงยังเก็บไว้ในโค้ดทั้งที่ไม่มีหน้าไหนเรียกใช้ตอนนี้?
-- Status: `implemented, PR pending`
+- Status: `merged, PR #42`
 
 ## UX-3 — Track view: chapter accordion + availability
 
-- หน้า track detail (`/learn?track=`) ยังมี gap: concept ที่ `has_lesson=false` ยังเป็นลิงก์อยู่
+- หน้า track detail (`/learn?track=`) มี gap: concept ที่ `has_lesson=false` ยังเป็นลิงก์อยู่
   (กดแล้วเจอ "no lesson yet" ที่ `/lesson`) และ `ChapterRow` โชว์จำนวน concept รวมของ chapter
-  แทนจำนวนที่มี lesson จริง — ticket นี้ปิด gap (ไม่ทำเป็น link ถ้าไม่มี lesson + โชว์ n/N ที่ระดับ chapter)
-- Status: `ยังไม่เริ่ม`
+  แทนจำนวนที่มี lesson จริง — ticket นี้ปิด gap ทั้งสองจุด:
+  - concept ที่ `has_lesson=false` render เป็น `<div>` เฉย ๆ (ไม่ใช่ `<Link>`, ไม่มี `href`,
+    tab ไปไม่ถึง) โชว์ข้อความ `No lesson yet` แทนเวลาอ่าน, ใช้ `text-faint` เดิม (contrast
+    4.76:1 ผ่าน AA อยู่แล้ว ไม่ต้องเพิ่ม token ใหม่)
+  - header ของ chapter เปลี่ยนจาก `{concepts.length} concepts` เป็น `{n}/{N} lessons`
+    (`n` = concept ที่มี lesson จริง) รวมถึง edge case `concepts: []` → `0/0 lessons`
+    ไม่ crash และ accordion ยังกดขยายได้ปกติแม้ `n === 0`
+  - แต่ละแถว concept โชว์เลขลำดับ (`index + 1` ในรายการที่ backend sort ตาม `position`
+    มาแล้ว) แทนที่ `#{position} · {slug}` เดิม — เลิกโชว์ raw slug (debug info) บนหน้านี้;
+    เวลาอ่านโชว์ `~{est_minutes} min` เฉพาะตอนเป็น number จริง, เป็น `null` ไม่ render
+    ข้อความเวลาเลย (ไม่ใช่ `~0 min`)
+  - เพิ่ม pure function `countAvailableLessons(concepts): { available, total }` ใน
+    `web/lib/curriculum.ts` ใหม่ (แยกจาก `web/lib/api.ts` ที่โฟกัส fetch/types)
+- Status: `implemented, PR pending`
 
 ## UX-4 — API: learning progress (read + write)
 
