@@ -2,12 +2,11 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { getLesson, NotFoundError, UnauthorizedError, type Lesson } from "@/lib/api";
 import { LessonBody } from "@/components/LessonBody";
 import { RecallCheckCard } from "@/components/RecallCheckCard";
 import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/Button";
+import { Button, LinkButton } from "@/components/Button";
 import { LessonSkeleton } from "@/components/Skeleton";
 import { BookIcon, WarningIcon } from "@/components/icons";
 
@@ -19,12 +18,9 @@ type ViewState =
 
 function BackLink() {
   return (
-    <Link
-      href="/learn"
-      className="inline-flex items-center gap-1 rounded-lg text-sm font-medium text-muted transition-colors duration-150 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
-    >
+    <LinkButton href="/learn" variant="ghost">
       ← Back to Learn
-    </Link>
+    </LinkButton>
   );
 }
 

@@ -1,6 +1,6 @@
-export const TRACK_ORDER = ["ddd", "distsys", "aws", "go", "dsa", "ddia", "ai-systems"] as const;
+export const TRACK_DISPLAY_ORDER = ["ddd", "distsys", "aws", "go", "dsa", "ddia", "ai-systems"] as const;
 
-type KnownTrack = (typeof TRACK_ORDER)[number];
+type KnownTrack = (typeof TRACK_DISPLAY_ORDER)[number];
 
 const TRACK_LABELS: Record<KnownTrack, string> = {
   ddd: "Domain-Driven Design",

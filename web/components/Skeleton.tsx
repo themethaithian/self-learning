@@ -2,17 +2,17 @@ export function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-subtle/60 ${className}`} />;
 }
 
-export function CurriculumTreeSkeleton() {
+export function TrackCardsSkeleton() {
   return (
-    <div className="space-y-8" aria-hidden>
-      {Array.from({ length: 3 }).map((_, trackIndex) => (
-        <div key={trackIndex} className="space-y-3">
-          <Skeleton className="h-5 w-40" />
-          <div className="space-y-2 pl-4">
-            {Array.from({ length: 3 }).map((_, topicIndex) => (
-              <Skeleton key={topicIndex} className="h-11 w-full" />
-            ))}
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2" aria-hidden>
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div key={index} className="space-y-4 rounded-2xl border border-subtle bg-surface p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-2">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-6 w-20 rounded-full" />
           </div>
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-9 w-28 rounded-xl" />
         </div>
       ))}
     </div>

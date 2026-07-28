@@ -11,11 +11,11 @@ import {
 } from "@/lib/api";
 import { TrackTopics } from "@/components/TrackTopics";
 import { TrackCard, type TrackStats } from "@/components/TrackCard";
-import { CurriculumTreeSkeleton } from "@/components/Skeleton";
+import { TrackCardsSkeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/Button";
+import { Button, LinkButton } from "@/components/Button";
 import { BookIcon, WarningIcon } from "@/components/icons";
-import { TRACK_ORDER, trackLabel } from "@/lib/trackMeta";
+import { TRACK_DISPLAY_ORDER, trackLabel } from "@/lib/trackMeta";
 
 type ViewState =
   | { status: "loading" }
@@ -37,9 +37,14 @@ function computeStats(track: Track): TrackStats {
   return { track: track.track, label: trackLabel(track.track), totalConcepts, lessonsReady, chapterCount };
 }
 
-// Focus is pinned first; everything else keeps the curriculum's canonical
-// track order so the grid doesn't reshuffle as lessons get added over time.
-function orderStats(stats: TrackStats[], focusTrack: string | null): TrackStats[] {
+// Sorts by TRACK_DISPLAY_ORDER; a track the backend sends that isn't in that
+// list yet is appended, not dropped, so it stays visible somewhere.
+function trackSortIndex(track: string): number {
+  const idx = (TRACK_DISPLAY_ORDER as readonly string[]).indexOf(track);
+  return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+}
+
+function pinFocusFirst(stats: TrackStats[], focusTrack: string | null): TrackStats[] {
   if (!focusTrack) return stats;
   const focusIndex = stats.findIndex((s) => s.track === focusTrack);
   if (focusIndex === -1) return stats;
@@ -56,17 +61,13 @@ function ComingSoonRow({ label }: { label: string }) {
   );
 }
 
-function TrackDetail({ track, onBack }: { track: Track; onBack: () => void }) {
+function TrackDetail({ track }: { track: Track }) {
   return (
     <div className="space-y-6">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-1 rounded-lg text-sm font-medium text-muted transition-colors duration-150 ease-out hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
-      >
+      <LinkButton href="/learn" variant="ghost">
         ← Back to Learn
-      </button>
-      <h1 className="text-xl font-semibold text-heading">{trackLabel(track.track)}</h1>
+      </LinkButton>
+      <h2 className="text-xl font-semibold text-heading">{trackLabel(track.track)}</h2>
       <TrackTopics topics={track.topics} />
     </div>
   );
@@ -107,10 +108,11 @@ function LearnView() {
   }, [load]);
 
   const handleSetFocus = useCallback(
-    async (track: string) => {
+    async (track: string | null) => {
       const previous = focusTrack;
+      const pendingCard = track ?? previous;
       setFocusTrackValue(track);
-      setPendingTrack(track);
+      setPendingTrack(pendingCard);
       setFocusError(null);
       try {
         await putFocusTrack(track);
@@ -125,7 +127,7 @@ function LearnView() {
   );
 
   if (state.status === "loading") {
-    return <CurriculumTreeSkeleton />;
+    return <TrackCardsSkeleton />;
   }
 
   if (state.status === "error") {
@@ -159,13 +161,11 @@ function LearnView() {
         />
       );
     }
-    return <TrackDetail track={matched} onBack={() => router.push("/learn")} />;
+    return <TrackDetail track={matched} />;
   }
 
-  const allStats = TRACK_ORDER.map((slug) => tracks.find((t) => t.track === slug))
-    .filter((t): t is Track => t !== undefined)
-    .map(computeStats);
-  const availableStats = orderStats(
+  const allStats = [...tracks].sort((a, b) => trackSortIndex(a.track) - trackSortIndex(b.track)).map(computeStats);
+  const availableStats = pinFocusFirst(
     allStats.filter((s) => s.lessonsReady > 0),
     focusTrack,
   );
@@ -174,29 +174,40 @@ function LearnView() {
   return (
     <div className="space-y-8">
       {focusError && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger-strong"
+        >
           <span>{focusError}</span>
           <button
             type="button"
             onClick={() => setFocusError(null)}
-            className="text-xs font-medium underline underline-offset-2"
+            className="rounded-md text-xs font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {availableStats.map((stats) => (
-          <TrackCard
-            key={stats.track}
-            stats={stats}
-            isFocus={stats.track === focusTrack}
-            onSetFocus={handleSetFocus}
-            settingFocus={pendingTrack !== null}
-          />
-        ))}
-      </div>
+      {availableStats.length === 0 ? (
+        <EmptyState
+          icon={<BookIcon />}
+          message="No lessons are imported yet — check back once a batch is written."
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {availableStats.map((stats) => (
+            <TrackCard
+              key={stats.track}
+              stats={stats}
+              isFocus={stats.track === focusTrack}
+              onSetFocus={handleSetFocus}
+              saving={pendingTrack === stats.track}
+              busy={pendingTrack !== null}
+            />
+          ))}
+        </div>
+      )}
 
       {comingSoon.length > 0 && (
         <section className="space-y-2">
@@ -214,7 +225,7 @@ function LearnView() {
 
 export default function LearnPage() {
   return (
-    <Suspense fallback={<CurriculumTreeSkeleton />}>
+    <Suspense fallback={<TrackCardsSkeleton />}>
       <LearnView />
     </Suspense>
   );

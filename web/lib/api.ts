@@ -84,13 +84,18 @@ export interface Lesson {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string> | undefined),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(init?.body ? { "Content-Type": "application/json" } : {}),
   };
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      signal: init?.signal ?? AbortSignal.timeout(10_000),
+    });
   } catch {
     throw new ApiError(0, "network request failed — is the API reachable?");
   }
@@ -124,8 +129,16 @@ export interface FocusTrack {
   track: string | null;
 }
 
-export function getFocusTrack(): Promise<FocusTrack> {
-  return apiFetch<FocusTrack>("/api/v1/prefs/focus-track");
+// Focus track is an enhancement, not data the page needs to function — a
+// failure here shouldn't turn a successful curriculum load into a full-page
+// error. An expired token is the one failure the caller still needs to see.
+export async function getFocusTrack(): Promise<FocusTrack> {
+  try {
+    return await apiFetch<FocusTrack>("/api/v1/prefs/focus-track");
+  } catch (err) {
+    if (err instanceof UnauthorizedError) throw err;
+    return { track: null };
+  }
 }
 
 export function setFocusTrack(track: string | null): Promise<FocusTrack> {
