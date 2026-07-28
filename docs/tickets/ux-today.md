@@ -31,9 +31,33 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
   - ทำไม clear focus ต้องลบแถวแทนที่จะเก็บ `value = NULL`?
 - Status: `in review` (ดูสรุปรอบ 2/3 fix ใน PR)
 
-## UX-2 — `/today` page (ยังไม่เริ่ม)
+## UX-2 — Learn page: track cards + focus picker `[go-implementer]`
+
+- **Scope**: หน้า `/learn` ใหม่แทน `/read` — 7 `TrackCard` (ชื่อเต็มจาก `trackMeta.ts`,
+  จำนวน lesson ready/chapter/concept, focus chip/ปุ่ม `Set focus`), track ที่ยังไม่มี
+  lesson เลยไปอยู่ section "Coming soon" (ไม่ใช่ card, กดไม่ได้), focus picker ผูกกับ
+  `GET|PUT /api/v1/prefs/focus-track` (จาก UX-1b) แบบ optimistic update + revert เมื่อ
+  PUT fail, `/read` และ root/`/token` redirect ไป `/learn` (client-side redirect —
+  static export ไม่มี server redirect ให้ใช้)
+- **บทเรียนสำหรับ ticket ถัดไป**:
+  - progress bar ที่ตัวเศษ = ตัวส่วนเสมอ (บาร์เต็ม 100% ทุกใบ) แย่กว่าไม่มีบาร์เลย เพราะสื่อว่า
+    "เรียนจบแล้ว" ทั้งที่ยังไม่มี progress tracking จริง (v1 เลยไม่ render bar เลย โชว์
+    ตัวเลขตรง ๆ แทน จนกว่า progress API มา)
+  - วนจาก allowlist ที่ hardcode (เช่น track display order) ไปหา data ทำให้ track/ข้อมูล
+    ที่ backend ส่งมาแต่ยังไม่อยู่ใน list **หายไปเงียบ ๆ ไม่มี error** — ต้องวนจาก data จริง
+    เสมอ แล้วใช้ list เป็นแค่ sort key เท่านั้น
+- **Review focus**:
+  - ทำไม focus toggle บน `TrackCard` ต้องใช้ `aria-disabled` แทน `disabled` attribute ตรง ๆ?
+  - ทำไม `ProgressBar.tsx` ถึงยังเก็บไว้ในโค้ดทั้งที่ไม่มีหน้าไหนเรียกใช้ตอนนี้?
+- Status: `implemented, PR pending`
+
+## UX-3 — `/today` page (ยังไม่เริ่ม)
 
 - ไล่ priority: focus track (จาก UX-1b) → concept ถัดไปที่ยังไม่ passed ตาม
   position → fallback track อื่นถ้า focus track เคลียร์หมดแล้ว
 - รอ UX-1b merge ก่อนเริ่ม
+- **Follow-up จาก UX-2**: หน้า track detail (`/learn?track=`) ยังทำ concept ที่
+  `has_lesson=false` เป็นลิงก์อยู่ (กดแล้วเจอ "no lesson yet" ที่ `/lesson`) และ
+  `ChapterRow` โชว์จำนวน concept รวมของ chapter แทนจำนวนที่มี lesson จริง — UX-3
+  ต้องปิด gap นี้ (ไม่ทำเป็น link ถ้าไม่มี lesson + โชว์ n/N ที่ระดับ chapter)
 - Status: `todo`
