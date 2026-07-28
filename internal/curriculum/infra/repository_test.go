@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	curriculumapp "github.com/themethaithian/self-learning/internal/curriculum/app"
 	"github.com/themethaithian/self-learning/internal/curriculum/domain"
 )
 
@@ -287,6 +288,17 @@ func TestAssembleTree_InvalidData(t *testing.T) {
 			},
 			wantContain: []string{"go-basics", "syntax", "no children"},
 		},
+		{
+			// A fixture bug (or a lessons-join predicate that fanned out a
+			// row) must fail loudly via domain.NewChapter's duplicate-slug
+			// guard, not silently duplicate the concept in the tree.
+			name: "same concept row twice fails on duplicate slug",
+			rows: []conceptRow{
+				fullRow("go", "go-basics", "Go Basics", 1, "syntax", "Syntax", 1, "variables", "Variables", "outline", 1),
+				fullRow("go", "go-basics", "Go Basics", 1, "syntax", "Syntax", 1, "variables", "Variables", "outline", 1),
+			},
+			wantContain: []string{"go-basics", "syntax", "variables", "duplicate"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -298,6 +310,68 @@ func TestAssembleTree_InvalidData(t *testing.T) {
 			for _, want := range tt.wantContain {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("assembleTree() error = %q, want it to contain %q", err.Error(), want)
+				}
+			}
+		})
+	}
+}
+
+func withLessonMinutes(row conceptRow, minutes int64) conceptRow {
+	row.lessonEstMinutes = sql.NullInt64{Int64: minutes, Valid: true}
+	return row
+}
+
+func TestConceptAvailabilityFromRows(t *testing.T) {
+	tests := []struct {
+		name string
+		rows []conceptRow
+		want map[curriculumapp.ConceptPath]int
+	}{
+		{
+			name: "concept with a lesson is keyed by topic and concept slug",
+			rows: []conceptRow{
+				withLessonMinutes(fullRow("go", "go-basics", "Go Basics", 1, "syntax", "Syntax", 1, "variables", "Variables", "outline", 1), 8),
+			},
+			want: map[curriculumapp.ConceptPath]int{
+				{TopicSlug: "go-basics", ConceptSlug: "variables"}: 8,
+			},
+		},
+		{
+			name: "concept with no lesson is absent from the map",
+			rows: []conceptRow{
+				fullRow("go", "go-basics", "Go Basics", 1, "syntax", "Syntax", 1, "variables", "Variables", "outline", 1),
+			},
+			want: map[curriculumapp.ConceptPath]int{},
+		},
+		{
+			name: "topic-only and chapter-only rows contribute nothing",
+			rows: []conceptRow{
+				topicOnlyRow("go", "go-basics", "Go Basics", 1),
+				chapterOnlyRow("go", "go-basics", "Go Basics", 1, "syntax", "Syntax", 1),
+			},
+			want: map[curriculumapp.ConceptPath]int{},
+		},
+		{
+			name: "same concept slug under different topics keeps separate keys",
+			rows: []conceptRow{
+				withLessonMinutes(fullRow("go", "aaa-topic", "AAA Topic", 1, "ch", "Ch", 1, "co", "Co", "outline", 1), 8),
+				fullRow("go", "zzz-topic", "ZZZ Topic", 1, "ch", "Ch", 1, "co", "Co", "outline", 1),
+			},
+			want: map[curriculumapp.ConceptPath]int{
+				{TopicSlug: "aaa-topic", ConceptSlug: "co"}: 8,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := conceptAvailabilityFromRows(tt.rows)
+			if len(got) != len(tt.want) {
+				t.Fatalf("conceptAvailabilityFromRows() = %v, want %v", got, tt.want)
+			}
+			for key, want := range tt.want {
+				if got[key] != want {
+					t.Errorf("conceptAvailabilityFromRows()[%v] = %d, want %d", key, got[key], want)
 				}
 			}
 		})
