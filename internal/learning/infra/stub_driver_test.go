@@ -43,10 +43,14 @@ type stubProgressRow struct {
 // correctly if the write path actually went through the same query text
 // production uses. locks models MySQL's SELECT ... FOR UPDATE row lock: one
 // real sync.Mutex per lesson id, held for the lifetime of one transaction.
+// lessons maps to a slice, not a single ref: concepts are unique per
+// (chapter_id, slug), not per topic, so a test can seed two lessons under
+// the same (topicSlug, conceptSlug) to exercise the duplicate-match guard
+// lockLesson enforces — a real fixture MySQL's schema itself would allow.
 type stubData struct {
 	mu sync.Mutex
 
-	lessons  map[progressConceptKey]stubLessonRef
+	lessons  map[progressConceptKey][]stubLessonRef
 	progress map[int64]stubProgressRow
 
 	locksMu sync.Mutex
@@ -58,7 +62,7 @@ type stubData struct {
 
 func newStubData() *stubData {
 	return &stubData{
-		lessons:  map[progressConceptKey]stubLessonRef{},
+		lessons:  map[progressConceptKey][]stubLessonRef{},
 		progress: map[int64]stubProgressRow{},
 	}
 }
@@ -66,14 +70,19 @@ func newStubData() *stubData {
 func (d *stubData) seedLesson(topicSlug, conceptSlug string, lessonID int64) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.lessons[foldKey(topicSlug, conceptSlug)] = stubLessonRef{id: lessonID, topic: topicSlug, concept: conceptSlug}
+	d.addLessonLocked(topicSlug, conceptSlug, lessonID)
 }
 
 func (d *stubData) seedProgress(topicSlug, conceptSlug string, lessonID int64, row stubProgressRow) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.lessons[foldKey(topicSlug, conceptSlug)] = stubLessonRef{id: lessonID, topic: topicSlug, concept: conceptSlug}
+	d.addLessonLocked(topicSlug, conceptSlug, lessonID)
 	d.progress[lessonID] = row
+}
+
+func (d *stubData) addLessonLocked(topicSlug, conceptSlug string, lessonID int64) {
+	key := foldKey(topicSlug, conceptSlug)
+	d.lessons[key] = append(d.lessons[key], stubLessonRef{id: lessonID, topic: topicSlug, concept: conceptSlug})
 }
 
 func (d *stubData) progressOf(lessonID int64) (stubProgressRow, bool) {
@@ -258,22 +267,29 @@ func (c *stubConn) QueryContext(ctx context.Context, query string, args []driver
 
 	switch query {
 	case selectLessonForUpdateSQL:
+		// A regression that drops the surrounding transaction must fail
+		// immediately, not acquire a lock nothing will ever release —
+		// checked before locking anything, so this never hangs the suite.
+		if c.tx == nil {
+			return nil, errors.New("learningstub: FOR UPDATE requires an active transaction")
+		}
+
 		topicSlug, conceptSlug := argString(args[0]), argString(args[1])
 		c.data.mu.Lock()
-		ref, ok := c.data.lessons[foldKey(topicSlug, conceptSlug)]
+		refs := append([]stubLessonRef(nil), c.data.lessons[foldKey(topicSlug, conceptSlug)]...)
 		c.data.mu.Unlock()
-		if !ok {
+		if len(refs) == 0 {
 			return &lessonForUpdateRows{}, nil
 		}
 
 		// The lock acquired here (never inside c.data.mu) models MySQL's row
 		// lock: it can block this goroutine until a concurrent transaction
 		// on the same lesson commits or rolls back.
-		c.data.lockFor(ref.id).Lock()
-		if c.tx != nil {
+		for _, ref := range refs {
+			c.data.lockFor(ref.id).Lock()
 			c.tx.lockedIDs = append(c.tx.lockedIDs, ref.id)
 		}
-		return &lessonForUpdateRows{rows: []stubLessonRef{ref}}, nil
+		return &lessonForUpdateRows{rows: refs}, nil
 
 	case selectProgressByLessonIDSQL:
 		lessonID := args[0].Value.(int64)
@@ -299,12 +315,14 @@ func (c *stubConn) allProgressRows() []allProgressFixtureRow {
 	defer c.data.mu.Unlock()
 
 	var out []allProgressFixtureRow
-	for _, ref := range c.data.lessons {
-		row, ok := c.data.progress[ref.id]
-		if !ok {
-			continue
+	for _, refs := range c.data.lessons {
+		for _, ref := range refs {
+			row, ok := c.data.progress[ref.id]
+			if !ok {
+				continue
+			}
+			out = append(out, allProgressFixtureRow{topicSlug: ref.topic, conceptSlug: ref.concept, row: row})
 		}
-		out = append(out, allProgressFixtureRow{topicSlug: ref.topic, conceptSlug: ref.concept, row: row})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].topicSlug != out[j].topicSlug {

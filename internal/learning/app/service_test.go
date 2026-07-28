@@ -48,20 +48,25 @@ func (f *fakeRepository) withProgress(topic, concept string, state domain.ChunkS
 	return f
 }
 
-func (f *fakeRepository) Transition(_ context.Context, topic, concept string, decide func(ProgressEntry, bool, bool) (ProgressDecision, error)) (ProgressEntry, error) {
+// Transition mirrors infra's own contract: a missing lesson is answered
+// directly, never routed through decide, the same way Repository.Transition
+// never calls decide for a lesson it never locked.
+func (f *fakeRepository) Transition(_ context.Context, topic, concept string, decide func(ProgressEntry, bool) (ProgressDecision, error)) (ProgressEntry, error) {
 	if f.transitionErr != nil {
 		return ProgressEntry{}, f.transitionErr
 	}
 
 	k := conceptKey{topic, concept}
-	lessonExists := f.lessons[k]
+	if !f.lessons[k] {
+		return ProgressEntry{}, ErrLessonNotFound
+	}
 	row, hasProgress := f.rows[k]
 	current := ProgressEntry{Topic: topic, Concept: concept}
 	if hasProgress {
 		current.State, current.FirstPassedAt, current.LastReadAt = row.state, row.firstPassedAt, row.lastReadAt
 	}
 
-	decision, err := decide(current, lessonExists, hasProgress)
+	decision, err := decide(current, hasProgress)
 	if err != nil {
 		return ProgressEntry{}, err
 	}

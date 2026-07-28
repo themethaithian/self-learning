@@ -14,13 +14,16 @@ import (
 )
 
 const (
-	// selectLessonForUpdateSQL locks the lesson row for the rest of the
+	// selectLessonForUpdateSQL locks the lessons row for the rest of the
 	// transaction, serializing every concurrent Transition for this concept
 	// through one writer at a time — two racing PUTs (e.g. one from opening
 	// a lesson, one from Finish) can never both decide from the same stale
-	// read. It also returns the DB's own slugs, not the caller's, so
-	// case-insensitive collation can never surface the caller's casing back
-	// out of a response.
+	// read. "FOR UPDATE OF l" (not bare FOR UPDATE, which would lock every
+	// joined table — every chapter row of the topic, via concepts/chapters)
+	// scopes the lock to lessons alone, so two PUTs on different concepts in
+	// the same topic never serialize against each other. It also returns
+	// the DB's own slugs, not the caller's, so case-insensitive collation
+	// can never surface the caller's casing back out of a response.
 	selectLessonForUpdateSQL = `
 SELECT l.id, t.slug, co.slug
 FROM lessons l
@@ -28,7 +31,7 @@ JOIN concepts co ON co.id = l.concept_id
 JOIN chapters ch ON ch.id = co.chapter_id
 JOIN topics t ON t.id = ch.topic_id
 WHERE t.slug = ? AND co.slug = ?
-FOR UPDATE`
+FOR UPDATE OF l`
 
 	selectProgressByLessonIDSQL = `
 SELECT state, first_passed_at, last_read_at
@@ -54,9 +57,8 @@ UPDATE lesson_progress
 SET last_read_at = ?
 WHERE lesson_id = ?`
 
-	// selectAllProgressSQL starts from lesson_progress itself (inner joins
-	// outward), so only concepts with a progress row are ever returned —
-	// absence means "not started", per the ticket's response contract.
+	// selectAllProgressSQL: absence means "not started", per the ticket's
+	// response contract.
 	selectAllProgressSQL = `
 SELECT t.slug, co.slug, lp.state, lp.first_passed_at, lp.last_read_at
 FROM lesson_progress lp
@@ -79,7 +81,7 @@ func NewRepository(db *sql.DB) *Repository {
 func (r *Repository) Transition(
 	ctx context.Context,
 	topicSlug, conceptSlug string,
-	decide func(current learningapp.ProgressEntry, lessonExists, hasProgress bool) (learningapp.ProgressDecision, error),
+	decide func(current learningapp.ProgressEntry, hasProgress bool) (learningapp.ProgressDecision, error),
 ) (learningapp.ProgressEntry, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -101,17 +103,11 @@ func transitionTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	topicSlug, conceptSlug string,
-	decide func(current learningapp.ProgressEntry, lessonExists, hasProgress bool) (learningapp.ProgressDecision, error),
+	decide func(current learningapp.ProgressEntry, hasProgress bool) (learningapp.ProgressDecision, error),
 ) (learningapp.ProgressEntry, error) {
-	var lessonID int64
-	var canonicalTopic, canonicalConcept string
-	err := tx.QueryRowContext(ctx, selectLessonForUpdateSQL, topicSlug, conceptSlug).Scan(&lessonID, &canonicalTopic, &canonicalConcept)
+	lessonID, canonicalTopic, canonicalConcept, err := lockLesson(ctx, tx, topicSlug, conceptSlug)
 	if errors.Is(err, sql.ErrNoRows) {
-		_, decideErr := decide(learningapp.ProgressEntry{}, false, false)
-		if decideErr == nil {
-			return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: decide accepted a missing lesson", topicSlug, conceptSlug)
-		}
-		return learningapp.ProgressEntry{}, decideErr
+		return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: %w", topicSlug, conceptSlug, learningapp.ErrLessonNotFound)
 	}
 	if err != nil {
 		return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: lock lesson: %w", topicSlug, conceptSlug, err)
@@ -122,7 +118,7 @@ func transitionTx(
 		return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: %w", topicSlug, conceptSlug, err)
 	}
 
-	decision, err := decide(current, true, hasProgress)
+	decision, err := decide(current, hasProgress)
 	if err != nil {
 		return learningapp.ProgressEntry{}, err
 	}
@@ -150,6 +146,38 @@ func transitionTx(
 		return learningapp.ProgressEntry{}, fmt.Errorf("infra: transition %s/%s: progress row missing immediately after write", topicSlug, conceptSlug)
 	}
 	return final, nil
+}
+
+// lockLesson resolves and locks the lesson for (topicSlug, conceptSlug),
+// returning sql.ErrNoRows when none matches. concepts is unique per
+// (chapter_id, slug), not per topic, so two chapters of the same topic
+// sharing a concept slug would make this query match more than one lesson —
+// Query (not QueryRow, which would silently pick one) lets that be detected
+// and fail loudly instead of ever locking and writing the wrong lesson.
+func lockLesson(ctx context.Context, tx *sql.Tx, topicSlug, conceptSlug string) (id int64, canonicalTopic, canonicalConcept string, err error) {
+	rows, err := tx.QueryContext(ctx, selectLessonForUpdateSQL, topicSlug, conceptSlug)
+	if err != nil {
+		return 0, "", "", err
+	}
+	defer rows.Close()
+
+	found := false
+	for rows.Next() {
+		if found {
+			return 0, "", "", fmt.Errorf("concept %s/%s matches more than one lesson — concept slugs are unique per chapter, not per topic", topicSlug, conceptSlug)
+		}
+		if err := rows.Scan(&id, &canonicalTopic, &canonicalConcept); err != nil {
+			return 0, "", "", err
+		}
+		found = true
+	}
+	if err := rows.Err(); err != nil {
+		return 0, "", "", err
+	}
+	if !found {
+		return 0, "", "", sql.ErrNoRows
+	}
+	return id, canonicalTopic, canonicalConcept, nil
 }
 
 func queryProgressByLessonID(ctx context.Context, tx *sql.Tx, lessonID int64, topicSlug, conceptSlug string) (learningapp.ProgressEntry, bool, error) {

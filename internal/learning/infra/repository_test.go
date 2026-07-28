@@ -61,6 +61,31 @@ func TestRepositoryTransition_ScopedByBothSlugs(t *testing.T) {
 	}
 }
 
+// TestRepositoryTransition_DuplicateConceptSlugFailsLoudly pins S7:
+// concepts is unique per (chapter_id, slug), not per topic, so two chapters
+// of the same topic can legally share a concept slug in the real schema.
+// lockLesson must fail loudly (an error, never a write) rather than
+// silently picking one of the matching lessons the way QueryRow would.
+func TestRepositoryTransition_DuplicateConceptSlugFailsLoudly(t *testing.T) {
+	data := newStubData()
+	data.seedLesson("ddia", "duplicated-slug", 1)
+	data.seedLesson("ddia", "duplicated-slug", 2)
+	db := openStubDB(t, data)
+	svc := learningapp.NewService(NewRepository(db))
+
+	_, err := svc.SetProgress(context.Background(), "ddia", "duplicated-slug", "in_progress")
+	if err == nil {
+		t.Fatal("SetProgress() expected an error for a concept slug matching two lessons, got nil")
+	}
+
+	if _, ok := data.progressOf(1); ok {
+		t.Error("lesson 1 got a progress row written despite the ambiguous match")
+	}
+	if _, ok := data.progressOf(2); ok {
+		t.Error("lesson 2 got a progress row written despite the ambiguous match")
+	}
+}
+
 func TestRepositoryTransition_FreshInProgress(t *testing.T) {
 	data := newStubData()
 	data.seedLesson("ddia", "b-trees", 1)
@@ -190,10 +215,7 @@ func TestRepositoryTransition_CanonicalSlugsReturned(t *testing.T) {
 	db := openStubDB(t, data)
 	repo := NewRepository(db)
 
-	entry, err := repo.Transition(context.Background(), "DDIA", "B-Trees", func(_ learningapp.ProgressEntry, lessonExists, _ bool) (learningapp.ProgressDecision, error) {
-		if !lessonExists {
-			t.Fatal("lessonExists = false, want true (case-insensitive lookup should find it)")
-		}
+	entry, err := repo.Transition(context.Background(), "DDIA", "B-Trees", func(_ learningapp.ProgressEntry, _ bool) (learningapp.ProgressDecision, error) {
 		return learningapp.ProgressDecision{State: mustChunkState(t, "in_progress")}, nil
 	})
 	if err != nil {
@@ -252,17 +274,22 @@ func TestRepositoryAllProgress_Empty(t *testing.T) {
 	}
 }
 
-// TestRepositoryTransition_ConcurrentRaceNeverContradicts is R3's proof: two
-// racing writers on a fresh concept — PUT in_progress (as fired when a
-// lesson opens) and PUT passed (Finish) — must never leave the row as
-// state=in_progress with a non-nil first_passed_at. Before the
-// SELECT ... FOR UPDATE fix, whichever write committed last won
-// unconditionally (state = new.state regardless of the prior row), so an
-// in_progress write landing after a passed write produced exactly that
-// contradiction. The stub's per-lesson lock models the row lock that now
-// prevents it: both possible orderings converge on state=passed (either
-// directly, or via the forward-only clamp when in_progress loses the race),
-// which many iterations exercise across real goroutine scheduling.
+// TestRepositoryTransition_ConcurrentRaceNeverContradicts checks a
+// conditional, not an unconditional guarantee: IF InnoDB really serializes
+// two transactions at the SELECT ... FOR UPDATE lock on the same row — a
+// documented locking-read guarantee this test cannot itself exercise, since
+// the stub's per-lesson sync.Mutex only stands in for it — THEN
+// decideTransition's logic converges on state=passed under either ordering
+// for two racing writers on a fresh concept: PUT in_progress (as fired when
+// a lesson opens) and PUT passed (Finish). Before the fix, the read and the
+// write were two separate, unsynchronized statements, so whichever wrote
+// last won unconditionally (state = new.state) regardless of what the other
+// had just committed — an in_progress write landing after a passed write
+// left state=in_progress with first_passed_at already non-nil. Neither this
+// test nor this ticket's e2e curl runs establish the InnoDB-side premise:
+// the critical section is a few milliseconds, so shell-launched concurrent
+// requests essentially never actually interleave: that premise rests on
+// InnoDB's documented FOR UPDATE semantics, not on any test here.
 func TestRepositoryTransition_ConcurrentRaceNeverContradicts(t *testing.T) {
 	const iterations = 50
 	for i := 0; i < iterations; i++ {
@@ -273,24 +300,32 @@ func TestRepositoryTransition_ConcurrentRaceNeverContradicts(t *testing.T) {
 		ctx := context.Background()
 
 		var wg sync.WaitGroup
+		var inProgressErr, passedErr error
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			svc.SetProgress(ctx, "ddia", "b-trees", "in_progress")
+			_, inProgressErr = svc.SetProgress(ctx, "ddia", "b-trees", "in_progress")
 		}()
 		go func() {
 			defer wg.Done()
-			svc.SetProgress(ctx, "ddia", "b-trees", "passed")
+			_, passedErr = svc.SetProgress(ctx, "ddia", "b-trees", "passed")
 		}()
 		wg.Wait()
 		db.Close()
+
+		if inProgressErr != nil {
+			t.Fatalf("iteration %d: in_progress goroutine error: %v", i, inProgressErr)
+		}
+		if passedErr != nil {
+			t.Fatalf("iteration %d: passed goroutine error: %v", i, passedErr)
+		}
 
 		row, ok := data.progressOf(1)
 		if !ok {
 			t.Fatalf("iteration %d: no progress row after concurrent transitions", i)
 		}
-		if row.state == "in_progress" && row.firstPassedAt != nil {
-			t.Fatalf("iteration %d: contradictory row: state=in_progress but first_passed_at=%v is set", i, *row.firstPassedAt)
+		if row.state != "passed" {
+			t.Fatalf("iteration %d: state = %q, want passed — both orderings must converge here (an in_progress goroutine erroring silently would otherwise leave state=in_progress and pass this test)", i, row.state)
 		}
 	}
 }
@@ -303,9 +338,19 @@ JOIN concepts co ON co.id = l.concept_id
 JOIN chapters ch ON ch.id = co.chapter_id
 JOIN topics t ON t.id = ch.topic_id
 WHERE t.slug = ? AND co.slug = ?
-FOR UPDATE`
+FOR UPDATE OF l`
 	if selectLessonForUpdateSQL != want {
 		t.Errorf("selectLessonForUpdateSQL =\n%q\nwant\n%q", selectLessonForUpdateSQL, want)
+	}
+}
+
+func TestSelectProgressByLessonIDSQLShape(t *testing.T) {
+	want := `
+SELECT state, first_passed_at, last_read_at
+FROM lesson_progress
+WHERE lesson_id = ?`
+	if selectProgressByLessonIDSQL != want {
+		t.Errorf("selectProgressByLessonIDSQL =\n%q\nwant\n%q", selectProgressByLessonIDSQL, want)
 	}
 }
 
@@ -360,8 +405,10 @@ func TestLessonProgressTableNameConsistency(t *testing.T) {
 	}
 
 	// selectLessonForUpdateSQL is deliberately excluded: it locks the
-	// lessons row (a fresh concept has no lesson_progress row yet to lock),
-	// and TestSelectLessonForUpdateSQLShape already pins its exact text.
+	// lessons row and never names lesson_progress at all (a fresh concept
+	// has no lesson_progress row yet to lock) — TestSelectLessonForUpdateSQLShape
+	// pins its exact text instead. Every statement below does reference
+	// lesson_progress and has its own *SQLShape test besides.
 	stmts := map[string]string{
 		"selectProgressByLessonIDSQL": selectProgressByLessonIDSQL,
 		"upsertProgressByLessonIDSQL": upsertProgressByLessonIDSQL,

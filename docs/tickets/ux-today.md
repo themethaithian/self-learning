@@ -157,17 +157,55 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
     ไม่ได้ ต้องเทียบ SQL string ทั้งก้อนแบบ exact literal แทน `strings.Contains` แยกท่อน?
   - ทำไม `lesson_progress.state` ENUM ยังเก็บค่า `'locked'` ไว้ ทั้งที่ตอนนี้ ticket นี้เขียนมันได้แล้ว
     (ผ่าน unlock-then-pass) แต่ก็ยังไม่มี path ไหนของ ticket นี้ที่ **สร้าง** row สถานะ `locked` เอง?
+- **รอบ review ที่ 3 (เพิ่มเติม)**:
+  - `selectProgressByLessonIDSQL` (อ่าน progress หลังล็อก) ไม่มี shape test มาก่อน — ลอง mutate
+    `WHERE lesson_id = ?` → `WHERE id = ?` (คอลัมน์ทั้งคู่เป็น `BIGINT UNSIGNED` บนตารางเดียวกัน)
+    behavioral test ทั้งชุดเขียวผ่านหมด มีแค่ `TestSelectProgressByLessonIDSQLShape` (เพิ่มใหม่รอบนี้)
+    เท่านั้นที่จับได้ — บั๊ก class เดียวกับรอบ 1's R2 เป๊ะ
+  - `FOR UPDATE` เดี่ยว ๆ ล็อกทุกตารางใน JOIN (ไม่ใช่แค่ `lessons`) — เพราะ `concepts.slug` ไม่มี
+    index เดี่ยว (unique key คือ `(chapter_id, slug)`) แปลว่า query น่าจะไล่ `topics→chapters→concepts`
+    แล้ว X-lock ทุกแถว `chapters` ของ topic นั้นทั้งหมด บวก gap lock ใน `concepts` — เปลี่ยนเป็น
+    `FOR UPDATE OF l` (MySQL 8.0.1+, 8.4 ที่ pin ไว้รองรับ) ให้ล็อกเฉพาะแถว `lessons` จริง ๆ
+    ยืนยันแล้วว่า parse ผ่านและยัง serialize ได้จริงบน MySQL 8.4 ของ stack (ดู e2e ด้านล่าง)
+  - `lockLesson` เปลี่ยนจาก `QueryRow` เป็น `Query` + เช็คจำนวนแถว — ถ้า concept slug ซ้ำกันข้าม
+    chapter ในหนึ่ง topic (ซึ่ง schema อนุญาตจริง ๆ) จะ error ทันทีแทนที่จะเงียบ ๆ เลือกแถวใดแถวหนึ่ง
+  - `decide` callback ตัด `lessonExists bool` ออก — infra คืน `ErrLessonNotFound` ตรง ๆ เมื่อ
+    `lockLesson` หา lesson ไม่เจอ ไม่ต้องเรียก `decide` เพื่อ "ถาม" error string อีกต่อไป (ของเดิมมี
+    branch `if decideErr == nil` ที่ unreachable และถ้าวันหน้ามี writer ตัวที่สอง (`Grader` port)
+    ที่ decide คืน `nil` เผลอ จะกลายเป็น 500 ที่ handler map เป็น 404 ไม่ได้)
+  - shape check ของ slug ดึงออกมาเป็น `domain.IsValidSlugShape` (exported, มี test ของตัวเอง)
+    แทนที่จะยืม `domain.NewLessonRef` (concept-specific ตาม doc comment) มาเช็ค topic slug แล้วทิ้งค่า
+  - stub driver: เช็ค `c.tx == nil` **ก่อน** acquire lock เสมอ (ไม่ใช่หลัง) — กัน regression ที่ลบ
+    transaction ทิ้งจากที่จะ hang การ test 10 นาทีแทนที่จะ fail ทันที
+  - concurrency test (`TestRepositoryTransition_ConcurrentRaceNeverContradicts`) แก้ 2 จุด: (1)
+    comment เดิมเรียกตัวเองว่า "R3's proof" เกินจริง — ที่จริงพิสูจน์แค่ข้อความมีเงื่อนไข: **ถ้า** MySQL
+    serialize ที่ `FOR UPDATE` จริง (พิสูจน์ด้วย reasoning จาก InnoDB semantics ไม่ใช่ test ไหนเลย
+    รวมถึง curl 10 คู่ใน e2e ที่ timing สั้นเกินจะ interleave จริง) **แล้ว** logic ถึงจะ converge ที่
+    `passed`; (2) เดิม assert แค่ "ไม่ contradictory" ทำให้ถ้า `passed` goroutine error เงียบ ๆ ทุกครั้ง
+    (เหลือ `state=in_progress, first_passed_at=nil`) test จะยังผ่าน — แก้เป็น capture error ทั้งสอง
+    goroutine + assert `state == "passed"` ตรง ๆ
 - **Known debt (บันทึกไว้ ยังไม่แก้ในรอบนี้)**:
-  - "`first_passed_at` write-once" เป็น invariant ที่มีอยู่แค่ใน SQL (`COALESCE` ใน
-    `ON DUPLICATE KEY UPDATE`) — `domain.LessonProgress` และ `app.ProgressEntry` ไม่ได้ model
-    concept นี้ไว้เลย ถ้าวันหนึ่งมี writer อื่นที่ไม่ผ่าน SQL statement นี้ (เช่น import/backfill
-    script) กฎนี้จะหายไปเงียบ ๆ
+  - "`first_passed_at` write-once" เป็น invariant ที่มีอยู่แค่ใน infra (`decision.State.IsPassed()`
+    + `COALESCE` ใน SQL) — `domain.LessonProgress` และ `app.ProgressEntry` ไม่ได้ model concept นี้
+    ไว้เลย คำตอบที่ตรงกับความจริงของ "domain เป็นเจ้าของกฎทุกข้อไหม": forward-only — ใช่;
+    first-passed-at write-once — ไม่ใช่ (infra เป็นเจ้าของ); fresh-row path — bypass domain
+    transitions ไปเลยตรง ๆ (ไม่ผ่าน `Unlock`/`MarkPassed`)
+  - `Repository.Transition` ยังรับ raw string (`topicSlug, conceptSlug string`) ไม่ใช่ value object —
+    caller ใหม่ในอนาคตที่เรียก `Transition` ตรง ๆ (ข้าม `Service.SetProgress`) จะข้าม slug validation
+    ไปเลยโดยไม่รู้ตัว — `TestRepositoryTransition_CanonicalSlugsReturned` สาธิตพฤติกรรมนี้อยู่แล้ว
+    (เรียก `repo.Transition` ตรง ๆ ด้วย `"DDIA"`/`"B-Trees"` แล้วผ่าน เพราะ shape validation อยู่ที่
+    `Service` เท่านั้น) — การแก้แบบเต็ม (thread VO ผ่าน `Transition`) เป็นงานใหญ่กว่าที่ตัดสินใจไม่ทำรอบนี้
   - `concepts` unique key คือ `(chapter_id, slug)` ไม่ใช่ต่อ topic — สองบทใน topic เดียวกันที่ใช้
     concept slug ซ้ำกันจะทำให้ query ของ ticket นี้ (JOIN topics→chapters→concepts บน
     `t.slug + co.slug`) แมตช์ได้มากกว่า 1 แถว ตอนนี้ยังไม่มี concept slug ซ้ำแบบนี้ใน
     `content/curriculum/*.json` จริง และ identity model นี้สืบทอดมาจาก `lessonreader.go` เดิม
-    (curriculum's read path) แต่ UX-4 เปลี่ยนมันจาก read-only ไปเป็น **write path** แล้ว — ถ้าจะแก้
-    ต้องคิดเรื่อง unique constraint ใหม่ทั้งระบบ ไม่ใช่แค่ ticket นี้
+    (curriculum's read path) แต่ UX-4 เปลี่ยนมันจาก read-only ไปเป็น **write path** แล้ว — mitigate
+    แล้วด้วย `lockLesson` fail loudly (error แทนเขียนแถวผิด) แต่ยังไม่ได้แก้ schema/unique
+    constraint จริง — ต้องคิดใหม่ทั้งระบบ ไม่ใช่แค่ ticket นี้
+  - lock-wait timeout / deadlock (MySQL error 1205/1213) จาก `FOR UPDATE OF l` ยังไม่ map เป็น
+    status ที่วินิจฉัยได้ (เช่น 409/503) — ตอนนี้ตกไปที่ 500 ทั่วไปเหมือน error อื่น ๆ; เคสที่จะเจอจริง
+    คือรัน `import-lessons`/`import-curriculum` พร้อม API รับ traffic (lock wait default 50s ใกล้
+    `writeTimeout = 60s` ของ server พอสมควร)
 - Status: `implemented, PR pending`
 
 ## UX-5 — Reader loop: breadcrumb + finish + next

@@ -52,16 +52,12 @@ type ProgressDecision struct {
 // Repository is the learning read/write port. infra provides the MySQL
 // adapter; tests provide a fake.
 type Repository interface {
-	// Transition locks topicSlug/conceptSlug's row for one transaction and
-	// calls decide with its current progress, so a decision can never be
-	// made from a stale read — e.g. two racing PUTs, one from opening a
-	// lesson and one from Finish, always see whatever the other one already
-	// committed instead of interleaving into a state/first_passed_at
-	// contradiction. lessonExists is false when there is no lesson row;
-	// decide must then return an error, since there is nothing to write.
-	// hasProgress is false when the lesson exists but no lesson_progress row
-	// has been written yet.
-	Transition(ctx context.Context, topicSlug, conceptSlug string, decide func(current ProgressEntry, lessonExists, hasProgress bool) (ProgressDecision, error)) (ProgressEntry, error)
+	// Transition calls decide with topicSlug/conceptSlug's current progress.
+	// decide only ever runs once the lesson is confirmed to exist — a
+	// missing lesson is Transition's own ErrLessonNotFound, never routed
+	// through decide. hasProgress is false when the lesson exists but no
+	// lesson_progress row has been written yet.
+	Transition(ctx context.Context, topicSlug, conceptSlug string, decide func(current ProgressEntry, hasProgress bool) (ProgressDecision, error)) (ProgressEntry, error)
 
 	AllProgress(ctx context.Context) ([]ProgressEntry, error)
 }
@@ -101,10 +97,7 @@ func (s Service) SetProgress(ctx context.Context, topicSlug, conceptSlug, rawSta
 		return ProgressEntry{}, err
 	}
 
-	entry, err := s.repo.Transition(ctx, topicSlug, conceptSlug, func(current ProgressEntry, lessonExists, hasProgress bool) (ProgressDecision, error) {
-		if !lessonExists {
-			return ProgressDecision{}, ErrLessonNotFound
-		}
+	entry, err := s.repo.Transition(ctx, topicSlug, conceptSlug, func(current ProgressEntry, hasProgress bool) (ProgressDecision, error) {
 		if !hasProgress {
 			return ProgressDecision{State: requested}, nil
 		}
@@ -164,11 +157,8 @@ func parseRequestedState(raw string) (domain.ChunkState, error) {
 	return domain.NewChunkState(raw)
 }
 
-// validateTopicSlugShape borrows domain.LessonRef's shape check (mirrors
-// curriculum.Slug's rules) since this bounded context has no separate topic
-// slug type — a topic slug and a concept slug are the same shape.
 func validateTopicSlugShape(topicSlug string) error {
-	if _, err := domain.NewLessonRef(topicSlug); err != nil {
+	if !domain.IsValidSlugShape(topicSlug) {
 		return fmt.Errorf("%w: %q", ErrInvalidSlug, topicSlug)
 	}
 	return nil
