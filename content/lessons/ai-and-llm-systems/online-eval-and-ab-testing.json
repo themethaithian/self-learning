@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "online-eval-and-ab-testing",
+  "version": 1,
+  "title_en": "Online Evaluation and A/B Testing",
+  "est_minutes": 8,
+  "body_md": "# Online Evaluation and A/B Testing\n\n## ทำไมถึงสำคัญ\n\nOffline eval บอกได้แค่ว่า prompt ใหม่ทำได้ดีกับเคสที่ *เราคิดออก* — traffic จริงมี distribution ที่ golden set ไม่มีวันครอบคลุมหมด (คำถามที่ไม่เคยเห็น, ภาษาปนกัน, ลูกค้าพิมพ์มาครึ่งประโยค, เคสที่โผล่มาเฉพาะช่วงโปรโมชัน). ทีมที่ ship ด้วย offline score อย่างเดียวจึงเจอบ่อยว่า \"คะแนนขึ้น แต่ลูกค้ากดหา human agent มากกว่าเดิม\". **Online evaluation คือการวัดผลกับ user จริงบน traffic จริง แล้วผูกคุณภาพของโมเดลเข้ากับ metric ที่ธุรกิจสนใจ** — เป็นด่านสำคัญที่สุดที่ตอบได้ว่าของใหม่ \"ดีกว่า\" ในความหมายที่มีคนได้ประโยชน์จริง.\n\nบทนี้เป็นเรื่องการวัดใน production; ชุดเคสคัดสรร/regression suite ก่อน deploy อยู่ที่ `golden-sets-and-offline-eval` และเหตุผลว่าทำไมการวัด LLM ยากตั้งแต่ต้นอยู่ที่ `why-llm-eval-is-hard`.\n\n## แก่นของแนวคิด\n\n### 1. signal จาก production มีสองชนิด\n\n**Explicit** — user บอกตรง ๆ: thumbs up/down, rating, คำถามปิดท้ายว่า \"แก้ปัญหาให้คุณได้ไหม\". ตรงประเด็นที่สุด แต่ response rate ต่ำและมี **selection bias**: คนที่ยอมกดคือคนที่โกรธมากหรือประทับใจมาก ส่วนกลาง ๆ เงียบหายไป. ดังนั้นห้ามอ่านสัดส่วน thumbs-down เป็น error rate ของระบบ — ใช้เทียบระหว่าง variant ในช่วงเวลาเดียวกันจะปลอดภัยกว่าใช้เป็นตัวเลขสัมบูรณ์.\n\n**Implicit** — derive จากพฤติกรรมที่เกิดอยู่แล้ว: task completion rate, escalation/handoff ไปหา human (กลไกการส่งต่ออยู่ที่ `handoff-orchestration`), containment/deflection rate คือสัดส่วนบทสนทนาที่จบได้โดยไม่ต้องส่งต่อคน (บริบท contact center อยู่ที่ `contact-center-flows`), retry/rephrase คือ user ถามซ้ำด้วยคำใหม่, conversation length. ข้อดีคือเก็บได้ทุก session ไม่ต้องรอ user ยอมกดอะไร; ข้อเสียคือ **ตีความยาก** — บทสนทนายาวขึ้นแปลว่า engage ดีขึ้น หรือวนหาคำตอบไม่เจอ? implicit signal ตัวเดียวแทบไม่เคยตอบได้ ต้องอ่านเป็นชุด.\n\nหลักปฏิบัติ: เลือก metric ตัดสิน (primary) ไม่กี่ตัว พร้อม **guardrail metric ที่ห้ามแย่ลง** (latency, cost ต่อ conversation, escalation rate) แล้ว**ประกาศก่อนเริ่มทดลอง** ไม่งั้นสุดท้ายจะไปหยิบตัวเลขที่เข้าข้างตัวเองมาเล่าทีหลัง.\n\n### 2. A/B test — เป้าหมายคือ \"เปรียบเทียบ\"\n\nสุ่มแบ่ง traffic เป็น control (ของเดิม) กับ treatment (prompt / model / retrieval config ใหม่) แล้ววัด metric ที่ประกาศไว้. เงื่อนไขที่ทำให้ผลเชื่อถือได้:\n\n- **random assignment ระดับ user หรือ session** (เช่น hash ของ customer_id) และต้อง sticky ตลอดการทดลอง — ถ้าสุ่มรายrequest user คนเดียวจะเจอสองเวอร์ชันสลับกัน ประสบการณ์เพี้ยนและ metric ระดับบทสนทนาแปลผลไม่ได้.\n- **sample ต้องพอ** — effect เล็กต้องใช้ traffic มาก; ประเมิน sample size ล่วงหน้า ไม่ใช่รันไปเรื่อย ๆ แล้วค่อยดู.\n- **ห้าม peek แล้วหยุดตอนตัวเลขถูกใจ** — จ้องผลทุกวันแล้วหยุดวันที่ treatment นำ ทำให้โอกาส false positive สูงกว่าที่ตั้งใจไว้มาก. ทางแก้คือกำหนดระยะเวลา/sample size ล่วงหน้า หรือใช้วิธีวิเคราะห์ที่ออกแบบมาให้ดูระหว่างทางได้.\n- **เปลี่ยนทีละอย่าง** — เปลี่ยน prompt พร้อมสลับ model ในรอบเดียว = ได้ผลแต่ไม่รู้ว่าอะไรทำให้ดีขึ้น.\n\n### 3. Canary / staged rollout — เป้าหมายคือ \"ลดความเสี่ยง\"\n\nปล่อยเวอร์ชันใหม่ให้ traffic ส่วนน้อยก่อน เฝ้า metric สุขภาพระบบ (error rate, latency, cost, escalation ที่พุ่งผิดปกติ) แล้วค่อยขยายเป็นขั้น ๆ พร้อมทางกลับ (rollback) ที่กดได้เร็ว.\n\nความต่างที่ถูกถามบ่อยในสัมภาษณ์: **A/B test ตอบคำถามว่า \"เวอร์ชันไหนดีกว่า\"** จึงต้องการ statistical power และต้องรันจนครบ; **canary จำกัดความเสียหายตอน rollout** จึงต้องการแค่ตรวจจับของพังให้เร็วและถอยได้. canary ที่ traffic น้อยมาก ๆ จับ regression หยาบ ๆ ได้ดี แต่ไม่มี power พอจะสรุปว่า \"คำตอบดีขึ้นเล็กน้อย\" — คนละเครื่องมือ ใช้แทนกันไม่ได้ แต่ใช้ต่อกันได้: ชนะใน A/B → ค่อย staged rollout.\n\n### 4. ไม่มี log = analyze อะไรไม่ได้เลย\n\nทุกข้อข้างบนพังทันทีถ้าไม่ได้ log request จริง: input, output, prompt version, model/config version, variant ที่ถูก assign, retrieval context ที่ใช้, latency, cost และ signal ที่ตามมาทีหลัง (ลูกค้ากด thumbs down, ticket ถูก escalate ในอีกสิบนาที). ทั้งหมดต้อง join ย้อนหลังได้ด้วย id เดียวกัน ไม่งั้นจะเห็นแค่ตัวเลขรวมแต่เปิดดูเคสที่แย่ไม่ได้ — และ \"prompt version ที่ระบุได้ชัด\" คือเงื่อนไขจำเป็นของ A/B ไม่ใช่ของแถม (รายละเอียด tracing/observability เต็ม ๆ อยู่ในบท production LLM systems).\n\n```mermaid\nflowchart TD\n  T[\"Production traffic\"] --> R{\"Random assignment by user id hash\"}\n  R -->|\"control\"| A[\"Variant A: prompt v1\"]\n  R -->|\"treatment\"| B[\"Variant B: prompt v2\"]\n  A --> L[\"Log: input, output, prompt version, variant\"]\n  B --> L\n  L --> I[\"Implicit: escalation, retry, containment\"]\n  L --> E[\"Explicit: thumbs up/down, rating\"]\n  I --> M[\"Compare pre-registered metric + guardrails\"]\n  E --> M\n  M --> D{\"Treatment wins and sample enough?\"}\n  D -->|\"yes\"| RO[\"Staged rollout with canary + rollback\"]\n  D -->|\"no\"| K[\"Keep control, iterate offline\"]\n```\n\n## ตัวอย่าง: support assistant ของทีม CRM\n\nprompt เดิมตอบกว้างไป ลูกค้าต้องถามต่อหลายรอบ. ทีมเขียน prompt ใหม่ที่บังคับให้ขอ order id ก่อนตอบเรื่องสถานะพัสดุ.\n\n1. **Offline ก่อน**: รัน golden set ผ่าน คะแนน rubric ขึ้น (จะให้คนหรือ judge model ให้คะแนนก็เป็นเรื่องของ `llm-as-judge`) — ผ่านตรงนี้แค่แปลว่า \"ไม่ regress ในเคสที่เรารู้จัก\" ยังไม่ใช่หลักฐานว่าดีขึ้นจริง.\n2. **ประกาศ metric ก่อนเริ่ม**: primary = escalation rate ไปหา human agent (ต่ำกว่า = ดีกว่า); guardrail = thumbs-up rate ห้ามลด, p95 latency ห้ามเพิ่ม, cost ต่อ conversation ห้ามเพิ่ม.\n3. **Assignment**: hash(customer_id) → control/treatment แบบ sticky; ทุก request log `prompt_version` + `variant` + conversation id.\n4. **ผลที่ได้**: escalation rate ลดลงจริง — แต่ conversation length เพิ่ม และ thumbs-up rate ลด เพราะ bot ขอ order id ทุกครั้ง แม้ลูกค้าจะพิมพ์มาให้แล้วในประโยคแรก. ถ้าดู metric เดียวจะสรุปว่า \"ดีขึ้น\" แล้ว ship ของที่ลูกค้ารำคาญออกไปเต็มระบบ.\n5. **รอบถัดไป**: แก้ prompt ให้ข้ามขั้นตอนถามเมื่อมี order id ในข้อความแล้ว → ทดลองใหม่ → เมื่อชนะจริงค่อย staged rollout พร้อมเฝ้า error/latency เพื่อดักเคสที่ไม่โผล่ระหว่างทดลอง.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"offline eval ผ่านแล้ว ปลอดภัยที่จะ ship เต็ม\"** — golden set สะท้อนเคสที่ทีมคิดออก ไม่ใช่ distribution ของ traffic จริง.\n- **\"thumbs-down rate ต่ำ แปลว่าระบบดี\"** — explicit feedback มี selection bias และ response rate ต่ำ ใช้เป็นค่าคุณภาพสัมบูรณ์ไม่ได้.\n- **\"เห็นตัวเลขนำตั้งแต่วันที่สอง หยุดแล้วประกาศชนะได้\"** — นี่คือ peeking; ทำให้สรุปผิดว่ามี effect ทั้งที่เป็น noise.\n- **\"canary ก็คือ A/B test ฉบับย่อ\"** — คนละเป้าหมาย และ traffic ระดับ canary มักไม่มี power พอจะตัดสินคุณภาพ.\n\n## ขีดจำกัด / trade-off\n\n- **ต้องมี traffic พอ**: ระบบใหม่ที่ผู้ใช้น้อย A/B แทบไม่ให้ข้อสรุป — effect เล็กกว่า noise. ทางเลือกที่จริงกว่าคือ offline eval + canary + อ่าน production trace ด้วยคนเป็นรายเคส.\n- **ต้องยอมให้ user ส่วนหนึ่งเจอเวอร์ชันที่แย่กว่า** นั่นคือต้นทุนแท้จริงของ online eval. งานความเสี่ยงสูง (การเงิน, ข้อมูลส่วนบุคคล, คำแนะนำที่มีผลผูกพัน) ต้องมี guardrail ครบก่อนถึงจะเอามาทดลองกับ traffic จริงได้ — ไม่ใช่ทุกอย่างเหมาะกับการ A/B.\n- **ช้า**: ผลใช้เวลาหลายวันถึงหลายสัปดาห์ ไม่เหมาะกับ loop แก้ prompt รายชั่วโมง (นั่นคือหน้าที่ของ offline eval).\n- **แพงเชิงวิศวกรรม**: assignment ที่ sticky, logging pipeline, การ join signal ที่มาทีหลัง, dashboard, และการกันไม่ให้ experiment หลายตัวชนกัน.\n- **metric ที่วัดง่ายมักไม่ใช่สิ่งที่ต้องการจริง**: deflection rate สูงขึ้นอาจแปลว่าลูกค้ายอมแพ้เลิกถาม ไม่ใช่ปัญหาถูกแก้ — จึงต้องมี guardrail metric คู่เสมอ.\n- **interference ระหว่าง variant**: ถ้าสอง variant แชร์ทรัพยากรเดียวกัน (cache, คิวของ human agent) ผลของกลุ่มหนึ่งจะไปกระทบอีกกลุ่ม ทำให้การเทียบเพี้ยน.\n\n## มุมสัมภาษณ์\n\n- **\"prompt ใหม่ดีกว่าเดิมจริงไหม พิสูจน์ยังไง\"** → offline eval เป็นด่านกันของพัง, ตัดสินจริงด้วย online metric ที่ประกาศล่วงหน้า + guardrail.\n- **\"A/B test ต่างจาก canary ยังไง\"** → เปรียบเทียบ vs ลดความเสี่ยงตอน rollout; ต้องพูดได้ว่า canary ไม่มี power พอจะตัดสินคุณภาพ.\n- **\"ไม่มี ground truth ใน production จะวัดยังไง\"** → implicit signal (escalation, retry, containment) + sampled human review หรือ judge model บน production log.\n- **\"ทำไม thumbs up/down อย่างเดียวไม่พอ\"** → selection bias + response rate ต่ำ.\n- **\"จะรู้ได้ยังไงว่าไม่ได้หลอกตัวเอง\"** → กำหนด metric และ sample size ล่วงหน้า, random assignment ระดับ user, ไม่ peek แล้วหยุด, ดู guardrail metric ควบคู่เสมอ.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม offline eval ที่ผ่าน golden set แล้วจึงยังไม่พอ ต้องมี online evaluation อีก?",
+      "expected_answer": "เพราะ traffic จริงมี distribution ที่ golden set ไม่ครอบคลุม (เคสที่ทีมคิดไม่ถึง) และ offline score ไม่ได้บอกว่า metric ที่ธุรกิจสนใจดีขึ้นจริงหรือไม่",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อจำกัดสำคัญของ explicit feedback อย่าง thumbs up/down คืออะไร?",
+      "expected_answer": "มี selection bias เพราะคนที่ยอมกดมักเป็นกลุ่มสุดขั้ว",
+      "type": "mcq",
+      "options": [
+        "แทบไม่มีข้อจำกัด เพราะ thumbs-down ที่น้อยสะท้อนว่าระบบมีปัญหาน้อยจริง",
+        "มี selection bias เพราะคนที่ยอมกดมักเป็นกลุ่มสุดขั้ว",
+        "เก็บได้เฉพาะ session ที่ถูก escalate ไปหา human agent เท่านั้น"
+      ]
+    },
+    {
+      "q": "A/B test กับ canary release ต่างกันอย่างไรในแง่เป้าหมาย?",
+      "expected_answer": "canary เน้นลดความเสี่ยงตอน rollout ส่วน A/B เน้นเปรียบเทียบว่าเวอร์ชันไหนดีกว่า",
+      "type": "mcq",
+      "options": [
+        "canary ใช้ข้อมูล offline ส่วน A/B test ใช้ข้อมูลจาก production เท่านั้น",
+        "ทั้งสองมีเป้าหมายเดียวกันคือเปรียบเทียบเวอร์ชัน ต่างแค่สัดส่วน traffic ที่ปล่อยออกไป",
+        "canary เน้นลดความเสี่ยงตอน rollout ส่วน A/B เน้นเปรียบเทียบว่าเวอร์ชันไหนดีกว่า"
+      ]
+    },
+    {
+      "q": "ข้อใดคือ implicit signal?",
+      "expected_answer": "อัตราที่ user ถามซ้ำด้วยคำใหม่",
+      "type": "mcq",
+      "options": [
+        "อัตราที่ user ถามซ้ำด้วยคำใหม่",
+        "คะแนน rating ที่ user เลือกหลังจบบทสนทนา",
+        "ปุ่ม thumbs up/down ที่ user กดใต้คำตอบ"
+      ]
+    },
+    {
+      "q": "\"Peeking\" ในการทำ A/B test คืออะไร และทำไมจึงอันตราย?",
+      "expected_answer": "คือการคอยดูผลระหว่างทางแล้วหยุดการทดลองทันทีที่ตัวเลขถูกใจ ทำให้โอกาสสรุปผิดว่ามี effect (false positive) สูงกว่าที่ตั้งใจไว้ ทางแก้คือกำหนดระยะเวลา/sample size ล่วงหน้า",
+      "type": "short_answer"
+    }
+  ],
+  "references": [
+    {
+      "title": "Trustworthy Online Controlled Experiments: A Practical Guide to A/B Testing",
+      "source": "Kohavi, Tang, Xu — Cambridge University Press, 2020 (บทว่าด้วย OEC/metric design และ randomization)",
+      "why": "อ่านต้นตำรับของการออกแบบ A/B test ที่เชื่อถือได้: การเลือก metric ตัดสิน, guardrail metric, randomization unit"
+    },
+    {
+      "title": "Peeking at A/B Tests: Why It Matters, and What to Do About It",
+      "source": "Johari, Koomen, Pekelis, Walsh — KDD 2017",
+      "why": "อ่านว่าทำไมการดูผลระหว่างทางแล้วหยุดเองทำให้ false positive พุ่ง และมีวิธีวิเคราะห์แบบไหนรองรับ"
+    },
+    {
+      "title": "The Site Reliability Workbook — Canarying Releases",
+      "source": "Google SRE, The Site Reliability Workbook, บท Canarying Releases",
+      "why": "อ่านหลักการ staged rollout: เลือก metric ที่เฝ้า, ขนาด canary, และเงื่อนไขการ rollback"
+    },
+    {
+      "title": "CanaryRelease (bliki)",
+      "source": "Danilo Sato, 2014 — เผยแพร่บน bliki ของ Martin Fowler (martinfowler.com/bliki/CanaryRelease.html)",
+      "why": "อ่านสรุปสั้น ๆ ว่า canary release ต่างจากการทดลองเพื่อเปรียบเทียบอย่างไร"
+    }
+  ]
+}

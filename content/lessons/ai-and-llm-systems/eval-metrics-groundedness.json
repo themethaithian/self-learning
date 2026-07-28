@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "eval-metrics-groundedness",
+  "version": 1,
+  "title_en": "Evaluation Metrics and Groundedness",
+  "est_minutes": 10,
+  "body_md": "# Evaluation Metrics and Groundedness\n\n## ทำไมถึงสำคัญ\n\n\"โมเดลตอบผิด\" ไม่ใช่คำวินิจฉัย — มันคืออาการ. ในระบบที่ต่อ retrieval เข้ากับ generation คำตอบผิดหนึ่งอันเกิดได้จากคนละสาเหตุที่แก้คนละที่: เอกสารที่มีคำตอบไม่ถูกดึงเข้ามาเลย (retrieval), ดึงมาแล้วแต่โมเดลแต่งเพิ่ม (generation), หรือดึงมาถูกแต่ตัวเอกสารเองล้าสมัย (knowledge base). ถ้าวัดด้วยตัวเลขเดียวว่า \"accuracy 82%\" คุณจะไม่รู้ว่าต้องไปแก้อะไร — metric ชุดนี้จึงมีไว้เพื่อ *diagnose* ไม่ใช่แค่รายงาน.\n\n## แก่นของแนวคิด: metric สี่กลุ่มที่ต้องแยกกัน\n\n1. **Correctness / accuracy** — คำตอบตรงกับคำตอบที่ถูกต้องไหม. ต้องมี expected answer เทียบ จึงผูกกับ golden set (`golden-sets-and-offline-eval`) และวัดได้เฉพาะเคสที่เตรียมเฉลยไว้.\n2. **Groundedness (faithfulness)** — ทุกข้อความในคำตอบมี evidence รองรับใน context ที่ส่งให้โมเดลหรือไม่. จุดเด่นคือ **วัดได้โดยไม่ต้องรู้ความจริงของโลก** — มีคำตอบกับ context ก็ตรวจได้ จึงใช้กับ traffic จริงที่ไม่มีเฉลยได้ด้วย.\n3. **Hallucination rate** — สัดส่วนที่มี claim ซึ่งไม่มี support หรือขัดกับ context. เป็นด้านกลับเชิงปฏิบัติของ groundedness แต่ **ต้องนิยามหน่วยนับให้ชัด**: นับต่อ claim (12 claim ผิด 1 = ~8%) กับต่อ response (response นี้มี claim ผิดอย่างน้อยหนึ่ง = 100%) ให้ตัวเลขคนละโลก — เลขที่ไม่บอกหน่วยนับเทียบกับใครไม่ได้.\n4. **Retrieval metrics** — **context recall**: เอกสารที่จำเป็นต่อการตอบถูกดึงมาครบไหม; **context precision**: ใน context ที่ดึงมามีสัดส่วนที่เกี่ยวจริงเท่าไร และชิ้นที่เกี่ยวอยู่อันดับต้นไหม. สองตัวนี้วัด retriever ไม่ได้วัดโมเดล (กลไก retrieval อยู่ ch.4 `rag-pipeline-and-grounding`).\n\n### triage: retrieval ผิด หรือ generation ผิด\n\n```mermaid\nflowchart TD\n  A[\"Bad answer reported\"] --> B{\"Evidence present in retrieved context?\"}\n  B -->|no| R[\"Retrieval failure: fix chunking, embeddings, top-k\"]\n  B -->|yes| C{\"Every claim supported by that context?\"}\n  C -->|no| G[\"Generation failure: fix prompt, citations, abstain rule\"]\n  C -->|yes| D{\"Is the context itself correct and fresh?\"}\n  D -->|no| K[\"Knowledge base failure: fix source freshness\"]\n  D -->|yes| S[\"Grounded and correct: check answer relevance\"]\n```\n\nลำดับนี้สำคัญ: ถ้า context recall ต่ำอยู่แล้ว การไปปรับ prompt ให้โมเดล \"อย่าแต่ง\" จะทำให้ refusal rate พุ่งโดยคุณภาพไม่ดีขึ้น เพราะสาเหตุจริงอยู่คนละชั้น.\n\n## วัด groundedness ยังไงจริง ๆ: claim decomposition\n\n1. **แตกคำตอบเป็น atomic claim** — ประโยคหนึ่งอาจมีหลาย claim; แตกให้แต่ละอันตรวจได้เดี่ยว ๆ.\n2. **หา supporting span ใน context ของแต่ละ claim** แล้ว label เป็น `supported` / `contradicted` / `not-in-context`.\n3. **groundedness = supported / total claims** พร้อมระบุหน่วยนับที่ใช้.\n\nขั้นที่ 2 ทำด้วยคน (แม่นแต่แพงและช้า) หรือด้วย LLM-as-judge (`llm-as-judge`). งาน judge แบบนี้ง่ายกว่า judge คุณภาพทั่วไป เพราะเป็น entailment ที่มีหลักฐานให้ชี้ ไม่ใช่รสนิยม — แต่ยังต้อง calibrate กับ human label เป็นระยะ.\n\n**ทางลัดที่ใช้ไม่ได้**: วัด similarity ระหว่างคำตอบกับ context (string overlap หรือ embedding cosine) แล้วเรียกว่า groundedness. similarity วัดความ \"คล้าย\" ไม่ใช่ \"ถูก support\" — \"ไม่คิดค่าธรรมเนียม\" กับ \"คิดค่าธรรมเนียม\" มี similarity สูงมากทั้งที่ขัดกันโดยตรง.\n\n## ตัวอย่าง: support bot ของธนาคาร\n\nระบบดึง fee policy document มาเป็น context แล้วโมเดลตอบคำถามเรื่องโอนเงินต่างธนาคารว่า:\n\n> \"โอนต่างธนาคารผ่าน app ไม่มีค่าธรรมเนียม ทำได้สูงสุด 5 รายการต่อวัน และเงินเข้าปลายทางภายใน 30 นาที\"\n\n| claim | label | สาเหตุ |\n|---|---|---|\n| ไม่มีค่าธรรมเนียม | supported | ตรงกับ fee policy ใน context |\n| สูงสุด 5 รายการต่อวัน | contradicted | เอกสารระบุ 3 รายการต่อวัน |\n| เงินเข้าภายใน 30 นาที | not-in-context | ไม่มีเอกสารเรื่องเวลาโอนถูกดึงมาเลย |\n\ngroundedness = 1/3; hallucination rate แบบ per-claim = 2/3 แต่แบบ per-response = 1 — เรื่องเดียวกันคนละหน่วยนับ.\n\ndiagnose: claim ที่ 2 มี evidence อยู่ใน context แล้วแต่โมเดลพูดสวนทาง → **generation failure** (แก้ prompt / บังคับ cite / เปลี่ยนโมเดล). claim ที่ 3 เอกสารเรื่องเวลาโอนไม่เคยถูก retrieve → **retrieval failure** ที่โผล่มาในรูป hallucination ซึ่งต้องไปแก้ที่ context recall. หนึ่งคำตอบเสีย สองสาเหตุคนละชั้น — metric รวมตัวเดียวจึง diagnose ไม่ได้.\n\n## groundedness ≠ correctness\n\nจุดที่คนพลาดบ่อยที่สุด — สองมิตินี้อิสระต่อกัน:\n\n| | context ถูกและ fresh | context ผิด / ล้าสมัย |\n|---|---|---|\n| **คำตอบ grounded** | ดี — ตรวจสอบย้อนได้ | **ผิดอย่างมั่นใจ พร้อม citation** — อันตรายที่สุด groundedness ยังได้ 100% |\n| **คำตอบไม่ grounded** | บังเอิญถูกจาก parametric knowledge — audit ไม่ได้ | hallucination ตรง ๆ |\n\n- **grounded แต่ผิด**: โมเดลซื่อสัตย์ต่อ context เป๊ะ แต่ context เป็น policy ฉบับปีที่แล้ว — groundedness สูงลิ่วขณะที่ลูกค้าได้ข้อมูลผิด. fix อยู่ที่ freshness/versioning ของ knowledge base ไม่ใช่ที่ prompt และ groundedness จะไม่จับเคสนี้เลย ต้องมี correctness กับ golden set คุมคู่.\n- **ถูกแต่ไม่ grounded**: โมเดลตอบจากความรู้ในตัวมันเองแล้วบังเอิญตรง. ในโดเมนที่มี regulator ต้องนับเป็น fail เพราะพิสูจน์ที่มาไม่ได้ และไม่มีอะไรรับประกันว่าครั้งหน้าจะยังตรง (แนวเดียวกับ ch.8 `hallucination-mitigation`).\n\n## metric เดียวไม่พอ: ดูเป็นชุด และ segment\n\nคุณภาพคำตอบเป็นแค่ส่วนหนึ่งของคุณภาพระบบ. ตัวที่ต้องอยู่บน dashboard เดียวกันเสมอ: **latency** (ดู p95/p99 ไม่ใช่ค่าเฉลี่ย), **cost per request**, **containment / escalation rate**, **refusal / abstain rate** และสัญญาณจาก production จริงตาม `online-eval-and-ab-testing`. ที่ต้องดูเป็นชุดเพราะมันขัดกันเอง — optimize ตัวเดียวมักดันตัวอื่นพัง:\n\n- บังคับ abstain เมื่อไม่เจอ evidence → groundedness ขึ้น hallucination ลง แต่ **refusal rate พุ่ง containment ตก**.\n- เพิ่ม top-k ของ retrieval → context recall ดีขึ้น แต่ **context precision ตก, cost และ latency เพิ่ม**.\n- ใช้โมเดลใหญ่ขึ้น → correctness ดีขึ้น แต่ latency กับ cost เพิ่ม.\n\nวิธีคุมคือประกาศ **guardrail metric** ไว้ล่วงหน้า (เช่น ยอมให้ containment ตกได้ไม่เกิน 2 จุด เพื่อแลกกับ hallucination ที่ลดลง) และ **segment ตามประเภทคำถาม** เพราะค่าเฉลี่ยรวมกลบ segment ที่พังได้สนิท: groundedness รวม 95% อาจซ่อน dispute ที่อยู่ 70% ซึ่งเป็นกลุ่มที่ผิดแล้วแพงที่สุด.\n\n## ขีดจำกัด / trade-off\n\n- **แพงและช้า**: claim decomposition ทำให้หนึ่งคำตอบกลายเป็นหลาย judge call. ทำทุก request ใน production ไม่คุ้ม — ปกติรันเต็มบน golden set ตอน offline แล้ว sample traffic จริงเป็นสัดส่วน.\n- **นิยาม claim ไม่เสถียร**: คนสองคน (หรือ judge prompt สองเวอร์ชัน) แตก claim ไม่เท่ากัน ตัวหารเลยไม่เท่ากัน — groundedness จึงใช้เทียบได้ **ภายใน pipeline เดียวกัน** เท่านั้น ห้ามเอาไปเทียบข้ามทีมหรือข้ามเวอร์ชัน judge.\n- **มีงานที่ metric นี้ไม่มีความหมาย**: brainstorming, งานเขียนสร้างสรรค์, การเขียนโค้ดจากโจทย์ — ไม่มี source ให้ยึด ใช้ correctness/test-pass หรือ human rating แทน.\n- **groundedness สูงเกินอาจเป็น vanity metric**: ทางง่ายที่สุดที่จะได้ 100% คือคัดลอก context มาตอบดื้อ ๆ หรือปฏิเสธทุกครั้งที่ไม่แน่ใจ — ได้คะแนนสวยแต่ช่วยลูกค้าน้อยลง จึงต้องอ่านคู่กับ answer relevance และ containment.\n- **ทุกตัวเป็น proxy**: เป้าหมายจริงคือลูกค้าแก้ปัญหาได้. พอผูก metric กับ target ของทีม จะเริ่มมีการ optimize เพื่อเลข (Goodhart) เช่นจูน judge prompt จนคะแนนขึ้นโดยคุณภาพเท่าเดิม.\n\n## ปิดบท: ระบบ eval ที่ครบวง\n\nทั้งบทที่ 9 ประกอบกันเป็นวงเดียวและไม่มีชิ้นไหนแทนกันได้: **offline + golden set** เป็น regression gate ก่อน deploy, **judge** ทำให้การให้คะแนน scale ได้โดยแลกกับ bias ที่ต้อง calibrate, **metric ชุดนี้ + segment** บอกว่าพังตรงไหนและพังที่ retrieval หรือ generation, **online + A/B** ตอบว่าดีขึ้นจริงกับ user จริงไหม. ขาด offline จะ ship regression; ขาด online จะภูมิใจกับเลขที่ไม่มีใครรู้สึกได้.\n\n## มุมสัมภาษณ์\n\n- **\"จะวัดคุณภาพ RAG chatbot ยังไง\"** → แยก retrieval metric (context recall/precision) ออกจาก generation metric (groundedness/correctness) เพราะคนละ fix. ตอบว่า \"ดู accuracy\" เฉย ๆ คือตกข้อนี้.\n- **\"groundedness วัดยังไง\"** → claim decomposition + ตรวจ entailment ต่อ span ใน context โดยคนหรือ judge ไม่ใช่ similarity score.\n- **\"คำตอบ grounded 100% แล้วยังผิดได้ไหม\"** → ได้ ถ้า context ผิดหรือล้าสมัย.\n- **\"hallucination rate 2% ถือว่าดีไหม\"** → ถามกลับก่อน: นับต่อ claim หรือต่อ response, segment ไหน, error แต่ละแบบต้นทุนต่างกันแค่ไหน.\n- **\"ถ้าให้ optimize ตัวเดียว\"** → กับดัก; ตอบด้วย trade-off ที่ชนกันจริง (abstain ขึ้น → containment ตก) และการตั้ง guardrail metric ล่วงหน้า.\n",
+  "recall_checks": [
+    {
+      "q": "groundedness (faithfulness) นิยามว่าอย่างไร และต่างจาก correctness ตรงไหน?",
+      "expected_answer": "groundedness = ทุก claim ในคำตอบมี evidence รองรับใน context ที่ให้มา วัดได้โดยไม่ต้องรู้ความจริงของโลก ส่วน correctness คือตรงกับคำตอบที่ถูกจริง ๆ จึงต้องมีเฉลยเทียบ",
+      "type": "short_answer"
+    },
+    {
+      "q": "คำตอบที่ทุก claim grounded กับ context ยังผิดได้เพราะอะไร?",
+      "expected_answer": "context ที่ให้มาผิดหรือล้าสมัยตั้งแต่ต้น",
+      "type": "mcq",
+      "options": [
+        "โมเดลตั้ง temperature สูงเกินไปจึงสุ่มคำตอบใหม่ทุกครั้ง",
+        "context ที่ให้มาผิดหรือล้าสมัยตั้งแต่ต้น",
+        "คำตอบสั้นเกินไปจน judge ให้คะแนนต่ำกว่าความเป็นจริง"
+      ]
+    },
+    {
+      "q": "อาการใดชี้ว่าเป็น retrieval failure ไม่ใช่ generation failure?",
+      "expected_answer": "context ที่ดึงมาไม่มี evidence ของคำตอบอยู่เลย",
+      "type": "mcq",
+      "options": [
+        "โมเดลอ้างตัวเลขที่ขัดกับเอกสารซึ่งอยู่ใน context อยู่แล้ว",
+        "โมเดลตอบยาวเกินไปจนมี claim ที่ไม่จำเป็นปนเข้ามาด้วย",
+        "context ที่ดึงมาไม่มี evidence ของคำตอบอยู่เลย"
+      ]
+    },
+    {
+      "q": "ทำไมจึงใช้ embedding similarity ระหว่างคำตอบกับ context มาวัด groundedness แทน claim decomposition ไม่ได้?",
+      "expected_answer": "similarity วัดความคล้ายไม่ใช่การมี evidence รองรับ ประโยคที่กลับความหมายกัน เช่น ไม่คิดค่าธรรมเนียม กับ คิดค่าธรรมเนียม มี similarity สูงทั้งที่ขัดกันโดยตรง",
+      "type": "short_answer"
+    },
+    {
+      "q": "การบังคับให้ระบบ abstain ทุกครั้งที่ไม่เจอ evidence มักทำให้ metric ใดแย่ลง?",
+      "expected_answer": "refusal rate สูงขึ้นและ containment rate ตกลง",
+      "type": "mcq",
+      "options": [
+        "refusal rate สูงขึ้นและ containment rate ตกลง",
+        "context precision แย่ลงเพราะระบบต้องดึงเอกสารเข้ามามากขึ้น",
+        "hallucination rate สูงขึ้นเพราะโมเดลต้องเดาคำตอบเองบ่อยกว่าเดิม"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "RAGAS: Automated Evaluation of Retrieval Augmented Generation",
+      "source": "Es et al., 2023 (arXiv:2309.15217)",
+      "why": "อ่านนิยามเชิงปฏิบัติของ faithfulness, answer relevance และ context relevance ที่แยก retrieval ออกจาก generation"
+    },
+    {
+      "title": "Evaluating Verifiability in Generative Search Engines",
+      "source": "Liu, Zhang, Liang, 2023 (arXiv:2304.09848)",
+      "why": "อ่านวิธีวัด citation precision/recall ด้วยการตรวจทีละ statement และผลว่าคำตอบที่ดูน่าเชื่อมัก support ไม่ครบ"
+    },
+    {
+      "title": "Measuring Attribution in Natural Language Generation Models (AIS framework)",
+      "source": "Rashkin et al., Computational Linguistics 49(4), 2023 (MIT Press)",
+      "why": "อ่านกรอบ Attributable to Identified Sources ซึ่งเป็นรากของการนิยาม groundedness แบบตรวจได้"
+    },
+    {
+      "title": "Survey of Hallucination in Natural Language Generation",
+      "source": "Ji et al., ACM Computing Surveys, 2023",
+      "why": "อ่าน taxonomy ของ hallucination และข้อจำกัดของ metric แต่ละตระกูลก่อนเลือกมาใช้"
+    }
+  ]
+}
