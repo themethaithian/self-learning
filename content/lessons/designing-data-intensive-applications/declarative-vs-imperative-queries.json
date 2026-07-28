@@ -16,7 +16,7 @@
       "expected_answer": "เพราะ declarative ไม่ได้ระบุลำดับขั้นตอน/execution strategy ตายตัว optimizer จึงเลือกและเปลี่ยน plan รวมถึงกระจายงานข้าม core ได้เอง",
       "type": "mcq",
       "options": [
-        "เพราะ SQL รันบน hardware ที่เร็วกว่าโค้ด application เสมอ",
+        "เพราะ SQL รันบน database server ที่มี spec แรงกว่า application server ขององค์กรอยู่เสมอ ไม่ว่า workload หรือขนาดข้อมูลจะซับซ้อนแค่ไหนก็ตาม",
         "เพราะ declarative ไม่ได้ระบุลำดับขั้นตอน/execution strategy ตายตัว optimizer จึงเลือกและเปลี่ยน plan รวมถึงกระจายงานข้าม core ได้เอง",
         "เพราะ imperative code เขียนผิด syntax บ่อยกว่า"
       ]
@@ -28,7 +28,7 @@
       "options": [
         "คุณเสีย control ตรง ๆ over execution — optimizer อาจเลือก plan ที่แย่บน query ซับซ้อนหรือ statistics เก่า และคุณแก้ได้แค่ทางอ้อม (index, rewrite, hint)",
         "declarative query ไม่สามารถทำ aggregate เช่น SUM หรือ GROUP BY ได้",
-        "declarative query ผูกกับ execution strategy เดียว เปลี่ยน plan ไม่ได้เลย"
+        "declarative query ผูกกับ execution strategy เดียวตายตัวตั้งแต่ตอนเขียนโค้ด เปลี่ยน plan ไม่ได้เลยแม้จะมี index ใหม่หรือ statistics ของตารางเปลี่ยนไปในภายหลังก็ตาม"
       ]
     },
     {
@@ -36,7 +36,7 @@
       "expected_answer": "เมื่อ logic เป็น algorithm ที่ query language แสดงไม่ได้ หรือจำเป็นต้องคุม execution เอง (เช่น stateful/streaming ที่ต้อง early-exit)",
       "type": "mcq",
       "options": [
-        "เมื่อต้องการให้ database upgrade แล้ว query เร็วขึ้นเองอัตโนมัติ",
+        "เมื่อต้องการให้ database engine upgrade เป็นเวอร์ชันใหม่แล้ว query เดิมที่เขียนไว้เร็วขึ้นเองโดยอัตโนมัติ โดยไม่ต้องแก้โค้ดหรือแก้ query ใด ๆ เลยแม้แต่นิดเดียว",
         "เมื่อต้องการ scan และ aggregate ข้อมูลจำนวนมากให้เร็วที่สุด",
         "เมื่อ logic เป็น algorithm ที่ query language แสดงไม่ได้ หรือจำเป็นต้องคุม execution เอง (เช่น stateful/streaming ที่ต้อง early-exit)"
       ]

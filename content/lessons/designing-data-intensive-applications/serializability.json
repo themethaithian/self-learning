@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "2PL เป็น pessimistic (lock ก่อนแตะข้อมูล), SSI เป็น optimistic (รันบน snapshot แล้ว detect conflict ตอน commit)",
-        "2PL เป็น optimistic (รันบน snapshot), SSI เป็น pessimistic (lock ก่อนแตะข้อมูล)",
+        "2PL เป็น optimistic ที่รันเต็มที่บน snapshot ก่อนแล้วค่อยตรวจ conflict ทีหลัง ส่วน SSI เป็น pessimistic ที่ต้อง lock ก่อนแตะข้อมูลทุกครั้ง",
         "ทั้งคู่เป็น optimistic เหมือนกัน ต่างกันแค่ชื่อ"
       ]
     },
@@ -37,7 +37,7 @@
       "type": "mcq",
       "options": [
         "abort/retry rate พุ่งสูง งานถูกทำทิ้งแล้ว retry ซ้ำ ๆ",
-        "deadlock เกิดถี่ขึ้นจนต้อง detect และ abort",
+        "deadlock เกิดขึ้นถี่มากขึ้นเรื่อย ๆ จนระบบต้อง detect แล้วเลือก abort transaction ตัวใดตัวหนึ่งทิ้งไป",
         "ทุก transaction ถูกบังคับให้รันทีละตัวบน single core"
       ]
     },

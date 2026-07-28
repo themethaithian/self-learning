@@ -11,7 +11,7 @@
       "expected_answer": "ต้อง step down และเลิกทำหน้าที่ leader แม้ตัวเองจะรู้สึกว่ายัง alive",
       "type": "mcq",
       "options": [
-        "ยืนยันกับ node อื่นว่าตัวเองยัง alive อยู่ แล้วเดินหน้าทำหน้าที่ leader ต่อไปจนกว่า hardware จะเสียจริง",
+        "ยืนยันกับ node ข้างเคียงว่าตัวเองยัง alive",
         "ต้อง step down และเลิกทำหน้าที่ leader แม้ตัวเองจะรู้สึกว่ายัง alive",
         "รอ ping node อื่นทีละตัวจนครบ quorum เพื่อยืนยันสถานะของตัวเองก่อนค่อยตัดสินใจ step down"
       ]
@@ -22,7 +22,7 @@
       "type": "mcq",
       "options": [
         "เพราะ token เก่าหมดอายุตามเวลา (TTL) ที่ lock service กำหนดไว้ตอน grant ledger จึงถือว่ามันใช้ไม่ได้แล้ว",
-        "เพราะ node เก่าส่ง token มาในรูปแบบที่ผิด format ทำให้ ledger parse ค่าไม่ผ่านและ reject request ทิ้ง",
+        "เพราะ node เก่าส่ง token ผิด format",
         "เพราะ token เพิ่มขึ้นทางเดียว (monotonic) token ที่เล็กกว่าจึงแปลว่าผู้ส่งถูก supersede ไปแล้ว"
       ]
     },

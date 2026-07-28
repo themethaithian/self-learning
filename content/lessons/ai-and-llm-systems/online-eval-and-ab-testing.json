@@ -18,7 +18,7 @@
       "options": [
         "แทบไม่มีข้อจำกัด เพราะ thumbs-down ที่น้อยสะท้อนว่าระบบมีปัญหาน้อยจริง",
         "มี selection bias เพราะคนที่ยอมกดมักเป็นกลุ่มสุดขั้ว",
-        "เก็บได้เฉพาะ session ที่ถูก escalate ไปหา human agent เท่านั้น"
+        "เก็บได้เฉพาะ session ที่ escalate ไปหา human agent"
       ]
     },
     {
@@ -38,7 +38,7 @@
       "options": [
         "อัตราที่ user ถามซ้ำด้วยคำใหม่",
         "คะแนน rating ที่ user เลือกหลังจบบทสนทนา",
-        "ปุ่ม thumbs up/down ที่ user กดใต้คำตอบ"
+        "ปุ่ม thumbs up/down ใต้คำตอบ"
       ]
     },
     {

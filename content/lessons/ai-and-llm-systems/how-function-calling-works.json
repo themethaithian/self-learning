@@ -16,7 +16,7 @@
       "expected_answer": "application code ของเรา",
       "type": "mcq",
       "options": [
-        "provider API เป็นคนรันให้",
+        "provider API เป็นคนรัน",
         "application code ของเรา",
         "โมเดล LLM รันด้วยตัวมันเอง"
       ]
@@ -28,7 +28,7 @@
       "options": [
         "ส่ง result กลับให้โมเดลตอบ",
         "ให้ผู้ใช้อ่าน result เองโดยตรง",
-        "ทิ้ง result ทิ้งไป ไม่ต้องใช้"
+        "ทิ้ง result ไป ไม่ต้องใช้"
       ]
     },
     {

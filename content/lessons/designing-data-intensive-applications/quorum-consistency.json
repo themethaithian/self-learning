@@ -24,7 +24,7 @@
       "options": [
         "รับประกันว่า read เห็นค่าที่ write set ถืออยู่ แต่ไม่รับประกัน linearizability เมื่อมี concurrent write หรือ sloppy quorum",
         "รับประกัน linearizability ในทุกกรณี",
-        "ทำให้ concurrent write ถูก order โดยอัตโนมัติ"
+        "ทำให้ concurrent write ทุกคู่ถูกจัดลำดับ (ordered) โดยอัตโนมัติผ่านกลไก quorum โดยไม่ต้องพึ่งพา version vector หรือ LWW เพิ่มเติมแต่อย่างใด"
       ]
     },
     {
@@ -38,7 +38,7 @@
       "type": "mcq",
       "options": [
         "write อาจถูกรับไว้ที่ node นอกกลุ่ม home ของ key ทำให้ read quorum อาจไม่ทับกับ node ที่รับ write",
-        "มันเพิ่มจำนวน replica n โดยอัตโนมัติ",
+        "มันเพิ่มจำนวน replica n ของ key นั้นโดยอัตโนมัติเพื่อชดเชย node ที่ล่ม ทำให้ w และ r ต้องถูกคำนวณใหม่ทุกครั้งที่มี node หาย",
         "มันบังคับให้ r ต้องเท่ากับ n เสมอ"
       ]
     }

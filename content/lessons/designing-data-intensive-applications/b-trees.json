@@ -13,7 +13,7 @@
       "options": [
         "เพื่อบีบอัดข้อมูลให้ page เล็กลง",
         "เพราะการแก้แบบ in-place (เช่น page split) อาจเขียน page ไม่ครบเมื่อ crash ทำให้ index พัง; WAL ให้ replay กลับสู่ state ที่ consistent",
-        "เพื่อให้ read อ่านได้จากหลาย SSTable พร้อมกัน"
+        "เพื่อให้ query อ่านข้อมูลจากหลาย SSTable พร้อมกันได้เร็วขึ้นโดยไม่ต้องรอ compaction เบื้องหลังให้เสร็จก่อน เหมือนกลไกที่ LSM-tree ใช้จัดการ read path"
       ]
     },
     {
@@ -28,7 +28,7 @@
       "options": [
         "แต่ละ key อยู่ในที่เดียวเป๊ะใน index ทำให้ read predictable ไม่ต้องเช็คหลาย SSTable และยังเอื้อ transactional locking",
         "B-tree ไม่ต้องเขียน WAL จึงเขียนเร็วกว่า",
-        "B-tree เขียนแบบ sequential ทำให้ write throughput สูงกว่า"
+        "B-tree เขียนข้อมูลแบบ sequential เหมือน LSM-tree ทำให้ write throughput สูงกว่าและลด write amplification ได้มากกว่าด้วย"
       ]
     },
     {
@@ -36,7 +36,7 @@
       "expected_answer": "ทุก write ต้องเขียนทั้ง WAL และ page (และเขียนซ้ำอีกเมื่อ page split) อีกทั้งต้องเขียนทั้ง page แม้แก้ไม่กี่ byte",
       "type": "mcq",
       "options": [
-        "จากการเก็บ key เดียวหลาย copy ในหลาย SSTable",
+        "จากการเก็บ key เดียวกันไว้หลาย copy กระจายอยู่ในหลาย SSTable ที่ยังไม่ถูกรวมเข้าด้วยกันด้วย compaction กระบวนการเบื้องหลัง",
         "จากการรัน compaction เบื้องหลังตลอดเวลา",
         "ทุก write ต้องเขียนทั้ง WAL และ page (และเขียนซ้ำอีกเมื่อ page split) อีกทั้งต้องเขียนทั้ง page แม้แก้ไม่กี่ byte"
       ]

@@ -43,7 +43,7 @@
       "options": [
         "log กลายเป็น critical infrastructure ที่ต้อง operate เอง",
         "derived system ทุกตัวจะกลายเป็น strongly consistent อัตโนมัติ",
-        "ทุก read query ต้องวิ่งผ่าน log ทำให้ query โดยรวมช้าลงมาก"
+        "ทุก read query ต้องวิ่งผ่าน log ทำให้ช้าลง"
       ]
     }
   ],

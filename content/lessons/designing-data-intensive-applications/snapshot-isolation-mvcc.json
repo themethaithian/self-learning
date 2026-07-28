@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "report ยังอ่านค่า version เดิมจาก snapshot ของตัวเองต่อได้ ไม่ต้องรอ writer",
-        "report ต้อง block รอจนกว่า writer จะ commit เสร็จก่อนถึงอ่านต่อได้",
+        "report ต้อง block รอจนกว่า writer จะปล่อย lock และ commit transaction ให้เสร็จสมบูรณ์ก่อน ถึงจะกลับมาอ่านข้อมูลต่อได้ตามปกติ",
         "report เห็นค่าใหม่ทันทีที่ writer commit"
       ]
     },
@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "หลาย DB ใช้ \"repeatable read\" เรียก snapshot isolation ซึ่งให้ guarantee ต่างจากนิยาม REPEATABLE READ ใน SQL standard",
-        "เพราะ repeatable read เป็นชื่อเดียวกับ serializable ในทุก vendor",
+        "เพราะ repeatable read เป็นชื่อเดียวกับ serializable ในทุก vendor โดยไม่มีความแตกต่างด้าน guarantee หรือ implementation ใด ๆ เลยแม้แต่น้อย",
         "เพราะ repeatable read ไม่มีจริงใน DB ใด ๆ"
       ]
     },
@@ -37,7 +37,7 @@
       "type": "mcq",
       "options": [
         "มันปักหมุดไม่ให้ garbage collection ลบ version เก่าที่ยังมองเห็นได้ ทำให้ version สะสมบวม (bloat)",
-        "มันทำให้ writer ทุกตัว block จนระบบค้างทั้งหมด",
+        "มันทำให้ writer ทุกตัว block จนระบบค้างทั้งหมดและไม่สามารถประมวลผล transaction ใหม่ใด ๆ ได้อีกต่อไปจนกว่าจะ restart",
         "มันลบ version ใหม่ทิ้งทำให้ข้อมูลที่เพิ่ง commit หายไป"
       ]
     },

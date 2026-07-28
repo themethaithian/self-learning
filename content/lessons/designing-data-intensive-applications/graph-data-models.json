@@ -12,7 +12,7 @@
       "type": "mcq",
       "options": [
         "การ traverse ความสัมพันธ์ลึก/variable-length path ได้ตรง ๆ",
-        "การเก็บข้อมูล tabular ที่มี column กว้างมาก",
+        "การเก็บข้อมูลแบบ tabular ที่มี column กว้างมากและต้องทำ column-store scan อย่างมีประสิทธิภาพในทุก query",
         "การทำ aggregate scan ทั้งตารางให้เร็ว"
       ]
     },
@@ -26,7 +26,7 @@
       "expected_answer": "เมื่อข้อมูลส่วนใหญ่เป็น tabular/aggregate ที่ความสัมพันธ์ตื้นและคงที่",
       "type": "mcq",
       "options": [
-        "เมื่อ query หลักเป็น deep/variable-length traversal ที่เป็น hot path",
+        "เมื่อ query หลักของระบบเป็น deep/variable-length traversal ที่ถูกเรียกใช้งานเป็น hot path บ่อยที่สุดในทุกวัน",
         "เมื่อข้อมูลส่วนใหญ่เป็น tabular/aggregate ที่ความสัมพันธ์ตื้นและคงที่",
         "เมื่อโดเมนเป็น social graph หรือ fraud network"
       ]
@@ -36,7 +36,7 @@
       "expected_answer": "recursive join (WITH RECURSIVE CTE)",
       "type": "mcq",
       "options": [
-        "GROUP BY กับ aggregate function",
+        "GROUP BY กับ aggregate function ที่ต้องคำนวณผ่านหลายชั้นซ้อนกันตามลำดับที่ query planner เลือกเอง",
         "index scan บน primary key",
         "recursive join (WITH RECURSIVE CTE)"
       ]
@@ -46,7 +46,7 @@
       "expected_answer": "ข้อมูลที่มี many-to-many ต้องใช้ graph database เสมอ",
       "type": "mcq",
       "options": [
-        "Cypher เป็นภาษา query สำหรับ property graph",
+        "Cypher เป็นภาษา query ที่ออกแบบมาสำหรับ traverse property graph โดยเฉพาะ ใช้ pattern matching syntax ที่ต่างจาก SQL",
         "ข้อมูลที่มี many-to-many ต้องใช้ graph database เสมอ",
         "triple-store query ด้วย SPARQL"
       ]

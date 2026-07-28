@@ -28,7 +28,7 @@
       "options": [
         "prompt ยิ่งยาวและละเอียดยิ่งดีเสมอ",
         "แยก instruction จาก data ช่วยลดความกำกวม",
-        "prompt ที่ดีต้องทดกับ case จริงเสมอ"
+        "prompt ต้อง test กับ case จริง"
       ]
     },
     {

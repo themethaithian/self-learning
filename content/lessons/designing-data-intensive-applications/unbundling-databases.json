@@ -41,9 +41,9 @@
       "expected_answer": "ต้องการ strong consistency ข้าม derived store",
       "type": "mcq",
       "options": [
-        "ต้องรองรับ workload ที่ engine เดียวทำได้ไม่ดีพอ",
+        "ต้องรองรับ workload ใหม่ที่หนักขึ้นจนระบบเดิมรับไม่ไหวอีกต่อไป",
         "ต้องการ strong consistency ข้าม derived store",
-        "ทีมมี ops maturity รัน streaming platform ได้เอง"
+        "ทีมมี ops maturity รัน streaming ได้เองแล้ว"
       ]
     }
   ],

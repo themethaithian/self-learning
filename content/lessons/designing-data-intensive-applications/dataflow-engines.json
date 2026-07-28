@@ -36,7 +36,7 @@
       "expected_answer": "ถ้าข้อมูลกลางปลาย pipeline หาย อาจต้อง recompute ย้อน lineage ที่ยาว ซึ่งแพงกว่าการ re-run task เดียวจาก input บน disk",
       "type": "mcq",
       "options": [
-        "lineage บันทึกได้เฉพาะ operator แบบ map เท่านั้น ไม่รองรับ join หรือ group จึงต้อง fallback ไปเขียน HDFS ทุกครั้ง",
+        "lineage บันทึกได้เฉพาะ operator แบบ map เท่านั้น ไม่รองรับ join หรือ group เลยแม้แต่น้อย จึงต้อง fallback ไปเขียนลง HDFS ทุกครั้งที่มี stage ใหม่เกิดขึ้น",
         "lineage ต้องถูก replicate 3 ชุดข้าม cluster ทำให้ใช้ disk มากกว่า MapReduce เสมอ และยิ่งช้าลงเมื่อ pipeline สั้น",
         "ถ้าข้อมูลกลางปลาย pipeline หาย อาจต้อง recompute ย้อน lineage ที่ยาว ซึ่งแพงกว่าการ re-run task เดียวจาก input บน disk"
       ]

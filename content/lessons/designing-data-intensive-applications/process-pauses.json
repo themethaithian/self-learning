@@ -16,7 +16,7 @@
       "expected_answer": "มันเชื่อว่าตัวเองยังถือ lease อยู่และเขียนข้อมูลทับ ทั้งที่ node อื่น take over ไปแล้ว → split-brain / double-write",
       "type": "mcq",
       "options": [
-        "lease service จะตรวจพบว่ามี lease ของ payment เดียวกันสองใบพร้อมกัน แล้ว crash หรือ reject ทั้งคู่จน worker ทุกตัวค้าง",
+        "lease service จะตรวจพบว่ามี lease ของ payment เดียวกันสองใบ แล้ว crash หรือ reject ทั้งคู่จน worker ค้าง",
         "มันเชื่อว่าตัวเองยังถือ lease อยู่และเขียนข้อมูลทับ ทั้งที่ node อื่น take over ไปแล้ว → split-brain / double-write",
         "node ที่ฟื้นจะตรวจเจอเองว่า lease หมดอายุระหว่าง pause แล้ว restart process ของตัวเองใหม่ทั้งหมดโดยอัตโนมัติก่อนเขียน"
       ]
@@ -36,7 +36,7 @@
       "expected_answer": "ที่ตัว resource ให้ปฏิเสธสิทธิ์เก่า ด้วย fencing token",
       "type": "mcq",
       "options": [
-        "ตั้ง timeout เผื่อให้ยาวกว่าค่า pause ที่เคยเจอ",
+        "ตั้ง timeout ให้เผื่อไว้ยาวนานกว่าค่า pause ที่แย่ที่สุดเท่าที่เคยวัดได้ในระบบทั้งหมด",
         "ทำให้ GC ไม่เกิด pause เลยตั้งแต่แรก",
         "ที่ตัว resource ให้ปฏิเสธสิทธิ์เก่า ด้วย fencing token"
       ]

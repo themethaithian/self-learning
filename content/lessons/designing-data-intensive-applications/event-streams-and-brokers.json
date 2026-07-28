@@ -18,7 +18,7 @@
       "options": [
         "การันตี event ทุกตัวถึง consumer โดยไม่ซ้ำกันเลย",
         "buffer event เมื่อ consumer ช้าหรือหลุดไป",
-        "เปลี่ยน batch job ให้เป็น stream job อัตโนมัติ"
+        "ลบ duplicate ให้อัตโนมัติด้วย hash"
       ]
     },
     {

@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "งานที่ path ขึ้นกับ observation",
-        "งานที่ต้อง reasoning หลายชั้น",
+        "งานที่ต้อง reasoning",
         "งานที่ path รู้แน่ล่วงหน้า"
       ]
     },

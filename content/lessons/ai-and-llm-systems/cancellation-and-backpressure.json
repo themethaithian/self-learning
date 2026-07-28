@@ -18,7 +18,7 @@
       "options": [
         "provider ส่ง token เร็วกว่าปกติมาก",
         "consumer รับ token ช้ากว่าที่ผลิต",
-        "network latency สูงตอนเริ่ม stream"
+        "network latency สูงตอนเริ่มต้น"
       ]
     },
     {
@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "provider หยุดส่ง token ให้อัตโนมัติ",
-        "TTFT ของ request ถัดไปลดลงชัดเจน",
+        "TTFT ของ request ถัดไปลดลง",
         "memory โตไม่หยุดจนเกิด OOM ได้"
       ]
     },

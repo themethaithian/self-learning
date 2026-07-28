@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "output เป็น untrusted อาจผิด schema/rule",
-        "output ช้าเกินไปต้องรอ validate ก่อนเสมอ",
+        "output ช้าเกินไปต้องรอ validate ก่อน",
         "ต้องนับ token ที่โมเดลใช้ให้ครบก่อนนำไปใช้"
       ]
     },
@@ -26,7 +26,7 @@
       "expected_answer": "reject แล้ว retry หรือส่งให้คนตรวจ",
       "type": "mcq",
       "options": [
-        "จ่ายตามโมเดลเพราะโมเดลเห็น context ครบ",
+        "จ่ายตามโมเดลเพราะเห็น context ครบ",
         "reject แล้ว retry หรือส่งให้คนตรวจ",
         "ปรับ policy ขึ้นให้พอดีกับที่โมเดลเสนอ"
       ]
@@ -36,7 +36,7 @@
       "expected_answer": "โมเดลฉลาดพอแล้วจึงข้าม validation ได้",
       "type": "mcq",
       "options": [
-        "ต้อง validate output ทุกครั้งก่อนนำไปใช้จริง",
+        "validate output ทุกครั้งก่อนใช้จริง",
         "invalid output ควร retry หรือ repair ก่อนยอมรับ",
         "โมเดลฉลาดพอแล้วจึงข้าม validation ได้"
       ]

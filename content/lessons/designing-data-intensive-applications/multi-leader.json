@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "offline clients ที่ต้องเขียนได้ตอน offline แล้ว sync ทีหลัง",
-        "การเพิ่ม read replica เพื่อ scale read อย่างเดียว",
+        "การเพิ่ม read replica จำนวนมากเพื่อ scale read อย่างเดียวโดยไม่เกี่ยวกับการเขียนเลย",
         "การรับประกัน strong consistency ข้าม datacenter"
       ]
     },
@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "มันทิ้ง concurrent write ที่แพ้ไปเงียบ ๆ เป็น data loss และพึ่ง clock ที่เชื่อไม่ได้",
-        "มันทำให้ write ช้าลงเพราะต้องรอทุก leader ตอบก่อน",
+        "มันทำให้ write ช้าลงมากเพราะต้องรอให้ leader ทุกตัวตอบกลับมายืนยันก่อนถึงจะถือว่า write สำเร็จ",
         "มันบังคับให้ระบบใช้ synchronous replication เสมอ"
       ]
     },
@@ -38,7 +38,7 @@
       "options": [
         "account balance / ledger ที่ resolve conflict ผิดแล้วเงินหาย",
         "notification preference ของ user",
-        "calendar events บน device ที่แก้ตอน offline"
+        "calendar events บน device หลายเครื่องที่ผู้ใช้แก้ไขตอน offline แล้วค่อย sync ทีหลัง"
       ]
     },
     {

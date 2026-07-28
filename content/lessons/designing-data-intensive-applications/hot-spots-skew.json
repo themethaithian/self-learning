@@ -18,7 +18,7 @@
       "options": [
         "การ read ต้อง query รวมจากทุก suffix (หลาย partition) แล้ว recombine",
         "การ write ช้าลงเพราะต้องเขียนซ้ำทุก partition",
-        "storage เพิ่มเป็นสองเท่าเพราะต้องเก็บ key สองชุด"
+        "storage เพิ่มขึ้นเป็นสองเท่าเพราะต้องเก็บ key สำรองไว้อีกชุดหนึ่งแยกต่างหากจากของเดิมเพื่อใช้ตอน fail over"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "options": [
         "application layer เพราะ database ส่วนใหญ่ไม่ตรวจจับและ split hot key ให้อัตโนมัติ",
         "database ทำให้อัตโนมัติทุกเจ้า",
-        "load balancer ที่หน้าคลัสเตอร์"
+        "load balancer ที่อยู่หน้าคลัสเตอร์เป็นคนตรวจจับ hot key แล้วกระจาย request ให้เองโดยอัตโนมัติทุกครั้ง"
       ]
     }
   ],

@@ -26,7 +26,7 @@
       "expected_answer": "blockchain / cryptocurrency ที่ผู้เข้าร่วมไม่ไว้ใจกันและมีแรงจูงใจโกง",
       "type": "mcq",
       "options": [
-        "service ภายใน datacenter ขององค์กรเดียวที่คุม node เองทั้งหมด",
+        "service ภายใน datacenter ขององค์กรเดียวที่คุมและ deploy/patch node เองทั้งหมดทุกเครื่อง",
         "แอปมือถือที่เรียก REST API ตัวเดียว",
         "blockchain / cryptocurrency ที่ผู้เข้าร่วมไม่ไว้ใจกันและมีแรงจูงใจโกง"
       ]
@@ -38,7 +38,7 @@
       "options": [
         "crash-fault-tolerant consensus + input validation + checksum",
         "full BFT ด้วย 3f + 1 node พร้อม signature verification ทุก request เสมอ",
-        "ไม่ต้องมี consensus เลย เพราะ node ภายในองค์กรไว้ใจกันได้อยู่แล้ว"
+        "ไม่ต้องมี consensus เลย เพราะ node ไว้ใจกันได้"
       ]
     },
     {

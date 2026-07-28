@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "ได้ ถ้ามี transaction อื่น commit คั่นกลาง เพราะ read committed ไม่กัน non-repeatable read",
-        "ไม่ได้ read committed freeze ภาพตลอดทั้ง transaction",
+        "ไม่ได้ เพราะ read committed สร้าง snapshot เดียวตอนเริ่ม transaction แล้ว freeze ภาพทั้งหมดไว้จนกว่าจะ commit หรือ rollback",
         "ไม่ได้ เพราะ read ทุกครั้งถูก lock ไว้"
       ]
     },
@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "จำ old committed value ไว้ให้ reader อ่าน ระหว่างที่ writer ยังถือค่าใหม่ที่ยังไม่ commit แทนการใช้ lock",
-        "ใช้ read lock บน row ตลอดที่ writer ถือ lock อยู่",
+        "ใช้ read lock แบบ shared lock บน row ทุกแถวที่อ่าน แล้วถือ lock นั้นไว้ตลอดตราบใดที่ writer ยังถือ lock การเขียนอยู่จนกว่าจะปล่อย",
         "ปฏิเสธ read ทั้งหมดจนกว่า writer จะ commit"
       ]
     },
@@ -43,7 +43,7 @@
       "options": [
         "non-repeatable read / read skew (และ lost update)",
         "dirty read",
-        "dirty write"
+        "dirty write (การเขียนทับ row ที่ transaction อื่นยังไม่ commit)"
       ]
     }
   ],

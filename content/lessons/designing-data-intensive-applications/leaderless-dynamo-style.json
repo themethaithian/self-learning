@@ -18,7 +18,7 @@
       "options": [
         "read repair ซ่อม replica เฉพาะตอนมี client มาอ่าน (จึงพลาด key ที่ไม่มีใครอ่าน) ส่วน anti-entropy เป็น background process ที่กวาดเทียบข้อมูลตลอดเวลารวมถึง cold key",
         "read repair ทำงานที่ leader ส่วน anti-entropy ทำงานที่ follower",
-        "read repair copy ข้อมูลตามลำดับ write เป๊ะ ส่วน anti-entropy การันตี linearizability"
+        "read repair คัดลอกข้อมูลตามลำดับ write เดิมกลับไปยัง replica ที่ล้าหลัง ส่วน anti-entropy process ทำหน้าที่การันตี linearizability ให้กับ replica ทั้งหมดในคลัสเตอร์"
       ]
     },
     {
@@ -28,7 +28,7 @@
       "options": [
         "เพิ่ม write availability โดยยอมรับ write บน node นอก home set แล้วค่อยส่งต่อภายหลัง แต่ทำให้แม้ตั้ง w + r > n ก็ไม่การันตีว่าจะอ่านเจอค่าล่าสุด",
         "บังคับให้ทุก write ต้องผ่าน leader เพื่อรับประกัน ordering",
-        "ลด storage โดยเก็บข้อมูลแค่ replica เดียว"
+        "ลด storage โดยเก็บข้อมูลไว้แค่ replica เดียวเท่านั้นในทั้งคลัสเตอร์ เพื่อประหยัดพื้นที่ดิสก์ให้ได้มากที่สุดโดยไม่สนใจเรื่อง availability ของ write เลยแม้แต่น้อย"
       ]
     },
     {
@@ -38,7 +38,7 @@
       "options": [
         "concurrent write ทำให้เกิดหลาย version (siblings) แล้วการ merge แบบ union ตอนอ่านกลืนการลบทิ้งไป ทำให้ item ที่ถูกลบกลับมา",
         "เพราะ leader ส่ง replication log ผิดลำดับ",
-        "เพราะ read repair ลบข้อมูลใหม่ทิ้งโดยไม่ตั้งใจ"
+        "เพราะ read repair process เข้าใจผิดแล้วไปลบข้อมูลเวอร์ชันใหม่ล่าสุดทิ้งโดยไม่ตั้งใจทุกครั้งที่มันทำงานประสานกับ anti-entropy background process"
       ]
     },
     {

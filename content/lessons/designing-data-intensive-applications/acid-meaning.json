@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "ถ้า transaction ล้มกลางคัน จะ rollback ทุก write เหมือนไม่เคยเริ่ม (all-or-nothing)",
-        "transaction ที่รันพร้อมกันจะไม่รบกวนกัน",
+        "transaction ที่รันพร้อมกันหลายตัวจะไม่รบกวนกันแม้อ่านหรือเขียนข้อมูลชุดเดียวกันพร้อมกันก็ตาม",
         "ข้อมูลที่ commit แล้วจะไม่หายแม้ไฟดับ"
       ]
     },
@@ -28,7 +28,7 @@
       "options": [
         "เป็นหน้าที่ของ application ในการรักษา invariant; database การันตีให้เองไม่ได้ทั้งหมด",
         "database รับประกัน invariant ทางธุรกิจทุกข้อให้อัตโนมัติ",
-        "มันคือ linearizability แบบเดียวกับ consistency ใน CAP theorem"
+        "มันคือ linearizability แบบเดียวกับ consistency ใน CAP theorem เพราะทั้งคู่วัดว่าทุก node เห็นข้อมูลตรงกันหรือไม่"
       ]
     },
     {
@@ -42,7 +42,7 @@
       "type": "mcq",
       "options": [
         "throughput ต่ำลงและ latency สูงขึ้นจาก coordination/locking, fsync และการ scale ข้าม node ที่ยากขึ้น",
-        "ใช้ disk น้อยลงเพราะไม่ต้องเก็บ log",
+        "ใช้ disk น้อยลงมากเพราะไม่ต้องเก็บ write-ahead log หรือทำ replication ข้อมูลไปยัง node อื่นเลยแม้แต่น้อยเมื่อเทียบกับระบบ NoSQL ทั่วไป",
         "ทำให้ระบบ available มากขึ้นเสมอ"
       ]
     }

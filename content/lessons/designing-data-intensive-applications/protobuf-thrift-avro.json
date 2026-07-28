@@ -12,7 +12,7 @@
       "expected_answer": "field tag number (ชื่อ field ไม่ถูกเก็บลงในไบต์)",
       "type": "mcq",
       "options": [
-        "ชื่อ field ที่เก็บเป็นสตริงในทุก message",
+        "ชื่อ field แบบเต็มที่เก็บเป็นสตริงพร้อม type annotation ในทุก message ที่ส่งออกไป",
         "field tag number (ชื่อ field ไม่ถูกเก็บลงในไบต์)",
         "hash ของทั้ง message"
       ]
@@ -24,7 +24,7 @@
       "options": [
         "Avro ไม่เก็บ tag หรือชื่อ field ในไบต์ แต่ resolve field ด้วยชื่อผ่าน writer's schema กับ reader's schema (schema resolution)",
         "Avro เก็บ tag number เหมือนกันแต่ใช้เลขจากศูนย์",
-        "Avro เก็บชื่อ field เป็นสตริงในทุก message เลย decode ได้โดยไม่ต้องมี schema"
+        "Avro เก็บชื่อ field เป็นสตริงเต็มรูปแบบพร้อม type information กำกับไว้ในทุก message ที่ส่งออกไป ทำให้ decode ได้เองทันทีโดยไม่ต้องพึ่งพา writer's schema หรือ reader's schema เลย"
       ]
     },
     {
@@ -43,7 +43,7 @@
       "type": "mcq",
       "options": [
         "tag number คือตัวตนของ field ใน Protobuf ทำให้ rename ชื่อ field ได้โดยไม่พังความเข้ากันได้",
-        "Avro ต้องส่ง writer's schema แบบ out-of-band เพราะไบต์ไม่มี schema อยู่ในตัว",
+        "Avro ต้องส่ง writer's schema แบบ out-of-band เพราะไบต์ไม่มี schema",
         "Protobuf เก็บชื่อ field ไว้ในไบต์ จึง decode ได้เองโดยไม่ต้องมี schema"
       ]
     }

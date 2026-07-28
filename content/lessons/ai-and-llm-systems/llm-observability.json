@@ -18,7 +18,7 @@
       "options": [
         "ระบบเริ่มคืน error ถี่ขึ้นทีละน้อยจนกว่าจะข้าม threshold ของ alert ที่ทีมตั้งไว้แล้วค่อยมีคนเห็น",
         "คุณภาพคำตอบแย่ลงได้ทั้งที่ latency, error rate และ cost ยังปกติ",
-        "cost ต่อ request ค่อย ๆ สูงขึ้นเงียบ ๆ เพราะ cache hit rate ตกลงโดยที่ traffic ยังเท่าเดิมทุกวัน"
+        "cost ต่อ request สูงขึ้นเงียบ ๆ เพราะ cache hit rate ตกลง"
       ]
     },
     {
@@ -33,7 +33,7 @@
       "options": [
         "TTFT (time to first token) และ total latency",
         "ค่า average latency ของทุก request รวมกันในหนึ่งวัน เพราะเพียงพอต่อการดูภาพรวมของระบบแล้ว",
-        "เวลาที่ใช้ในขั้น retrieval อย่างเดียว เพราะเป็นขั้นตอนที่ช้าที่สุดเสมอในระบบ LLM ทุกแบบ"
+        "เวลาที่ใช้ในขั้น retrieval อย่างเดียว"
       ]
     },
     {
@@ -41,7 +41,7 @@
       "expected_answer": "มันคือข้อมูลลูกค้า จึงต้อง redact ตั้ง retention และจำกัดสิทธิ์เข้าถึง",
       "type": "mcq",
       "options": [
-        "prompt ที่ยาวทำให้ตัว export ส่ง span ไม่ทัน ระบบจึงต้องลดขนาด context window ลงเพื่อให้ log ครบทุก request",
+        "prompt ที่ยาวทำให้ export ส่ง span ไม่ทัน ต้องลด context window ลง",
         "ควรเก็บ input/output ดิบไว้ทั้งหมดเสมอ เพราะเป็นข้อมูลชุดเดียวที่ทำให้คำนวณ cost ต่อ request ย้อนหลังได้อย่างแม่นยำ",
         "มันคือข้อมูลลูกค้า จึงต้อง redact ตั้ง retention และจำกัดสิทธิ์เข้าถึง"
       ]

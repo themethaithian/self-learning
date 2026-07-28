@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "เพราะค่าใน column เดียวกันมี type/domain เดียวกันและมักซ้ำ (low cardinality) จึงใช้ bitmap/run-length encoding ได้ดี",
-        "เพราะ column store ใช้ compression algorithm ที่ใหม่กว่า row store โดยเนื้อแท้",
+        "เพราะ column store ใช้ compression algorithm รุ่นใหม่กว่าและมีประสิทธิภาพสูงกว่า row store โดยเนื้อแท้อยู่แล้วไม่เกี่ยวกับการจัดเรียงข้อมูล",
         "เพราะ column store แปลงข้อมูลทุกอย่างเป็น text ล้วนซึ่งบีบอัดง่ายกว่า binary"
       ]
     },
@@ -26,7 +26,7 @@
       "expected_answer": "เพราะ field ของแถวเดียวกระจายอยู่คนละ column file ที่ถูก sort/compress แยกกัน การเขียนแถวเดียวจึงต้องแตะหลายไฟล์",
       "type": "mcq",
       "options": [
-        "เพราะ column store ไม่มี index จึงต้อง scan ทั้งตารางก่อนเขียนทุกครั้ง",
+        "เพราะ column store ไม่มี index รองรับการเขียนเลยจึงต้อง scan ทั้งตารางทุก column file ก่อนเขียนทุกครั้งที่มีแถวใหม่เข้ามา",
         "เพราะ field ของแถวเดียวกระจายอยู่คนละ column file ที่ถูก sort/compress แยกกัน การเขียนแถวเดียวจึงต้องแตะหลายไฟล์",
         "เพราะ column store เก็บข้อมูลไว้ใน memory เท่านั้นจึงเขียนลง disk ไม่ได้"
       ]

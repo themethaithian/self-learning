@@ -12,7 +12,7 @@
       "type": "mcq",
       "options": [
         "consensus ต้องการแค่ majority ของ node เห็นชอบ จึงทน minority ล่มได้ ส่วน 2PC ต้องได้เสียงครบทุก participant (unanimous)",
-        "consensus ต้องได้เสียงครบทุก node ส่วน 2PC ต้องการแค่ majority",
+        "consensus ต้องได้เสียงครบทุก node (unanimous) เพื่อความปลอดภัยสูงสุด ส่วน 2PC ต้องการแค่เสียงข้างมาก (majority) ก็เพียงพอแล้วในการ commit",
         "ทั้งคู่ต้องได้เสียงครบเท่ากัน ต่างกันแค่ชื่อเรียก"
       ]
     },

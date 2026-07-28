@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "การันตีว่ามีอย่างน้อยอีกเครื่องที่มีข้อมูลชุดล่าสุดครบ ก่อนตอบ client ว่าสำเร็จ (durability สูงกว่า)",
-        "ทำให้ write throughput ของทั้ง cluster สูงขึ้นเพราะเขียนขนานกันได้",
+        "ทำให้ write throughput ของทั้ง cluster สูงขึ้นมากเพราะทุก follower สามารถรับและประมวลผล write ขนานกันไปพร้อม ๆ กันได้เลย",
         "ทำให้ follower รับ write ได้โดยตรงจึงลดภาระ leader"
       ]
     },
@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "ถ้า sync ทุกตัว เครื่องเดียวช้า/ล่ม จะบล็อก write ทั้งระบบ; semi-synchronous ให้ sync แค่ตัวเดียวจึงยังทนต่อ follower ตัวอื่นล่มได้",
-        "เพราะ synchronous replication ทำให้ข้อมูลบน follower ไม่ตรงกับ leader",
+        "เพราะ synchronous replication เมื่อใช้กับ follower ทุกตัวพร้อมกันจะทำให้ข้อมูลบน follower แต่ละตัวไม่ตรงกับ leader อยู่เสมอไม่ว่ากรณีใด",
         "เพราะ semi-synchronous ทำให้ write throughput ของ leader สูงกว่า"
       ]
     },
@@ -42,8 +42,8 @@
       "type": "mcq",
       "options": [
         "scale read เท่านั้น",
-        "scale ทั้ง read และ write",
-        "scale write เท่านั้น"
+        "scale ทั้งคู่",
+        "scale write เท่านั้น เพราะ leader ยังเป็นจุดเดียวที่รับ write"
       ]
     }
   ],

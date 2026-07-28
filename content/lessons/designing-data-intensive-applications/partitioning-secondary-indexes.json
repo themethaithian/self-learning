@@ -13,7 +13,7 @@
       "options": [
         "scatter-gather ไปทุก partition แล้ว merge ผลลัพธ์",
         "ยิงไป partition เดียวที่ถือ term นั้นโดยตรง",
-        "อ่านจาก primary key ได้เลยโดยไม่ต้องแตะ index"
+        "อ่านจาก primary key ได้เลยโดยไม่ต้องแตะ index เพราะข้อมูลทุก partition เรียงตาม primary key อยู่แล้ว"
       ]
     },
     {
@@ -27,7 +27,7 @@
       "type": "mcq",
       "options": [
         "local = write ถูกแต่ read ต้อง scatter-gather; global = read ถูกแต่ write ต้องอัปเดตหลาย partition แบบ async",
-        "local = read ถูกแต่ write ต้องอัปเดตหลาย partition; global = write ถูกแต่ read ต้อง scatter-gather",
+        "local = read ถูกแต่ write ต้องอัปเดตหลาย partition ต่อ document เดียว; global = write ถูกแต่ read ต้อง scatter-gather ไปทุก node เพื่อรวมผล",
         "ทั้งสองแบบทั้ง read และ write ถูกเท่ากัน ต่างแค่ชื่อเรียก"
       ]
     },
@@ -38,7 +38,7 @@
       "options": [
         "เพราะเอกสารเดียวอาจมีหลาย term (เช่น merchant และ category) ที่อยู่คนละ index partition จึงต้องอัปเดต index หลายที่",
         "เพราะต้อง scatter-gather ไปทุก partition ก่อนจึงจะเขียนได้",
-        "เพราะ global index บังคับให้เก็บสำเนา document ทั้งก้อนซ้ำในทุก partition"
+        "เพราะ global index บังคับให้เก็บสำเนา document ทั้งก้อนซ้ำไว้ในทุก partition ของ cluster เพื่อให้ query อ่านได้ครบโดยไม่ต้องแตะ partition อื่น"
       ]
     },
     {

@@ -16,7 +16,7 @@
       "expected_answer": "ภายใน partition เดียวเท่านั้น",
       "type": "mcq",
       "options": [
-        "ข้ามทุก partition ของ topic นั้น",
+        "ข้ามทุก partition",
         "ภายใน partition เดียวเท่านั้น",
         "ทุก consumer ที่อ่าน topic นั้น"
       ]
@@ -26,7 +26,7 @@
       "expected_answer": "จำนวน partition ของ topic",
       "type": "mcq",
       "options": [
-        "จำนวน consumer group ทั้งหมด",
+        "จำนวน node ทั้งหมด",
         "จำนวน message ใน log ปัจจุบัน",
         "จำนวน partition ของ topic"
       ]

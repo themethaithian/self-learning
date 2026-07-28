@@ -43,7 +43,7 @@
       "options": [
         "เพิ่ม latency และ complexity ให้ระบบ",
         "โมเดลไม่จำเป็นต้องใช้ context ในการตอบอีก",
-        "ทำให้ vector index ไม่มีวันล้าสมัยเลย"
+        "vector index ไม่มีวันล้าสมัยเลย"
       ]
     }
   ],
