@@ -20,15 +20,16 @@ import (
 var _ httpserver.Registrar = (*Handler)(nil)
 
 type fakeTreeService struct {
-	topics []domain.Topic
-	err    error
+	topics       []domain.Topic
+	availability map[curriculumapp.ConceptPath]int
+	err          error
 
 	lesson    domain.Lesson
 	lessonErr error
 }
 
-func (f fakeTreeService) Tree(context.Context) ([]domain.Topic, error) {
-	return f.topics, f.err
+func (f fakeTreeService) Tree(context.Context) ([]domain.Topic, map[curriculumapp.ConceptPath]int, error) {
+	return f.topics, f.availability, f.err
 }
 
 func (f fakeTreeService) Lesson(context.Context, string, string) (domain.Lesson, error) {
@@ -83,12 +84,19 @@ func buildTestTopic(t *testing.T, track, slug, title string, position int) domai
 // symmetric with the encoder, so a struct tag rename round-trips clean and
 // the test can never catch it. Two tracks, fed in reverse-canonical arrival
 // order, also proves grouping order comes from domain.Tracks(), not from
-// the order topics arrived in.
+// the order topics arrived in. The dsa concept has a lesson and the ddd one
+// does not, so this single byte-for-byte body also pins has_lesson/
+// est_minutes for both the true case and the explicit-null case — a struct
+// tag mistake (e.g. omitempty on EstMinutes) would drop the key and fail
+// this exact string compare.
 func TestHandlerGetTree_Success(t *testing.T) {
 	dsaTopic := buildTestTopic(t, "dsa", "dsa-arrays", "Arrays", 1)
 	dddTopic := buildTestTopic(t, "ddd", "ddd-aggregates", "Aggregates", 1)
 	logger, _ := newTestLogger()
-	h := NewHandler(fakeTreeService{topics: []domain.Topic{dsaTopic, dddTopic}}, logger)
+	availability := map[curriculumapp.ConceptPath]int{
+		{TopicSlug: "dsa-arrays", ConceptSlug: "dsa-arrays-concept"}: 9,
+	}
+	h := NewHandler(fakeTreeService{topics: []domain.Topic{dsaTopic, dddTopic}, availability: availability}, logger)
 
 	rec := doGetTree(h, http.MethodGet)
 
@@ -99,10 +107,94 @@ func TestHandlerGetTree_Success(t *testing.T) {
 		t.Fatalf("Content-Type = %q, want application/json; charset=utf-8", ct)
 	}
 
-	const want = `{"tracks":[{"track":"ddd","topics":[{"slug":"ddd-aggregates","title":"Aggregates","position":1,"chapters":[{"slug":"ddd-aggregates-chapter","title":"Chapter Aggregates","position":1,"concepts":[{"slug":"ddd-aggregates-concept","title":"Concept Aggregates","position":1}]}]}]},{"track":"dsa","topics":[{"slug":"dsa-arrays","title":"Arrays","position":1,"chapters":[{"slug":"dsa-arrays-chapter","title":"Chapter Arrays","position":1,"concepts":[{"slug":"dsa-arrays-concept","title":"Concept Arrays","position":1}]}]}]}]}
+	const want = `{"tracks":[{"track":"ddd","topics":[{"slug":"ddd-aggregates","title":"Aggregates","position":1,"chapters":[{"slug":"ddd-aggregates-chapter","title":"Chapter Aggregates","position":1,"concepts":[{"slug":"ddd-aggregates-concept","title":"Concept Aggregates","position":1,"has_lesson":false,"est_minutes":null}]}]}]},{"track":"dsa","topics":[{"slug":"dsa-arrays","title":"Arrays","position":1,"chapters":[{"slug":"dsa-arrays-chapter","title":"Chapter Arrays","position":1,"concepts":[{"slug":"dsa-arrays-concept","title":"Concept Arrays","position":1,"has_lesson":true,"est_minutes":9}]}]}]}]}
 `
 	if got := rec.Body.String(); got != want {
 		t.Fatalf("body = %q, want %q", got, want)
+	}
+}
+
+func derefInt(p *int) any {
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
+// TestHandlerGetTree_DistinctEstMinutesPerConcept guards against
+// toConceptDTOs sharing one loop-local variable across iterations: if
+// `minutes` were hoisted out of the loop, every concept's *int would alias
+// the same address and all read back as whichever concept's value was
+// assigned last. Two lesson-bearing concepts in the same chapter with
+// different est_minutes is the only shape that can expose that.
+func TestHandlerGetTree_DistinctEstMinutesPerConcept(t *testing.T) {
+	tr, err := domain.NewTrack("go")
+	if err != nil {
+		t.Fatalf("NewTrack: %v", err)
+	}
+	posA, err := domain.NewPosition(1)
+	if err != nil {
+		t.Fatalf("NewPosition: %v", err)
+	}
+	posB, err := domain.NewPosition(2)
+	if err != nil {
+		t.Fatalf("NewPosition: %v", err)
+	}
+	slugA, err := domain.NewSlug("concept-a")
+	if err != nil {
+		t.Fatalf("NewSlug: %v", err)
+	}
+	conceptA, err := domain.NewConcept(slugA, "Concept A", "an outline", posA)
+	if err != nil {
+		t.Fatalf("NewConcept: %v", err)
+	}
+	slugB, err := domain.NewSlug("concept-b")
+	if err != nil {
+		t.Fatalf("NewSlug: %v", err)
+	}
+	conceptB, err := domain.NewConcept(slugB, "Concept B", "an outline", posB)
+	if err != nil {
+		t.Fatalf("NewConcept: %v", err)
+	}
+	chapterSlug, err := domain.NewSlug("chapter-ab")
+	if err != nil {
+		t.Fatalf("NewSlug: %v", err)
+	}
+	chapter, err := domain.NewChapter(chapterSlug, "Chapter AB", posA, []domain.Concept{conceptA, conceptB})
+	if err != nil {
+		t.Fatalf("NewChapter: %v", err)
+	}
+	topicSlug, err := domain.NewSlug("go-basics")
+	if err != nil {
+		t.Fatalf("NewSlug: %v", err)
+	}
+	topic, err := domain.NewTopic(tr, topicSlug, "Go Basics", posA, []domain.Chapter{chapter})
+	if err != nil {
+		t.Fatalf("NewTopic: %v", err)
+	}
+
+	availability := map[curriculumapp.ConceptPath]int{
+		{TopicSlug: "go-basics", ConceptSlug: "concept-a"}: 5,
+		{TopicSlug: "go-basics", ConceptSlug: "concept-b"}: 10,
+	}
+	logger, _ := newTestLogger()
+	h := NewHandler(fakeTreeService{topics: []domain.Topic{topic}, availability: availability}, logger)
+
+	rec := doGetTree(h, http.MethodGet)
+
+	var got treeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	concepts := got.Tracks[0].Topics[0].Chapters[0].Concepts
+	if len(concepts) != 2 {
+		t.Fatalf("concepts = %d, want 2", len(concepts))
+	}
+	if concepts[0].EstMinutes == nil || *concepts[0].EstMinutes != 5 {
+		t.Errorf("concepts[0] (%s).EstMinutes = %v, want 5", concepts[0].Slug, derefInt(concepts[0].EstMinutes))
+	}
+	if concepts[1].EstMinutes == nil || *concepts[1].EstMinutes != 10 {
+		t.Errorf("concepts[1] (%s).EstMinutes = %v, want 10", concepts[1].Slug, derefInt(concepts[1].EstMinutes))
 	}
 }
 

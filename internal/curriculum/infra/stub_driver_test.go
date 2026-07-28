@@ -27,6 +27,7 @@ func stubFullRow(track, topicSlug, topicTitle string, topicPos int, chapterSlug,
 		"t.track": track, "t.slug": topicSlug, "t.title": topicTitle, "t.position": topicPos,
 		"c.slug": chapterSlug, "c.title": chapterTitle, "c.position": chapterPos,
 		"co.slug": conceptSlug, "co.title": conceptTitle, "co.outline": conceptOutline, "co.position": conceptPos,
+		"l.est_minutes": nil,
 	}
 }
 
@@ -35,6 +36,7 @@ func stubTopicOnlyRow(track, slug, title string, pos int) stubRow {
 		"t.track": track, "t.slug": slug, "t.title": title, "t.position": pos,
 		"c.slug": nil, "c.title": nil, "c.position": nil,
 		"co.slug": nil, "co.title": nil, "co.outline": nil, "co.position": nil,
+		"l.est_minutes": nil,
 	}
 }
 
@@ -43,6 +45,7 @@ func stubChapterOnlyRow(track, topicSlug, topicTitle string, topicPos int, chapt
 		"t.track": track, "t.slug": topicSlug, "t.title": topicTitle, "t.position": topicPos,
 		"c.slug": chapterSlug, "c.title": chapterTitle, "c.position": chapterPos,
 		"co.slug": nil, "co.title": nil, "co.outline": nil, "co.position": nil,
+		"l.est_minutes": nil,
 	}
 }
 

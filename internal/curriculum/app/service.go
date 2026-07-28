@@ -15,10 +15,22 @@ import (
 // the HTTP handler can answer 404 instead of 500.
 var ErrLessonNotFound = errors.New("curriculum: lesson not found")
 
+// ConceptPath identifies one concept by topic and concept slug. domain.
+// NewTopic enforces concept slugs unique across the whole topic (lessons
+// are stored at content/lessons/<topic>/<concept>.json, with no chapter
+// segment), so this pair is the same identity Repository.LessonByConcept
+// and GET /api/v1/lessons/{topicSlug}/{conceptSlug} already use.
+type ConceptPath struct {
+	TopicSlug   string
+	ConceptSlug string
+}
+
 // Repository is the curriculum read port. infra provides the MySQL adapter;
-// tests provide a fake.
+// tests provide a fake. Topics returns the tree and its lesson-availability
+// map together so the caller never needs a second round trip to know which
+// concepts have a lesson.
 type Repository interface {
-	Topics(ctx context.Context) ([]domain.Topic, error)
+	Topics(ctx context.Context) ([]domain.Topic, map[ConceptPath]int, error)
 	LessonByConcept(ctx context.Context, topicSlug, conceptSlug string) (domain.Lesson, error)
 }
 
@@ -31,12 +43,12 @@ func NewService(repo Repository) Service {
 	return Service{repo: repo}
 }
 
-func (s Service) Tree(ctx context.Context) ([]domain.Topic, error) {
-	topics, err := s.repo.Topics(ctx)
+func (s Service) Tree(ctx context.Context) ([]domain.Topic, map[ConceptPath]int, error) {
+	topics, availability, err := s.repo.Topics(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("curriculum: tree: %w", err)
+		return nil, nil, fmt.Errorf("curriculum: tree: %w", err)
 	}
-	return topics, nil
+	return topics, availability, nil
 }
 
 // Lesson returns the full lesson for a concept, identified by its topic and

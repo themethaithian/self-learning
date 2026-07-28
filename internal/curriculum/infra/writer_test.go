@@ -479,7 +479,7 @@ func TestRepositorySaveTopic_ReconcilesMovedConcept(t *testing.T) {
 		t.Fatalf("SaveTopic() with moved concept unexpected error: %v", err)
 	}
 
-	got, err := repo.Topics(ctx)
+	got, _, err := repo.Topics(ctx)
 	if err != nil {
 		t.Fatalf("Topics() after reconciliation unexpected error: %v", err)
 	}
@@ -514,7 +514,7 @@ func TestRepositorySaveTopic_ReconcilesRenamedChapter(t *testing.T) {
 		t.Fatalf("SaveTopic() with renamed chapter unexpected error: %v", err)
 	}
 
-	got, err := repo.Topics(ctx)
+	got, _, err := repo.Topics(ctx)
 	if err != nil {
 		t.Fatalf("Topics() after reconciliation unexpected error: %v", err)
 	}
@@ -546,7 +546,7 @@ func TestRepositorySaveTopic_ReconcilesRenamedConcept(t *testing.T) {
 		t.Fatalf("SaveTopic() with renamed concept unexpected error: %v", err)
 	}
 
-	got, err := repo.Topics(ctx)
+	got, _, err := repo.Topics(ctx)
 	if err != nil {
 		t.Fatalf("Topics() after reconciliation unexpected error: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestRepositorySaveTopic_ReconcilesDeletedConcept(t *testing.T) {
 		t.Fatalf("SaveTopic() with deleted concept unexpected error: %v", err)
 	}
 
-	got, err := repo.Topics(ctx)
+	got, _, err := repo.Topics(ctx)
 	if err != nil {
 		t.Fatalf("Topics() after reconciliation unexpected error: %v", err)
 	}
