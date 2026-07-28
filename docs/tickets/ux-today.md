@@ -273,7 +273,7 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
   - **S15 — `Button`'s `"danger"` variant ไม่มีใครเรียกใช้เลยทั้งแอป, `text-danger` (rose-600) บน
     cream วัดได้ ~4.39:1 ซึ่ง**จะ fail AA**ทันทีที่มีคนเอาไปใช้จริง (14px ต้องการ 4.5:1) — บันทึกไว้
     เป็น debt เฉย ๆ ไม่เพิ่ม caller ปลอมขึ้นมาเพื่อ "justify" การมีอยู่ของ variant นี้
-- Status: `implemented, PR pending`
+- Status: `merged, PR #46`
 
 ## UX-6 — Today page + IA switch
 
