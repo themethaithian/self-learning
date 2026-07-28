@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "why-llm-eval-is-hard",
+  "version": 1,
+  "title_en": "Why LLM Evaluation Is Hard",
+  "est_minutes": 8,
+  "body_md": "# Why LLM Evaluation Is Hard\n\n## ทำไมถึงสำคัญ\n\nTest ของ software ปกติให้คำตอบ pass/fail ชัดเจน: input นี้ต้องได้ output นี้เป๊ะ. LLM ทำแบบนั้นไม่ได้ — input เดิมอาจได้ output ต่างกันในแต่ละครั้ง และคำตอบที่ \"ถูก\" มีได้หลายแบบพร้อมกัน. ผลเชิง engineering คือถ้าไม่มี eval ที่ออกแบบมาเฉพาะ ทีมจะแก้ prompt แล้วไม่รู้ว่าดีขึ้นหรือแย่ลง — regression มองไม่เห็นจนลูกค้าบ่น.\n\n## แก่นของแนวคิด\n\nสี่เหตุผลที่ eval LLM ยากกว่า unit test:\n\n1. **Non-deterministic output** — sampling ทำให้ prompt เดิมได้ข้อความต่างกัน (กลไกอยู่ใน `sampling-and-temperature`). แม้ลด randomness ลงสุด output ก็ยังไม่รับประกันว่าเหมือนเดิม เพราะ batching, hardware และเวอร์ชันโมเดลเปลี่ยนได้. `assertEqual(output, expected)` จึงพังตั้งแต่บรรทัดแรก.\n2. **Open-ended: ไม่มีคำตอบถูกเดียว** — งานสรุปความหรือตอบลูกค้า มีคำตอบถูกจำนวนมากที่ต่างกันทั้งคำ ลำดับ และโครงสร้าง. \"ไม่ตรงกับ reference answer\" ไม่ได้แปลว่าผิด — แปลว่าตัววัดของเราไม่พอเท่านั้น.\n3. **คุณภาพเป็น multi-dimensional ไม่ใช่ boolean** — \"ดี\" ประกอบด้วยหลายแกนที่แลกกันเอง: correctness/groundedness, completeness (ไม่ตกประเด็นสำคัญ), conciseness, tone, compliance. คำตอบหนึ่งอาจเต็มด้านความถูกต้องแต่แย่ด้าน tone. ยุบทุกแกนเป็นเลขเดียวเมื่อไหร่ ก็เสียข้อมูลที่ต้องใช้ debug ทันที.\n4. **Ground truth แพงและไม่นิ่ง** — คนสองคนให้คะแนนคำตอบเดียวกันไม่ตรงกัน (inter-annotator disagreement). ถ้า rubric ไม่ชัด คะแนนที่ได้จะสะท้อนรสนิยมของผู้ให้คะแนนมากกว่าคุณภาพจริง.\n\nเพราะเหตุนี้จึงต้องผสม **automated metric + human judgment**: automated ให้ scale, เร็ว, ทำซ้ำได้ — เหมาะกับการรันทุกครั้งที่แก้ prompt; human ให้ signal ที่เชื่อได้ที่สุดและจับมิติที่ metric มองไม่เห็น — แต่ช้าและแพง. รูปแบบที่ใช้จริงคือรัน automated ทุกรอบ แล้วให้ human ตรวจ sample เป็นระยะเพื่อ calibrate ว่า automated ยังเชื่อได้อยู่ไหม (ทางสายกลางระหว่างสองแบบคือ `llm-as-judge`).\n\nและ eval ไม่ใช่กิจกรรมครั้งเดียว มันเป็น **loop ต่อเนื่อง**: วัด offline ก่อน ship (golden set — `golden-sets-and-offline-eval`), วัด online หลัง ship (`online-eval-and-ab-testing`), แล้วเคสที่พังจริงถูกดูดกลับเข้าชุดทดสอบ.\n\n```mermaid\nflowchart LR\n  C[\"Prompt or model change\"] --> O[\"Offline eval on fixed case set\"]\n  O --> G{\"Regression vs baseline?\"}\n  G -->|yes| C\n  G -->|no| S[\"Ship to small traffic slice\"]\n  S --> M[\"Online metrics and user feedback\"]\n  M --> H[\"Human review of sampled failures\"]\n  H --> A[\"Add failure cases back to eval set\"]\n  A --> O\n```\n\n## ตัวอย่าง (fintech: สรุป dispute case)\n\nBot สรุปเคส dispute บัตรให้ agent อ่านก่อนโทรหาลูกค้า. Input คือ transaction log + chat history, output คือสรุปสั้น ๆ ไม่กี่บรรทัด.\n\nรันสองครั้งได้:\n\n- **A**: \"ลูกค้าปฏิเสธรายการ 3 รายการที่ร้านค้าต่างประเทศ รวม 12,400 บาท ภายในคืนเดียว\"\n- **B**: \"เกิดรายการต่างประเทศ 3 รายการติดกันคืนวันที่ 14 มูลค่ารวม 12,400 บาท ลูกค้าแจ้งว่าไม่ได้ทำรายการ และยืนยันว่าบัตรยังอยู่กับตัว\"\n\nString equality บอกอะไรไม่ได้เลย — ทั้งคู่เป็นภาษาไทยคนละชุดคำ. แต่ B ดีกว่าในมิติ **completeness** เพราะมี \"บัตรยังอยู่กับตัว\" ซึ่งเป็นข้อเท็จจริงที่เปลี่ยนแนวทางสอบสวน (card-not-present fraud vs บัตรหาย). A ไม่ได้แต่งข้อมูลอะไรเลย ทุกประโยคมี evidence รองรับจาก log จริง — ถ้าเราวัดด้วย metric เดียวคือ groundedness (`eval-metrics-groundedness`) A จะได้คะแนนเต็ม ทั้งที่ agent เอาไปใช้ตัดสินเคสไม่ได้.\n\nสังเกตว่า omission แบบนี้คนละปัญหากับ hallucination (แต่งข้อมูลที่ไม่มีในแหล่ง — `hallucination-mitigation` ch.8): hallucination ผิดที่ข้อเท็จจริง omission ผิดที่ความครบ และต้องใช้ metric คนละตัวจับ. นี่คือรูปธรรมของข้อ 3 ข้างบน — metric เดียวไม่พอ.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"ลด randomness ให้ต่ำสุดแล้ว eval ก็กลายเป็น deterministic test ปกติ\"** — ผิด. ลด variance ได้จริง แต่ไม่ได้แก้ข้อ 2 และ 3: คำตอบถูกยังมีหลายแบบ และคุณภาพยังเป็นหลายมิติอยู่ดี.\n- **\"ให้คนอ่านเองแม่นที่สุด ไม่ต้องมี metric\"** — human เป็น reference ที่ดีที่สุดเท่าที่มี แต่ไม่ใช่ oracle: คะแนนไม่ตรงกันระหว่างคน, เลื่อนตามความล้า, และ scale ไม่ได้ตาม traffic.\n- **\"eval ทำครั้งเดียวตอนเลือกโมเดลก็พอ\"** — ผิด. prompt เปลี่ยน, โมเดลอัปเวอร์ชัน, และคำถามที่ user ถามจริงก็ drift ตามเวลา.\n- **\"คะแนนเฉลี่ยสูงขึ้น = ระบบดีขึ้น\"** — ค่าเฉลี่ยกลบ regression ของ segment ที่สำคัญได้ เช่นคะแนนรวมขึ้น แต่เคส dispute ยอดสูงแย่ลง.\n\n## ขีดจำกัด / trade-off\n\n- **eval มีต้นทุนจริง**: สร้างและ maintain ชุดเคส, ค่า inference ต่อรอบ eval, เวลาคน label. ทีมเล็กที่ลงทุนหนักตั้งแต่วันแรกอาจ ship ช้ากว่าที่ควร — โดยเฉพาะตอนที่ product spec ยังเปลี่ยนทุกสัปดาห์ เพราะชุดเคสจะล้าสมัยเร็วกว่าที่ใช้คุ้ม.\n- **overfitting to the eval set**: tune prompt จนชุดทดสอบเขียวหมด แต่ user จริงไม่ได้รู้สึกดีขึ้น. metric ที่กลายเป็นเป้าหมายจะเลิกเป็น metric ที่ดี — ต้องหมุนเคสใหม่เข้าและถ่วงด้วย online signal.\n- **eval เองก็ noisy**: automated metric มี bias ของตัวมันเอง และ human ก็ไม่ตรงกัน ความต่างเล็ก ๆ ระหว่างสอง prompt อาจเป็น noise ไม่ใช่ improvement. ต้องตอบให้ได้ว่า \"ต่างกันเท่าไหร่ถึงเชื่อว่าดีขึ้นจริง\" ไม่ใช่เห็นเลขขยับแล้ว ship.\n- **เมื่อไหร่ลงทุนเบาได้**: prototype หรือ internal tool ที่มีคนตรวจ output ทุกครั้งก่อนใช้ — spot-check ด้วยมือก็พอ. แต่ทันทีที่ output ถึงลูกค้าโดยตรง หรือไป trigger action ทางการเงิน ต้นทุนของ regression ที่มองไม่เห็นจะสูงกว่าต้นทุน eval มาก.\n\n## มุมสัมภาษณ์\n\n- **\"เปลี่ยน prompt แล้วรู้ได้ยังไงว่าดีขึ้น\"** → คำตอบที่ผ่านคือไม่เชื่อ vibe check: ต้องมีชุดเคสคงที่, วัดหลายมิติ, เทียบ before/after กับ baseline เดิม, แล้วยืนยันด้วย online signal.\n- **\"ทำไม unit test ปกติใช้กับ LLM ไม่ได้\"** → non-deterministic + open-ended ทำให้ assert equality พัง; ต้อง assert เป็น property หรือ rubric score แทน.\n- **\"จะวัดว่า 'สรุปที่ดี' คืออะไร\"** → แตกเป็นมิติ (ถูกต้อง/ครบ/กระชับ/น้ำเสียง) แล้ววัดแยก อย่ายุบเป็นเลขเดียวก่อนเวลาอันควร.\n- **\"จะรู้ได้ยังไงว่า automated metric ที่ใช้ยังเชื่อได้\"** → calibrate กับ human rating บน sample เป็นระยะ ถ้าสองอย่างเริ่มไม่ไปด้วยกัน metric นั้นหมดอายุ.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไมจึงเขียน test แบบ assertEqual(output, expected) กับ LLM ไม่ได้?",
+      "expected_answer": "เพราะ output เป็น non-deterministic (prompt เดิมได้ข้อความต่างกัน) และงานเป็น open-ended คือมีคำตอบที่ถูกได้หลายแบบ การไม่ตรงกับ reference จึงไม่ได้แปลว่าผิด",
+      "type": "short_answer"
+    },
+    {
+      "q": "ทำไมจึงต้องใช้ทั้ง automated metric และ human judgment ร่วมกัน?",
+      "expected_answer": "automated ให้ scale และทำซ้ำได้ ส่วน human จับมิติที่ metric มองไม่เห็น",
+      "type": "mcq",
+      "options": [
+        "automated ให้ scale และทำซ้ำได้ ส่วน human จับมิติที่ metric มองไม่เห็น",
+        "automated ใช้ได้แค่ตอน prototype ส่วน human ต้องเข้ามาแทนทั้งหมดเมื่อระบบขึ้น production",
+        "human มีหน้าที่เขียนชุดเคส ส่วน automated มีหน้าที่หาค่า sampling parameter ที่เหมาะที่สุด"
+      ]
+    },
+    {
+      "q": "ข้อใดถูกต้องเกี่ยวกับการลด randomness ของการ sampling ลงต่ำสุดเพื่อทำ eval?",
+      "expected_answer": "ลด variance ได้ แต่คำตอบที่ถูกยังมีได้หลายแบบและคุณภาพยังเป็นหลายมิติ",
+      "type": "mcq",
+      "options": [
+        "ทำให้ output คงที่มากพอจนใช้เทียบตรงกับคำตอบมาตรฐานได้ทุกเคสเหมือน unit test ทั่วไป",
+        "ลด variance ได้ แต่คำตอบที่ถูกยังมีได้หลายแบบและคุณภาพยังเป็นหลายมิติ",
+        "ไม่ช่วยอะไรเลยเพราะความหลากหลายของ output เกิดจากขนาด context window เป็นหลัก"
+      ]
+    },
+    {
+      "q": "ในตัวอย่างสรุป dispute ทำไมคำตอบ A ที่ทุกประโยคมี evidence รองรับจึงยังใช้งานไม่ได้ดี?",
+      "expected_answer": "เพราะมันตกประเด็นสำคัญ (บัตรยังอยู่กับตัวลูกค้า) จึงผิดในมิติ completeness แม้จะผ่านด้าน groundedness",
+      "type": "short_answer"
+    },
+    {
+      "q": "ข้อใดคือความเสี่ยงของการ tune prompt จนชุดเคส eval ผ่านหมด?",
+      "expected_answer": "overfitting กับชุดเคส ทำให้คะแนนขึ้นแต่ผู้ใช้จริงไม่ได้ดีขึ้น",
+      "type": "mcq",
+      "options": [
+        "ทำให้ระบบใช้ token ต่อ request มากขึ้นจนต้นทุน inference ในการรัน eval แต่ละรอบสูงเกินงบ",
+        "ทำให้ human reviewer ให้คะแนนตรงกันมากเกินไปจน inter-annotator disagreement หายไปหมด",
+        "overfitting กับชุดเคส ทำให้คะแนนขึ้นแต่ผู้ใช้จริงไม่ได้ดีขึ้น"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Holistic Evaluation of Language Models (HELM)",
+      "source": "Liang et al., 2022 (arXiv:2211.09110)",
+      "why": "อ่านเหตุผลว่าทำไมต้องวัดหลายมิติพร้อมกันแทนการยุบเป็นคะแนนเดียว"
+    },
+    {
+      "title": "Beyond Accuracy: Behavioral Testing of NLP Models with CheckList",
+      "source": "Ribeiro et al., ACL 2020 (arXiv:2005.04118)",
+      "why": "อ่านแนวคิดการทดสอบเชิงพฤติกรรมแทนการดูค่า accuracy รวม ๆ ที่กลบ regression รายกลุ่ม"
+    },
+    {
+      "title": "Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena",
+      "source": "Zheng et al., 2023 (arXiv:2306.05685)",
+      "why": "อ่านหลักฐานเชิงตัวเลขว่า human rater ไม่ตรงกันแค่ไหน และ automated judge เชื่อได้เพียงใด"
+    },
+    {
+      "title": "AI Engineering — บทว่าด้วย Evaluation Methodology",
+      "source": "Chip Huyen, 'AI Engineering' (O'Reilly, 2025), บท Evaluation Methodology",
+      "why": "อ่านมุมมองเชิงระบบว่า eval ควรวางเป็น loop ต่อเนื่องในทีม product อย่างไร"
+    }
+  ]
+}

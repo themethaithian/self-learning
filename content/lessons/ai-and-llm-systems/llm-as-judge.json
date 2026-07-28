@@ -1,0 +1,72 @@
+{
+  "topic": "ai-and-llm-systems",
+  "concept_id": "llm-as-judge",
+  "version": 1,
+  "title_en": "LLM-as-Judge",
+  "est_minutes": 9,
+  "body_md": "# LLM-as-Judge\n\n## ทำไมถึงสำคัญ\n\nสมมติ golden set มี 300 เคส (การสร้างและดูแล golden set เป็นเนื้อหาของ sibling `golden-sets-and-offline-eval`) — ทุกครั้งที่แก้ system prompt หรือเปลี่ยน retrieval ต้องรู้ว่าดีขึ้นหรือแย่ลง. ถ้าต้องให้คนอ่านครบทุกเคส eval จะช้าและแพงจนไม่มีใครรันจริง แต่ string match ก็ใช้ไม่ได้เพราะคำตอบเป็น open-ended (เหตุผลเต็ม ๆ อยู่ใน `why-llm-eval-is-hard`). LLM-as-judge คือทางที่ทำให้ eval รันได้ทุก PR แลกกับการยอมรับข้อเดียวที่สำคัญที่สุด: judge เป็น **proxy** ของ human judgment ไม่ใช่ ground truth.\n\n## แก่นของแนวคิด\n\nLLM-as-judge คือการเรียกโมเดลอีกครั้งหนึ่ง โดย input = (คำถาม, คำตอบที่กำลังถูกประเมิน, context/reference ถ้ามี, **rubric**) และ output = คะแนน + เหตุผลประกอบ. หัวใจไม่ได้อยู่ที่ \"โมเดลฉลาดพอไหม\" แต่อยู่ที่ **rubric ชัดพอจนคนสองคนให้คะแนนตรงกันหรือยัง** — ถ้า human สองคนยังเถียงกันด้วย rubric นี้ judge ก็จะให้คะแนนมั่วเหมือนกัน.\n\n### สองรูปแบบหลัก\n\n- **pointwise scoring** — ให้ทีละคำตอบ แล้วให้คะแนนตาม scale (เช่น 1–5) แยกรายมิติ. ได้ตัวเลข absolute เอาไป track เป็น time series บน dashboard ได้ และไม่ต้องมี baseline มาเทียบ. จุดอ่อนคือ scale ลอย — \"4\" ของวันนี้กับของเดือนหน้าอาจไม่ได้แปลว่าเท่ากัน และ judge มักกองคะแนนไว้ช่วงกลาง-สูง จนแยกของดีกับดีมากไม่ออก.\n- **pairwise comparison** — ให้คำตอบ A กับ B ของคำถามเดียวกัน แล้วถามว่าอันไหนดีกว่า (หรือเสมอ). โดยทั่วไป **เสถียรกว่า** เพราะเป็นการเทียบสัมพัทธ์ judge ไม่ต้องตรึงความหมายของ scale ในหัวเอง. จุดอ่อนคือบอกได้แค่ \"ดีกว่า\" ไม่ได้บอกว่า \"ดีพอจะ ship หรือยัง\" และจำนวนคู่ที่ต้องเทียบโตเร็วเมื่อมีหลาย variant.\n\nใช้จริงมักผสม: pairwise ตอนตัดสินใจว่า prompt ใหม่ชนะของเดิมไหม, pointwise ตอนอยากได้ metric รายมิติไว้เฝ้าดูข้ามเวลา.\n\n### rubric ที่ใช้ได้จริง\n\nแตกเป็นมิติแยกกัน ให้คะแนนทีละมิติ อย่ายุบเป็น \"ดีแค่ไหน 1–10\" ก้อนเดียว:\n\n- **correctness** — ข้อเท็จจริงถูกไหม\n- **completeness** — ตอบครบทุกส่วนของคำถามไหม\n- **groundedness** — ทุก claim มี evidence ใน context ที่ให้ไปไหม (นิยามและวิธีวัดละเอียดอยู่ `eval-metrics-groundedness`)\n- **tone / policy compliance** — น้ำเสียงและข้อห้ามตามนโยบาย\n\nแต่ละมิติต้องมี **anchor**: บอกให้ชัดว่าคะแนน 1 หน้าตาแบบไหน 3 แบบไหน 5 แบบไหน. บังคับให้ judge **เขียนเหตุผลก่อนแล้วค่อยให้คะแนน** และคืนผลเป็น structured output (JSON) — เหตุผลคือสิ่งที่ทำให้ debug ได้ว่า judge เข้าใจ rubric ผิดตรงไหน และเป็นวัตถุดิบตอน calibrate. เติม few-shot ตัวอย่างที่ให้คะแนนไว้แล้ว 2–3 อันเพื่อ pin ความหมายของ scale.\n\n```mermaid\nflowchart TD\n  G[\"Golden set case\"] --> A[\"Answer from system A\"]\n  G --> B[\"Answer from system B\"]\n  A --> P1[\"Judge run: A first, B second\"]\n  B --> P1\n  A --> P2[\"Judge run: B first, A second\"]\n  B --> P2\n  P1 --> AGG[\"Aggregate both orders\"]\n  P2 --> AGG\n  AGG --> R{\"Same winner both orders?\"}\n  R -->|yes| W[\"Record winner\"]\n  R -->|no| T[\"Mark unstable: tie or human review\"]\n  W --> C[\"Calibrate vs human labels on sample\"]\n  T --> C\n```\n\n## ตัวอย่าง\n\nทีม fintech มี support assistant ตอบคำถามเรื่องค่าธรรมเนียมโอนเงิน โดยดึงจากเอกสาร fee schedule. golden set มี 300 เคส และกำลังจะเปลี่ยน retrieval + system prompt (เรียกของเดิมว่า A ของใหม่ว่า B).\n\nวิธีรัน pairwise: รันทั้งสอง version บนทุกเคส แล้วส่งเข้า judge พร้อม fee schedule chunk ที่ retrieve มา + rubric 3 มิติ (correctness / completeness / groundedness). แต่ละคู่รัน 2 ครั้งโดยสลับตำแหน่ง A-B และ B-A. เคสที่ผลกลับด้านตามลำดับ (สมมติ 40 จาก 300) แปลว่า judge ไม่ได้มั่นใจจริง — นับเป็น tie แล้วโยนให้คนดู. ผลรวมออกมาเป็น B ชนะ 180 แพ้ 80 เสมอ 40.\n\nก่อนเชื่อตัวเลขนี้ ต้อง **calibrate**: สุ่ม 50 เคสให้ domain expert ตัดสินเองแบบไม่เห็นผล judge แล้ววัด agreement. ถ้าตรงกันราว 85% ใช้ผลตัดสินใจ ship ได้; ถ้าตรงแค่ราว 55% (เกือบเท่าเดาสุ่มในงานที่มีสองตัวเลือกหลัก) ปัญหาคือ rubric ยังกำกวม ต้องกลับไปแก้ rubric ก่อน — ไม่ใช่รีบเปลี่ยนโมเดล judge.\n\nจุดที่มักพังในโดเมนการเงิน: judge ไม่รู้ว่าค่าธรรมเนียมข้ามธนาคารจริงคือเท่าไร มันรู้แค่ว่าคำตอบ \"ฟังดูสมเหตุสมผล\". ข้อเท็จจริงเชิงตัวเลขแบบนี้ควรเช็คด้วย deterministic assertion เทียบกับ fee table โดยตรง แล้วปล่อยให้ judge รับผิดชอบเฉพาะมิติที่ตัดสินด้วยโค้ดไม่ได้ เช่น ความครบและน้ำเสียง.\n\n## เข้าใจผิดที่พบบ่อย\n\n- **\"judge ให้คะแนนสูง = ระบบดี\"** — judge วัดว่าคำตอบตรง rubric แค่ไหน ไม่ได้วัดว่า user พอใจหรือทำงานสำเร็จ; ต้องมี signal จริงจาก production ด้วย (sibling `online-eval-and-ab-testing`).\n- **\"ใช้โมเดลตัวเดียวกับที่ generate คำตอบมาเป็น judge ก็ได้\"** — เสี่ยง self-preference bias (บาง paper เรียก self-enhancement bias) คือเอนไปเข้าข้าง output ที่มี style แบบเดียวกับที่ตัวเองผลิต.\n- **\"judge แทน human review ได้เลย\"** — judge ขยาย throughput ของ human judgment ไม่ได้แทนที่มัน; คนยังต้องเป็นผู้ define rubric และ audit sample เป็นระยะ.\n- **\"เปลี่ยน judge เป็นโมเดลใหม่กว่าแล้วคะแนนเทียบกับของเก่าได้\"** — เปลี่ยน judge คือเปลี่ยนไม้บรรทัด ต้อง re-baseline ใหม่ทั้งชุด.\n\n## ขีดจำกัด / trade-off\n\n**bias ที่เจอซ้ำ ๆ และวิธีลด (ลดได้ ไม่หายขาด):**\n\n- **position bias** — ใน pairwise ลำดับที่วางมีผลต่อผู้ชนะ. ลดด้วยการสลับลำดับแล้วรวมผลทั้งสองรอบ และตีเคสที่ผลไม่นิ่งเป็น tie.\n- **verbosity / length bias** — เอนไปชอบคำตอบที่ยาวและละเอียดกว่า แม้ไม่ได้ถูกต้องกว่า. ลดด้วย rubric ที่ระบุว่าความกระชับมีค่า และคอยดู correlation ระหว่างความยาวคำตอบกับคะแนน ถ้าสูงผิดปกติแปลว่า judge วัดความยาวอยู่.\n- **self-preference** — ลดด้วยการแยก judge ออกจากโมเดลที่ generate.\n\nเพราะ bias ลดได้แต่ไม่หมด จึงห้าม treat คะแนน judge เป็น ground truth: มันคือ estimate ที่ต้องคู่กับ human agreement number เสมอ.\n\n**ต้นทุนและ latency:** judge คือ LLM call เพิ่ม โดยจำนวน call = จำนวนเคส × จำนวนรอบสลับลำดับ — 300 เคส × 2 ลำดับ = 600 call ต่อการรันหนึ่งครั้ง (จำนวนมิติใน rubric ไม่ได้เพิ่มจำนวน call เพราะคืนคะแนนทุกมิติใน JSON เดียว แต่เพิ่ม token ต่อ call ทั้งฝั่ง prompt และ output) ซึ่งอาจแพงกว่าการรันระบบที่กำลังทดสอบเสียอีก. จึงใช้กับ golden set และ sample ที่สุ่มจาก production ไม่ใช่กับทุก request; ถ้าอยากได้ guard ต่อ request จริง ๆ ควรใช้ deterministic check หรือ classifier ที่เล็กและถูกกว่า.\n\n**reproducibility:** judge เป็น non-deterministic → pin เวอร์ชันของ judge model, ใช้ temperature ต่ำ, และเก็บ prompt ของ judge ไว้คู่กับผล eval ทุกครั้ง ไม่งั้นตัวเลขข้ามเดือนจะเทียบกันไม่ได้โดยไม่รู้ตัว.\n\n**เมื่อไม่ควรใช้:** (1) งานที่มีคำตอบถูกเดียวและตรวจด้วยโค้ดได้ เช่น extraction, classification, ตัวเลข — assertion ตรง ๆ ถูกกว่า เร็วกว่า และแม่นกว่า; (2) การตัดสินใจ high-stakes ด้าน compliance หรือ safety ที่ต้องมีผู้รับผิดชอบ — ใช้ judge เป็น pre-filter ได้ แต่ sign-off ต้องเป็นคน; (3) โดเมนที่ judge ไม่มีความรู้เฉพาะทาง (business rule ภายใน) จน agreement กับ expert ต่ำเกินจะเชื่อ.\n\n## มุมสัมภาษณ์\n\n- **\"eval 500 เคสทุก deploy โดยไม่ให้คนอ่านทุกอัน ทำยังไง\"** → judge + rubric รายมิติ + calibration sample; อย่าลืมพูดถึงว่าเชื่อได้แค่ไหน.\n- **\"pointwise หรือ pairwise\"** → pairwise เสถียรกว่าและเหมาะกับการตัดสิน A/B, pointwise ให้ตัวเลข absolute ไว้ track ข้ามเวลา.\n- **\"รู้ได้ยังไงว่า judge เชื่อถือได้\"** → วัด agreement กับ human บน sample ไม่ใช่อ้างว่าโมเดลเก่ง.\n- **\"bias ของ judge มีอะไรบ้าง แก้ยังไง\"** → position / verbosity / self-preference + วิธีลดแต่ละอัน และย้ำว่าไม่หายขาด.\n- **\"ทำไมคะแนน eval เดือนนี้เทียบกับเดือนที่แล้วไม่ได้\"** → judge model หรือ judge prompt เปลี่ยน; ต้อง pin version และ re-baseline.\n",
+  "recall_checks": [
+    {
+      "q": "ทำไม pairwise comparison มักให้ผลเสถียรกว่า pointwise scoring?",
+      "expected_answer": "เพราะเป็นการเทียบสัมพัทธ์ระหว่างสองคำตอบ judge ไม่ต้องตรึงความหมายของ scale absolute เอง",
+      "type": "short_answer"
+    },
+    {
+      "q": "วิธีลด position bias ใน pairwise judging คือข้อใด?",
+      "expected_answer": "สลับลำดับ A-B แล้วรวมผลทั้งสองรอบ",
+      "type": "mcq",
+      "options": [
+        "เพิ่ม temperature ของ judge ให้ผลหลากหลายขึ้น",
+        "สลับลำดับ A-B แล้วรวมผลทั้งสองรอบ",
+        "ใช้ judge ตัวเดียวกับโมเดลที่ generate คำตอบ"
+      ]
+    },
+    {
+      "q": "ก่อนจะเชื่อผลจาก LLM judge ควรทำอะไรก่อน?",
+      "expected_answer": "วัด agreement กับ human rating บน sample",
+      "type": "mcq",
+      "options": [
+        "ขยาย golden set ให้ถึงหลักพันเคสก่อนเริ่มใช้งานจริง",
+        "เปลี่ยนไปใช้ judge model รุ่นใหม่ที่สุดที่หาได้เสมอ",
+        "วัด agreement กับ human rating บน sample"
+      ]
+    },
+    {
+      "q": "ทำไมจึงไม่ควรรัน LLM judge กับทุก request ใน production?",
+      "expected_answer": "เพราะ judge เป็น LLM call เพิ่มต่อเคส (คูณด้วยจำนวนรอบสลับลำดับ ส่วนจำนวนมิติเพิ่ม token ต่อ call ไม่เพิ่มจำนวน call) ทำให้ cost และ latency สูง จึงใช้กับ golden set และ sample ที่สุ่มมาแทน",
+      "type": "short_answer"
+    },
+    {
+      "q": "งานแบบใดที่ไม่ควรใช้ LLM-as-judge?",
+      "expected_answer": "งาน extraction ที่ตรวจด้วย assertion ได้",
+      "type": "mcq",
+      "options": [
+        "งาน extraction ที่ตรวจด้วย assertion ได้",
+        "การเทียบ system prompt สองเวอร์ชันบน golden set",
+        "การให้คะแนนน้ำเสียงของคำตอบ support assistant"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena",
+      "source": "Zheng et al., 2023 (arXiv:2306.05685)",
+      "why": "อ่านงานที่วัด agreement ระหว่าง LLM judge กับ human และระบุ position / verbosity / self-enhancement bias อย่างเป็นระบบ"
+    },
+    {
+      "title": "Large Language Models are not Fair Evaluators",
+      "source": "Wang et al., 2023 (arXiv:2305.17926)",
+      "why": "อ่านหลักฐานว่าลำดับที่วางคำตอบเปลี่ยนผู้ชนะได้ และเทคนิค calibration ด้วยการสลับตำแหน่ง"
+    },
+    {
+      "title": "Chatbot Arena: An Open Platform for Evaluating LLMs by Human Preference",
+      "source": "Chiang et al., 2024 (arXiv:2403.04132)",
+      "why": "อ่านว่า pairwise preference จาก human ถูกรวบรวมและแปลงเป็น ranking อย่างไร ใช้เทียบกับผลของ judge"
+    },
+    {
+      "title": "Your AI Product Needs Evals",
+      "source": "Hamel Husain, hamel.dev (บทความชุด evals)",
+      "why": "อ่านมุมปฏิบัติเรื่องการเขียน rubric, การ align judge กับ domain expert และการวาง eval loop ในทีมจริง"
+    }
+  ]
+}
