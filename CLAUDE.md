@@ -125,3 +125,6 @@ building it.
   pass before a ticket is done.
 - Generate lessons in small batches (one topic at a time) to respect
   subscription usage limits.
+- MCQ (recall_checks) must pass guessability check: predicting the answer by
+  simple heuristics (length, position) should succeed ~33% of the time — full
+  rules in `docs/tickets/mcq-quality.md`.

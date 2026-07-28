@@ -44,6 +44,7 @@ Phase 2 ค่อย publish โชว์เป็นผลงาน (ดู des
 - DDIA track (additive, [รายละเอียด](tickets/ddia.md)): [x] T-ddia-track [x] T-ddia-curriculum · **lessons 12/12 บท ครบทั้ง track (61 บทเรียน)** — reader: [Study Reader artifact](https://claude.ai/code/artifact/b67a1cad-4b9e-4b2e-9cf1-755128e1ebb5)
 - AI & LLM Systems track (7th, additive, [รายละเอียด](tickets/ai-systems.md)): [x] T-ai-track (enable + tree 11 บท/53 concept + loader test) · **lessons 53/53 ครบทั้ง track (11 บท)** — เจาะตำแหน่ง Backend/AI-CRM ([🎯 roadmap](https://claude.ai/code/artifact/a6d332fd-de7b-44bb-91db-37549984c7a7))
 - Infra (ad hoc, [รายละเอียด](tickets/local-docker.md)): [~] T-local-docker — one-command local dev stack (`make dev`: mysql + api + web + auto-seed), PR pending
+- MCQ quality (ad hoc, [รายละเอียด](tickets/mcq-quality.md)): [x] C-mcq-balance — balanced recall_checks against length/position heuristics, fixed distractor editing rules (33.7% guessability vs. 89.6% before)
 - Guided learning path (additive, [รายละเอียด](tickets/ux-today.md)): [x] UX-1 (has_lesson/est_minutes) [x] UX-1b (focus track pref API) [~] UX-2 (Learn page + focus picker, PR pending) [ ] UX-3 [ ] UX-4 [ ] UX-5 [ ] UX-6 [ ] UX-7
 
 ## กติกาการทำงาน (ทุก ticket)

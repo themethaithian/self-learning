@@ -17,8 +17,8 @@
       "type": "mcq",
       "options": [
         "เพราะ key เดียวกันอาจได้ค่า hash ต่างกันคนละ process จึงไม่ deterministic พอสำหรับ partitioning",
-        "เพราะมันไม่ได้ออกแบบมาให้ deterministic ข้าม process แต่กลับคำนวณช้าเกินไปสำหรับงาน partitioning ที่ต้อง hash ข้อมูลจำนวนมหาศาลตลอดเวลา",
-        "เพราะมันคืนค่าเป็น string ไม่ใช่ตัวเลข จึงไม่สามารถนำไป map เป็น partition number ได้โดยตรงเหมือนที่ hash function สำหรับงาน partitioning ต้องการ"
+        "มันออกแบบมาให้ deterministic ข้าม process อยู่แล้ว แต่ให้ค่ากระจายไม่สม่ำเสมอพอสำหรับงาน partitioning ที่ต้องการ uniform distribution",
+        "มันคืนค่าเป็น int ที่คำนวณจาก field ภายใน object ซึ่งอาจซ้ำกันได้ง่ายระหว่าง key ที่ต่างกัน (hash collision สูง) จนไม่เหมาะกับงาน partitioning ที่ต้องการ distribution สม่ำเสมอ"
       ]
     },
     {

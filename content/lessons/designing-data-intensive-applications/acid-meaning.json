@@ -41,9 +41,9 @@
       "expected_answer": "throughput ต่ำลงและ latency สูงขึ้นจาก coordination/locking, fsync และการ scale ข้าม node ที่ยากขึ้น",
       "type": "mcq",
       "options": [
-        "ใช้ disk น้อยลงมากเพราะไม่ต้องเก็บ write-ahead log หรือทำ replication ข้อมูลไปยัง node อื่นเลยแม้แต่น้อยเมื่อเทียบกับระบบ NoSQL ทั่วไป",
+        "ใช้ disk น้อยลงมากกว่าระบบที่ผ่อน guarantee แบบ BASE เสมอในทุกสถานการณ์ไม่ว่า workload จะหนักหรือเบาแค่ไหนก็ตามทั้งสิ้น",
         "throughput ต่ำลงและ latency สูงขึ้นจาก coordination/locking, fsync และการ scale ข้าม node ที่ยากขึ้น",
-        "ทำให้ระบบ available มากขึ้นเสมอ เพราะ node แต่ละตัวตอบกลับผู้ใช้ได้โดยไม่ต้องรอการประสานงาน (coordination) หรือรอเสียงจาก node อื่นก่อนที่จะตอบกลับไปให้ผู้ใช้เห็นผลลัพธ์"
+        "ระบบ available มากขึ้นเสมอในทุกสถานการณ์ไม่ว่า node จะล่มไปกี่ตัวก็ตามเมื่อเทียบกับระบบที่ผ่อน guarantee แบบ BASE ทั้งหมด"
       ]
     }
   ],

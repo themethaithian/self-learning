@@ -13,7 +13,7 @@
       "options": [
         "scatter-gather ไปทุก partition แล้ว merge ผลลัพธ์",
         "ยิงไป partition เดียวที่ถือ term นั้นโดยตรง เหมือนกับที่ global (term-partitioned) index ทำได้เพราะแบ่ง index ตามค่าที่ index เอง",
-        "อ่านจาก primary key ได้เลยโดยไม่ต้องแตะ index เพราะข้อมูลทุก partition เรียงตาม primary key อยู่แล้ว"
+        "ค้นหาได้เร็วในทุกกรณีโดยไม่ต้องกระจายไปหา node อื่นเลยแม้แต่ node เดียว ไม่ว่า partition จะมีจำนวนมากเพียงใดก็ตาม"
       ]
     },
     {

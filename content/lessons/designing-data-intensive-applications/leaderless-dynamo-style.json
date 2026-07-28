@@ -17,7 +17,7 @@
       "type": "mcq",
       "options": [
         "read repair ซ่อม replica เฉพาะตอนมี client มาอ่าน (จึงพลาด key ที่ไม่มีใครอ่าน) ส่วน anti-entropy เป็น background process ที่กวาดเทียบข้อมูลตลอดเวลารวมถึง cold key",
-        "read repair ทำงานที่ leader ส่วน anti-entropy ทำงานที่ follower โดย leader เป็นคนตรวจสอบและซ่อมข้อมูลให้ follower ทุกตัวที่ล้าหลังในระหว่างที่ client กำลังเขียนหรืออ่านข้อมูล ก่อนที่จะส่งผลลัพธ์กลับไปให้ client เห็น",
+        "read repair ทำงานที่ leader ส่วน anti-entropy ทำงานที่ follower เหมือนกับระบบ single-leader ทั่วไปที่ follower มีหน้าที่แค่รับ replication log จาก leader มาเก็บไว้เฉยๆ โดยไม่ต้องตรวจสอบหรือซ่อมความสดของข้อมูลด้วยตัวเอง",
         "read repair คัดลอกข้อมูลตามลำดับ write เดิมกลับไปยัง replica ที่ล้าหลัง ส่วน anti-entropy process ทำหน้าที่การันตี linearizability ให้กับ replica ทั้งหมดในคลัสเตอร์"
       ]
     },
