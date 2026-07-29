@@ -7,12 +7,16 @@
 	email {$ACME_EMAIL}
 }
 
-# {$DOMAIN} keeps this file domain-agnostic. Local test without a real
-# domain or certs: DOMAIN=localhost (Caddy serves plain HTTP on :80 for a
-# non-public hostname). Real deploy: DOMAIN=your-real-domain (Caddy issues a
-# Let's Encrypt cert automatically).
+# {$DOMAIN} keeps this file domain-agnostic. Local dev: DOMAIN=:80 (a bind
+# address, not a hostname) so Caddy never attempts automatic HTTPS. Real
+# deploy: DOMAIN=your-real-domain (Caddy issues a Let's Encrypt cert
+# automatically). DOMAIN=localhost is NOT a safe local substitute for :80 —
+# Caddy still treats "localhost" as a hostname eligible for automatic HTTPS
+# (internal CA) and will serve a real HSTS header over that TLS connection;
+# see docs/tickets/local-docker.md#T-local-access.
 {$DOMAIN} {
 	encode gzip
+	root * /srv
 
 	header {
 		X-Content-Type-Options "nosniff"
@@ -21,10 +25,10 @@
 		-Server
 	}
 
-	# HSTS must only be sent over an actual TLS connection: emitting it on
-	# plain-HTTP DOMAIN=:80 (local dev) makes Chrome cache the policy against
-	# `localhost` and force-upgrade every later request to a https port
-	# nothing listens on, even outside incognito.
+	# RFC 6797 scopes HSTS to secure transport; emitting it over plain HTTP
+	# is non-conformant regardless of whether a given UA is spec-compliant
+	# about ignoring it. See docs/tickets/local-docker.md#T-local-access for
+	# what is (and isn't) confirmed about this host's past HSTS lockout.
 	@https protocol https
 	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
@@ -38,17 +42,41 @@
 
 	# Next's build output is content-hashed and never falls back to
 	# index.html: a stale page must 404 on a missing chunk (nosniff blocks
-	# execution anyway), not silently serve HTML that looks like JS.
+	# execution anyway), not silently serve HTML that looks like JS. The
+	# default Cache-Control keeps anything under /_next/ but outside
+	# /_next/static/ off heuristic caching too.
 	handle /_next/* {
-		root * /srv
-		header /_next/static/* Cache-Control "public, max-age=31536000, immutable"
-		file_server
+		handle /_next/static/* {
+			header Cache-Control "public, max-age=31536000, immutable"
+			file_server
+		}
+
+		handle {
+			header Cache-Control "no-cache"
+			file_server
+		}
 	}
 
 	handle {
-		root * /srv
 		header Cache-Control "no-cache"
 		try_files {path} {path}.html {path}/index.html /index.html
 		file_server
+	}
+
+	# file_server's 404 unwinds as an error before the deferred headers
+	# above (Cache-Control and the -Server/security block, both deferred
+	# because they contain a deletion) ever apply — a deferred header only
+	# fires on a normal WriteHeader from within the erroring route itself.
+	# Restate them here so a vanished content-hashed chunk is never cached
+	# as immutable.
+	handle_errors {
+		header {
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			-Cache-Control
+			-Server
+		}
+		respond "{http.error.status_code} {http.error.status_text}" {http.error.status_code}
 	}
 }
