@@ -381,7 +381,7 @@ Status: implemented, round 2 fixes applied post code-review, PR pending
 | # | Mutation | ผลลัพธ์ |
 |---|---|---|
 | 1 | สลับลำดับ hash เป็น `concept + "/" + topic + "/" + question` | killed — `TestNewCheckKey` (เทียบ hash จริงจาก `crypto/sha256` คำนวณแยก) + `TestNewCheckKey_HashOrderMatters` |
-| 2 | hash คำถามแบบไม่ trim (ใช้ `question` ดิบแทน `trimmed`) | killed — `TestNewCheckKey` (`trims leading/trailing whitespace` case) + `TestNewCheckKey_TrimOnly` |
+| 2 | hash คำถามแบบไม่ trim (ใช้ `question` ดิบแทน `trimmed`) | killed — `TestNewCanonicalQuestion` (`trims leading/trailing whitespace` + `whitespace-only` cases) — trimming ย้ายมาอยู่ที่ `NewCanonicalQuestion` ในรอบ 2 (R3), ไม่ใช่ `NewCheckKey` อีกต่อไป; `TestNewCheckKey_TrimOnly` เดิมถูกแทนที่ด้วย `TestNewCheckKey_UsesQuestionVerbatim` (เทสต์คนละเรื่อง — ยืนยันว่า `NewCheckKey` ไม่ normalize ซ้ำ ไม่ใช่เรื่อง trim) |
 | 3 | ตัดเช็ค "คำถามเป็นของ lesson นี้" ทิ้ง (ใช้ `selectLessonExistsSQL` แทน `selectRecallCheckExistsSQL` ใน `RecordAttempt`) | killed — `TestRepositoryRecordAttempt_CheckNotInLesson` + `TestRepositoryRecordAttempt_ScopedByBothSlugs` |
 | 4 | `AND` → `OR` ใน `selectRecallCheckExistsSQL`'s WHERE clause | killed — `TestSelectRecallCheckExistsSQLShape` (literal-string pin; stub dispatch ด้วย query-string identity เอง detect ไม่ได้ ตาม precedent เดิมของไฟล์นี้) |
 | 5 | เติม `ON DUPLICATE KEY UPDATE created_at = VALUES(created_at)` ใน `insertRecallAttemptSQL` | killed — `TestInsertRecallAttemptSQLShape` (literal-string pin เท่านั้น — behavioral test `TestRepositoryRecordAttempt_AppendOnly` จับไม่ได้เพราะ stub append เข้า slice เสมอไม่สนใจ SQL text จริง ยืนยันด้วย live MySQL evidence ด้านล่างแทน) |
@@ -560,9 +560,19 @@ client ที่โกหกได้)
   logic มาจาก `checkkey.go` เดิม). `NewCheckKey`'s พารามิเตอร์ที่สามเปลี่ยนจาก
   `string` เป็น `CanonicalQuestion` — `Service.RecordAttempt`'s `build`
   closure ไม่มีจุดไหนสร้าง `CanonicalQuestion` จาก `rawQuestion` เองเลย (รับ
-  แค่ตัวที่ repository resolve มาให้เป็น parameter) จึงไม่มีที่ทางให้เผลอ
-  สร้างจาก raw client input ได้อีก — เป็นหลักการเดียวกับที่ R1 ใช้กับ `kind`
-  ในรอบนี้เป๊ะ ๆ
+  แค่ตัวที่ repository resolve มาให้เป็น parameter) วันนี้ — เป็นหลักการเดียวกับ
+  ที่ R1 ใช้กับ `kind` ในรอบนี้เป๊ะ ๆ **แต่ต้องพูดให้แม่นยำ (แก้ตามที่ reviewer
+  ชี้): นี่ไม่ใช่ "forge ไม่ได้" ในระดับ compile-time ทั้งหมด** —
+  `NewCanonicalQuestion` เป็น exported function จาก `domain`, และ `app` import
+  `domain` อยู่แล้ว ดังนั้น `Service.RecordAttempt` เขียนโค้ดหนึ่งบรรทัดสร้าง
+  `domain.NewCanonicalQuestion(rawQuestion)` เองได้จริงถ้าใครแก้แบบนั้นในอนาคต
+  (ตรงข้ามกับ `kind` ที่หายไปจาก request DTO เลย ซึ่งปิดกั้นได้จริงในระดับ HTTP
+  layer). สิ่งที่ปิดกั้นได้จริงระดับ compile-time มีแค่: forge จาก**นอก** package
+  `domain` ไม่ได้ (field `value` เป็น unexported, `NewCheckKey` reject zero
+  value) สิ่งที่ปิดกั้นการ forge **ภายใน** `app` layer จริง ๆ คือ**เทสต์**
+  `TestServiceRecordAttempt_CheckKeyDerivedFromCanonicalQuestion` (reviewer
+  ยืนยันแล้วว่า kill โค้ดที่ forge แบบนี้ได้จริง) ไม่ใช่ตัว type เอง — สรุปคือ
+  "ไม่มีโค้ดไหนในโปรเจกต์นี้ทำแบบนั้นวันนี้" ไม่ใช่ "ทำแบบนั้นไม่ได้เลย"
 - **R4 (แก้แล้ว, promoted จาก reviewer's S2) — stub driver ตาบอดสองจุดที่ R1
   (ทั้งสองรอบ) อยู่พอดี**: `stub_driver_test.go` เดิมไม่มีคอลัมน์ `recall_checks.type`
   เลย และไม่ enforce ENUM ของ `recall_attempts` เลย (MySQL ภายใต้
@@ -603,6 +613,18 @@ client ที่โกหกได้)
   ที่มาถึงพอดีในหน้าต่างนั้นจะได้ 400 (คำถามหาไม่เจอชั่วคราว) แอปนี้ single-user
   และ import เป็น manual step ไม่ใช่ automated job ที่รันพร้อมกับ traffic จริง
   จึงรับความเสี่ยงนี้ไว้โดยไม่ใส่ lock เพิ่ม — บันทึกไว้เป็น known window เฉย ๆ
+- **หนี้ที่รู้ตัวแล้ว ไม่แก้รอบนี้ — `recallAttemptEnumColumns` ซ้ำมือกับ
+  migration โดยไม่มีอะไร pin สองจุดนี้เข้าด้วยกัน**: `stub_driver_test.go`'s
+  `recallAttemptEnumColumns` (R4) เป็น literal ที่คัดลอกมาจาก
+  `migrations/006_recall.sql`'s ENUM ด้วยมือ ไม่มีเทสต์ไหนเทียบสองจุดนี้กันเองว่า
+  ตรงกันจริง — ถ้าในอนาคตมีคนขยาย domain array, ขยาย `recallAttemptEnumColumns`,
+  และขยาย `AcceptedSetIsExactly`'s literal ทั้งสามจุดพร้อมกัน (ต้องทำสามที่
+  ให้ตรงกันเอง) แต่ลืมแก้ migration — ทุก test ในรอบนี้จะยัง**เขียวหมด** แล้วไป
+  พังจริงตอน production (500 จาก MySQL ENUM truncation) พอดีเป็น drift ชนิด
+  เดียวกับที่ R2 ยกขึ้นมา แค่ขยับไปอีกชั้นหนึ่ง (ระหว่าง stub กับ migration แทนที่
+  จะเป็นระหว่าง domain array กับเทสต์) — ความเสี่ยงต่ำ (ต้องพลาดพร้อมกันสามจุด)
+  แต่เป็น unpinned seam จุดสุดท้ายของ ticket นี้ที่ยังไม่มีกลไกอัตโนมัติกัน —
+  บันทึกไว้เฉย ๆ ยังไม่แก้รอบนี้
 
 ### Live verification (docker + curl + MySQL)
 
