@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/themethaithian/self-learning/internal/learning/domain"
@@ -29,6 +30,21 @@ var ErrInvalidState = errors.New("learning: invalid requested state")
 // downstream and fail there instead — a 500, not a 400.
 var ErrInvalidSlug = errors.New("learning: invalid topic or concept slug")
 
+// ErrCheckNotInLesson is returned by RecordAttempt when topicSlug/conceptSlug
+// resolve to a real lesson but question does not match any of that lesson's
+// recall_checks rows. A client-side typo or a stale cached question must
+// 400 here rather than silently minting a check_key no future SRS card will
+// ever match (see domain.CheckKey's doc comment).
+var ErrCheckNotInLesson = errors.New("learning: recall check not found in this lesson")
+
+// ErrInvalidAttempt is returned when confidence, outcome, question
+// non-emptiness, or the selected-option/kind pairing fails domain
+// validation. confidence/outcome/question are checked before any repository
+// round trip, the same way ErrInvalidSlug is; the selected-option/kind
+// pairing can only be checked once kind is resolved from recall_checks.type,
+// inside RecordAttempt's build closure.
+var ErrInvalidAttempt = errors.New("learning: invalid recall attempt")
+
 // ProgressEntry is one concept's persisted progress, addressed by topic and
 // concept slug — the same identity GET /api/v1/lessons/{topic}/{concept}
 // already uses, never a lesson_id the curriculum API never exposes.
@@ -49,6 +65,22 @@ type ProgressDecision struct {
 	TouchOnly bool
 }
 
+// AttemptRecord is one persisted recall_attempts row, echoed back to the
+// caller exactly as stored. Question is the CANONICAL text CheckKey was
+// hashed from, not necessarily what the caller submitted — echoing it lets a
+// client that sent a case- or accent-variant question notice it was
+// normalised, instead of quietly assuming CheckKey matches its own bytes.
+type AttemptRecord struct {
+	CheckKey       string
+	Question       string
+	Kind           domain.CheckKind
+	Confidence     domain.Confidence
+	Outcome        domain.AttemptOutcome
+	SelectedOption *string
+	GradedBy       domain.GradedBy
+	CreatedAt      time.Time
+}
+
 // Repository is the learning read/write port. infra provides the MySQL
 // adapter; tests provide a fake.
 type Repository interface {
@@ -60,6 +92,30 @@ type Repository interface {
 	Transition(ctx context.Context, topicSlug, conceptSlug string, decide func(current ProgressEntry, hasProgress bool) (ProgressDecision, error)) (ProgressEntry, error)
 
 	AllProgress(ctx context.Context) ([]ProgressEntry, error)
+
+	// RecordAttempt resolves the recall check identified by (topicSlug,
+	// conceptSlug, question), then calls build with that check's CANONICAL
+	// question and its real kind — never question itself, and never a
+	// client-supplied kind. Canonical question matters because
+	// recall_checks.question is matched under MySQL's case/accent-
+	// insensitive collation, but domain.CheckKey hashes byte-exact: hashing
+	// the caller's raw question instead of the canonical one would let a
+	// case-variant phrasing pass the lesson-membership check yet mint a
+	// DIFFERENT check_key than the canonical text would, silently forking
+	// one question's attempt history (see domain.CanonicalQuestion's doc
+	// comment). kind is server-resolved for the same reason CheckKey is:
+	// it is static curriculum content the server already owns, not a
+	// client judgement like outcome is — a trusted client-supplied kind
+	// could store an mcq's selected_option against what the database says
+	// is a short_answer check. It rejects a question that does not belong
+	// to that lesson (ErrCheckNotInLesson) or a lesson that does not exist
+	// (ErrLessonNotFound) without ever calling build. If build itself
+	// errors (e.g. domain.NewRecallAttempt's mcq-only invariant), that
+	// error is returned with nothing inserted — mirroring how Transition
+	// never writes when decide errors. Attempts are append-only, so this is
+	// a resolve-then-insert, never a Transition-style locked
+	// read-modify-write.
+	RecordAttempt(ctx context.Context, topicSlug, conceptSlug, question string, build func(canonicalQuestion domain.CanonicalQuestion, kind domain.CheckKind) (domain.RecallAttempt, error)) (AttemptRecord, error)
 }
 
 type Service struct {
@@ -170,4 +226,73 @@ func newConceptRef(conceptSlug string) (domain.LessonRef, error) {
 		return domain.LessonRef{}, fmt.Errorf("%w: %q", ErrInvalidSlug, conceptSlug)
 	}
 	return ref, nil
+}
+
+// RecordAttempt persists one self-graded recall-check attempt. confidence,
+// outcome, and question-non-emptiness are all validated here, before any
+// repository round trip. kind and the CheckKey cannot be validated here: kind
+// is resolved server-side from recall_checks.type and CheckKey must hash the
+// DB's own canonical question text, not rawQuestion — a case-variant
+// question can pass "belongs to this lesson" under MySQL's collation yet
+// hash differently from the canonical text (see domain.CanonicalQuestion's
+// doc comment) — so build defers both until the repository hands back what
+// it actually matched. trimmedQuestion (not rawQuestion) is what gets sent
+// to the repository, so the "belongs to this lesson" lookup compares the
+// same text CheckKey will hash, not a version that still carries whitespace
+// domain.NewCanonicalQuestion would have trimmed away.
+func (s Service) RecordAttempt(ctx context.Context, topicSlug, conceptSlug, rawQuestion, rawConfidence, rawOutcome string, rawSelectedOption *string) (AttemptRecord, error) {
+	if err := validateTopicSlugShape(topicSlug); err != nil {
+		return AttemptRecord{}, err
+	}
+	conceptRef, err := newConceptRef(conceptSlug)
+	if err != nil {
+		return AttemptRecord{}, err
+	}
+
+	confidence, err := domain.NewConfidence(rawConfidence)
+	if err != nil {
+		return AttemptRecord{}, fmt.Errorf("%w: %w", ErrInvalidAttempt, err)
+	}
+	outcome, err := domain.NewAttemptOutcome(rawOutcome)
+	if err != nil {
+		return AttemptRecord{}, fmt.Errorf("%w: %w", ErrInvalidAttempt, err)
+	}
+	trimmedQuestion := strings.TrimSpace(rawQuestion)
+	if trimmedQuestion == "" {
+		return AttemptRecord{}, fmt.Errorf("%w: %w", ErrInvalidAttempt, domain.ErrInvalidCheckKey)
+	}
+	selectedOption := normalizeSelectedOption(rawSelectedOption)
+
+	build := func(canonicalQuestion domain.CanonicalQuestion, kind domain.CheckKind) (domain.RecallAttempt, error) {
+		checkKey, err := domain.NewCheckKey(topicSlug, conceptRef, canonicalQuestion)
+		if err != nil {
+			return domain.RecallAttempt{}, fmt.Errorf("%w: %w", ErrInvalidAttempt, err)
+		}
+		attempt, err := domain.NewRecallAttempt(checkKey, kind, confidence, outcome, selectedOption, domain.GradedBySelf)
+		if err != nil {
+			return domain.RecallAttempt{}, fmt.Errorf("%w: %w", ErrInvalidAttempt, err)
+		}
+		return attempt, nil
+	}
+
+	entry, err := s.repo.RecordAttempt(ctx, topicSlug, conceptSlug, trimmedQuestion, build)
+	if err != nil {
+		return AttemptRecord{}, fmt.Errorf("learning: record attempt %s/%s: %w", topicSlug, conceptSlug, err)
+	}
+	return entry, nil
+}
+
+// normalizeSelectedOption treats an empty (post-trim) selected option the
+// same as an absent one, so a client sending "" behaves identically to
+// omitting the field rather than tripping the mcq-only invariant on
+// meaningless input.
+func normalizeSelectedOption(raw *string) *string {
+	if raw == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*raw)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }

@@ -11,4 +11,11 @@ var (
 	ErrAlreadyUnlocked   = errors.New("lesson already unlocked")
 	ErrLessonLocked      = errors.New("lesson is locked")
 	ErrAlreadyPassed     = errors.New("lesson already passed")
+
+	ErrInvalidCheckKey       = errors.New("invalid check key")
+	ErrInvalidConfidence     = errors.New("invalid confidence")
+	ErrInvalidAttemptOutcome = errors.New("invalid attempt outcome")
+	ErrInvalidCheckKind      = errors.New("invalid check kind")
+	ErrInvalidGradedBy       = errors.New("invalid graded by")
+	ErrSelectedOptionNotMCQ  = errors.New("selected option only valid for mcq checks")
 )

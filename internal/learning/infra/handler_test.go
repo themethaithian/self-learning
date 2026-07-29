@@ -10,8 +10,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	learningapp "github.com/themethaithian/self-learning/internal/learning/app"
+	"github.com/themethaithian/self-learning/internal/learning/domain"
 	"github.com/themethaithian/self-learning/internal/platform/httpserver"
 )
 
@@ -28,6 +30,17 @@ type fakeService struct {
 	setTopic   string
 	setConcept string
 	setState   string
+
+	recordEntry learningapp.AttemptRecord
+	recordErr   error
+
+	recordCalled         bool
+	recordTopic          string
+	recordConcept        string
+	recordQuestion       string
+	recordConfidence     string
+	recordOutcome        string
+	recordSelectedOption *string
 }
 
 func (f *fakeService) ListProgress(context.Context) ([]learningapp.ProgressEntry, error) {
@@ -38,6 +51,14 @@ func (f *fakeService) SetProgress(_ context.Context, topic, concept, state strin
 	f.setCalled = true
 	f.setTopic, f.setConcept, f.setState = topic, concept, state
 	return f.setEntry, f.setErr
+}
+
+func (f *fakeService) RecordAttempt(_ context.Context, topic, concept, question, confidence, outcome string, selectedOption *string) (learningapp.AttemptRecord, error) {
+	f.recordCalled = true
+	f.recordTopic, f.recordConcept, f.recordQuestion = topic, concept, question
+	f.recordConfidence, f.recordOutcome = confidence, outcome
+	f.recordSelectedOption = selectedOption
+	return f.recordEntry, f.recordErr
 }
 
 func newTestLogger() (*slog.Logger, *bytes.Buffer) {
@@ -271,5 +292,184 @@ func TestHandlerRejectsUnknownMethodOnItem(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestHandlerPostAttempt_Success(t *testing.T) {
+	logger, _ := newTestLogger()
+	selected := "Option B"
+	svc := &fakeService{recordEntry: learningapp.AttemptRecord{
+		CheckKey: "abc123", Question: "What is a B-tree?", Kind: mustCheckKind(t, "mcq"), Confidence: mustConfidence(t, "confident"),
+		Outcome: mustAttemptOutcome(t, "incorrect"), SelectedOption: &selected, GradedBy: domain.GradedBySelf,
+		CreatedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+	}}
+	h := NewHandler(svc, logger)
+
+	body := `{"question":"What is a B-tree?","confidence":"confident","outcome":"incorrect","selected_option":"Option B"}`
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/b-trees/attempts", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if !svc.recordCalled {
+		t.Fatal("expected RecordAttempt to be called")
+	}
+	if svc.recordTopic != "ddia" || svc.recordConcept != "b-trees" || svc.recordQuestion != "What is a B-tree?" {
+		t.Fatalf("RecordAttempt called with topic=%q concept=%q question=%q, want ddia/b-trees/\"What is a B-tree?\"", svc.recordTopic, svc.recordConcept, svc.recordQuestion)
+	}
+	if svc.recordConfidence != "confident" || svc.recordOutcome != "incorrect" {
+		t.Fatalf("RecordAttempt called with confidence=%q outcome=%q, want confident/incorrect", svc.recordConfidence, svc.recordOutcome)
+	}
+	if svc.recordSelectedOption == nil || *svc.recordSelectedOption != "Option B" {
+		t.Fatalf("RecordAttempt called with selected_option=%v, want \"Option B\"", svc.recordSelectedOption)
+	}
+	want := `{"check_key":"abc123","question":"What is a B-tree?","kind":"mcq","confidence":"confident","outcome":"incorrect","selected_option":"Option B","graded_by":"self","created_at":"2026-01-01T12:00:00Z"}` + "\n"
+	if got := rec.Body.String(); got != want {
+		t.Fatalf("body = %q, want %q", got, want)
+	}
+}
+
+func TestHandlerPostAttempt_LessonNotFound(t *testing.T) {
+	logger, _ := newTestLogger()
+	svc := &fakeService{recordErr: fmt.Errorf("learning: record attempt: %w", learningapp.ErrLessonNotFound)}
+	h := NewHandler(svc, logger)
+
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/no-lesson/attempts", `{"question":"q","confidence":"unsure","outcome":"correct"}`)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusNotFound, rec.Body.String())
+	}
+}
+
+func TestHandlerPostAttempt_CheckNotInLesson(t *testing.T) {
+	logger, _ := newTestLogger()
+	svc := &fakeService{recordErr: fmt.Errorf("learning: record attempt: %w", learningapp.ErrCheckNotInLesson)}
+	h := NewHandler(svc, logger)
+
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/b-trees/attempts", `{"question":"not a real question","confidence":"unsure","outcome":"correct"}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandlerPostAttempt_InvalidSlug(t *testing.T) {
+	logger, _ := newTestLogger()
+	svc := &fakeService{recordErr: fmt.Errorf("learning: %w: %q", learningapp.ErrInvalidSlug, "B-Trees")}
+	h := NewHandler(svc, logger)
+
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/B-Trees/attempts", `{"question":"q","confidence":"unsure","outcome":"correct"}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandlerPostAttempt_InvalidAttempt(t *testing.T) {
+	logger, _ := newTestLogger()
+	svc := &fakeService{recordErr: fmt.Errorf("learning: %w: %v", learningapp.ErrInvalidAttempt, "bad kind")}
+	h := NewHandler(svc, logger)
+
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/b-trees/attempts", `{"question":"q","confidence":"not-a-real-confidence","outcome":"correct"}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandlerPostAttempt_InvalidJSON(t *testing.T) {
+	logger, _ := newTestLogger()
+	h := NewHandler(&fakeService{}, logger)
+
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/b-trees/attempts", `not json`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandlerPostAttempt_UnknownField(t *testing.T) {
+	logger, _ := newTestLogger()
+	svc := &fakeService{}
+	h := NewHandler(svc, logger)
+
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/b-trees/attempts", `{"question":"q","confidence":"unsure","outcome":"correct","extra":"field"}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if svc.recordCalled {
+		t.Fatal("RecordAttempt must not be called for a body with an unknown field")
+	}
+}
+
+// TestHandlerPostAttempt_KindFieldRejected pins R1's kind fix at the HTTP
+// boundary: a client cannot even express an opinion about kind, let alone
+// one that disagrees with recall_checks.type — recordAttemptRequest has no
+// Kind field at all, so DisallowUnknownFields rejects any body containing
+// one, the same way it would reject any other field this API never asked
+// for. This makes a kind/recall_checks.type mismatch structurally
+// impossible, not merely validated away.
+func TestHandlerPostAttempt_KindFieldRejected(t *testing.T) {
+	logger, _ := newTestLogger()
+	svc := &fakeService{}
+	h := NewHandler(svc, logger)
+
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/b-trees/attempts", `{"question":"q","kind":"mcq","confidence":"unsure","outcome":"correct"}`)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if svc.recordCalled {
+		t.Fatal("RecordAttempt must not be called for a body naming a kind field")
+	}
+}
+
+func TestHandlerPostAttempt_TrailingJSON(t *testing.T) {
+	logger, _ := newTestLogger()
+	svc := &fakeService{}
+	h := NewHandler(svc, logger)
+
+	body := `{"question":"q","confidence":"unsure","outcome":"correct"}{"question":"q2","confidence":"unsure","outcome":"correct"}`
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/b-trees/attempts", body)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if svc.recordCalled {
+		t.Fatal("RecordAttempt must not be called for a body with trailing JSON")
+	}
+}
+
+func TestHandlerPostAttempt_BodyTooLarge(t *testing.T) {
+	logger, _ := newTestLogger()
+	h := NewHandler(&fakeService{}, logger)
+
+	oversized := `{"question":"` + strings.Repeat("x", maxAttemptBodyBytes) + `","confidence":"unsure","outcome":"correct"}`
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/b-trees/attempts", oversized)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
+func TestHandlerPostAttempt_ServiceErrorLeaksNoInternals(t *testing.T) {
+	logger, logBuf := newTestLogger()
+	svc := &fakeService{recordErr: errors.New("mysql: connection refused on 10.0.0.5")}
+	h := NewHandler(svc, logger)
+
+	rec := doRequest(h, http.MethodPost, "/api/v1/progress/ddia/b-trees/attempts", `{"question":"q","confidence":"unsure","outcome":"correct"}`)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	body := rec.Body.String()
+	for _, leak := range []string{"mysql", "10.0.0.5", "connection refused"} {
+		if strings.Contains(body, leak) {
+			t.Fatalf("body = %q leaks internal error detail %q", body, leak)
+		}
+	}
+	if !strings.Contains(logBuf.String(), "connection refused") {
+		t.Fatalf("log output = %q, want it to contain the real error", logBuf.String())
 	}
 }
