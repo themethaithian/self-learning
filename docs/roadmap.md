@@ -110,9 +110,17 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   self-graded (คนตอบ = คนให้คะแนนเอง) ทำ endpoint เฉลยแยกไม่ได้อะไรเพิ่ม มีแต่เสีย round trip +
   failure state ใหม่ ค่อยย้าย server-side ตอน Q-2 ที่เริ่ม submit attempt จริงและออกแบบ endpoint
   จาก requirement จริง (design.md §API ที่บอกว่าต้องตัดเป็นข้อความล้าสมัย ไม่ใช่ bug ของโค้ด)
-- [ ] Q-2 — persist recall attempts + SRS scheduling — สโคปเต็มอยู่ที่
-  [`docs/tickets/quiz.md`](tickets/quiz.md) (schema
-  `recall_attempts`/`review_cards`/`review_logs`, `graded_by='self'` เกิดจริงครั้งแรก)
+- [ ] Q-2a (implemented, PR pending) — persist recall attempts: schema `recall_attempts`
+  (append-only, `check_key = SHA256(topic/concept/trimmed-question)` ไม่มี FK ไป
+  `recall_checks.id`), domain VOs (`CheckKey`/`Confidence`/`AttemptOutcome`/`GradedBy`/
+  `RecallAttempt`), `POST /api/v1/progress/{topic}/{concept}/attempts` — `graded_by='self'`
+  เกิดจริงครั้งแรกที่นี่ · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table อยู่ที่
+  [`docs/tickets/quiz.md`](tickets/quiz.md)
+- [ ] Q-2b — frontend wiring: **ticket ที่ทำให้ข้อมูล in-memory ของ Q-1 (confidence ที่เลือก,
+  ตัวเลือกที่กด, ผลถูก/ผิด) persist จริงในที่สุด แทนที่จะหายตอน refresh** — เรียก endpoint ของ
+  Q-2a จาก `RecallCheckCard`/`lesson/page.tsx` · สโคปที่ [`docs/tickets/quiz.md`](tickets/quiz.md)
+- [ ] Q-2c — `review_cards`/`review_logs` + SM-2 scheduling (อ่าน `recall_attempts` ที่ Q-2a
+  สร้างไว้ ไม่ใช่ schema ใหม่ที่ไม่เกี่ยวกัน) · สโคปที่ [`docs/tickets/quiz.md`](tickets/quiz.md)
 - [ ] Q-3 — เพิ่ม `explanation` ให้ MCQ ครบทั้ง 356 ข้อ (ตอนนี้ 0 ข้อมี) — รอบเดียวกับที่ขัดเกลา
   distractor ที่หลุดธีม **3 concept** (`b-trees`, `column-oriented-storage`, `process-pauses`)
 
@@ -143,7 +151,8 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   (เหตุผลเต็มอยู่ที่บรรทัด Q-1 ด้านบน) เพราะฉะนั้นบรรทัดนี้ใน design.md **ล้าสมัย ไม่ใช่ code ผิด**
 - **`cors_test.go` ยังเทียบกับ constant ตัวเองบางส่วน** — `wantMethods` ถูกแก้เป็น literal แล้วใน #41
   แต่ `wantHeaders`/`wantMaxAge` ยังอ้าง `corsAllowedHeaders`/`corsMaxAge` = mutation ไม่มีทางจับได้
-- rating รายข้อในหน้า reader ไม่ถูก persist (ปลดใน Q-2) · `Button` variant `"danger"` ไม่มีใครใช้
+- rating รายข้อในหน้า reader ไม่ถูก persist (ปลดใน Q-2b — endpoint พร้อมแล้วจาก Q-2a) ·
+  `Button` variant `"danger"` ไม่มีใครใช้
   และจะตก AA (~4.39:1) วันที่มีคนใช้
 - **UX-7 (`/learn`): `TrackCard`'s `<h3>` sits under the page `<h1>` with no `<h2>` between**
   — axe's `heading-order` (best-practice, ไม่ใช่ WCAG) เจอทั้งบน `/learn` และหน้าอื่นที่มีอยู่แล้วบน

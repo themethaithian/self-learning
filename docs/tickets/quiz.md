@@ -273,20 +273,291 @@ volume), ปิดท้ายด้วย `docker compose down` เปล่า
 
 Status: implemented, round 2 fixes applied post code-review, PR pending
 
-## Q-2 — persist recall attempts + SRS scheduling (not started)
+## Q-2a — persist recall attempts `[go-implementer]`
 
-Scope moved here from `docs/roadmap.md` so the Q-series has one home —
-roadmap keeps only a one-line pointer.
+- **Scope**: schema ใหม่ `migrations/006_recall.sql` (`recall_attempts` เท่านั้น —
+  `review_cards`/`review_logs` เป็น Q-2c, ไม่ใช่รอบนี้), domain VOs 5 ไฟล์ใหม่ใน
+  `internal/learning/domain/` (`checkkey.go`, `confidence.go`,
+  `attemptoutcome.go`, `gradedby.go`, `recallattempt.go` — ไฟล์หลังมี `CheckKind`
+  อยู่ด้วย), `internal/learning/app/service.go` เพิ่ม `RecordAttempt` +
+  `AttemptRecord` DTO (มี field `question` คืน canonical text ด้วย) +
+  `ErrCheckNotInLesson`/`ErrInvalidAttempt` + `Repository.RecordAttempt` (resolve
+  ก่อนแล้วเรียก `build` closure ให้ app layer สร้าง `domain.RecallAttempt` จริง —
+  ดูเหตุผลที่หัวข้อ R1 ด้านล่าง), `internal/learning/infra/repository.go` เพิ่ม SQL
+  3 statement + `resolveRecallCheck` (มิเรอร์ `lockLesson`'s ambiguous-match guard)
+  + `Repository.RecordAttempt`, `internal/learning/infra/handler.go` เพิ่ม route
+  `POST /api/v1/progress/{topic}/{concept}/attempts`. Backend ล้วน —
+  `git diff --name-only develop... -- 'web/*'` ว่างเปล่าจริง, ไม่แตะ
+  `web/components/RecallCheckCard.tsx` เลย (นั่นคือ Q-2b)
 
-- Schema: `recall_attempts` / `review_cards` / `review_logs`
-- Key ด้วย `check_key = SHA256(topic/concept/question)` **ไม่ใช้ FK ไป
-  `recall_checks.id`** เพราะ importer ลบแล้ว insert ใหม่ทุกครั้ง (`lessons`
-  เท่านั้นที่ id คงที่ผ่าน `LAST_INSERT_ID(id)`)
-- **ปลดหนี้ของ UX-5/Q-1**: state ต่อข้อ (rating, selected option, confidence)
-  ยังไม่ถูก persist เลย — อยู่ใน memory ของ `RecallCheckCard`/`lesson/page.tsx`
-  เท่านั้น จะกลายเป็น data loss ทันทีที่ ticket นี้ขึ้นถ้าไม่ออกแบบให้ครอบคลุม
-  ทั้งสามค่า ไม่ใช่แค่ pass/fail เดิม
-- จุดนี้คือที่ที่ `graded_by='self'` จะเกิดขึ้นจริงครั้งแรก
-- **เมื่อ Q-2 ออกแบบ endpoint จริง**: ถ้า `expected_answer` ยังจำเป็นต้องอยู่ที่
-  client ต่อ (ตามการตัดสินใจของ Q-1) หรือย้ายไป server-side ทั้งหมด ให้ตัดสินใจ
-  ตอนนั้นจากรูปร่าง request/response จริงของ endpoint นี้ ไม่ใช่เดาไว้ล่วงหน้า
+### การตัดสินใจหลัก
+
+- **`check_key = SHA256(topic + "/" + concept + "/" + trimmed-question)` hex
+  lowercase, ไม่ใช้ FK ไป `recall_checks.id`, ไม่ใช้ `(lesson_id, position)`** —
+  ทั้งสามทางเลือกถูกพิจารณาจริง ไม่ใช่แค่หยิบ content-addressing มาเฉย ๆ:
+  - **ทำไมไม่ใช้ FK ไป `recall_checks.id`**:
+    `internal/curriculum/infra/lessonwriter.go` ทำ `DELETE FROM recall_checks
+    WHERE lesson_id = ?` แล้ว insert ใหม่ทั้งหมดทุกครั้งที่ import เนื้อหาซ้ำ
+    (`deleteRecallChecksSQL`/`insertRecallCheckSQL`) — id พวกนี้**ไม่เสถียร**ข้าม
+    การ import แต่ละรอบ ต่างจาก `lessons.id` ที่เสถียรจริงผ่าน
+    `ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)` ใน `upsertLessonSQL`
+  - **ทำไมไม่ใช้ `(lesson_id, position)`**: การ reorder คำถามของ lesson เดียวกัน
+    ตอน re-import (เช่น สลับข้อ 2 กับข้อ 3) จะทำให้ position เดิมชี้ไปคำถามคนละ
+    ข้อ — ประวัติ attempt เก่าจะไปติดกับคำถามผิดข้อแบบเงียบ ๆ โดยไม่มีใครรู้
+  - **content-addressing แก้ปัญหาแบบ fail-safe**: แก้คำถามแม้แต่ตัวเดียว = key
+    ใหม่ = ประวัติเริ่มใหม่ (เสียประวัติเก่าไปแต่ไม่ผิดที่ผิดทาง) ดีกว่า
+    misattach ประวัติไปคำถามอื่นแบบไม่รู้ตัว
+  - **hash คำถามที่ trim แล้วเท่านั้น ไม่ทำ normalization อื่นเพิ่ม**:
+    `internal/curriculum/domain/recallcheck.go`'s `NewRecallCheck` เรียก
+    `validateRecallQuestion` ที่ trim คำถามไว้ก่อนเก็บลง DB อยู่แล้ว ดังนั้น
+    `recall_checks.question` ใน DB คือ trimmed เสมอ — hash รูปแบบ trimmed ให้
+    ตรงกับสิ่งที่ DB เก็บจริงไบต์ต่อไบต์ **ตัดสินใจแล้ว: trim เท่านั้น ไม่ case-fold
+    ไม่ unicode-normalize เพิ่ม** เพราะกฎ normalization เพิ่มเติมใด ๆ จะกลาย
+    เป็น source of truth ที่สองที่ drift จากสิ่งที่ curriculum เก็บจริงได้ โดยไม่ได้
+    ประโยชน์อะไรเพิ่ม (คำถามเป็น authored content ไม่ใช่ user input ที่พิมพ์เพี้ยน
+    case/space ได้ง่าย)
+- **`check_key` collation: `CHAR(64) CHARACTER SET ascii COLLATE ascii_bin`**
+  ไม่ใช้ table default (`utf8mb4_0900_ai_ci`) — column นี้เก็บ lowercase hex ที่
+  ฝั่ง Go เป็นคนสร้างเองเสมอ (ไม่ใช่ user-facing text ที่ต้องการ accent/case
+  folding) การเทียบแบบ byte-exact คือสิ่งที่ hash column ต้องการจริง และ ascii
+  ใช้พื้นที่ครึ่งเดียวของ utf8mb4 ต่อ index ที่จะถูก query ทุกครั้งที่ Q-2c ทำ SRS
+  review
+- **Index `(check_key, created_at DESC)`**: ตรงกับ query pattern ของ Q-2c
+  (`WHERE check_key = ? ORDER BY created_at DESC`) แม้ query นี้ยังไม่ถูกเขียนใน
+  รอบนี้ก็ตาม — เตรียม index ไว้ตอนสร้างตาราง ถูกกว่าเพิ่มทีหลัง
+- **`kind` เป็น field ที่ client ส่งมา ไม่ใช่ server อ่านจาก `recall_checks.type`**:
+  request body มี `question`/`kind`/`confidence`/`outcome`/`selected_option` —
+  server เชื่อ client สำหรับเนื้อหาที่ไม่กระทบ identity (kind/confidence/outcome/
+  selected_option ทั้งหมด) เหมือนกับที่เชื่อ client เรื่องถูก/ผิด (ดูข้อถัดไป)
+  ส่วนที่ server ต้อง**ยืนยันเอง**มีแค่ "คำถามนี้เป็นของ lesson นี้จริงไหม" เพราะ
+  เป็นเรื่อง identity/scoping ที่ client พิสูจน์เองไม่ได้
+- **Grading ยังเป็น self-graded**: `graded_by` เก็บต่อแถว default เป็น `'self'`
+  — `domain.GradedBySelf` เป็นค่าเดียวที่ `Service.RecordAttempt` ส่งเข้า
+  `domain.NewRecallAttempt` จริง ๆ (enum เองมีทั้ง `self`/`llm` เผื่ออนาคต แต่
+  `'llm'` **เข้าไม่ถึงได้เลยผ่าน endpoint นี้** — ไม่ใช่ analogy เดียวกับ
+  `RecallKind` ที่ทั้งสองค่าถูกใช้งานจริง). Server **ไม่**คำนวณถูก/ผิดเองจาก
+  `curriculum`'s `expected_answer` — client ส่ง `outcome` มาตรง ๆ ตามที่ Q-1
+  ออกแบบไว้ (mcq เทียบข้อความฝั่ง client, short_answer self-rate) และ
+  `internal/learning` **ไม่ import** `internal/curriculum`'s domain types เพื่อ
+  re-derive อะไรเลย (ผิด bounded-context boundary ตามที่
+  `internal/learning/domain/lessonref.go`'s doc comment อธิบายไว้)
+- **"คำถามไม่ใช่ของ lesson นี้" → 400 ไม่ใช่ 404**: ตาม precedent เดิมใน
+  `internal/learning/app/service.go` — `ErrLessonNotFound` (404) สงวนไว้กับ
+  "ไม่รู้จัก topic/concept นี้เลย" (ตัว resource หลักไม่มีอยู่จริง),
+  `ErrInvalidSlug`/`ErrInvalidState` (400) คือ "input ที่ client ส่งมาผิดรูป"
+  คำถามที่ไม่ match `recall_checks` ของ lesson **มีอยู่จริง** (lesson หาเจอ) แค่
+  client อ้างอิงผิด (typo/ cache เก่า) — เข้าเงื่อนไข "malformed reference" มากกว่า
+  "resource ไม่มีอยู่" จึงเลือก 400 (`ErrCheckNotInLesson`) สอดคล้องกับ
+  `ErrInvalidSlug` มากกว่า `ErrLessonNotFound`
+- **Endpoint path: `POST /api/v1/progress/{topic}/{concept}/attempts`** — nest
+  ใต้ resource `progress` เดิมแทนที่จะเป็น flat resource ใหม่ เพราะ attempt
+  ผูกกับ lesson หนึ่งเดียวเสมอ (topic+concept คือ identity ของมัน เหมือนที่
+  ticket บังคับให้ "คำถามต้องเป็นของ lesson นี้") — path param แบบเดียวกับ
+  `PUT /api/v1/progress/{topic}/{concept}` ที่มีอยู่แล้ว และ `recall_attempts`
+  ก็เป็น user-state ของ learning bounded context เหมือน `lesson_progress` ไม่ใช่
+  content ที่ `curriculum` เป็นเจ้าของ
+- **`RecordAttempt` เป็น resolve-then-insert ไม่ใช่ locked read-modify-write
+  แบบ `Transition`**: `recall_attempts` เป็น append-only ไม่มี state ให้ race
+  แก้ไขซ้ำ (ต่างจาก `lesson_progress` ที่ writer สองตัวแข่งกันแก้ค่าเดียวกันได้)
+  — งานเดียวที่ต้องพึ่ง DB จริง ๆ คือ resolve ว่าคำถามเป็นของ lesson นี้ก่อน
+  insert จึงไม่ต้องเปิด transaction/lock แบบ `selectLessonForUpdateSQL`
+
+### Mutation table
+
+รัน `go test ./internal/learning/...` แบบ quiet หลังแก้แต่ละจุด แล้ว revert ทุกครั้ง:
+
+| # | Mutation | ผลลัพธ์ |
+|---|---|---|
+| 1 | สลับลำดับ hash เป็น `concept + "/" + topic + "/" + question` | killed — `TestNewCheckKey` (เทียบ hash จริงจาก `crypto/sha256` คำนวณแยก) + `TestNewCheckKey_HashOrderMatters` |
+| 2 | hash คำถามแบบไม่ trim (ใช้ `question` ดิบแทน `trimmed`) | killed — `TestNewCheckKey` (`trims leading/trailing whitespace` case) + `TestNewCheckKey_TrimOnly` |
+| 3 | ตัดเช็ค "คำถามเป็นของ lesson นี้" ทิ้ง (ใช้ `selectLessonExistsSQL` แทน `selectRecallCheckExistsSQL` ใน `RecordAttempt`) | killed — `TestRepositoryRecordAttempt_CheckNotInLesson` + `TestRepositoryRecordAttempt_ScopedByBothSlugs` |
+| 4 | `AND` → `OR` ใน `selectRecallCheckExistsSQL`'s WHERE clause | killed — `TestSelectRecallCheckExistsSQLShape` (literal-string pin; stub dispatch ด้วย query-string identity เอง detect ไม่ได้ ตาม precedent เดิมของไฟล์นี้) |
+| 5 | เติม `ON DUPLICATE KEY UPDATE created_at = VALUES(created_at)` ใน `insertRecallAttemptSQL` | killed — `TestInsertRecallAttemptSQLShape` (literal-string pin เท่านั้น — behavioral test `TestRepositoryRecordAttempt_AppendOnly` จับไม่ได้เพราะ stub append เข้า slice เสมอไม่สนใจ SQL text จริง ยืนยันด้วย live MySQL evidence ด้านล่างแทน) |
+| 6 | hardcode `graded_by` เป็น `"self"` ใน exec call แทนที่จะใช้ `attempt.GradedBy().String()` | killed **ที่ repository layer เท่านั้น** — `TestRepositoryRecordAttempt_GradedByThreadsThrough` (สร้าง `domain.RecallAttempt` ด้วย `GradedBy=llm` ตรง ๆ ข้าม app layer) — ที่ app/HTTP layer มูเทชันนี้ **equivalent จริง** เพราะ `Service.RecordAttempt` ส่งแค่ `domain.GradedBySelf` เข้ามาเสมอวันนี้ (ยืนยัน: app-layer tests ทั้งชุดยังเขียวหลังมูเทต) |
+| 7a | ลบ `"confident"` ออกจาก `confidences` array | killed — `TestNewConfidence` + `TestNewRecallAttempt` + `TestServiceRecordAttempt_EchoesSubmittedValues` + `TestHandlerPostAttempt_Success` + `TestRepositoryRecordAttempt_Success` |
+| 7b | เติมค่าปลอม `"partial"` เข้า `attemptOutcomes` array | killed — `TestNewAttemptOutcome` (`unknown value` case ที่คาด error แต่ไม่ error) + `TestServiceRecordAttempt_InvalidFields` |
+| 7c | ลบ `"mcq"` ออกจาก `checkKinds` array | killed — `TestNewCheckKind` + `TestNewRecallAttempt` + `TestServiceRecordAttempt_EchoesSubmittedValues`/`_EmptySelectedOptionTreatedAsAbsent` + `TestHandlerPostAttempt_Success` + `TestRepositoryRecordAttempt_Success` |
+| 8 | hardcode confidence เป็น `domain.NewConfidence("guessed")` ใน `Service.RecordAttempt` แทนที่จะใช้ `rawConfidence` ที่ submit มา | killed — `TestServiceRecordAttempt_EchoesSubmittedValues` (assert ค่าที่ submit ตรงกับที่ได้กลับมา ตรงจุดที่ Q-1's frontend review เจอ bug class นี้) + `TestServiceRecordAttempt_InvalidFields` |
+| 9 | ลบเช็ค `selectedOption != nil && !kind.IsMCQ()` ออกจาก `NewRecallAttempt` | killed — `TestNewRecallAttempt` (`selected option on short_answer is rejected` case) + `TestServiceRecordAttempt_SelectedOptionOnShortAnswerRejected` |
+| 10 | ลบ ambiguous-match guard ออกจาก `resolveRecallCheck` (`QueryContext`+loop → `QueryRowContext` ตัวเดียว, ตาม R1's code review round) | killed — `TestRepositoryRecordAttempt_AmbiguousCaseVariantRejected` (seed 2 recall_checks ที่ fold เป็นคำถามเดียวกันใน lesson เดียวกัน ยืนยันว่า error ไม่ใช่แค่เลือกแถวแรกเงียบ ๆ) |
+| 11 | ลบ `.Truncate(time.Second)` ออกจาก `now` ก่อน insert (R2's fix) | killed — `TestRepositoryRecordAttempt_CreatedAtTruncatedToSeconds` (assert `CreatedAt.Nanosecond() == 0`) |
+
+**สรุป: 11/11 มูเทชันตายหมด ไม่มี survivor ที่เป็น coverage gap จริง** — มูเทชัน #6
+เป็น equivalent mutant ที่ **ตั้งใจ**ปล่อยไว้ที่ app layer (เพราะ `'llm'` เข้าไม่ถึง
+ได้จริงผ่าน endpoint วันนี้ตามการออกแบบ) แต่มี test จริงที่ repository layer
+กัน regression ไว้ล่วงหน้าสำหรับตอนที่ Q-2c/LLM adapter มาเสียบจริง. #1/#2/#10/#11
+ถูก re-run หลังรอบ code-reviewer (ดูหัวข้อถัดไป) เพื่อยืนยันว่าการ refactor เป็น
+`build` closure ไม่ทำให้ coverage เดิมถอยหลัง — ตายเหมือนเดิมทุกจุด
+
+### รอบ code-reviewer (CHANGES NEEDED → แก้ครบ)
+
+Reviewer proved บน `mysql:8.4` จริงว่า `recall_checks.question` (TEXT ใต้
+`utf8mb4_0900_ai_ci`) match แบบ case/accent-insensitive — `what is a b-tree?`
+กับ Thai case-variant ต่างก็ match แถวเดิมที่เก็บเป็น `What is a B-tree?`/
+`Ubiquitous Language...` ได้จริง แต่ก่อนแก้ code hash คำถามที่ **client ส่งมา**
+(`rawQuestion`) ไม่ใช่คำถาม**ที่ query จริง ๆ match ได้** — ทำให้คำถามที่ผ่านเช็ค
+"เป็นของ lesson นี้" ได้ (เพราะ collation ยอมให้ match) แต่ hash ออกมาคนละค่ากับ
+canonical text จริง = fork ประวัติ SRS ของคำถามเดียวกันแบบเงียบ ๆ — เป็นความ
+บกพร่องที่ขัดกับเหตุผลหลักที่ `checkkey.go` มีอยู่ (content-addressing ต้องชี้
+กลับไปที่เนื้อหาเดียวกันเสมอ ไม่ว่า caller จะพิมพ์ด้วย casing ไหน)
+
+- **R1 (blocking, แก้แล้ว) — ต้อง hash คำถาม canonical จาก DB ไม่ใช่จาก client**:
+  `selectRecallCheckExistsSQL` เปลี่ยนจาก `SELECT l.id` เป็น
+  `SELECT l.id, rc.question` — คืนคำถามที่ query จริง ๆ match ได้กลับมาด้วย. ผล
+  คือ `Repository.RecordAttempt` เปลี่ยนจากรับ `domain.RecallAttempt` สำเร็จรูป
+  มาเป็นรับ **`build func(canonicalQuestion string) (domain.RecallAttempt,
+  error)`** แทน — resolve lesson+question ก่อน แล้วค่อยเรียก `build` ด้วย
+  canonical text ที่ query คืนมา (ไม่ใช่ resolve-then-key แบบเดิมที่คำนวณ
+  `CheckKey` ตั้งแต่ก่อนรู้ว่า DB match ได้ด้วยข้อความอะไร) — เลือก pattern นี้
+  (ไม่ใช่ two-step port แยก resolve/insert) เพราะตรงกับ precedent ของ
+  `Transition`'s `decide` callback ที่มีอยู่แล้วในไฟล์เดียวกัน: infra resolve ให้
+  ก่อน แล้วให้ app layer logic (build ที่ปิดด้วย closure) ตัดสินใจ/สร้าง object
+  จริงโดยใช้ข้อมูลที่ resolve มาได้ ไม่ต้องเปิด round trip ที่สอง. `checkkey.go`'s
+  doc comment ที่เคยอ้างว่า "hashing the trimmed form matches what MySQL
+  actually stores byte for byte" เดิมเป็นเท็จ (โค้ดไม่ได้บังคับ invariant นี้จริง)
+  แก้ให้บอกตรง ๆ ว่า NewCheckKey เองพิสูจน์ไม่ได้ว่า input เป็น canonical —
+  เป็นหน้าที่ของ caller (`Service.RecordAttempt`) ที่ต้องส่ง canonical text จาก
+  repository เท่านั้น ไม่ใช่ raw client input. Test fake เดิม (`stub_driver_test.go`,
+  `service_test.go`) เข้มกว่า MySQL จริงตรงจุดนี้พอดี (exact-match lookup ทั้งที่
+  slug ใช้ `foldKey` case-fold อยู่แล้ว) — แก้ให้ fold คำถามด้วย (`foldQuestion`)
+  แล้วเพิ่มเทสต์ยืนยันตรง ๆ ว่า case-variant submission ได้ `check_key` **เดียวกัน**
+  กับ canonical (`TestRepositoryRecordAttempt_CaseVariantResolvesToCanonicalCheckKey`
+  ที่ repository layer, `TestServiceRecordAttempt_CheckKeyDerivedFromCanonicalQuestion`
+  ที่ service layer — สองระดับ ไม่ใช่แค่ระดับเดียว). ผลข้างเคียงที่ได้มาฟรี:
+  `AttemptRecord`/response DTO เพิ่ม field `question` (canonical text ที่ resolve
+  ได้ ไม่ใช่ข้อความดิบที่ client ส่งมา) — client ที่ส่งคำถามแบบ case/accent-variant
+  จะเห็นว่าถูก normalize แล้วจาก response ตรง ๆ แทนที่จะเดาเอาว่า `check_key`
+  ตรงกับ bytes ของตัวเองหรือเปล่า
+- **R2 (blocking, แก้แล้ว) — `created_at` ที่ echo กลับอาจไม่ตรงกับแถวจริงใน DB**:
+  `time.Now().UTC()` มี sub-second precision, MySQL's `TIMESTAMP` (fsp 0) ปัดครึ่ง
+  ขึ้น (round half-up) ตอนเก็บ, แต่ `handler.go` format ด้วย RFC3339 ซึ่ง**ตัดทิ้ง**
+  (truncate) — สำหรับ request ที่มาถึงตอน ≥.500s ค่าที่ API ตอบจะช้ากว่าแถวจริงใน
+  DB 1 วินาที. แก้ด้วยวิธีที่ diff เล็กที่สุด: `now :=
+  time.Now().UTC().Truncate(time.Second)` **ก่อน**ส่งเข้า `insertRecallAttemptSQL`
+  (ไม่ใช่แค่ตอน format คืน) — ทำให้ค่าที่ Go เก็บกับค่าที่ MySQL เก็บตรงกันโดย
+  โครงสร้าง ไม่ต้องพึ่งการปัดของ MySQL เลย. เพิ่มเทสต์
+  `TestRepositoryRecordAttempt_CreatedAtTruncatedToSeconds` ยืนยันทั้ง
+  `CreatedAt.Nanosecond() == 0` และค่าที่ echo กลับตรงกับแถวที่เก็บจริงเป๊ะ
+- **R3 (blocking, แก้แล้ว) — WHAT-comment**: ลบ comment บน
+  `RecallAttempt.SelectedOption()` ที่แค่พูดซ้ำ signature ("returns the mcq
+  option the user picked, or nil for a short_answer attempt") ทิ้ง — เหตุผลที่
+  ไม่ชัดจากชื่อ (ทำไม nil ถึง valid เฉพาะ short_answer) มีอยู่แล้วที่ constructor
+- **S1 (แก้แล้ว) — immutability ของ `selectedOption`**: `*string` เดิมแชร์
+  pointer กับ caller/getter ตรง ๆ — reviewer พิสูจน์ด้วย probe จริงว่า mutate ผ่าน
+  pointer เดิมได้ ทำให้ aggregate ไม่ immutable เหมือน VO อื่นในแพ็กเกจนี้ แก้ด้วย
+  `copyStringPtr` (copy ทั้งขาเข้าตอน construct และขาออกตอน getter) เพิ่มเทสต์
+  `TestRecallAttempt_SelectedOptionIsImmutable` ยืนยันทั้งสองทิศทาง
+- **S2 (แก้เกินกว่าที่เสนอ — ปิด gap จริง ไม่ใช่แค่แก้คำอธิบาย)**: reviewer เสนอแค่
+  "แก้เหตุผลที่เขียนผิดในเอกสาร" (ไม่บังคับแก้โค้ด เพราะ `check_key` ไม่ใช่
+  `lesson_id` คือ identity จริงที่ SRS ใช้อยู่แล้ว) แต่ระหว่างแก้ R1's resolve step
+  logic ก็ถูกดึงออกมาเป็นฟังก์ชันแยกชื่อ `resolveRecallCheck` (มิเรอร์ `lockLesson`
+  เป๊ะ ๆ: `QueryContext` + loop ที่ error ทันทีถ้า match มากกว่าหนึ่งแถว แทนที่จะ
+  เลือกแถวแรกเงียบ ๆ แบบ `QueryRowContext`) — ปิด gap ที่เอกสารรอบแรกอ้างว่า
+  "จงใจไม่ทำ" ไปเลย ไม่ใช่แค่แก้คำอธิบายให้ตรงกับพฤติกรรมเดิม เพิ่มเทสต์
+  `TestRepositoryRecordAttempt_AmbiguousCaseVariantRejected` ยืนยัน (mutation #10)
+- **S4 (แก้แล้ว) — `maxAttemptBodyBytes` comment เกินจริง**: จาก 4096 พร้อม comment
+  ที่ไม่ได้อ้างตัวเลขจริง เปลี่ยนเป็น 8192 พร้อม comment ที่อ้าง
+  `maxRecallQuestionRunes`/`maxRecallOptionRunes` (1000/255 runes,
+  `internal/curriculum/domain/text.go`) ตรง ๆ — unexported อ้างชื่อได้แต่ import
+  ไม่ได้ (คนละ bounded context)
+- **S5 (แก้แล้ว) — test gap เล็ก ๆ**: เพิ่ม
+  `TestServiceRecordAttempt_EmptyQuestionRejected` (question ว่าง/whitespace →
+  `ErrInvalidAttempt` ก่อนถึง repository); `checkkey_test.go`'s
+  `expectedCheckKeyHex` เปลี่ยนจาก literal ตายตัวมาคำนวณจาก `tt.topic`/
+  `tt.concept`/`tt.question` ของแต่ละแถวเอง; `repository_test.go`'s
+  `mustRecallAttempt` เปลี่ยนมาเรียก `mustCheckKind`/`mustConfidence`/
+  `mustAttemptOutcome` ของตัวเองแทนที่จะ inline ซ้ำ
+- **S3 (ตั้งใจไม่แก้)**: reviewer เสนอให้ query เดียวกันที่แก้เพื่อ R1 select
+  `rc.type` มาด้วยแล้ว cross-check กับ `kind` ที่ client ส่งมา — **ไม่ทำในรอบนี้**
+  เพราะเป็นการ**พลิกการตัดสินใจที่ตั้งใจไว้แล้ว** ("kind เป็น field ที่ client ส่งมา
+  ไม่ใช่ server อ่านจาก DB" ด้านบน) ไม่ใช่แค่ bug fix เล็ก ๆ — ถ้าจะทำจริงควรเป็น
+  การตัดสินใจแยกต่างหาก ไม่ใช่ทำแทรกในรอบแก้ review
+
+Mutation ที่ได้รับผลกระทบจาก R1's restructure (repository/service ทั้งคู่เปลี่ยน
+signature เป็น `build` closure) ถูก re-run ครบหลังแก้ — รายละเอียดอยู่ที่ตาราง
+ด้านบนแล้ว (อัปเดตแล้วให้ตรงกับโค้ดหลังแก้), ผลลัพธ์เดิมทั้งหมดยังตายเหมือนเดิม
+ไม่มี regression จากการ refactor
+
+### Live verification (docker + curl + MySQL)
+
+Stack: `docker compose up -d --build` (ไม่ลบ volume, ไม่ใช้ `-v` ตอนปิด).
+ใช้ lesson `domain-driven-design/ubiquitous-language` (มีทั้ง `short_answer`
+และ `mcq` checks จริงจาก DB, ใช้ใน Q-1's evidence เดิมด้วย) และคำถามจริงจาก
+`GET /api/v1/lessons/domain-driven-design/ubiquitous-language`.
+
+- **POST สำเร็จ + เห็นแถวจริงใน MySQL**: ยืนยันด้วย `SELECT * FROM
+  recall_attempts` หลังยิง POST — เห็นแถวที่มี `check_key`/`type`/`confidence`/
+  `outcome`/`selected_option`/`graded_by='self'`/`created_at` ตรงกับที่ submit
+- **submit คำถามเดิมซ้ำสองครั้ง → สองแถว**: พิสูจน์ด้วย `COUNT(*)` จริงจาก MySQL
+  ก่อน/หลัง ไม่ใช่แค่ assert จาก unit test
+- **คำถามของ lesson อื่น → reject 400**: ยิง POST ไปที่
+  `.../ubiquitous-language/attempts` ด้วยคำถามที่จริง ๆ เป็นของ concept อื่น
+- **confidence ผิด enum → reject 400**
+- **`check_key` ตรวจข้ามวิธี**: คำนวณ SHA256 ของ `"topic/concept/question"`
+  ด้วย PowerShell (`[System.Security.Cryptography.SHA256]`) แยกจาก Go แล้ว
+  เทียบ hex ตรงกับค่าที่ API เก็บจริง — พิสูจน์ Go ไม่ได้ "เห็นด้วยกับตัวเอง" ฝ่ายเดียว
+- **R1's fix พิสูจน์สดกับ MySQL จริง (case-variant → canonical check_key
+  เดียวกัน)**: submit คำถามเดิมแบบตัวพิมพ์เล็กทั้งหมด (`ubiquitous language...`
+  แทน `Ubiquitous Language...`) ไปที่ endpoint เดียวกัน — response's `check_key`
+  ออกมา **ตรงกับ** check_key ของการ submit ด้วย casing ที่ถูกต้องเป๊ะทุกตัวอักษร
+  (`6ce0ab5154b2e30501ddaf0d58934dd0b4579d06adc36b88d5fc2a2c47bba108`, ยืนยัน
+  ด้วย PowerShell SHA256 อีกรอบจากข้อความ canonical โดยตรง) และ response's
+  `question` field คืนข้อความ canonical จริง (`Ubiquitous Language...` ตัวใหญ่
+  ตรงกับที่ query `recall_checks` ตรง ๆ ยืนยันแล้ว) ไม่ใช่ casing ที่ submit เข้ามา
+  — **หมายเหตุตรง ๆ**: รอบแรกที่ทดสอบ (ก่อน rebuild image ครั้งสุดท้าย) ได้
+  check_key ผิด (`523fdeca9c...`) เพราะ `docker compose up -d --build` ครั้งนั้น
+  บังเอิญ build image จาก source ระหว่างที่กำลังทำ mutation testing อยู่พอดี
+  (ไม่ใช่ source ที่ commit) — แก้โดย `docker compose build --no-cache api` แล้ว
+  `docker compose up -d api` ใหม่ ยืนยัน source บน disk ถูกต้องด้วย `go build
+  ./...`/`go vet ./...`/`go test ./... -count=1` ก่อน rebuild แล้วจึง retest ได้
+  check_key ที่ถูกต้อง — แถวที่ผิด (id=4 ใน `recall_attempts`) ยังอยู่ใน DB จริง
+  (local dev data ไม่ลบทิ้ง) เป็นหลักฐานของทั้งบั๊กที่เคยเกิดและการแก้ที่ยืนยันแล้ว
+
+(รายละเอียด output/curl commands ทั้งหมดอยู่ใน PR description ของ
+`ticket/q-2a-recall-attempts`)
+
+### จงใจไม่ทำในรอบนี้
+
+- **ป้องกัน concept slug ซ้ำข้ามสองบทของ topic เดียวกันแล้ว (แก้เพิ่มจากรอบ
+  code-reviewer แรก)**: ตอนร่างเอกสารรอบแรกเข้าใจผิดว่าเรื่องนี้ยัง "จงใจไม่ทำ" —
+  จริง ๆ แล้ว resolve step (`resolveRecallCheck` ใน `repository.go`) ใช้
+  `QueryContext` + loop แบบเดียวกับ `lockLesson` ใน `Transition` เป๊ะ ๆ: ถ้า
+  `selectRecallCheckExistsSQL` match มากกว่าหนึ่งแถว (สอง `recall_checks` ใน
+  lesson เดียวกันที่ข้อความ fold เป็นคำเดียวกันภายใต้ case/accent-insensitive
+  collation) จะ error ทันที ไม่ใช่เลือกแถวแรกเงียบ ๆ — pin ด้วย
+  `TestRepositoryRecordAttempt_AmbiguousCaseVariantRejected` (mutation #10 ด้านบน)
+- **ไม่มี `review_cards`/`review_logs`/SM-2** — Q-2c
+- **ไม่แตะ frontend เลย** — `RecallCheckCard`'s confidence/selected
+  option/outcome ยังอยู่ใน memory เหมือนเดิม จะหายตอน refresh เหมือนที่ Q-1 บันทึก
+  ไว้ — Q-2b คือ ticket ที่เรียก endpoint นี้จริงแล้ว persist เป็นครั้งแรก
+- **ไม่ตรวจ `kind` ที่ client ส่งมาย้อนกลับกับ `recall_checks.type` จริงใน DB** —
+  client บอก kind เอง (ดู "การตัดสินใจหลัก" ด้านบน) ถ้าพบว่าจำเป็นต้อง
+  cross-check จริง (เช่น เจอ client bug ส่ง kind ผิดจริง) ค่อยเพิ่มทีหลัง
+
+### Review focus
+
+- ทำไมการ hash คำถามที่ client ส่งมาโดยตรง (แทนคำถาม canonical ที่ resolve จาก
+  DB) ถึงเป็นบั๊กจริง ทั้งที่เช็ค "คำถามเป็นของ lesson นี้" ผ่านแล้วก็ตาม?
+- ทำไมมูเทชัน hardcode `graded_by` เป็น `"self"` ถึง kill ที่ repository-layer
+  test แต่ **ไม่** kill ที่ app-layer test ทั้งที่แก้โค้ด production จุดเดียวกัน —
+  เป็น coverage gap จริงหรือเป็น equivalent mutant?
+- ทำไม `check_key` ต้อง hash `topic + "/" + concept + "/" + trimmed-question`
+  แทนที่จะ FK ไปตรง ๆ ที่ `recall_checks.id` หรือใช้ `(lesson_id, position)`?
+
+Status: implemented, PR pending
+
+## Q-2b — frontend wiring (not started)
+
+เรียก `POST /api/v1/progress/{topic}/{concept}/attempts` (Q-2a) จาก
+`RecallCheckCard`/`lesson/page.tsx` จริง — **นี่คือ ticket ที่ทำให้ confidence/
+selected option/outcome ของ Q-1 ที่อยู่ใน memory เฉย ๆ persist จริงในที่สุด
+แทนที่จะหายตอน refresh** (หนี้ที่ Q-1 บันทึกไว้ตรง ๆ ว่ายังไม่ทำ)
+
+## Q-2c — review_cards/review_logs + SM-2 scheduling (not started)
+
+- Schema เพิ่ม: `review_cards` / `review_logs` (คนละตารางกับ `recall_attempts`
+  ที่ Q-2a สร้างไว้แล้ว)
+- อ่านข้อมูลจาก `recall_attempts` (Q-2a) เป็น input ของ SM-2 quality score —
+  ไม่ใช่ schema ใหม่ที่ไม่เกี่ยวกับของเดิม
+- Query pattern `WHERE check_key = ? ORDER BY created_at DESC` ที่ index
+  `idx_recall_attempts_check_key_created_at` ใน `006_recall.sql` เตรียมไว้ให้แล้ว

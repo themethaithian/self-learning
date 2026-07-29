@@ -53,11 +53,34 @@ type stubData struct {
 	lessons  map[progressConceptKey][]stubLessonRef
 	progress map[int64]stubProgressRow
 
+	// recallChecks models recall_checks: lessonID -> (case-folded question
+	// -> every canonical, as-stored question folding to it). Folded because
+	// real MySQL matches recall_checks.question under utf8mb4_0900_ai_ci
+	// (case/accent insensitive) — the stub must fold the same way, or a
+	// regression that hashes the caller's raw casing instead of the resolved
+	// canonical text (R1) would go undetected by every test here. A slice,
+	// not a single string, because two recall_checks rows in the same lesson
+	// can fold to the same key (differing only by case/accent) — real MySQL
+	// would return both, and resolveRecallCheck must refuse to pick one.
+	recallChecks map[int64]map[string][]string
+	attempts     []stubRecallAttempt
+
 	locksMu sync.Mutex
 	locks   map[int64]*sync.Mutex
 
 	queryErr error
 	execErr  error
+}
+
+type stubRecallAttempt struct {
+	lessonID       int64
+	checkKey       string
+	kind           string
+	confidence     string
+	outcome        string
+	selectedOption *string
+	gradedBy       string
+	createdAt      time.Time
 }
 
 func newStubData() *stubData {
@@ -83,6 +106,48 @@ func (d *stubData) seedProgress(topicSlug, conceptSlug string, lessonID int64, r
 func (d *stubData) addLessonLocked(topicSlug, conceptSlug string, lessonID int64) {
 	key := foldKey(topicSlug, conceptSlug)
 	d.lessons[key] = append(d.lessons[key], stubLessonRef{id: lessonID, topic: topicSlug, concept: conceptSlug})
+}
+
+// foldQuestion approximates MySQL's utf8mb4_0900_ai_ci matching for
+// recall_checks.question with a plain case fold — good enough to exercise
+// the same case-insensitivity real MySQL exhibits (see
+// TestRepositoryRecordAttempt_CaseVariantResolvesToCanonicalCheckKey),
+// without reimplementing full accent-insensitive Unicode collation here.
+func foldQuestion(question string) string { return strings.ToLower(question) }
+
+// seedRecallCheck registers lessonID (creating its lesson row if needed) as
+// owning question, the same shape selectRecallCheckExistsSQL's JOIN
+// verifies against a real recall_checks table. Looked up by foldQuestion,
+// same as the real column's case-insensitive collation, but the CANONICAL
+// (as-seeded) text is what gets returned to a matching query — never the
+// caller's casing. Calling this twice for the same lesson with questions
+// that fold to the same key (e.g. differing only by case) seeds BOTH —
+// modelling two distinct recall_checks rows that happen to collide under
+// MySQL's collation, for the ambiguous-match test.
+func (d *stubData) seedRecallCheck(topicSlug, conceptSlug string, lessonID int64, question string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.addLessonLocked(topicSlug, conceptSlug, lessonID)
+	if d.recallChecks == nil {
+		d.recallChecks = map[int64]map[string][]string{}
+	}
+	if d.recallChecks[lessonID] == nil {
+		d.recallChecks[lessonID] = map[string][]string{}
+	}
+	key := foldQuestion(question)
+	d.recallChecks[lessonID][key] = append(d.recallChecks[lessonID][key], question)
+}
+
+func (d *stubData) attemptsFor(lessonID int64) []stubRecallAttempt {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var out []stubRecallAttempt
+	for _, a := range d.attempts {
+		if a.lessonID == lessonID {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 func (d *stubData) progressOf(lessonID int64) (stubProgressRow, bool) {
@@ -198,6 +263,14 @@ func argOptionalTime(a driver.NamedValue) *time.Time {
 	return &t
 }
 
+func argOptionalString(a driver.NamedValue) *string {
+	if a.Value == nil {
+		return nil
+	}
+	s := a.Value.(string)
+	return &s
+}
+
 // ExecContext dispatches by matching query against the same Go constant
 // production sent, then applies real upsert/refresh semantics against
 // stubData — a mutation of upsertProgressByLessonIDSQL's or
@@ -246,6 +319,24 @@ func (c *stubConn) ExecContext(ctx context.Context, query string, args []driver.
 		if !ok {
 			return driver.RowsAffected(0), nil
 		}
+		return driver.RowsAffected(1), nil
+
+	case insertRecallAttemptSQL:
+		lessonID := args[0].Value.(int64)
+		checkKey := argString(args[1])
+		kind := argString(args[2])
+		confidence := argString(args[3])
+		outcome := argString(args[4])
+		selectedOption := argOptionalString(args[5])
+		gradedBy := argString(args[6])
+		createdAt := args[7].Value.(time.Time)
+
+		c.data.mu.Lock()
+		c.data.attempts = append(c.data.attempts, stubRecallAttempt{
+			lessonID: lessonID, checkKey: checkKey, kind: kind, confidence: confidence,
+			outcome: outcome, selectedOption: selectedOption, gradedBy: gradedBy, createdAt: createdAt,
+		})
+		c.data.mu.Unlock()
 		return driver.RowsAffected(1), nil
 
 	default:
@@ -302,6 +393,33 @@ func (c *stubConn) QueryContext(ctx context.Context, query string, args []driver
 	case selectAllProgressSQL:
 		return &allProgressRows{rows: c.allProgressRows()}, nil
 
+	case selectRecallCheckExistsSQL:
+		topicSlug, conceptSlug, question := argString(args[0]), argString(args[1]), argString(args[2])
+		c.data.mu.Lock()
+		refs := append([]stubLessonRef(nil), c.data.lessons[foldKey(topicSlug, conceptSlug)]...)
+		c.data.mu.Unlock()
+
+		var matches []recallCheckMatch
+		for _, ref := range refs {
+			c.data.mu.Lock()
+			canonicals := append([]string(nil), c.data.recallChecks[ref.id][foldQuestion(question)]...)
+			c.data.mu.Unlock()
+			for _, canonical := range canonicals {
+				matches = append(matches, recallCheckMatch{lessonID: ref.id, question: canonical})
+			}
+		}
+		return &recallCheckExistsRows{rows: matches}, nil
+
+	case selectLessonExistsSQL:
+		topicSlug, conceptSlug := argString(args[0]), argString(args[1])
+		c.data.mu.Lock()
+		refs := c.data.lessons[foldKey(topicSlug, conceptSlug)]
+		c.data.mu.Unlock()
+		if len(refs) == 0 {
+			return &singleIDRows{}, nil
+		}
+		return &singleIDRows{id: refs[0].id, has: true}, nil
+
 	default:
 		return nil, fmt.Errorf("learningstub: unrecognised query: %s", query)
 	}
@@ -331,6 +449,59 @@ func (c *stubConn) allProgressRows() []allProgressFixtureRow {
 		return out[i].conceptSlug < out[j].conceptSlug
 	})
 	return out
+}
+
+// singleIDRows answers a single-column, at-most-one-row query
+// (selectLessonExistsSQL) — has false means zero rows, mirroring
+// sql.ErrNoRows on the real QueryRowContext.Scan path.
+type singleIDRows struct {
+	id   int64
+	has  bool
+	done bool
+}
+
+func (r *singleIDRows) Columns() []string { return []string{"l.id"} }
+func (r *singleIDRows) Close() error      { return nil }
+
+func (r *singleIDRows) Next(dest []driver.Value) error {
+	if !r.has || r.done {
+		return io.EOF
+	}
+	dest[0] = r.id
+	r.done = true
+	return nil
+}
+
+// recallCheckMatch is one row selectRecallCheckExistsSQL's real JOIN would
+// return: l.id plus the CANONICAL (as-seeded) rc.question — never the
+// caller's casing.
+type recallCheckMatch struct {
+	lessonID int64
+	question string
+}
+
+// recallCheckExistsRows answers selectRecallCheckExistsSQL. It can hold more
+// than one row: two recall_checks folding to the same key under
+// case/accent-insensitive collation both come back, exactly like real MySQL
+// would, so resolveRecallCheck's ambiguous-match guard has something real to
+// detect rather than only ever seeing at most one candidate by construction.
+type recallCheckExistsRows struct {
+	rows []recallCheckMatch
+	pos  int
+}
+
+func (r *recallCheckExistsRows) Columns() []string { return []string{"l.id", "rc.question"} }
+func (r *recallCheckExistsRows) Close() error      { return nil }
+
+func (r *recallCheckExistsRows) Next(dest []driver.Value) error {
+	if r.pos >= len(r.rows) {
+		return io.EOF
+	}
+	m := r.rows[r.pos]
+	dest[0] = m.lessonID
+	dest[1] = []byte(m.question)
+	r.pos++
+	return nil
 }
 
 type lessonForUpdateRows struct {
