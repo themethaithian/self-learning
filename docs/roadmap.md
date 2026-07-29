@@ -52,7 +52,7 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 | 0. Walking skeleton + reading slice | คลิก concept → อ่านบทเรียนจริง (mermaid + references + recall) | ✅ จบ |
 | 1. Content | เขียนบทเรียน 2 track ที่ตรงกับตำแหน่งที่สุด | ✅ จบ |
 | 2. Quality + รันเองได้ | MCQ ที่เดาไม่ได้ + `make dev` คำสั่งเดียว | ✅ จบ |
-| 3. Guided learning path | รู้ว่า "วันนี้อ่านอะไรต่อ" และอ่านถึงไหนแล้ว | 🔄 กำลังทำ (UX-6, UX-7) |
+| 3. Guided learning path | รู้ว่า "วันนี้อ่านอะไรต่อ" และอ่านถึงไหนแล้ว | 🔄 กำลังทำ (UX-7) |
 | 4. Measurable recall | quiz กดเลือกได้ + เก็บประวัติ + SRS ที่วัดผลได้ | ⏭ ถัดไป (Q-1…Q-3) |
 | 5. Visual simulation | บทเรียนที่เห็นภาพและโต้ตอบได้ | ⏭ หลัง phase 4 (SIM-0…SIM-3) |
 | — | Deploy ขึ้น VPS + track ที่เหลือ | ⏸ **พักไว้โดยตั้งใจ** |
@@ -88,10 +88,15 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 - [x] UX-4 (#45) 🔴 progress API — `GET /api/v1/progress` + `PUT /api/v1/progress/{topic}/{concept}`
   + bounded context `learning`
 - [x] UX-5 (#46) reader loop — breadcrumb + Finish + Next (+ vitest ตัวแรกของ `web/`)
-- [ ] UX-6 (PR pending) — หน้า `/today` + IA switch (nav เหลือ Today · Learn):
+- [x] UX-6 (#49) หน้า `/today` + IA switch (nav เหลือ Today · Learn):
   "วันนี้อ่านอะไรต่อ" ไล่จาก focus track ก่อน แล้ว fallback ตาม
   `TRACK_DISPLAY_ORDER` · `domain.Gate` ยังไม่ถูก wire (soft-guide เท่านั้น)
-- [ ] UX-7 — หน้า Progress + ตัวบอกสถานะทั้งแอป
+- [ ] UX-7 (PR pending) — reading-status indicator บน `/learn` (list +
+  track detail) เท่านั้น ไม่ใช่หน้า Progress แยก: `ProgressBar` + `n/N lessons
+  read` ต่อ track card (ตัวส่วน = lesson ที่มีจริง ไม่ใช่ concept ที่วางแผนไว้),
+  read-state marker (`passed`/`in_progress`, shape+aria-label ไม่ใช่สีอย่างเดียว)
+  ต่อ concept, read count ต่อ chapter header · ไม่แตะ `/lesson` reader
+- [ ] UX-8 — หน้า `/progress` รวม (ทำเมื่อใช้ UX-7 แล้วยังรู้สึกขาดภาพรวมเท่านั้น)
 
 ### Phase 4 — measurable recall ⏭
 - [ ] Q-1 — quiz **recall-first 3 stage**: ตอบในใจ → เลือกความมั่นใจ → เฉลย · shuffle ตัวเลือกตอน render

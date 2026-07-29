@@ -23,6 +23,7 @@
   --color-success: #059669; /* emerald-600 */
   --color-success-strong: #047857; /* emerald-700 — text on bg-success/10 over cream, ~4.56:1, AA */
   --color-warning: #d97706; /* amber-600 */
+  --color-warning-strong: #b45309; /* amber-700 — text/icon on cream, ~4.70:1, AA (plain amber-600 is ~2.8:1, fails even 1.4.11's 3:1) */
   --color-danger: #e11d48; /* rose-600 */
   --color-danger-strong: #be123c; /* rose-700 — text on bg-danger/10 over cream, ~5:1, AA */
 

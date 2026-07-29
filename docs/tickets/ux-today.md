@@ -585,8 +585,158 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
   `scrollWidth === clientWidth === 375`, console error = 0
 - Status: `implemented, PR pending (review round 3 addressed)`
 
-## UX-7 — Progress page + chapter/track indicators
+## UX-7 — reading-status indicators across /learn `[go-implementer]`
 
-- Progress indicator ที่เห็นคร่าว ๆ: ของ chapter (แต่ละบทเรียนเป็นไหนแล้ว) + ของ track (overview),
-  โชว์บน layout ทั่วแอป (progress bar, % เลยน้อย ๆ ที่หน้า reader หรือ learn)
-- Status: `ยังไม่เริ่ม`
+- **Scope ที่ตัดจริง**: เดิม UX-7 ตั้งใจทำหน้า Progress รวมแยกต่างหาก แต่ทำแค่
+  indicator บน `/learn` (list + `/learn?track=`) ก็ตอบโจทย์ "อ่านไปถึงไหนแล้ว"
+  ได้เกือบหมดโดยไม่ต้องมีหน้าใหม่ — หน้า Progress รวมเลื่อนเป็น **UX-8**
+  (ทำเมื่อใช้ ticket นี้แล้วยังรู้สึกขาดภาพรวมจริง ๆ เท่านั้น) ไม่แตะ `/lesson`
+  reader เลย (จะต้องมี data source ที่สามในหน้านั้น — deferred เหมือนกัน) และ
+  ไม่แตะ Go เลยสักไฟล์ (`git diff --name-only develop...` ยืนยันว่างเปล่า)
+- **`/learn` list view (`TrackCard.tsx`)**: การ์ดที่มี lesson อย่างน้อย 1 บท
+  โหลด progress มาด้วย (`Promise.all([getCurriculum(), getProgress(),
+  getFocusTrack()])` — reuse discipline เดียวกับ `/today` เป๊ะ) แล้วโชว์
+  `ProgressBar` + ตัวเลข `{read}/{available} lessons read` แทนที่บรรทัด
+  `{lessonsReady} lessons ready` เดิม (บรรทัด `{chapterCount} chapters ·
+  {totalConcepts} concepts planned` ยังอยู่เหมือนเดิมเพื่อให้เห็น gap ระหว่าง
+  "มีอยู่" กับ "วางแผนไว้") — ตัวส่วนของบาร์คือ **lessons available
+  (`has_lesson`)** เท่านั้น ไม่ใช่ `totalConcepts`, เพราะ DDD วันนี้มี 4 lesson
+  พร้อมอ่านจาก 27 concept ที่วางแผนไว้ — บาร์เต็ม "100%" ต้องแปลว่า "อ่านครบทุก
+  lesson ที่มีอยู่ตอนนี้" ไม่ใช่ "จบหลักสูตรแล้ว" (กฎเดิมจาก UX-2 ที่ตอนนั้นยังไม่มี
+  progress data จริงเลยไม่มีบาร์เลยสักใบ) เมื่อ `progressAvailable === false`
+  การ์ดเรนเดอร์เหมือนเดิมทุกอย่าง (บรรทัด "ready" กลับมา, **ไม่มีบาร์, ไม่มี
+  `0/N`**) — comment เดิมใน `ProgressBar.tsx` ที่บอกว่า "not wired into any
+  page yet" ตอนนี้เท็จแล้ว เปลี่ยนเป็นอธิบาย invariant ของตัวเศษแทน
+- **`/learn?track=` detail view (`TrackTopics.tsx`)**: ต่อ concept แสดง
+  read-state marker เมื่อ progress โหลดสำเร็จเท่านั้น — `passed` = ✓
+  (`text-success-strong`), `in_progress` = วงกลมมีจุดตรงกลาง
+  (`text-warning-strong`, icon ใหม่ `InProgressIcon`), `not_started`
+  **ไม่มี marker เลย** (การไม่มีคือสัญญาณเอง — ป้องกันไม่ให้ track ที่มี 61 แถว
+  ต้องแบก badge "not started" ซ้ำ 55+ อัน) concept ที่ `has_lesson === false`
+  ก็ไม่มี marker เหมือนกัน (ยังคง treatment เดิมจาก UX-3 ทั้งหมด — `<div>` กดไม่ได้,
+  `text-muted`, "No lesson yet") ทั้งสอง state ที่มี marker แยกกันด้วย **shape**
+  (เครื่องหมายถูก vs วงกลม-จุด ไม่ใช่แค่สี ผ่านทั้ง greyscale และ screen reader)
+  บวก accessible name ผ่าน `aria-label="Read"` / `"In progress"` บน `<span>`
+  ที่ห่อ icon (icon เองเป็น `aria-hidden`) — ตรง WCAG 1.4.1 ที่ห้ามใช้สีเป็น
+  สัญญาณเดียว; ต่อ chapter header เดิมโชว์ `{available}/{total} ready` อย่างเดียว
+  ตอนนี้เพิ่ม `{read}/{available} read` เป็นบรรทัดหลักเมื่อ progress พร้อม แล้วโชว์
+  `{available}/{total} ready` เป็นบรรทัดรองต่อเมื่อ `available < total`
+  เท่านั้น (ไม่ใช่โชว์คู่กันเสมอ) — กติกาที่ยึดคือ **ห้ามโชว์สองอัตราส่วนที่ตัวส่วน
+  ต่างกันพร้อมกันโดยไม่มี label แยกให้ชัด**; `read`/`available`/`ready` เป็นสาม
+  label ที่ต่างกันชัดเจนพอ เลยไม่ใช่การ "stack สามอัตราส่วน" อย่างที่ ticket เตือนไว้
+  (แค่สองบรรทัดสูงสุด ไม่เคยสามพร้อมกัน) เคส `available === 0` (chapter ที่ยังไม่มี
+  lesson เลยสักบท เช่น DDD's Building Blocks) ตั้งใจ**ไม่**โชว์บรรทัด "0/0 read"
+  ที่ไม่มีความหมาย — fallback ไปโชว์แค่ `{available}/{total} ready` เหมือนตอน
+  progress ไม่พร้อม (เจอ bug นี้จาก Playwright จริง ไม่ใช่ตอนออกแบบ — ดูหัวข้อ
+  live-stack ด้านล่าง) เมื่อ `progressAvailable === false` ทั้ง accordion
+  เรนเดอร์เหมือนเดิมทุกจุด (ไม่มี marker, ไม่มีบรรทัด "read" เลย)
+- **`--color-warning-strong` token ใหม่**: `--color-warning` เดิม (amber-600,
+  `#d97706`) วัด contrast บน `bg-surface` ได้แค่ ~2.8:1 — ต่ำกว่าเกณฑ์ non-text
+  1.4.11 ด้วยซ้ำ (3:1) เพราะไม่เคยถูกใช้เป็นสี icon/text จริงมาก่อน (มีแค่ตัวแปร
+  เผื่อไว้) เพิ่ม amber-700 (`#b45309`, ~4.70:1 ตามการคำนวณมือ, วัดจริงจาก
+  browser ได้ 4.95:1) เป็น `--color-warning-strong` ตาม pattern เดิมของ
+  `success-strong`/`danger-strong` ที่มีอยู่แล้ว แล้วให้ marker `in_progress`
+  ใช้ตัวนี้แทน — ถ้าไม่แก้ตอนนี้ ticket นี้จะเป็นจุดแรกที่ใช้ `text-warning` เป็นสี
+  จริงแล้ว fail AA/1.4.11 ทันที
+- **Logic ทั้งหมดอยู่ใน `web/lib/curriculum.ts`** (ตามบทเรียนจาก UX-6 ที่ 11
+  mutation รอดเพราะ logic ใหม่อยู่ใน JSX): `trackReadStats(track,
+  progressByKey, progressAvailable)` และ `chapterReadStats(topicSlug,
+  concepts, progressByKey, progressAvailable)` คืน **`null` เมื่อ
+  `progressAvailable === false`** (ไม่ใช่ object ที่ zero ทุกฟิลด์) — หลักการ
+  เดียวกับ `getProgress()`'s `{kind:"error"}` ทุกจุด: เลขที่ไม่รู้ค่าจริงต้องไม่
+  แสดงเป็นศูนย์ที่ดูมั่นใจ; `conceptReadMarker(hasLesson, state)` คืน
+  `"passed" | "in_progress" | "none"` โดย `hasLesson=false` ชนะเสมอไม่ว่า
+  state จะเป็นอะไร คอมโพเนนต์ (`TrackCard`, `TrackTopics`) ทำแค่ map ผลลัพธ์
+  เป็น markup เท่านั้น
+- **Mutation-testing** (แก้ source จริง รัน `npm test` แล้ว revert ทุกครั้ง;
+  fixture ใช้ 2 chapters + ผสมครบสาม state ตามที่ ticket บังคับ, ดู
+  `readStatsTrack`/`readStatsProgress` ใน `curriculum.test.ts`):
+  1. **(บังคับ) นับ `in_progress` เป็น read** — `chapterReadStats`:
+     `state === "passed"` → `state === "passed" || state === "in_progress"`
+     → พัง **"counts only passed concepts as read, out of has_lesson
+     concepts in the chapter"**
+  2. **(บังคับ) สลับตัวส่วนของ chapter** — `chapterReadStats`: ลบ
+     `if (!concept.has_lesson) continue;` ออก (นับทุก concept เป็น
+     available) → พัง **"excludes a lesson-less concept from available
+     while still counting it in total"**
+  3. **(บังคับ) invert `progressAvailable` (ฝั่ง track card)** —
+     `trackReadStats`: `if (!progressAvailable) return null;` →
+     `if (progressAvailable) return null;` → พังทั้ง **"counts passed
+     concepts across every chapter as read, out of lessons available"**
+     และ **"returns null when progress is unavailable, not a zeroed-out
+     object"**
+  4. **(บังคับ) ลบ has_lesson filter ออกจาก marker** —
+     `conceptReadMarker`: ลบ `if (!hasLesson) return "none";` → พัง
+     **"returns none for a concept without a lesson, regardless of its
+     recorded state"**
+  5. invert `progressAvailable` ฝั่ง chapter ด้วย (คนละฟังก์ชันจาก #3,
+     คุมคนละจุด) — `chapterReadStats`: same flip → พังพร้อมกัน 3 เทสต์
+     ("counts only passed...", "excludes a lesson-less concept...",
+     "returns null when progress is unavailable...")
+  6. `conceptReadMarker` ยุบ `in_progress` ไปเป็น `"passed"` (marker สอง
+     state ไม่ต่างกันอีกต่อไป — ขัด requirement "distinct markers" ตรง ๆ) →
+     พัง **"returns a distinct in_progress marker rather than collapsing it
+     into passed"**
+  7. (bonus) ย้าย `total += 1` เข้าไปอยู่หลัง `if (!has_lesson) continue`
+     (ทำให้ `total === available` เสมอ, ไม่นับ concept ที่ไม่มี lesson ใน
+     total ด้วย) → พังเทสต์เดียวกับ #2 (**"excludes a lesson-less
+     concept..."**) เพราะเทสต์นั้นเช็คทั้ง `available` และ `total` แยกกัน —
+     ไม่มี mutation ไหนรอดเลยจากทั้ง 7 จุด
+- **ทดสอบกับ live stack จริง** (`docker compose up -d --build`, DB local มี
+  progress จริงจากการทดสอบ ticket ก่อนหน้าอยู่แล้ว: ddd ผ่านครบ 4/4, ddia ผ่าน
+  4 บทจาก 61 + ผสม in_progress, ai-systems มี 2 concept `in_progress` จาก 53
+  — ยืนยันตัวเลขทุกจุดด้วย `curl /api/v1/progress` + `/api/v1/curriculum`
+  ก่อนเทียบกับ Playwright):
+  - **Normal path, list view**: การ์ดโชว์ `4/4 lessons read` (ddd, บาร์เต็ม),
+    `4/61 lessons read` (ddia, บาร์ ~7%), `0/53 lessons read` (ai-systems,
+    บาร์ว่าง) ตรงกับตัวเลขจาก curl เป๊ะ, มี `role="progressbar"` 3 อัน
+    (เท่าจำนวนการ์ดที่มี lesson), console error = 0
+  - **Normal path, detail view**: `/learn?track=ddd` chapter "Model-Driven
+    Foundations" (4/4 lesson ผ่านหมด) header โชว์ `"4/4 read"` เฉย ๆ (ไม่มี
+    บรรทัด ready เพราะ available===total) มี marker "Read" (aria-label)
+    ครบ 4 อัน; `/learn?track=ai-systems` chapter "LLM Foundations" header
+    `"0/5 read"` มี marker "In progress" 2 อัน ตรงกับ 2 concept ที่ backend
+    ส่งมาเป๊ะ, marker "Read" = 0 อันในหน้านี้ (ยังไม่มี concept ไหนผ่านเลยใน
+    track นี้); `/learn?track=ddd` chapter "Building Blocks" (0 lesson พร้อม
+    จาก 10 concept) header โชว์ `"0/10 ready"` อย่างเดียว **ไม่มี** `"0/0
+    read"` โผล่มา — นี่คือ edge case ที่เจอจาก Playwright จริง ไม่ได้คิดไว้
+    ตอนออกแบบแรก ต้องเพิ่มเงื่อนไข `readStats.available > 0` ก่อนเข้าโหมด
+    read-line ถึงจะปิดจุดนี้ได้
+  - **Mock `GET /api/v1/progress` → 500**: banner `role="alert"` ขึ้นจริง 1
+    อัน (แยกจาก Next.js's `__next-route-announcer__` ที่มี `role="alert"`
+    ติดตัวเองอยู่แล้วทุกหน้า — ต้อง exclude ID นี้ตอนนับ banner ไม่งั้นนับผิด),
+    `role="progressbar"` = 0 ทั้งหน้า, ไม่มี string `"0/N"` โผล่ที่ไหนเลยในหน้า
+    (regex กวาดทั้ง `<main>`), console error มีแค่ 1 บรรทัด "Failed to load
+    resource: 500" ซึ่งเป็น browser network log อัตโนมัติ ไม่ใช่โค้ดแอป
+  - **Mock `GET /api/v1/progress` → 200 กับ `{"entries":[]}`** (malformed —
+    key ผิด `concepts`): banner ขึ้นจริง 1 อัน ที่ `/learn?track=ddia`, ไม่มี
+    marker (`aria-label="Read"`/`"In progress"`) เลยสักอันในหน้า, chapter
+    "Replication" fallback กลับไปโชว์ `"5/5 ready"` แบบเดิม ไม่ใช่ read line,
+    console error = 0 (status เป็น 200 จริง ไม่มี network log)
+  - **375px**: `scrollWidth === clientWidth === 375` ที่ทั้ง list และ detail
+    view ที่ chapter เปิดอยู่
+  - **Contrast วัดจริงจาก browser** (`getComputedStyle` + คำนวณ relative
+    luminance เอง ไม่ใช่อ่านจาก palette): marker `passed`
+    (`text-success-strong`, `rgb(4,120,87)`) บน card surface
+    (`rgb(255,253,250)`) = **5.40:1**; marker `in_progress`
+    (`text-warning-strong`, `rgb(180,83,9)`) = **4.95:1**; ตัวหนังสือ
+    `{n}/{N} lessons read` บน card (`text-muted`, `rgb(82,82,91)`) =
+    **7.61:1** — ทั้งสามผ่าน AA (≥4.5:1) จริง ไม่ใช่แค่คำนวณมือ
+  - **Regression spot-check**: กด "Set focus" จากการ์ด DDD หลัง refactor
+    `TrackCard`/`learn/page.tsx` แล้ว `curl GET
+    /api/v1/prefs/focus-track` ยืนยัน persist จริง (`{"track":"ddd"}`),
+    ไม่มี `pageerror` เกิดขึ้น — reset กลับเป็น `null` หลังทดสอบเสร็จ
+- **จงใจไม่ทำในรอบนี้**: หน้า `/lesson` reader ไม่มี indicator ใด ๆ เพิ่ม (นอก
+  scope ตามที่ ticket ระบุ — เลื่อนไป UX-8 หรือ ticket แยกถ้าจำเป็น); ไม่ได้เพิ่ม
+  jsdom/`.tsx` test ให้ `TrackCard`/`TrackTopics` เอง (ทั้งคู่ยังเป็น debt เดิม
+  จาก UX-6's S10 — coverage ของ ticket นี้อยู่ที่ pure function ใน
+  `curriculum.ts` ทั้งหมด ตรวจ component ผ่าน Playwright แทน)
+- **Review focus**:
+  - ทำไม `trackReadStats`/`chapterReadStats` ต้องคืน `null` เมื่อ
+    `progressAvailable === false` แทนที่จะคืน `{read: 0, available: 0}`?
+  - ทำไม chapter ที่ `available === 0` (ยังไม่มี lesson เลยสักบท) ถึงต้อง
+    fallback ไปโชว์ `"0/10 ready"` แทนที่จะโชว์ `"0/0 read"` ทั้งที่ทั้งคู่คำนวณ
+    ถูกต้องทางคณิตศาสตร์เหมือนกัน?
+  - ทำไม concept marker ถึงต้องแยกเป็นทั้ง shape (เครื่องหมายถูก vs
+    วงกลม-จุด) และ `aria-label` พร้อมกัน ไม่ใช้แค่สีคนละสีก็พอ?
+- Status: `implemented, PR pending`

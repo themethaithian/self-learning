@@ -1,5 +1,7 @@
-// Not wired into any page yet: there's no real completion data to drive it
-// until the reading-progress API ships (UX-4/UX-7). Kept ready for that.
+// value is always out of "lessons available right now" (has_lesson count),
+// never out of the full planned-concept count — a full bar must only ever
+// mean "read everything that currently exists" (UX-7), not "the curriculum
+// is finished".
 export function ProgressBar({ value }: { value: number }) {
   const pct = Math.max(0, Math.min(100, value));
   return (

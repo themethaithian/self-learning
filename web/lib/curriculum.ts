@@ -109,6 +109,66 @@ export function computeTrackProgress(track: Track, progressByKey: ProgressByKey)
   return { track: track.track, total, done };
 }
 
+export interface TrackReadStats {
+  read: number;
+  available: number;
+}
+
+// null (not { read: 0, available: N }) when progress failed to load — a
+// zero here would render as a confident, wrong "0 read" bar instead of
+// hiding the bar entirely (the same rule getProgress()'s doc comment
+// describes, applied to the /learn track cards).
+export function trackReadStats(track: Track, progressByKey: ProgressByKey, progressAvailable: boolean): TrackReadStats | null {
+  if (!progressAvailable) return null;
+  const { done, total } = computeTrackProgress(track, progressByKey);
+  return { read: done, available: total };
+}
+
+export interface ChapterReadStats {
+  read: number;
+  available: number;
+  total: number;
+}
+
+// Same null-not-zero rule as trackReadStats, at chapter granularity.
+// `available` counts has_lesson concepts only (the denominator "read" is
+// out of), `total` counts every concept including ones with no lesson yet —
+// callers use the gap between the two to decide whether an "n/N ready" line
+// is still worth showing alongside "read/available read".
+export function chapterReadStats(
+  topicSlug: string,
+  concepts: Concept[],
+  progressByKey: ProgressByKey,
+  progressAvailable: boolean,
+): ChapterReadStats | null {
+  if (!progressAvailable) return null;
+  let total = 0;
+  let available = 0;
+  let read = 0;
+  for (const concept of concepts) {
+    total += 1;
+    if (!concept.has_lesson) continue;
+    available += 1;
+    if ((progressByKey[progressKey(topicSlug, concept.slug)] ?? "not_started") === "passed") read += 1;
+  }
+  return { read, available, total };
+}
+
+export type ConceptReadMarker = "passed" | "in_progress" | "none";
+
+// Concepts without a lesson can't have been read — has_lesson is checked
+// first and wins regardless of what state a stale/malformed progress entry
+// might claim. "not_started" carries no marker on purpose: a 61-row track
+// would otherwise carry 55+ identical "not started" badges that say nothing
+// (WCAG 1.4.1 wants the marker's shape, not colour, to carry the meaning
+// for the two states that DO need one).
+export function conceptReadMarker(hasLesson: boolean, state: ProgressState): ConceptReadMarker {
+  if (!hasLesson) return "none";
+  if (state === "passed") return "passed";
+  if (state === "in_progress") return "in_progress";
+  return "none";
+}
+
 export type NextUpResult =
   | {
       kind: "next";

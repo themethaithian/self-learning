@@ -3,7 +3,9 @@ import type { Chapter, Concept, ProgressEntry, ProgressState, Topic, Track } fro
 import type { TrackStats } from "../components/TrackCard";
 import {
   buildOtherTracks,
+  chapterReadStats,
   computeTrackProgress,
+  conceptReadMarker,
   countAvailableLessons,
   findNextLesson,
   indexProgress,
@@ -11,6 +13,7 @@ import {
   pickNextUp,
   pinFocusFirst,
   progressKey,
+  trackReadStats,
   type NextUpResult,
   type ProgressByKey,
 } from "./curriculum";
@@ -381,5 +384,66 @@ describe("buildOtherTracks", () => {
     ];
     const noLessons: NextUpResult = { kind: "no-lessons" };
     expect(buildOtherTracks(tracks, {}, null, noLessons).map((s) => s.track)).toEqual(["ddd"]);
+  });
+});
+
+// Shared by chapterReadStats/trackReadStats below: 2 chapters, and a mix of
+// all three progress states plus one lesson-less concept — a single-chapter
+// or single-state fixture previously let denominator-swap mutations survive
+// (UX-6's lesson).
+const readStatsTrack = track("ddd", [
+  topic("t1", 1, [
+    chapter("c1", 1, [concept("k1", true, 1), concept("k2", true, 2), concept("k3", true, 3)]),
+    chapter("c2", 2, [concept("k4", true, 1), concept("k5", false, 2)]),
+  ]),
+]);
+const readStatsProgress = progressMap([
+  ["t1", "k1", "passed"],
+  ["t1", "k2", "in_progress"],
+  ["t1", "k4", "passed"],
+]);
+
+describe("chapterReadStats", () => {
+  const c1Concepts = readStatsTrack.topics[0].chapters[0].concepts;
+  const c2Concepts = readStatsTrack.topics[0].chapters[1].concepts;
+
+  it("counts only passed concepts as read, out of has_lesson concepts in the chapter", () => {
+    expect(chapterReadStats("t1", c1Concepts, readStatsProgress, true)).toEqual({ read: 1, available: 3, total: 3 });
+  });
+
+  it("excludes a lesson-less concept from available while still counting it in total", () => {
+    expect(chapterReadStats("t1", c2Concepts, readStatsProgress, true)).toEqual({ read: 1, available: 1, total: 2 });
+  });
+
+  it("returns null when progress is unavailable, not a zeroed-out object", () => {
+    expect(chapterReadStats("t1", c1Concepts, readStatsProgress, false)).toBeNull();
+  });
+});
+
+describe("trackReadStats", () => {
+  it("counts passed concepts across every chapter as read, out of lessons available", () => {
+    expect(trackReadStats(readStatsTrack, readStatsProgress, true)).toEqual({ read: 2, available: 4 });
+  });
+
+  it("returns null when progress is unavailable, not a zeroed-out object", () => {
+    expect(trackReadStats(readStatsTrack, readStatsProgress, false)).toBeNull();
+  });
+});
+
+describe("conceptReadMarker", () => {
+  it("returns none for a concept without a lesson, regardless of its recorded state", () => {
+    expect(conceptReadMarker(false, "passed")).toBe("none");
+  });
+
+  it("returns passed for a passed concept that has a lesson", () => {
+    expect(conceptReadMarker(true, "passed")).toBe("passed");
+  });
+
+  it("returns a distinct in_progress marker rather than collapsing it into passed", () => {
+    expect(conceptReadMarker(true, "in_progress")).toBe("in_progress");
+  });
+
+  it("returns none for a not_started concept that has a lesson", () => {
+    expect(conceptReadMarker(true, "not_started")).toBe("none");
   });
 });

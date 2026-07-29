@@ -2,9 +2,9 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getCurriculum, getFocusTrack, UnauthorizedError, type Track } from "@/lib/api";
+import { getCurriculum, getFocusTrack, getProgress, UnauthorizedError, type Track } from "@/lib/api";
 import { TrackTopics } from "@/components/TrackTopics";
-import { countAvailableLessons, pinFocusFirst } from "@/lib/curriculum";
+import { countAvailableLessons, indexProgress, pinFocusFirst, trackReadStats, type ProgressByKey } from "@/lib/curriculum";
 import { useFocusTrack } from "@/lib/useFocusTrack";
 import { TrackCard, type TrackStats } from "@/components/TrackCard";
 import { TrackCardsSkeleton } from "@/components/Skeleton";
@@ -43,14 +43,31 @@ function ComingSoonRow({ label }: { label: string }) {
   );
 }
 
-function TrackDetail({ track }: { track: Track }) {
+function TrackDetail({
+  track,
+  progressByKey,
+  progressAvailable,
+}: {
+  track: Track;
+  progressByKey: ProgressByKey;
+  progressAvailable: boolean;
+}) {
   return (
     <div className="space-y-6">
       <LinkButton href="/learn" variant="ghost">
         ← Back to Learn
       </LinkButton>
       <h2 className="text-xl font-semibold text-heading">{trackLabel(track.track)}</h2>
-      <TrackTopics topics={track.topics} />
+      <TrackTopics topics={track.topics} progressByKey={progressByKey} progressAvailable={progressAvailable} />
+    </div>
+  );
+}
+
+function ProgressUnavailableBanner() {
+  return (
+    <div role="alert" className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger-strong">
+      Could not load your reading progress — the read markers on each concept, the read count on each chapter, and
+      the progress bar on each track card may be wrong until this loads.
     </div>
   );
 }
@@ -61,13 +78,25 @@ function LearnView() {
   const trackParam = searchParams.get("track");
 
   const [state, setState] = useState<ViewState>({ status: "loading" });
+  const [progressByKey, setProgressByKeyValue] = useState<ProgressByKey>({});
+  const [progressAvailable, setProgressAvailable] = useState(true);
   const { focusTrack, setFocusTrackValue, pendingTrack, error: focusError, setFocus: handleSetFocus, dismiss: dismissFocusError } =
     useFocusTrack();
 
+  // getFocusTrack/getProgress already degrade non-auth failures internally
+  // (see lib/api.ts) — only getCurriculum() failing can reject this
+  // Promise.all, so a progress-fetch failure never takes the whole page down.
   const load = useCallback(async () => {
     setState({ status: "loading" });
     try {
-      const [curriculum, focus] = await Promise.all([getCurriculum(), getFocusTrack()]);
+      const [curriculum, progress, focus] = await Promise.all([getCurriculum(), getProgress(), getFocusTrack()]);
+      if (progress.kind === "ok") {
+        setProgressByKeyValue(indexProgress(progress.entries));
+        setProgressAvailable(true);
+      } else {
+        setProgressByKeyValue({});
+        setProgressAvailable(false);
+      }
       setFocusTrackValue(focus.track);
       setState(
         curriculum.tracks.length === 0 ? { status: "empty" } : { status: "success", tracks: curriculum.tracks },
@@ -123,7 +152,12 @@ function LearnView() {
         />
       );
     }
-    return <TrackDetail track={matched} />;
+    return (
+      <div className="space-y-6">
+        {!progressAvailable && <ProgressUnavailableBanner />}
+        <TrackDetail track={matched} progressByKey={progressByKey} progressAvailable={progressAvailable} />
+      </div>
+    );
   }
 
   const allStats = sortTracksByDisplayOrder(tracks).map(computeStats);
@@ -135,6 +169,8 @@ function LearnView() {
 
   return (
     <div className="space-y-8">
+      {!progressAvailable && <ProgressUnavailableBanner />}
+
       {focusError && (
         <div
           role="alert"
@@ -158,16 +194,20 @@ function LearnView() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {availableStats.map((stats) => (
-            <TrackCard
-              key={stats.track}
-              stats={stats}
-              isFocus={stats.track === focusTrack}
-              onSetFocus={handleSetFocus}
-              saving={pendingTrack === stats.track}
-              busy={pendingTrack !== null}
-            />
-          ))}
+          {availableStats.map((stats) => {
+            const trackTree = tracks.find((t) => t.track === stats.track);
+            return (
+              <TrackCard
+                key={stats.track}
+                stats={stats}
+                readStats={trackTree ? trackReadStats(trackTree, progressByKey, progressAvailable) : null}
+                isFocus={stats.track === focusTrack}
+                onSetFocus={handleSetFocus}
+                saving={pendingTrack === stats.track}
+                busy={pendingTrack !== null}
+              />
+            );
+          })}
         </div>
       )}
 

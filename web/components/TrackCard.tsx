@@ -1,6 +1,8 @@
 import { Card } from "@/components/Card";
 import { LinkButton } from "@/components/Button";
 import { FocusToggleButton } from "@/components/FocusToggleButton";
+import { ProgressBar } from "@/components/ProgressBar";
+import type { TrackReadStats } from "@/lib/curriculum";
 
 export interface TrackStats {
   track: string;
@@ -12,6 +14,7 @@ export interface TrackStats {
 
 interface TrackCardProps {
   stats: TrackStats;
+  readStats: TrackReadStats | null;
   isFocus: boolean;
   onSetFocus: (track: string | null) => void;
   saving: boolean;
@@ -22,7 +25,7 @@ export function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
-export function TrackCard({ stats, isFocus, onSetFocus, saving, busy }: TrackCardProps) {
+export function TrackCard({ stats, readStats, isFocus, onSetFocus, saving, busy }: TrackCardProps) {
   return (
     <Card className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -35,15 +38,20 @@ export function TrackCard({ stats, isFocus, onSetFocus, saving, busy }: TrackCar
         />
       </div>
 
-      {/* No ProgressBar here: this card counts lesson availability
-          (lessonsReady of totalConcepts), not reading completion, so a bar
-          would always render full — completion numbers live on /today. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-xs text-muted">
-        <span>{plural(stats.lessonsReady, "lesson")} ready</span>
-        <span>
-          {plural(stats.chapterCount, "chapter")} · {plural(stats.totalConcepts, "concept")} planned
-        </span>
-      </div>
+      {readStats ? (
+        <div className="space-y-1.5">
+          <ProgressBar value={readStats.available === 0 ? 0 : (readStats.read / readStats.available) * 100} />
+          <p className="text-xs text-muted">
+            {readStats.read}/{readStats.available} {readStats.available === 1 ? "lesson" : "lessons"} read
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-muted">{plural(stats.lessonsReady, "lesson")} ready</p>
+      )}
+
+      <p className="text-xs text-muted">
+        {plural(stats.chapterCount, "chapter")} · {plural(stats.totalConcepts, "concept")} planned
+      </p>
 
       <LinkButton href={`/learn?track=${encodeURIComponent(stats.track)}`} variant="ghost">
         View track

@@ -53,6 +53,15 @@ export function CheckIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function InProgressIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-4 w-4 shrink-0" aria-hidden {...props}>
+      <circle cx="10" cy="10" r="7" />
+      <circle cx="10" cy="10" r="2.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function ChevronIcon({ open, ...props }: SVGProps<SVGSVGElement> & { open: boolean }) {
   return (
     <svg
