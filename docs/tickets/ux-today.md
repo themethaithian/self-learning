@@ -275,13 +275,315 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
     เป็น debt เฉย ๆ ไม่เพิ่ม caller ปลอมขึ้นมาเพื่อ "justify" การมีอยู่ของ variant นี้
 - Status: `merged, PR #46`
 
-## UX-6 — Today page + IA switch
+## UX-6 — Today page + IA switch `[go-implementer]`
 
-- ไล่ priority: focus track (จาก UX-1b) → concept ถัดไปที่ยังไม่ passed ตาม
-  position → fallback track อื่นถ้า focus track เคลียร์หมดแล้ว
-- IA switch: ปุ่มสลับ focus track + visibility ของ track อื่น ๆ เพื่อ "เช็คสิ่งที่ยังค้างตามหลัง"
-- รอ UX-1b merge ก่อนเริ่ม
-- Status: `ยังไม่เริ่ม`
+- **Scope**: หน้าใหม่ `/today` ตอบ "วันนี้อ่านอะไรต่อ" — **Next up** card (track ·
+  chapter, ชื่อ concept, `~N min`, ปุ่ม **Continue**/**Start** ตาม state) +
+  **Other tracks** section (ทุก track ที่มี lesson อย่างน้อย 1 บท โชว์
+  `n/N done`, ปุ่มสลับ focus, ลิงก์ `/learn?track=`); IA ตัดเหลือ **Today ·
+  Learn** ใน nav (`web/lib/nav.ts`) เพราะอีก 5 หน้า (Dashboard/Drill/DSA/
+  Test/Tickets) เป็น `ComingSoon` placeholder ล้วน — **ไฟล์ page ยังอยู่บน
+  disk เหมือนเดิม แค่ไม่มีลิงก์ใน nav ชี้ไปหา** (รอ phase 4/5 ค่อยกลับมาใส่
+  ใน nav ใหม่ตอนมีของจริง); `/` และ `/token` (หลัง login) ชี้ไป `/today`
+  แทน `/learn` เดิม — ส่วน `/read` ยังคงชี้ไป `/learn` เหมือนเดิม (มันคือ
+  URL เก่าของหน้า Learn เอง ไม่ใช่ "ทางเข้าแอป" ที่ ticket นี้ต้องย้าย)
+- **`web/lib/api.ts`**: เพิ่ม `getProgress()` กลับมา (ถูกลบเป็น dead code
+  ตอน UX-5 เพราะตอนนั้นไม่มีใครเรียก) — **bug ที่จับได้จากการรัน Playwright
+  จริงกับ live stack**: `GET /api/v1/progress` ห่อ array ไว้ใน
+  `{"concepts": [...]}` ไม่ใช่ array เปล่า ๆ ตามที่ผมสมมุติไว้ตอนแรกจาก
+  UX-4's ticket text เฉย ๆ — ถ้าไม่ทดสอบกับ live stack จริง โค้ดจะ compile
+  ผ่านทุกอย่าง (TypeScript ไม่เช็ค runtime shape) แต่ `indexProgress` จะ
+  throw ตอน `for...of` วน object ที่ไม่ใช่ array จริง กลายเป็น curriculum
+  โหลดสำเร็จแต่ทั้งหน้า error เพราะ progress พังแทน — ตรงข้ามกับ requirement
+  "ต้อง degrade เฉพาะส่วนที่พัง" ของ ticket นี้เป๊ะ ๆ. `getProgress()` เลย
+  unwrap `res.concepts` แล้ว catch เหมือน `getFocusTrack()` เดิม (non-401
+  → คืน `[]`, 401 → rethrow ให้ redirect ไป `/token`)
+- **`web/lib/curriculum.ts`**: `pinFocusFirst` เปลี่ยนเป็น generic
+  `<T extends {track: string}>` (เดิมรับแค่ `TrackStats[]`) เพื่อใช้ซ้ำกับ
+  `Track[]` ใน `pickNextUp` โดยไม่ต้องมี copy ที่สอง; ย้าย sort-by-display-
+  order ออกจาก `learn/page.tsx`'s local `trackSortIndex` ไปเป็น
+  `sortTracksByDisplayOrder` (generic เหมือนกัน) ใน `web/lib/trackMeta.ts`
+  แล้วให้ทั้ง `/learn` และ `pickNextUp` เรียกตัวเดียวกัน — เหตุผลเดียวกับที่
+  ticket บอกให้ reuse `flattenTrack`: มี logic เดียวกันสองที่วันหนึ่งมันจะ
+  drift
+- **ฟังก์ชันหลัก (pure, `web/lib/curriculum.ts`)**:
+  `pickNextUp(tracks: Track[], progressByKey: ProgressByKey, focusTrack:
+  string | null): NextUpResult` โดย
+  `ProgressByKey = Record<string, ProgressState>` (คีย์จาก
+  `progressKey(topic, concept)` เท่านั้น ห้าม hardcode separator เอง) และ
+  ```
+  type NextUpResult =
+    | { kind: "next"; track; topic; concept; chapterTitle; title;
+        estMinutes: number | null; state: "not_started" | "in_progress" }
+    | { kind: "all-done" }
+    | { kind: "no-lessons" };
+  ```
+  แยก `"all-done"` (ทุก concept ที่มี lesson ทั้งแอป passed หมด — ยินดีด้วย
+  จบจริง) ออกจาก `"no-lessons"` (ไม่มี track ไหนมี lesson เลยสักบท — ยังไม่มี
+  อะไรให้อ่าน) เพราะสอง state นี้ว่างเหมือนกันแต่ความหมายตรงข้ามกัน —
+  ถ้ายุบเป็น `null` เดียวกัน UI จะพูดผิดว่า "เก่งมาก อ่านจบหมดแล้ว" ทั้งที่
+  ยังไม่มีเนื้อหาเลยสักบท (ใช้หลักการเดียวกับ UX-5's `findNextLesson` ที่
+  แยก `"end-of-track"` ออกจาก `"not-found"`)
+  - **ลำดับ track**: `pinFocusFirst(sortTracksByDisplayOrder(tracks),
+    focusTrack)` — sort ตาม `TRACK_DISPLAY_ORDER` ก่อน (เป็นแค่ sort key,
+    track ที่ backend ส่งมาแต่ไม่อยู่ใน list จะถูกต่อท้าย ไม่หาย) แล้วค่อยดัน
+    focus track ไปหน้าสุด ถ้ามีและยังอยู่ในลิสต์
+  - **ลำดับ concept ในแต่ละ track**: เดินตาม `flattenTrack`'s reading order
+    (topic → chapter → concept ตาม position ที่ backend sort มาแล้ว), ข้าม
+    concept ที่ `has_lesson=false`, คืนตัวแรกที่ state **ไม่ใช่** `passed`
+    (`in_progress` หรือไม่มี row เลยก็ได้ทั้งคู่) — บทที่อ่านค้างมาก่อนเลย
+    โผล่มาก่อนบทที่ยังไม่แตะเลยโดยอัตโนมัติ ไม่ต้องมี priority พิเศษแยก
+    ต่างหาก
+  - **Soft-guide**: ไม่มี state `"locked"` ปรากฏใน result เลย (`domain.Gate`
+    ยังไม่ถูก wire — ตรงตาม constraint ของ ticket นี้)
+- **`FocusToggleButton` component ใหม่** (`web/components/
+  FocusToggleButton.tsx`): ดึงปุ่ม toggle focus (aria-pressed/aria-disabled
+  + optimistic label) ออกจาก `TrackCard.tsx` มาเป็น component แชร์ได้ ใช้ทั้ง
+  ใน `TrackCard` (หน้า Learn) และแถว "Other tracks" ของ `/today` — ป้องกัน
+  behavior (โดยเฉพาะ `aria-disabled` แทน `disabled`) แยกกันสองที่แล้ว drift
+  ไปคนละแบบ
+- **Failure decoupling (R1 จาก UX-2 อีกครั้ง)**: `/today` ยิงสามคำขอพร้อมกัน
+  `Promise.all([getCurriculum(), getProgress(), getFocusTrack()])` —
+  `getProgress`/`getFocusTrack` catch ทุก error ที่ไม่ใช่ 401 ไว้ในตัวเอง
+  แล้วคืนค่า default (`[]` / `{track: null}`) ดังนั้น `Promise.all` reject
+  ได้จากสาเหตุเดียวคือ `getCurriculum()` พังจริง — progress/focus-track พัง
+  ไม่มีทางทำให้ทั้งหน้าเป็น error state ได้เลย
+- **ไม่มี progress bar**: "Other tracks" โชว์ตัวเลข `n/N done` ตรง ๆ
+  (constraint เดิมจาก UX-2: บาร์ที่ตัวเศษ=ตัวส่วนเสมอจะสื่อว่า "จบแล้ว" ทั้ง
+  ที่ยังไม่ได้ progress-track จริง — บาร์มาทีหลังใน UX-7)
+- **Review focus**:
+  - ทำไม `pickNextUp` ต้องคืน `"all-done"` กับ `"no-lessons"` แยกกันสองแบบ
+    แทนที่จะคืน `null`/`undefined` ตัวเดียวสำหรับทั้งสองกรณี?
+  - ทำไม `Promise.all` ของ `/today` ถึงไม่มีทาง reject จากแค่ progress หรือ
+    focus-track พังเพียงอย่างเดียว?
+  - `pinFocusFirst` เปลี่ยนจากรับ `TrackStats[]` เป็น generic
+    `<T extends {track: string}>` แล้ว behavior ของที่เรียกใช้เดิม (`/learn`)
+    เปลี่ยนไปหรือเปล่า เพราะอะไร?
+  - ทำไม bug ของ `getProgress()` (ลืม unwrap `{concepts: [...]}`) ถึงรอดจาก
+    `npx tsc --noEmit` และ `npm test` ผ่านหมด แต่จับได้จากการรัน Playwright
+    กับ live stack เท่านั้น?
+- **Mutation-testing** (ทำจริงตามที่ ticket ขอ แก้โค้ดชั่วคราว รัน `npm test`
+  แล้ว revert ทุกครั้ง):
+  - ลบ `pinFocusFirst(...)` ออก (เท่ากับเมิน focus track) → เจ๊ง 1 เทสต์:
+    "returns the focus track's next concept ahead of an earlier-ranked track"
+  - เปลี่ยน `if (state === "passed")` เป็น `if (state === "passed" ||
+    state === "in_progress")` (นับ in_progress ว่าจบแล้ว) → เจ๊ง 1 เทสต์:
+    "returns an in_progress concept ahead of a later not_started one in the
+    same track"
+  - ลบ `if (!item.hasLesson) continue;` ออก (ไม่กรอง has-lesson) → เจ๊ง 2
+    เทสต์: "skips concepts without a lesson" และ "returns no-lessons when no
+    track has any lesson at all"
+  - fixture ของทุกเทสต์ใช้อย่างน้อย 2 track เสมอ (ตาม lesson จาก UX-5 ที่ตอน
+    แรก fixture track เดียวทำให้ 2 ใน 3 mutation รอด) — ยืนยันด้วยผลข้างต้น
+    ว่าแต่ละ mutation โดนจับตรงจุดจริง ไม่ใช่บังเอิญ
+- **ทดสอบกับ live stack จริง** (`docker compose up -d --build`, bearer token
+  จาก `.env` local, curl ตั้งค่าล่วงหน้า): focus=`ddd` + concept แรก
+  `in_progress` → Next up โชว์ "Ubiquitous Language" ปุ่ม **Continue** ลิงก์
+  `/lesson?topic=domain-driven-design&concept=ubiquitous-language` ถูกต้อง;
+  pass ทั้ง 4 concept ของ `ddd` แล้ว Next up ย้ายไป track อื่นตาม
+  `TRACK_DISPLAY_ORDER` (ข้าม distsys/aws/go/dsa ที่ยังไม่มี lesson เลย
+  ไปเจอ ddia); mock `GET /api/v1/progress` เป็น 500 → หน้ายัง render Next up
+  ปกติ (degrade เป็น "ทุกอย่างยังไม่เริ่ม" แทนที่จะ error ทั้งหน้า), ไม่มี
+  error banner ปลอม; กด "Set focus" จากหน้า `/today` แล้ว
+  `curl GET /api/v1/prefs/focus-track` ยืนยันค่าถูก persist จริง; nav บน
+  `/today`/`/learn` highlight ถูกหน้า, เหลือแค่ 2 item; 375px:
+  `scrollWidth === clientWidth === 375`, console error = 0 ทุกกรณียกเว้น
+  เคส mock-500 ที่มี browser's built-in "Failed to load resource: 500" log
+  เดียว (เป็น network log อัตโนมัติของ browser เอง ไม่ใช่โค้ดแอป log เพิ่ม —
+  ไม่ใช่ error storm)
+- **จงใจไม่ทำในรอบแรก**: ไม่ได้ทดสอบ `"all-done"` กับ live DB จริง (ต้อง pass
+  lesson ทั้ง 61+53 บทของ ddia/ai-systems ผ่าน curl ซึ่งไม่คุ้มเวลา) —
+  ครอบคลุมด้วย unit test แทน (`"returns all-done when every lesson in every
+  track is passed"`)
+
+### รอบ code-reviewer (REQUEST_CHANGES → แก้ครบ)
+
+- **R1 — progress พังแล้วหน้าโกหกตัวเลข**: `getProgress()` เดิม catch แล้ว
+  คืน `[]` เงียบ ๆ — `/today` เอา `[]` ไปใช้ราวกับเป็นข้อมูลจริง ทำให้ track
+  ที่อ่านไปเยอะแล้วโชว์ `0/61 done` เมื่อ progress fetch ล้มเหลว (ผู้ใช้แยก
+  "ศูนย์จริง" กับ "โหลดไม่สำเร็จ" ไม่ออก — เป็นบั๊กเดียวกับที่ทั้ง epic นี้
+  ปฏิเสธไม่ยอมทำ progress bar ที่เต็มเสมอ) แก้โดยเปลี่ยน `getProgress()` คืน
+  discriminated result `{ok: true, entries} | {ok: false}` (`web/lib/api.ts`)
+  `/today` เก็บ `progressAvailable` แยกจาก `progressByKey`: เมื่อ `ok: false`
+  เลขที่ยังไม่รู้ค่าจริงจะโชว์ `"{total} lessons"` แทน `n/N done` (ไม่โกหกว่า
+  "ศูนย์"), และมี `role="alert"` banner บอกตรง ๆ ว่าโหลด progress ไม่สำเร็จ
+  (เหมือน banner ของ focus-track error ที่มีอยู่แล้ว) — `pickNextUp` เอง
+  ไม่ต้องแก้ (รับ empty map เป็น "ทุกอย่าง not_started" ต่อไปตามเดิม)
+- **R2 — สาม exported function ใหม่ไม่มี mutation-resistant test**: เพิ่ม
+  test 3 ชุด (`web/lib/curriculum.test.ts`, `web/lib/trackMeta.test.ts`)
+  แล้วพัง mutation จริงยืนยัน:
+  - `indexProgress` คืน `{}` เดิมเสมอ → พัง 2 เทสต์ ("indexes entries by
+    topic and concept, preserving state", "keys by topic then concept, not
+    the reverse")
+  - `indexProgress` สลับ argument เป็น `progressKey(entry.concept,
+    entry.topic)` → พังเทสต์เดิม 2 ชุดเดียวกัน (ทั้งคู่จับได้)
+  - `computeTrackProgress` เปลี่ยน `=== "passed"` เป็น `!== "not_started"`
+    (นับ `in_progress` เป็น done) → พัง 1 เทสต์ ("does not count an
+    in_progress lesson as done")
+  - `sortTracksByDisplayOrder` เปลี่ยน `Number.MAX_SAFE_INTEGER` เป็น `-1`
+    (track ที่ไม่รู้จักไปอยู่หัวแถวแทนท้ายแถว) → พัง 1 เทสต์ ("appends a
+    track absent from TRACK_DISPLAY_ORDER to the end, not the start")
+- **R3 — `getProgress()` ยังคืน `undefined` ได้จริงถ้า response ผิดรูป**:
+  `res.concepts` จาก payload ที่ไม่มี field นี้จะเป็น `undefined` แล้ว
+  `indexProgress(undefined)` throw กลาง `load()`'s try ทำให้ curriculum ที่
+  โหลดสำเร็จกลายเป็น error ทั้งหน้าไปด้วย แก้ด้วย
+  `Array.isArray(res.concepts) ? res.concepts : []` ก่อนส่งต่อ — `{ok:
+  true, entries}` การันตีว่า `entries` เป็น array เสมอ
+- **S1** — "Other tracks" กรอง track ที่เป็น Next up ออก (`nextUp.kind ===
+  "next" && stats.track === nextUp.track` ถูกตัดจากลิสต์) กัน track เดียวกัน
+  โผล่ซ้ำสองที่พร้อมกัน
+- **S2** — `/today`'s "Other tracks" ใช้ `pinFocusFirst` ต่อจาก
+  `sortTracksByDisplayOrder` เหมือน `/learn` แล้ว (เดิมขาด `pinFocusFirst`
+  ทำให้สอง page เรียง "focus" คนละแบบ)
+- **S3** — `pickNextUp`'s return object ใช้ `state,` ตรง ๆ แทน ternary
+  `state === "in_progress" ? "in_progress" : "not_started"` — TypeScript
+  narrow `state` เหลือ `"not_started" | "in_progress"` ไปแล้วจาก `if (state
+  === "passed") continue;` บรรทัดก่อนหน้า ternary เดิมสื่อผิดว่ามี state ที่
+  สี่อยู่
+- **S4** — ดึง optimistic update/revert/pending/error state ทั้งก้อนออกเป็น
+  `web/lib/useFocusTrack.ts` (คืน `{focusTrack, setFocusTrackValue,
+  pendingTrack, error, setFocus, dismiss}`) ใช้ทั้ง `/learn` และ `/today` —
+  ก่อนหน้านี้ extraction หยุดแค่ปุ่ม (`FocusToggleButton`) แต่ตัว state
+  machine ~35 บรรทัดยังก็อปสองที่เหมือนกันเป๊ะ
+- **S5/S6** — ลบ comment ที่จะ rot เร็ว: `FocusToggleButton.tsx` ตัด call-site
+  inventory ("currently TrackCard and /today") ออก เก็บแค่ WHY ของ
+  `aria-disabled`; `curriculum.ts`'s `pickNextUp` comment ตัดประโยคท้ายที่พูดซ้ำ
+  กับ `NextLessonResult`'s union ที่นิยามอยู่ในไฟล์เดียวกันแล้ว;
+  `TrackCard.tsx` แก้ comment ที่อ้างว่า "reading progress isn't tracked
+  (UX-4)" ทั้งที่ UX-4 ทำเสร็จแล้วและ ticket นี้เองก็ใช้ progress อยู่ —
+  เปลี่ยนเป็นอธิบายว่าการ์ดนี้นับ availability ไม่ใช่ completion
+- **S8** — `docs/roadmap.md` เปลี่ยน `[~]` เป็น `[ ]` + "(PR pending)"
+  เพราะ GitHub เรอนเดอร์ `[~]` เป็น raw text ไม่ใช่ checkbox (รีวิวจากมือถือ
+  จะเห็นเป็นตัวหนังสือเปล่า ๆ)
+- **S9** — `clearToken()` เพิ่ม `typeof window` guard + try/catch: ถ้า
+  localStorage ถูกบล็อก (extension/private mode — gotcha ที่โปรเจกต์นี้เคยเจอ
+  จริงกับ `getToken`) `removeItem` throw จะทำให้ `apiFetch`'s 401 handler
+  ไม่ทัน `throw new UnauthorizedError()` เลย กลาย เป็น error ธรรมดาที่
+  `getProgress`/`getFocusTrack` กลืนทิ้งเงียบ ๆ แทนที่จะ redirect ไป `/token`
+- **Take-if-cheap ที่ทำ**: S7 (`progressKey`'s `::` separator) — เพิ่มเทสต์
+  `progressKey("ab","c") !== progressKey("a","bc")` ล็อก invariant กันการต่อ
+  string ตรง ๆ โดยไม่มี separator
+- **Re-verify**: `npm test` 35/35 ผ่าน (เพิ่มจาก 27 → 35: +3 `indexProgress`
+  +1 `computeTrackProgress` +1 `progressKey` +3 `sortTracksByDisplayOrder`
+  ใน `web/lib/trackMeta.test.ts` ไฟล์ใหม่), `tsc --noEmit`/`eslint`/`npm run
+  build` สะอาด, `go vet`/`go test` cached ผ่าน (ยืนยันด้วย `git diff
+  --name-only develop...` ไม่มีไฟล์ Go), mutation ทั้ง 7 จุด (4 เดิม + 3
+  ใหม่จาก R2) พังตามที่ระบุไว้ข้างบนทุกจุดแล้ว revert กลับก่อน commit
+- **Live-stack re-verify**: `docker compose up -d --build web` แล้ว
+  Playwright จริง — normal load: Next up = ddia's "Latency and Percentiles"
+  (`in_progress` จริงจาก DB) ปุ่ม **Continue**, Other tracks โชว์ DDD
+  `4/4 done` + AI & LLM Systems `0/53 done` (ไม่นับ 2 concept ที่
+  `in_progress` เป็น done) และ **ไม่โชว์ ddia ซ้ำ** (เพราะมันคือ Next up
+  track อยู่แล้ว, S1); mock `GET /api/v1/progress` → 500: banner
+  "Could not load your reading progress..." ขึ้นจริง, Next up ตกกลับไป
+  `ddd`'s "Ubiquitous Language" ปุ่ม **Start** (เพราะไม่รู้ progress จริง),
+  Other tracks โชว์ `"61 lessons"` / `"53 lessons"` **ไม่มี `0/N` ปลอม**;
+  กด "Set focus" จาก `/today` แล้ว `curl GET /api/v1/prefs/focus-track` ยืนยัน
+  persist จริง; `/learn` เองก็ยังใช้งานได้ปกติหลัง refactor เป็น
+  `useFocusTrack()` (focus toggle persist ตรวจแล้ว); 375px:
+  `scrollWidth === clientWidth === 375`, console error = 0 ทุกเคสยกเว้น
+  mock-500 ที่มี browser's built-in "Failed to load resource: 500" log
+  เดียวเหมือนรอบแรก
+- **จงใจไม่ทำในรอบนี้เช่นกัน**: ไม่ได้ reset `ddd`/ddia/ai-systems's progress
+  rows กลับเป็นค่าว่างหลังทดสอบ (ไม่มี DELETE endpoint ให้ใช้) — ไม่กระทบ
+  prod เพราะเป็น local dev DB, focus track ถูก reset กลับเป็น `null` แล้ว
+  ทุกครั้งหลังทดสอบ
+
+### รอบ code-reviewer ที่ 3 (REQUEST_CHANGES → แก้ครบ)
+
+- **A — R3's fix เปิดช่องให้ R1 กลับมาทางประตูหลัง**: `Array.isArray(res.concepts)
+  ? res.concepts : []` เดิม คืน `{ok: true, entries: []}` เมื่อ response 200
+  แต่ shape ผิด (เช่น key เปลี่ยนชื่อเป็น `entries`, หรือ error payload คนละ
+  รูปแบบ) — เท่ากับ "โหลดสำเร็จ ประวัติว่างเปล่า" ปลอม ทำให้ banner หาย และ
+  `/today` มั่นใจโชว์ `0/N done` + **Start** ทั้งที่ progress ไม่ได้โหลดจริง
+  (บั๊กเดียวกับ R1 แค่ trigger เปลี่ยนจาก 500 เป็น shape drift — และ PR #48
+  เพิ่ง handle_errors บน Caddy ทำให้พื้นที่ "200 ที่ shape ไม่ตรง" กว้างขึ้น)
+  แก้เป็น `Array.isArray(res?.concepts) ? {kind:"ok", entries: res.concepts}
+  : {kind:"error"}` — shape ผิดตอนนี้จัดเป็น error เสมอ ไม่ใช่ ok เปล่า ๆ;
+  comment เดิมที่บอกว่า "รับประกันไม่มีทาง entries เป็น undefined" ก็แก้เป็น
+  พูดถึงสิ่งที่ต้องกันจริง (false ok) แทน
+- **B — `useFocusTrack` กลืน `UnauthorizedError` แล้วบอกให้ retry ทั้งที่ retry
+  ไม่มีทางสำเร็จ**: token หมดอายุ → `apiFetch` เจอ 401 → `clearToken()` →
+  throw `UnauthorizedError` → hook เดิมจับด้วย bare `catch` เงียบ ๆ → banner
+  ขึ้น "Could not save focus track — please try again" → ไม่ redirect, หน้า
+  ยังดูเหมือน login อยู่ → กด retry ยิง request **ไม่มี Authorization header
+  เลย** → 401 วนซ้ำตลอดไป (ขัด policy ของ `api.ts` เองที่บอกว่า "expired
+  token คือความล้มเหลวเดียวที่ caller ต้องเห็น" ซึ่ง `lesson/page.tsx` ทำตาม
+  แต่ hook นี้ทำลาย policy ให้พังพร้อมกันสองหน้า) แก้โดยให้ hook เช็ค
+  `err instanceof UnauthorizedError` แล้ว `router.replace("/token")` เอง
+  (ใช้ `useRouter` จาก `next/navigation` ภายใน hook) แทนที่จะ rethrow ให้ทั้ง
+  สองหน้าไปดักเอง — จุดเดียวแก้ครบทั้ง `/today` และ `/learn`
+- **S10 (promoted) — โค้ดใหม่ของรอบนี้ทั้งหมดไม่มี test เลย, 11 mutation รอด
+  หมด**: ปิดช่องที่ปิดได้ด้วย unit test (ไม่ต้อง jsdom):
+  - เพิ่ม `web/lib/api.test.ts` (ใช้ `vi.stubGlobal("fetch", ...)` บน
+    `environment: "node"` เดิม ไม่ต้องพึ่ง dependency ใหม่) คุม 4 mutation:
+    ลบ `Array.isArray` guard, catch คืน `{kind:"ok", entries:[]}` แทน
+    `{kind:"error"}`, `getProgress`/`getFocusTrack` กลืน `UnauthorizedError`
+  - ดึง dedupe filter (ตัด track ที่เป็น Next Up ออกจาก "Other tracks")
+    ออกจาก JSX ไปเป็น pure function `buildOtherTracks(tracks, progressByKey,
+    focusTrack, nextUp)` ใน `curriculum.ts` แล้วมี unit test ปิด mutation
+    "ลบ dedupe filter" ได้ตรง ๆ (จาก 11 mutation ที่รอด ปิดได้ 5:
+    Array.isArray guard, catch คืนผิด, getProgress/getFocusTrack กลืน
+    Unauthorized, dedupe filter หาย)
+  - **ยังไม่ปิดในรอบนี้ (ตั้งใจ)**: `progressAvailable` force-true, ลบ
+    banner ทิ้ง, โชว์ `n/N done` ตอน progress ไม่มา, hook's optimistic
+    revert หาย, `pendingTrack` หาย (Saving.../busy พัง), hook ไม่โชว์
+    error เลย — ทั้ง 6 จุดนี้เป็น React component/hook state ต้องมี jsdom +
+    `.tsx` test include ซึ่งยังไม่ได้ตั้งในรอบนี้ (`vitest.config.ts` ยัง
+    `environment: "node"`, `include: ["**/*.test.ts"]` เท่านั้น) — บันทึกไว้
+    เป็น debt ที่ยอมรับได้ ตรวจแทนด้วย Playwright ทุกครั้งที่แก้หน้านี้
+- **S12/S13 — ข้อความ banner เอง**: เดิมบอกว่าตัวเลข "below" กับ label
+  "above" ทั้งที่ banner เป็น first child ของ `space-y-8` stack ทำให้ทั้งคู่
+  อยู่ "below" จริง ๆ (ไม่มีอะไรอยู่เหนือ banner นอกจาก `<h1>Today</h1>`) และ
+  เดิมไม่ได้เตือนเรื่อง **คำแนะนำเอง** เลย — ทั้งที่ progress ว่างทำให้
+  `pickNextUp` ชี้ไปที่ concept แรกของ track เสมอ (คนอ่าน DDIA ไป 40 บทแล้ว
+  จะเจอ "Next up: บทที่ 1") แก้ข้อความเป็น "the pick below, its
+  Continue/Start label, and every count under Other tracks may be wrong
+  until this loads" ครอบคลุมทั้งสามจุด โดยไม่ซ่อนการ์ด Next Up ทิ้ง
+- **S11** — ย้าย concurrency guard (`if (pendingTrack !== null) return`)
+  เข้าไปอยู่ใน `useFocusTrack.setFocus` เอง แทนที่จะพึ่ง `busy` prop ที่หน้า
+  คำนวณแล้วส่งให้ `FocusToggleButton` (caller ที่ข้าม prop นี้ หรือ toggle
+  สองครั้งพร้อมกัน จะทำให้ `previous` ที่ capture ไว้ผิดตัว แล้ว revert เพี้ยน)
+- **S14** — `ProgressResult` เปลี่ยนจาก `{ok: boolean}` เป็น `{kind: "ok" |
+  "error"}` ให้ตรงกับ `NextUpResult`/`NextLessonResult` ในไฟล์เดียวกันที่ใช้
+  `kind` discriminant อยู่แล้ว (ยังไม่เพิ่ม failure reason ตามที่ ticket บอก
+  ว่าเป็นของอนาคต)
+- **S15** — `today/page.tsx` เรียก `plural()` ที่ export จาก
+  `TrackCard.tsx` แทนที่จะ inline ternary ซ้ำเอง
+- **S16** — ซ่อน section "Other tracks" ทั้งก้อนเมื่อ `nextUp.kind !==
+  "next"` (all-done/no-lessons) กัน UI โชว์ "You've read everything" ตามด้วย
+  list ของทุก track ซ้ำซ้อนไม่มีจุดหมาย
+- **S17** — ลบ `"use client"` ออกจาก `useFocusTrack.ts` (ไม่ใช่ component
+  boundary เอง แค่ hook ที่ import จาก client component เท่านั้น)
+- **Re-verify**: `npm test` 44/44 ผ่าน (35→44: +6 `api.test.ts` ใหม่ +3
+  `buildOtherTracks`), `tsc --noEmit`/`eslint`/`npm run build` สะอาด,
+  `go vet`/`go test` cached ผ่าน ยืนยันด้วย `git diff --name-only
+  develop...` ไม่มีไฟล์ Go — mutation ทั้งหมดพังตามคาด แล้ว revert กลับ:
+  - 4 mutation ใหม่ของ `api.ts` (ลบ `Array.isArray` guard, catch คืนผิด,
+    `getProgress`/`getFocusTrack` กลืน Unauthorized) → พังแต่ละอันตรงตาม
+    เทสต์ใน `api.test.ts` ที่เขียนไว้เฉพาะ
+  - dedupe filter หายจาก `buildOtherTracks` → พัง "excludes the track
+    pickNextUp is currently pointing at"
+  - 7 mutation เดิมจากรอบ 1/2 (`pickNextUp` ignore focus/treat in_progress
+    as done/drop has-lesson filter, `indexProgress` return-empty/swap-args,
+    `computeTrackProgress` count in_progress as done,
+    `sortTracksByDisplayOrder` unknown-track-first) → ยังพังทุกจุดเหมือนเดิม
+    ไม่มีจุดไหน regress
+- **Live-stack re-verify**: `docker compose up -d --build` แล้ว Playwright —
+  malformed-200 (mock `GET /api/v1/progress` → 200 กับ `{"entries":[]}`,
+  key ผิดแทนที่จะเป็น 500): banner ขึ้นจริง, Other tracks โชว์
+  `"61 lessons"`/`"53 lessons"` ไม่ใช่ `0/N`, console error = 0 (ไม่มีแม้แต่
+  browser's network log เพราะ status เป็น 200 จริง ๆ); expired-token-on-toggle
+  (mock แค่ PUT ของ `/api/v1/prefs/focus-track` ให้เป็น 401 ส่วน GET ผ่านปกติ):
+  คลิก "Set focus" แล้ว URL เปลี่ยนเป็น `/token` จริง, token ใน localStorage
+  เป็น `null`, ไม่มีข้อความ "please try again" ค้างอยู่เลย; all-done +
+  single-track mock: ซ่อน "Other tracks" section ทั้งก้อนจริงตาม S16; normal
+  path (ไม่ mock อะไร): ผลเหมือนรอบ 2 เป๊ะ (ddia's "Latency and Percentiles"
+  + Continue, ddd `4/4 done`, ai-systems `0/53 done`); กด "Set focus" ปกติ
+  ยัง persist ผ่าน curl ยืนยัน; `/learn` ยังทำงานปกติหลัง hook เปลี่ยน (โชว์
+  focus state ที่ set จาก `/today` ถูกต้องข้ามหน้า); 375px:
+  `scrollWidth === clientWidth === 375`, console error = 0
+- Status: `implemented, PR pending (review round 3 addressed)`
 
 ## UX-7 — Progress page + chapter/track indicators
 

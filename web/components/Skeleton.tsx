@@ -19,6 +19,24 @@ export function TrackCardsSkeleton() {
   );
 }
 
+export function TodaySkeleton() {
+  return (
+    <div className="space-y-8" aria-hidden>
+      <div className="space-y-4 rounded-2xl border border-subtle bg-surface p-6 shadow-sm">
+        <Skeleton className="h-3 w-20" />
+        <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="h-6 w-2/3" />
+        <Skeleton className="h-9 w-28 rounded-xl" />
+      </div>
+      <div className="space-y-2">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Skeleton key={index} className="h-16 w-full rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function LessonSkeleton() {
   return (
     <div className="max-w-[68ch] space-y-6" aria-hidden>

@@ -2,21 +2,16 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  getCurriculum,
-  getFocusTrack,
-  setFocusTrack as putFocusTrack,
-  UnauthorizedError,
-  type Track,
-} from "@/lib/api";
+import { getCurriculum, getFocusTrack, UnauthorizedError, type Track } from "@/lib/api";
 import { TrackTopics } from "@/components/TrackTopics";
 import { countAvailableLessons, pinFocusFirst } from "@/lib/curriculum";
+import { useFocusTrack } from "@/lib/useFocusTrack";
 import { TrackCard, type TrackStats } from "@/components/TrackCard";
 import { TrackCardsSkeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { Button, LinkButton } from "@/components/Button";
 import { BookIcon, WarningIcon } from "@/components/icons";
-import { TRACK_DISPLAY_ORDER, trackLabel } from "@/lib/trackMeta";
+import { sortTracksByDisplayOrder, trackLabel } from "@/lib/trackMeta";
 
 type ViewState =
   | { status: "loading" }
@@ -37,13 +32,6 @@ function computeStats(track: Track): TrackStats {
     }
   }
   return { track: track.track, label: trackLabel(track.track), totalConcepts, lessonsReady, chapterCount };
-}
-
-// Sorts by TRACK_DISPLAY_ORDER; a track the backend sends that isn't in that
-// list yet is appended, not dropped, so it stays visible somewhere.
-function trackSortIndex(track: string): number {
-  const idx = (TRACK_DISPLAY_ORDER as readonly string[]).indexOf(track);
-  return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
 }
 
 function ComingSoonRow({ label }: { label: string }) {
@@ -73,9 +61,8 @@ function LearnView() {
   const trackParam = searchParams.get("track");
 
   const [state, setState] = useState<ViewState>({ status: "loading" });
-  const [focusTrack, setFocusTrackValue] = useState<string | null>(null);
-  const [pendingTrack, setPendingTrack] = useState<string | null>(null);
-  const [focusError, setFocusError] = useState<string | null>(null);
+  const { focusTrack, setFocusTrackValue, pendingTrack, error: focusError, setFocus: handleSetFocus, dismiss: dismissFocusError } =
+    useFocusTrack();
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
@@ -95,30 +82,11 @@ function LearnView() {
         message: err instanceof Error ? err.message : "Something went wrong",
       });
     }
-  }, [router]);
+  }, [router, setFocusTrackValue]);
 
   useEffect(() => {
     load();
   }, [load]);
-
-  const handleSetFocus = useCallback(
-    async (track: string | null) => {
-      const previous = focusTrack;
-      const pendingCard = track ?? previous;
-      setFocusTrackValue(track);
-      setPendingTrack(pendingCard);
-      setFocusError(null);
-      try {
-        await putFocusTrack(track);
-      } catch {
-        setFocusTrackValue(previous);
-        setFocusError("Could not save focus track — please try again.");
-      } finally {
-        setPendingTrack(null);
-      }
-    },
-    [focusTrack],
-  );
 
   if (state.status === "loading") {
     return <TrackCardsSkeleton />;
@@ -158,7 +126,7 @@ function LearnView() {
     return <TrackDetail track={matched} />;
   }
 
-  const allStats = [...tracks].sort((a, b) => trackSortIndex(a.track) - trackSortIndex(b.track)).map(computeStats);
+  const allStats = sortTracksByDisplayOrder(tracks).map(computeStats);
   const availableStats = pinFocusFirst(
     allStats.filter((s) => s.lessonsReady > 0),
     focusTrack,
@@ -175,7 +143,7 @@ function LearnView() {
           <span>{focusError}</span>
           <button
             type="button"
-            onClick={() => setFocusError(null)}
+            onClick={dismissFocusError}
             className="rounded-md text-xs font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
           >
             Dismiss

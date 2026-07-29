@@ -158,6 +158,28 @@ export interface ProgressEntry {
   first_passed_at: string | null;
 }
 
+interface ProgressListResponse {
+  concepts: ProgressEntry[];
+}
+
+export type ProgressResult = { kind: "ok"; entries: ProgressEntry[] } | { kind: "error" };
+
+// A response whose body doesn't actually contain a concepts array — a
+// renamed key, an error payload shaped differently, anything that isn't the
+// documented shape — is reported the same as a fetch failure ({kind:
+// "error"}), never as success with an empty history. The failure mode this
+// guards against is a FALSE "ok" (which /today would render as a confident
+// "0 done"), not merely an undefined entries field.
+export async function getProgress(): Promise<ProgressResult> {
+  try {
+    const res = await apiFetch<ProgressListResponse>("/api/v1/progress");
+    return Array.isArray(res?.concepts) ? { kind: "ok", entries: res.concepts } : { kind: "error" };
+  } catch (err) {
+    if (err instanceof UnauthorizedError) throw err;
+    return { kind: "error" };
+  }
+}
+
 // The response reflects the state the server actually stored, which may
 // differ from what was requested — UX-4's forward-only clamp means setting
 // "in_progress" on an already-passed lesson comes back {"state":"passed"}.
