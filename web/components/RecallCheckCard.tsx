@@ -11,7 +11,7 @@ const RATE_OPTIONS = [
   { value: "fail", label: "Not yet" },
 ] as const;
 
-export type RecallRating = (typeof RATE_OPTIONS)[number]["value"];
+type RecallRating = (typeof RATE_OPTIONS)[number]["value"];
 
 const CONFIDENCE_OPTIONS = [
   { value: "guessed", label: "Guessed" },
@@ -19,9 +19,9 @@ const CONFIDENCE_OPTIONS = [
   { value: "confident", label: "Confident" },
 ] as const;
 
-export type Confidence = (typeof CONFIDENCE_OPTIONS)[number]["value"];
+type Confidence = (typeof CONFIDENCE_OPTIONS)[number]["value"];
 
-export type RecallStage = "recall" | "commit" | "reveal";
+type RecallStage = "recall" | "commit" | "reveal";
 
 /**
  * The one place "finished" is defined per check type: mcq has no self-report,
@@ -99,7 +99,7 @@ export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(
 
       {stage === "recall" && (
         <Button variant="ghost" className="mt-4" onClick={() => setStage("commit")}>
-          {check.type === "mcq" ? "Show options" : "I've answered"}
+          {hasOptions ? "Show options" : "I've answered"}
         </Button>
       )}
 
@@ -164,12 +164,19 @@ export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(
         <div
           ref={revealRef}
           tabIndex={-1}
-          role="status"
           data-testid="stage-reveal"
           className="mt-4 space-y-3 focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 rounded-xl"
         >
           {hasOptions && selectedOptionText != null && (
+            // role=status is scoped to this one line, not the whole reveal
+            // panel — the panel below contains the Pass/Not yet buttons for
+            // short_answer, and a live region wrapping interactive controls
+            // re-announces itself on every aria-pressed toggle. Focus landing
+            // on the outer container (see the effect above) is what gets the
+            // reveal itself noticed; this status is only for the derived
+            // correct/incorrect result.
             <div
+              role="status"
               className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium ${
                 isMcqCorrect ? "bg-success/10 text-success-strong" : "bg-danger/10 text-danger-strong"
               }`}
@@ -187,9 +194,6 @@ export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(
           {hasOptions && (
             <ul className="space-y-1">
               {shuffledOptions.map((option, i) => {
-                // Correctness is derived by matching expected_answer, never
-                // by index — the index only survives the shuffle, meaning
-                // stays fixed with the option text.
                 const isCorrectOption = option === check.expected_answer;
                 const isYourAnswer = i === selectedIndex;
                 const tag = isCorrectOption && isYourAnswer

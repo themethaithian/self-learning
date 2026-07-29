@@ -25,6 +25,7 @@ export function Button({ variant = "primary", className = "", ...props }: Button
   const isAriaDisabled = props["aria-disabled"] === true || props["aria-disabled"] === "true";
   return (
     <button
+      type="button"
       className={`${BASE_CLASSES} disabled:pointer-events-none disabled:opacity-50 ${isAriaDisabled ? "opacity-50" : ""} ${VARIANT_CLASSES[variant]} ${className}`}
       {...props}
     />

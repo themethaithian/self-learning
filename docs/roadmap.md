@@ -52,7 +52,7 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 | 0. Walking skeleton + reading slice | คลิก concept → อ่านบทเรียนจริง (mermaid + references + recall) | ✅ จบ |
 | 1. Content | เขียนบทเรียน 2 track ที่ตรงกับตำแหน่งที่สุด | ✅ จบ |
 | 2. Quality + รันเองได้ | MCQ ที่เดาไม่ได้ + `make dev` คำสั่งเดียว | ✅ จบ |
-| 3. Guided learning path | รู้ว่า "วันนี้อ่านอะไรต่อ" และอ่านถึงไหนแล้ว | 🔄 กำลังทำ (UX-7) |
+| 3. Guided learning path | รู้ว่า "วันนี้อ่านอะไรต่อ" และอ่านถึงไหนแล้ว | ✅ จบ (UX-8 เป็น optional, ทำเมื่อรู้สึกขาดจริง) |
 | 4. Measurable recall | quiz กดเลือกได้ + เก็บประวัติ + SRS ที่วัดผลได้ | ⏭ ถัดไป (Q-1…Q-3) |
 | 5. Visual simulation | บทเรียนที่เห็นภาพและโต้ตอบได้ | ⏭ หลัง phase 4 (SIM-0…SIM-3) |
 | — | Deploy ขึ้น VPS + track ที่เหลือ | ⏸ **พักไว้โดยตั้งใจ** |
@@ -91,7 +91,7 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 - [x] UX-6 (#49) หน้า `/today` + IA switch (nav เหลือ Today · Learn):
   "วันนี้อ่านอะไรต่อ" ไล่จาก focus track ก่อน แล้ว fallback ตาม
   `TRACK_DISPLAY_ORDER` · `domain.Gate` ยังไม่ถูก wire (soft-guide เท่านั้น)
-- [ ] UX-7 (PR pending) — reading-status indicator บน `/learn` (list +
+- [x] UX-7 (#50) — reading-status indicator บน `/learn` (list +
   track detail) เท่านั้น ไม่ใช่หน้า Progress แยก: `ProgressBar` + `n/N lessons
   read` ต่อ track card (ตัวส่วน = lesson ที่มีจริง ไม่ใช่ concept ที่วางแผนไว้),
   read-state marker (`passed`/`in_progress`, shape+aria-label ไม่ใช่สีอย่างเดียว)
@@ -99,22 +99,25 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 - [ ] UX-8 — หน้า `/progress` รวม (ทำเมื่อใช้ UX-7 แล้วยังรู้สึกขาดภาพรวมเท่านั้น)
 
 ### Phase 4 — measurable recall ⏭
-- [ ] Q-1 — quiz **recall-first 3 stage**: Recall (เห็นคำถามอย่างเดียว, mcq ไม่โชว์ตัวเลือก)
-  → Commit (เลือกตัวเลือก [mcq] + ระดับความมั่นใจ Guessed/Unsure/Confident ก่อนเห็นเฉลยเสมอ)
-  → Reveal (mark ถูก/ผิดจากการเทียบ `expected_answer` ไม่ใช่ self-report) · shuffle ตัวเลือกด้วย
-  Fisher-Yates ตอน render (เสถียรตลอดอายุการ์ดผ่าน lazy `useState`, `rng` inject ได้เพื่อเทสต์) ·
+- [ ] Q-1 (PR pending) — quiz **recall-first 3 stage**: Recall (เห็นคำถามอย่างเดียว, mcq
+  ไม่โชว์ตัวเลือก) → Commit (mcq: เลือกตัวเลือก + ระดับความมั่นใจ Guessed/Unsure/Confident
+  ก่อนเห็นเฉลยเสมอ; short_answer: เลือกแค่ระดับความมั่นใจ) → Reveal (mcq: mark ถูก/ผิดจากการ
+  เทียบ `expected_answer` ไม่ใช่ self-report; **short_answer ยังเป็น self-report Pass/Not
+  yet เหมือนเดิม** เพราะ free-text เทียบเองไม่ได้) · shuffle ตัวเลือกด้วย Fisher-Yates ตอน
+  render (เสถียรตลอดอายุการ์ดผ่าน lazy `useState`, `rng` inject ได้เพื่อเทสต์) ·
   รายละเอียดเต็มใน [`docs/tickets/quiz.md`](tickets/quiz.md)
   · **ตัดสินใจแล้ว ไม่ต้อง revisit**: `expected_answer` **ยังอยู่**ใน payload ต่อไปใน v1 — v1
   self-graded (คนตอบ = คนให้คะแนนเอง) ทำ endpoint เฉลยแยกไม่ได้อะไรเพิ่ม มีแต่เสีย round trip +
   failure state ใหม่ ค่อยย้าย server-side ตอน Q-2 ที่เริ่ม submit attempt จริงและออกแบบ endpoint
   จาก requirement จริง (design.md §API ที่บอกว่าต้องตัดเป็นข้อความล้าสมัย ไม่ใช่ bug ของโค้ด)
-- [ ] Q-2 — schema `recall_attempts` / `review_cards` / `review_logs`
-  · key ด้วย `check_key = SHA256(topic/concept/question)` **ไม่ใช้ FK ไป `recall_checks.id`**
-  เพราะ importer ลบแล้ว insert ใหม่ทุกครั้ง (`lessons` เท่านั้นที่ id คงที่ผ่าน `LAST_INSERT_ID(id)`)
-  · **ปลด debt ของ UX-5**: rating รายข้อยังไม่ถูก persist — จะกลายเป็น data loss ทันทีที่ ticket นี้ขึ้น
-  · จุดนี้คือที่ที่ `graded_by='self'` จะเกิดขึ้นจริงครั้งแรก
+- [ ] Q-2 — persist recall attempts + SRS scheduling — สโคปเต็มอยู่ที่
+  [`docs/tickets/quiz.md`](tickets/quiz.md) (schema
+  `recall_attempts`/`review_cards`/`review_logs`, `graded_by='self'` เกิดจริงครั้งแรก)
 - [ ] Q-3 — เพิ่ม `explanation` ให้ MCQ ครบทั้ง 356 ข้อ (ตอนนี้ 0 ข้อมี) — รอบเดียวกับที่ขัดเกลา
   distractor ที่หลุดธีม **3 concept** (`b-trees`, `column-oriented-storage`, `process-pauses`)
+  · **เพิ่ม validation ว่า `expected_answer` ต้องเป็นสมาชิกของ `options` จริงทุกข้อ** (ที่
+  `cmd/import-lessons` หรือ lesson-verifier) — รอบนี้ต้องอ่าน MCQ ทั้ง 356 ข้ออยู่แล้ว จุดนี้
+  ตรวจได้พร้อมกันโดยไม่เพิ่ม pass แยก (ดูหนี้ด้านล่าง — ตอนนี้ 0 violations แต่ไม่มี validation ค้ำ)
 
 ### Phase 5 — visual simulation ⏭
 - [ ] SIM-0 — predict-before-reveal (0 KB, ไม่ใช้ library)
@@ -145,6 +148,13 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   แต่ `wantHeaders`/`wantMaxAge` ยังอ้าง `corsAllowedHeaders`/`corsMaxAge` = mutation ไม่มีทางจับได้
 - rating รายข้อในหน้า reader ไม่ถูก persist (ปลดใน Q-2) · `Button` variant `"danger"` ไม่มีใครใช้
   และจะตก AA (~4.39:1) วันที่มีคนใช้
+- **`expected_answer ∈ options` เป็น invariant ที่ frontend พึ่งจริงแต่ไม่มีอะไร validate** —
+  Q-1 ทำให้ mcq correctness derive จากการเทียบ `option === expected_answer`, ถ้ามีบทเรียนที่
+  distractor ถูก paraphrase จนไม่ตรง `expected_answer` เป๊ะ จะไม่มีตัวเลือกไหนถูก mark ว่าถูกเลย
+  (`isMcqCorrect` เป็น false เสมอ ทั้งที่ผู้ใช้เลือกถูก) — สแกน MCQ ทั้ง 356 ข้อใน `content/lessons/`
+  จริงตอนแก้ ticket นี้: **0 violations วันนี้** แต่ไม่มี validation ค้ำสำหรับบทเรียนใหม่ในอนาคต
+  ต้องเพิ่มที่ `cmd/import-lessons`/lesson-verifier (Go, นอก scope frontend-only ของ Q-1) —
+  วางแผนไว้ใน Q-3 แล้ว (อ่าน MCQ ทั้ง 356 ข้ออยู่แล้วเพื่อเติม `explanation`)
 - **UX-7 (`/learn`): `TrackCard`'s `<h3>` sits under the page `<h1>` with no `<h2>` between**
   — axe's `heading-order` (best-practice, ไม่ใช่ WCAG) เจอทั้งบน `/learn` และหน้าอื่นที่มีอยู่แล้วบน
   `develop` ก่อน ticket นี้ ไม่ได้แก้ในรอบนี้เพราะเป็น pattern ที่ใช้ทั้งแอป ต้องแก้พร้อมกันทีเดียว
