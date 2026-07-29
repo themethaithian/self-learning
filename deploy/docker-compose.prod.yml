@@ -62,7 +62,11 @@ services:
     environment:
       # Only what the TLS-terminating edge needs — no env_file here, so it
       # never sees API_BEARER_TOKEN/ANTHROPIC_API_KEY/DB_ROOT_PASSWORD.
-      DOMAIN: ${DOMAIN:-localhost}
+      # No fallback: an unset DOMAIN must fail loudly, not silently default
+      # to "localhost" — Caddy would then request an internal-CA cert for
+      # that hostname and start sending a real HSTS header over it (see
+      # docs/tickets/local-docker.md#T-local-access).
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env to the real deploy hostname}
       ACME_EMAIL: ${ACME_EMAIL:-placeholder@localhost.invalid}
     ports:
       - "80:80"
