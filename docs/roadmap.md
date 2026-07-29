@@ -52,7 +52,7 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 | 0. Walking skeleton + reading slice | คลิก concept → อ่านบทเรียนจริง (mermaid + references + recall) | ✅ จบ |
 | 1. Content | เขียนบทเรียน 2 track ที่ตรงกับตำแหน่งที่สุด | ✅ จบ |
 | 2. Quality + รันเองได้ | MCQ ที่เดาไม่ได้ + `make dev` คำสั่งเดียว | ✅ จบ |
-| 3. Guided learning path | รู้ว่า "วันนี้อ่านอะไรต่อ" และอ่านถึงไหนแล้ว | 🔄 กำลังทำ (UX-7) |
+| 3. Guided learning path | รู้ว่า "วันนี้อ่านอะไรต่อ" และอ่านถึงไหนแล้ว | ✅ จบ (UX-8 เป็น optional, ทำเมื่อรู้สึกขาดจริง) |
 | 4. Measurable recall | quiz กดเลือกได้ + เก็บประวัติ + SRS ที่วัดผลได้ | ⏭ ถัดไป (Q-1…Q-3) |
 | 5. Visual simulation | บทเรียนที่เห็นภาพและโต้ตอบได้ | ⏭ หลัง phase 4 (SIM-0…SIM-3) |
 | — | Deploy ขึ้น VPS + track ที่เหลือ | ⏸ **พักไว้โดยตั้งใจ** |
@@ -80,7 +80,7 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   **MCQ 356 ข้อ** เดาด้วย heuristic ความยาวได้ **33.7%** (เดิม 89.6%) เดาด้วยตำแหน่ง 33.4% (เดิม 41.6%)
   \+ กติกาการแก้ distractor ที่ grep ตรวจได้
 
-### Phase 3 — guided learning path 🔄 ([รายละเอียด](tickets/ux-today.md))
+### Phase 3 — guided learning path ✅ ([รายละเอียด](tickets/ux-today.md))
 - [x] UX-1 (#40) `has_lesson`/`est_minutes` บน curriculum API
 - [x] UX-1b (#41) focus track preference API + bounded context `prefs`
 - [x] UX-2 (#42) หน้า `/learn` — track card + focus picker
@@ -91,7 +91,7 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 - [x] UX-6 (#49) หน้า `/today` + IA switch (nav เหลือ Today · Learn):
   "วันนี้อ่านอะไรต่อ" ไล่จาก focus track ก่อน แล้ว fallback ตาม
   `TRACK_DISPLAY_ORDER` · `domain.Gate` ยังไม่ถูก wire (soft-guide เท่านั้น)
-- [ ] UX-7 (PR pending) — reading-status indicator บน `/learn` (list +
+- [x] UX-7 (#50) — reading-status indicator บน `/learn` (list +
   track detail) เท่านั้น ไม่ใช่หน้า Progress แยก: `ProgressBar` + `n/N lessons
   read` ต่อ track card (ตัวส่วน = lesson ที่มีจริง ไม่ใช่ concept ที่วางแผนไว้),
   read-state marker (`passed`/`in_progress`, shape+aria-label ไม่ใช่สีอย่างเดียว)
@@ -99,14 +99,20 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 - [ ] UX-8 — หน้า `/progress` รวม (ทำเมื่อใช้ UX-7 แล้วยังรู้สึกขาดภาพรวมเท่านั้น)
 
 ### Phase 4 — measurable recall ⏭
-- [ ] Q-1 — quiz **recall-first 3 stage**: ตอบในใจ → เลือกความมั่นใจ → เฉลย · shuffle ตัวเลือกตอน render
-  · **ต้องแก้ก่อน**: `GET /lessons/{topic}/{concept}` ส่ง `expected_answer` มาใน payload อยู่แล้ว
-  (design.md §API บอกว่าต้องตัดออก แต่โค้ดจริงส่ง) → เฉลยอยู่ในมือ client ตั้งแต่ก่อนกดเฉลย
-- [ ] Q-2 — schema `recall_attempts` / `review_cards` / `review_logs`
-  · key ด้วย `check_key = SHA256(topic/concept/question)` **ไม่ใช้ FK ไป `recall_checks.id`**
-  เพราะ importer ลบแล้ว insert ใหม่ทุกครั้ง (`lessons` เท่านั้นที่ id คงที่ผ่าน `LAST_INSERT_ID(id)`)
-  · **ปลด debt ของ UX-5**: rating รายข้อยังไม่ถูก persist — จะกลายเป็น data loss ทันทีที่ ticket นี้ขึ้น
-  · จุดนี้คือที่ที่ `graded_by='self'` จะเกิดขึ้นจริงครั้งแรก
+- [ ] Q-1 (PR pending) — quiz **recall-first 3 stage**: Recall (เห็นคำถามอย่างเดียว, mcq
+  ไม่โชว์ตัวเลือก) → Commit (mcq: เลือกตัวเลือก + ระดับความมั่นใจ Guessed/Unsure/Confident
+  ก่อนเห็นเฉลยเสมอ; short_answer: เลือกแค่ระดับความมั่นใจ) → Reveal (mcq: mark ถูก/ผิดจากการ
+  เทียบ `expected_answer` ไม่ใช่ self-report; **short_answer ยังเป็น self-report Pass/Not
+  yet เหมือนเดิม** เพราะ free-text เทียบเองไม่ได้) · shuffle ตัวเลือกด้วย Fisher-Yates ตอน
+  render (เสถียรตลอดอายุการ์ดผ่าน lazy `useState`, `rng` inject ได้เพื่อเทสต์) ·
+  รายละเอียดเต็มใน [`docs/tickets/quiz.md`](tickets/quiz.md)
+  · **ตัดสินใจแล้ว ไม่ต้อง revisit**: `expected_answer` **ยังอยู่**ใน payload ต่อไปใน v1 — v1
+  self-graded (คนตอบ = คนให้คะแนนเอง) ทำ endpoint เฉลยแยกไม่ได้อะไรเพิ่ม มีแต่เสีย round trip +
+  failure state ใหม่ ค่อยย้าย server-side ตอน Q-2 ที่เริ่ม submit attempt จริงและออกแบบ endpoint
+  จาก requirement จริง (design.md §API ที่บอกว่าต้องตัดเป็นข้อความล้าสมัย ไม่ใช่ bug ของโค้ด)
+- [ ] Q-2 — persist recall attempts + SRS scheduling — สโคปเต็มอยู่ที่
+  [`docs/tickets/quiz.md`](tickets/quiz.md) (schema
+  `recall_attempts`/`review_cards`/`review_logs`, `graded_by='self'` เกิดจริงครั้งแรก)
 - [ ] Q-3 — เพิ่ม `explanation` ให้ MCQ ครบทั้ง 356 ข้อ (ตอนนี้ 0 ข้อมี) — รอบเดียวกับที่ขัดเกลา
   distractor ที่หลุดธีม **3 concept** (`b-trees`, `column-oriented-storage`, `process-pauses`)
 
@@ -132,8 +138,9 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 ## หนี้ที่รู้ตัว (ยังไม่แก้ ตั้งใจปล่อย)
 
 - **`docs/design.md` ล้าสมัยหลายจุด** — §7 ยังเขียนว่า "195 concepts" (จริง 309), layout ยังเป็น
-  5 track (ก่อนมี ddia/ai-systems), 6 bounded context ที่ไม่มี `prefs`, และ §API ระบุว่า
-  `GET /lessons/{id}` ต้องตัด expected answer ออกซึ่งโค้ดจริงไม่ได้ตัด
+  5 track (ก่อนมี ddia/ai-systems), 6 bounded context ที่ไม่มี `prefs`, และ §API ยังบอกว่า
+  `GET /lessons/{id}` ต้องตัด expected answer ออก — Q-1 ตัดสินใจแล้วว่า v1 (self-graded) ไม่ตัด
+  (เหตุผลเต็มอยู่ที่บรรทัด Q-1 ด้านบน) เพราะฉะนั้นบรรทัดนี้ใน design.md **ล้าสมัย ไม่ใช่ code ผิด**
 - **`cors_test.go` ยังเทียบกับ constant ตัวเองบางส่วน** — `wantMethods` ถูกแก้เป็น literal แล้วใน #41
   แต่ `wantHeaders`/`wantMaxAge` ยังอ้าง `corsAllowedHeaders`/`corsMaxAge` = mutation ไม่มีทางจับได้
 - rating รายข้อในหน้า reader ไม่ถูก persist (ปลดใน Q-2) · `Button` variant `"danger"` ไม่มีใครใช้
