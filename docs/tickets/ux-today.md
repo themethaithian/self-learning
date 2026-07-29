@@ -585,8 +585,521 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
   `scrollWidth === clientWidth === 375`, console error = 0
 - Status: `implemented, PR pending (review round 3 addressed)`
 
-## UX-7 — Progress page + chapter/track indicators
+## UX-7 — reading-status indicators across /learn `[go-implementer]`
 
-- Progress indicator ที่เห็นคร่าว ๆ: ของ chapter (แต่ละบทเรียนเป็นไหนแล้ว) + ของ track (overview),
-  โชว์บน layout ทั่วแอป (progress bar, % เลยน้อย ๆ ที่หน้า reader หรือ learn)
-- Status: `ยังไม่เริ่ม`
+- **Scope ที่ตัดจริง**: เดิม UX-7 ตั้งใจทำหน้า Progress รวมแยกต่างหาก แต่ทำแค่
+  indicator บน `/learn` (list + `/learn?track=`) ก็ตอบโจทย์ "อ่านไปถึงไหนแล้ว"
+  ได้เกือบหมดโดยไม่ต้องมีหน้าใหม่ — หน้า Progress รวมเลื่อนเป็น **UX-8**
+  (ทำเมื่อใช้ ticket นี้แล้วยังรู้สึกขาดภาพรวมจริง ๆ เท่านั้น) ไม่แตะ `/lesson`
+  reader เลย (จะต้องมี data source ที่สามในหน้านั้น — deferred เหมือนกัน) และ
+  ไม่แตะ Go เลยสักไฟล์ (`git diff --name-only develop...` ยืนยันว่างเปล่า)
+- **`/learn` list view (`TrackCard.tsx`)**: การ์ดที่มี lesson อย่างน้อย 1 บท
+  โหลด progress มาด้วย (`Promise.all([getCurriculum(), getProgress(),
+  getFocusTrack()])` — reuse discipline เดียวกับ `/today` เป๊ะ) แล้วโชว์
+  `ProgressBar` + ตัวเลข `{read}/{available} lessons read` แทนที่บรรทัด
+  `{lessonsReady} lessons ready` เดิม (บรรทัด `{chapterCount} chapters ·
+  {totalConcepts} concepts planned` ยังอยู่เหมือนเดิมเพื่อให้เห็น gap ระหว่าง
+  "มีอยู่" กับ "วางแผนไว้") — ตัวส่วนของบาร์คือ **lessons available
+  (`has_lesson`)** เท่านั้น ไม่ใช่ `totalConcepts`, เพราะ DDD วันนี้มี 4 lesson
+  พร้อมอ่านจาก 33 concept ที่วางแผนไว้ (5 chapters รวมกัน — เลข "27" ในร่างแรก
+  ของหมายเหตุนี้ผิด ไม่ตรงกับ `GET /api/v1/curriculum` จริง แก้ในรอบ
+  code-reviewer ด้านล่าง) — บาร์เต็ม "100%" ต้องแปลว่า "อ่านครบทุก
+  lesson ที่มีอยู่ตอนนี้" ไม่ใช่ "จบหลักสูตรแล้ว" (กฎเดิมจาก UX-2 ที่ตอนนั้นยังไม่มี
+  progress data จริงเลยไม่มีบาร์เลยสักใบ) เมื่อ `progressAvailable === false`
+  การ์ดเรนเดอร์เหมือนเดิมทุกอย่าง (บรรทัด "ready" กลับมา, **ไม่มีบาร์, ไม่มี
+  `0/N`**) — comment เดิมใน `ProgressBar.tsx` ที่บอกว่า "not wired into any
+  page yet" ตอนนี้เท็จแล้ว เปลี่ยนเป็นอธิบาย invariant ของตัวเศษแทน
+- **`/learn?track=` detail view (`TrackTopics.tsx`)**: ต่อ concept แสดง
+  read-state marker เมื่อ progress โหลดสำเร็จเท่านั้น — `passed` = ✓
+  (`text-success-strong`), `in_progress` = วงกลมมีจุดตรงกลาง
+  (`text-warning-strong`, icon ใหม่ `InProgressIcon`), `not_started`
+  **ไม่มี marker เลย** (การไม่มีคือสัญญาณเอง — ป้องกันไม่ให้ track ที่มี 61 แถว
+  ต้องแบก badge "not started" ซ้ำ 55+ อัน) concept ที่ `has_lesson === false`
+  ก็ไม่มี marker เหมือนกัน (ยังคง treatment เดิมจาก UX-3 ทั้งหมด — `<div>` กดไม่ได้,
+  `text-muted`, "No lesson yet") ทั้งสอง state ที่มี marker แยกกันด้วย **shape**
+  (เครื่องหมายถูก vs วงกลม-จุด ไม่ใช่แค่สี ผ่านทั้ง greyscale และ screen reader)
+  บวก accessible name ผ่าน `aria-label="Read"` / `"In progress"` บน `<span>`
+  ที่ห่อ icon (icon เองเป็น `aria-hidden`) — ตรง WCAG 1.4.1 ที่ห้ามใช้สีเป็น
+  สัญญาณเดียว; ต่อ chapter header เดิมโชว์ `{available}/{total} ready` อย่างเดียว
+  ตอนนี้เพิ่ม `{read}/{available} read` เป็นบรรทัดหลักเมื่อ progress พร้อม แล้วโชว์
+  `{available}/{total} ready` เป็นบรรทัดรองต่อเมื่อ `available < total`
+  เท่านั้น (ไม่ใช่โชว์คู่กันเสมอ) — กติกาที่ยึดคือ **ห้ามโชว์สองอัตราส่วนที่ตัวส่วน
+  ต่างกันพร้อมกันโดยไม่มี label แยกให้ชัด**; `read`/`available`/`ready` เป็นสาม
+  label ที่ต่างกันชัดเจนพอ เลยไม่ใช่การ "stack สามอัตราส่วน" อย่างที่ ticket เตือนไว้
+  (แค่สองบรรทัดสูงสุด ไม่เคยสามพร้อมกัน) เคส `available === 0` (chapter ที่ยังไม่มี
+  lesson เลยสักบท เช่น DDD's Building Blocks) ตั้งใจ**ไม่**โชว์บรรทัด "0/0 read"
+  ที่ไม่มีความหมาย — fallback ไปโชว์แค่ `{available}/{total} ready` เหมือนตอน
+  progress ไม่พร้อม (เจอ bug นี้จาก Playwright จริง ไม่ใช่ตอนออกแบบ — ดูหัวข้อ
+  live-stack ด้านล่าง) เมื่อ `progressAvailable === false` ทั้ง accordion
+  เรนเดอร์เหมือนเดิมทุกจุด (ไม่มี marker, ไม่มีบรรทัด "read" เลย)
+- **`--color-warning-strong` token ใหม่** (ตัวเลขแก้แล้วในรอบ code-reviewer —
+  ร่างแรกคำนวณผิดทั้งค่า amber-600 เดิมและพื้นหลังที่ marker วางจริง): amber-600
+  เดิม (`#d97706`) วัดจาก browser จริงได้ **2.98:1 บน `--color-page`** (cream)
+  และ **3.14:1 บน `--color-surface`** — พื้นหลังที่ marker วางจริงคือ
+  `bg-surface` (การ์ด/chapter panel) ไม่ใช่ cream ดังนั้น amber-600 เดิม**ผ่าน**
+  เกณฑ์ non-text 1.4.11 (3:1) อยู่แล้ว เพียงแต่บางไปสำหรับ glyph ขนาด 16px เพิ่ม
+  amber-700 (`#b45309`) เป็น `--color-warning-strong` แทน วัดจริงได้ **4.95:1
+  บน `bg-surface`** (ใช้จริงแค่ที่เดียวคือ marker `in_progress`) ตาม pattern
+  เดิมของ `success-strong`/`danger-strong` — และลบ `--color-warning` (ตัวฐาน)
+  ทิ้งเพราะไม่มี utility class ไหนอ้างถึงมันเลยแม้แต่ตัวเดียวในโค้ด (Tailwind v4
+  tree-shake `@theme` var ที่ไม่มี utility ใช้ ออกจาก stylesheet จริงอยู่แล้ว
+  เก็บ token ที่ไม่มีที่ใช้ไว้เฉย ๆ จะเข้าใจผิดว่ามันถูกใช้จริง)
+- **Logic ทั้งหมดอยู่ใน `web/lib/curriculum.ts`** — signature สุดท้ายหลังรอบ
+  code-reviewer (ร่างแรกต่างจากนี้ ดูรอบ review ด้านล่างว่าทำไมต้องเปลี่ยน):
+  `trackReadStats(track, progress: ProgressByKey | null): {read: number |
+  null; available: number}` และ `chapterReadStats(topicSlug, concepts,
+  progress): {read: number | null; withLesson: number; planned: number}` —
+  **object คืนเสมอ ไม่มี `null` ทั้งก้อน**, มีแค่ฟิลด์ `read` ที่เป็น `null` เมื่อ
+  `progress === null` (หลักการเดียวกับ `getProgress()`'s `{kind:"error"}`:
+  เลขที่ไม่รู้ค่าจริงต้องไม่แสดงเป็นศูนย์ที่ดูมั่นใจ) ส่วน `withLesson`/`planned`
+  ไม่ขึ้นกับ progress เลยเลยเป็นเลขจริงเสมอ — chapter ใช้ derivation เดียวจาก
+  `chapterReadStats` ทั้งสองอัตราส่วน (ไม่แยกเรียก `countAvailableLessons` ซ้ำ
+  อีกที เพราะนั่นคือบั๊กที่ code-reviewer จับได้ตรง ๆ ว่าสองอัตราส่วนมาจากสองลูป
+  คนละที่ ไม่มีทางรับประกันว่าจะไม่ drift); `conceptReadMarker(hasLesson,
+  progress, topicSlug, conceptSlug)` คืน `"passed" | "in_progress" | "none"`
+  โดยกิน `!hasLesson`/`!progress` และ lookup key เองข้างในหมด — ฝั่ง
+  component (`ConceptRow`) เรียกครั้งเดียวไม่มี ternary คลุมอีกชั้น
+  คอมโพเนนต์ (`TrackCard`, `TrackTopics`) ทำแค่ map ผลลัพธ์เป็น markup เท่านั้น
+- **Mutation-testing รอบแรก** (แก้ source จริง รัน `npm test` แล้ว revert
+  ทุกครั้ง; fixture ใช้ 2 chapters + ผสมครบสาม state ตามที่ ticket บังคับ, ดู
+  `readStatsTrack`/`readStatsProgress` ใน `curriculum.test.ts`) — **7 จุดนี้
+  ทั้งหมดอยู่ใน `curriculum.ts` เท่านั้น** ซึ่งเป็นสาเหตุที่ code-reviewer จับได้ว่า
+  100% kill-rate ตรงนี้การันตีล่วงหน้าอยู่แล้ว (ดูรอบ code-reviewer สำหรับ
+  ตาราง 20 แถวเต็มที่ครอบคลุมทั้ง component ด้วย):
+  1. **(บังคับ) นับ `in_progress` เป็น read** — `chapterReadStats`:
+     `state === "passed"` → `state === "passed" || state === "in_progress"`
+     → พัง **"counts only passed concepts as read, out of has_lesson
+     concepts in the chapter"**
+  2. **(บังคับ) สลับตัวส่วนของ chapter** — `chapterReadStats`: ลบ
+     `if (!concept.has_lesson) continue;` ออก (นับทุก concept เป็น
+     available) → พัง **"excludes a lesson-less concept from available
+     while still counting it in total"**
+  3. **(บังคับ) invert `progressAvailable` (ฝั่ง track card)** —
+     `trackReadStats`: `if (!progressAvailable) return null;` →
+     `if (progressAvailable) return null;` → พังทั้ง **"counts passed
+     concepts across every chapter as read, out of lessons available"**
+     และ **"returns null when progress is unavailable, not a zeroed-out
+     object"**
+  4. **(บังคับ) ลบ has_lesson filter ออกจาก marker** —
+     `conceptReadMarker`: ลบ `if (!hasLesson) return "none";` → พัง
+     **"returns none for a concept without a lesson, regardless of its
+     recorded state"**
+  5. invert `progressAvailable` ฝั่ง chapter ด้วย (คนละฟังก์ชันจาก #3,
+     คุมคนละจุด) — `chapterReadStats`: same flip → พังพร้อมกัน 3 เทสต์
+     ("counts only passed...", "excludes a lesson-less concept...",
+     "returns null when progress is unavailable...")
+  6. `conceptReadMarker` ยุบ `in_progress` ไปเป็น `"passed"` (marker สอง
+     state ไม่ต่างกันอีกต่อไป — ขัด requirement "distinct markers" ตรง ๆ) →
+     พัง **"returns a distinct in_progress marker rather than collapsing it
+     into passed"**
+  7. (bonus) ย้าย `total += 1` เข้าไปอยู่หลัง `if (!has_lesson) continue`
+     (ทำให้ `total === available` เสมอ, ไม่นับ concept ที่ไม่มี lesson ใน
+     total ด้วย) → พังเทสต์เดียวกับ #2 (**"excludes a lesson-less
+     concept..."**) เพราะเทสต์นั้นเช็คทั้ง `available` และ `total` แยกกัน —
+     ไม่มี mutation ไหนรอดเลยจากทั้ง 7 จุด
+- **ทดสอบกับ live stack จริง** (`docker compose up -d --build`, DB local มี
+  progress จริงจากการทดสอบ ticket ก่อนหน้าอยู่แล้ว: ddd ผ่านครบ 4/4, ddia ผ่าน
+  4 บทจาก 61 + ผสม in_progress, ai-systems มี 2 concept `in_progress` จาก 53
+  — ยืนยันตัวเลขทุกจุดด้วย `curl /api/v1/progress` + `/api/v1/curriculum`
+  ก่อนเทียบกับ Playwright):
+  - **Normal path, list view**: การ์ดโชว์ `4/4 lessons read` (ddd, บาร์เต็ม),
+    `4/61 lessons read` (ddia, บาร์ ~7%), `0/53 lessons read` (ai-systems,
+    บาร์ว่าง) ตรงกับตัวเลขจาก curl เป๊ะ, มี `role="progressbar"` 3 อัน
+    (เท่าจำนวนการ์ดที่มี lesson), console error = 0
+  - **Normal path, detail view**: `/learn?track=ddd` chapter "Model-Driven
+    Foundations" (4/4 lesson ผ่านหมด) header โชว์ `"4/4 read"` เฉย ๆ (ไม่มี
+    บรรทัด ready เพราะ available===total) มี marker "Read" (aria-label)
+    ครบ 4 อัน; `/learn?track=ai-systems` chapter "LLM Foundations" header
+    `"0/5 read"` มี marker "In progress" 2 อัน ตรงกับ 2 concept ที่ backend
+    ส่งมาเป๊ะ, marker "Read" = 0 อันในหน้านี้ (ยังไม่มี concept ไหนผ่านเลยใน
+    track นี้); `/learn?track=ddd` chapter "Building Blocks" (0 lesson พร้อม
+    จาก 10 concept) header โชว์ `"0/10 ready"` อย่างเดียว **ไม่มี** `"0/0
+    read"` โผล่มา — นี่คือ edge case ที่เจอจาก Playwright จริง ไม่ได้คิดไว้
+    ตอนออกแบบแรก ต้องเพิ่มเงื่อนไข `readStats.available > 0` ก่อนเข้าโหมด
+    read-line ถึงจะปิดจุดนี้ได้
+  - **Mock `GET /api/v1/progress` → 500**: banner `role="alert"` ขึ้นจริง 1
+    อัน (แยกจาก Next.js's `__next-route-announcer__` ที่มี `role="alert"`
+    ติดตัวเองอยู่แล้วทุกหน้า — ต้อง exclude ID นี้ตอนนับ banner ไม่งั้นนับผิด),
+    `role="progressbar"` = 0 ทั้งหน้า, ไม่มี string `"0/N"` โผล่ที่ไหนเลยในหน้า
+    (regex กวาดทั้ง `<main>`), console error มีแค่ 1 บรรทัด "Failed to load
+    resource: 500" ซึ่งเป็น browser network log อัตโนมัติ ไม่ใช่โค้ดแอป
+  - **Mock `GET /api/v1/progress` → 200 กับ `{"entries":[]}`** (malformed —
+    key ผิด `concepts`): banner ขึ้นจริง 1 อัน ที่ `/learn?track=ddia`, ไม่มี
+    marker (`aria-label="Read"`/`"In progress"`) เลยสักอันในหน้า, chapter
+    "Replication" fallback กลับไปโชว์ `"5/5 ready"` แบบเดิม ไม่ใช่ read line,
+    console error = 0 (status เป็น 200 จริง ไม่มี network log)
+  - **375px**: `scrollWidth === clientWidth === 375` ที่ทั้ง list และ detail
+    view ที่ chapter เปิดอยู่
+  - **Contrast วัดจริงจาก browser** (`getComputedStyle` + คำนวณ relative
+    luminance เอง ไม่ใช่อ่านจาก palette): marker `passed`
+    (`text-success-strong`, `rgb(4,120,87)`) บน card surface
+    (`rgb(255,253,250)`) = **5.40:1**; marker `in_progress`
+    (`text-warning-strong`, `rgb(180,83,9)`) = **4.95:1**; ตัวหนังสือ
+    `{n}/{N} lessons read` บน card (`text-muted`, `rgb(82,82,91)`) =
+    **7.61:1** — ทั้งสามผ่าน AA (≥4.5:1) จริง ไม่ใช่แค่คำนวณมือ
+  - **Regression spot-check**: กด "Set focus" จากการ์ด DDD หลัง refactor
+    `TrackCard`/`learn/page.tsx` แล้ว `curl GET
+    /api/v1/prefs/focus-track` ยืนยัน persist จริง (`{"track":"ddd"}`),
+    ไม่มี `pageerror` เกิดขึ้น — reset กลับเป็น `null` หลังทดสอบเสร็จ
+- **จงใจไม่ทำในรอบนี้** (ยังจริงหลังรอบ code-reviewer): หน้า `/lesson` reader
+  ไม่มี indicator ใด ๆ เพิ่ม (นอก scope ตามที่ ticket ระบุ — เลื่อนไป UX-8 หรือ
+  ticket แยกถ้าจำเป็น). **[แก้แล้วในรอบ code-reviewer]** ร่างแรกของบรรทัดนี้เคย
+  บอกว่า "ไม่ได้เพิ่ม jsdom/`.tsx` test" โดยอ้าง UX-6's S10 เป็นเหตุผล — code
+  review รอบแรกชี้ว่านั่นคือช่องโหว่จริง ไม่ใช่ debt ที่เลื่อนได้ (11/18 mutation
+  รอดหมดเพราะเหตุนี้) เลยเพิ่ม jsdom + `@testing-library/react` เข้ามาจริงใน
+  รอบถัดไป — รายละเอียดอยู่ในหัวข้อ "รอบ code-reviewer" ด้านล่าง
+- **Review focus** (อัปเดตหลังรอบ code-reviewer ให้ตรงกับโค้ดสุดท้าย):
+  - ทำไม `trackReadStats`/`chapterReadStats` ต้องคืน object เสมอ (ไม่มี `null`
+    ทั้งก้อน) แต่ให้แค่ฟิลด์ `read` เป็น `null` เมื่อ progress ไม่พร้อม แทนที่จะคืน
+    `{read: 0, available: 0}` หรือ `null` ทั้งก้อนแบบร่างแรก?
+  - ทำไม `ChapterRow` ต้องเรียก `chapterReadStats` แค่ครั้งเดียวเพื่อเอาทั้ง
+    `withLesson` และ `planned` แทนที่จะเรียก `countAvailableLessons` แยกอีกที
+    เหมือนร่างแรก?
+  - ทำไม chapter ที่ `withLesson === 0` (ยังไม่มี lesson เลยสักบท) ถึงต้อง
+    fallback ไปโชว์ `"0/10 ready"` แทนที่จะโชว์ `"0/0 read"` ทั้งที่ทั้งคู่คำนวณ
+    ถูกต้องทางคณิตศาสตร์เหมือนกัน?
+  - ทำไม concept marker ถึงต้องแยกเป็นทั้ง shape (เครื่องหมายถูก vs
+    วงกลม-จุด) และ `aria-label` พร้อมกัน ไม่ใช้แค่สีคนละสีก็พอ?
+  - ทำไม `learn/page.tsx` ต้องรวม `progressByKey`/`progressAvailable` เป็น
+    `useState<ProgressByKey | null>` ตัวเดียว แทนที่จะเก็บสอง state แยกกันเหมือน
+    ร่างแรก?
+
+### รอบ code-reviewer (REQUEST_CHANGES → แก้ครบ)
+
+- **R1a — เพิ่ม jsdom + `@testing-library/react`, เทสต์ component จริง**:
+  ร่างแรกมี mutation-testing แค่บน `curriculum.ts` (pure function) เท่านั้น —
+  ตัว harness ของ code-reviewer เขียนมูเทชัน 18 จุดเอง แล้วพบว่า **7 จุดใน
+  `curriculum.ts` ตายหมด แต่ 11 จุดที่อยู่ใน component (JSX) รอดหมดทั้ง 11**
+  `npm test` ยังเขียว 53/53 ปกติทั้งที่ scenario จริงคือ mock `GET
+  /api/v1/progress` เป็น 500 แล้วการ์ด DDD โชว์ `0/4 lessons read` มั่นใจ
+  พร้อม marker ของ ddia หายเงียบ ๆ ทั้งหมด — **นี่คือบั๊กที่ ticket นี้มีอยู่เพื่อ
+  ป้องกันเป๊ะ ๆ** เพิ่ม `jsdom` + `@testing-library/react` +
+  `@testing-library/dom` + `@vitejs/plugin-react` เป็น devDependencies,
+  `vitest.config.ts` เพิ่ม `plugins: [react()]` (จำเป็นเพราะ Vite 8 ที่
+  vitest 4 พึ่งไม่ transform JSX ให้เองถ้าไม่มี plugin — ลองรันตรง ๆ แล้วเจอ
+  `RolldownError: Parse failure: Unexpected JSX expression`) และ
+  `resolve.alias["@"]` (ให้ `@/*` import ทำงานในเทสต์เหมือนที่ Next.js's
+  tsconfig ตั้งไว้) ไฟล์ `.test.ts` เดิมอยู่ `environment: "node"` ต่อไป,
+  ไฟล์ใหม่ `.test.tsx` opt-in `jsdom` ด้วย docblock
+  `// @vitest-environment jsdom` ต่อไฟล์ (ตามที่ ticket แนะนำ ไม่ต้องแยก
+  project/environmentMatchGlobs) เพิ่ม `vitest.setup.ts` เรียก
+  `cleanup()` ของ testing-library หลังทุกเทสต์ ไฟล์เทสต์ใหม่ 4 ไฟล์
+  (`ProgressBar.test.tsx` 4 เทสต์, `TrackCard.test.tsx` 6, `TrackTopics.test.tsx`
+  7, `app/(app)/learn/page.test.tsx` 5 — ตัวหลังสุด mock `@/lib/api` +
+  `next/navigation` จริง เทียบเท่า integration test ของทั้งหน้า) assertion
+  ทุกตัวมาจาก **rendered output** (accessible name จริงผ่าน `getByRole`,
+  ข้อความที่เห็นจริงผ่าน `getByText`, การมี/ไม่มีของ `role="progressbar"`)
+  ไม่ใช่ selector ที่เอา value เดียวกับที่จะ assert มา query เอง (จุดที่
+  Playwright script เดิมโดนตำหนิว่า circular)
+- **R1b — ยุบ `progressByKey`/`progressAvailable` เหลือ `useState<ProgressByKey
+  | null>` ตัวเดียว**: สอง state เดิมต้อง sync กันเองด้วยมือทุกจุดที่ setState
+  (ลืมจุดใดจุดหนึ่ง = data จริงกับ flag ไม่ตรงกันได้) ยุบเป็นตัวเดียว —
+  `progressIndex === null` แปลว่า "ยังไม่โหลด/โหลดพัง", ไม่ null แปลว่า
+  "โหลดสำเร็จ (แม้จะว่างเปล่าก็ตาม)" — ผลคือ: (1) prop ที่ต้อง drill ผ่าน 5
+  ชั้น (`TrackTopics` → `TopicSection` → `ChapterList` → `ChapterRow` →
+  `ConceptRow`) เหลือ 1 ตัวจาก 2, (2) `trackReadStats`/`chapterReadStats`/
+  `conceptReadMarker` ทั้งสามรับ `progress: ProgressByKey | null` ตัวเดียว
+  แทนที่สอง parameter เดิม (3) การ "hardcode ให้ progress ดูเหมือนพร้อมทั้งที่
+  จริง ๆ ไม่พร้อม" ต้องทำผ่านการยัด `{}` ปลอมเข้าไปแทนที่ `null` อย่างจงใจ
+  เท่านั้น (เขียน mutation M13 ทดสอบเรื่องนี้โดยเฉพาะ — ดูตารางด้านล่าง จุดนี้
+  รอดรอบแรกเพราะเทสต์เดิมเช็คแค่ marker ไม่ได้เช็ค chapter header text เลย
+  แก้โดยเพิ่ม assertion `"3/3 ready"` ในเทสต์ detail-view-fails)
+- **R2 — `role="progressbar"` ไม่มีชื่อที่ accessible เลย (axe
+  `aria-progressbar-name`, 3 violations)**: `ProgressBar` เดิมรับแค่
+  `{value: number}` ไม่มีทางให้ caller ตั้งชื่อได้ — เปลี่ยน signature เป็น
+  `{read, available, label}` (`label` **บังคับ** ไม่ใช่ optional) render เป็น
+  `aria-label={label}` (caller ส่ง `` `${stats.label} reading progress` ``)
+  บวก `aria-valuetext` บอกตัวเลขจริง (`"1 of 4 lessons read"`) แทน percentage
+  ดิบ ๆ ที่ screen reader อ่านแล้วไม่มีบริบท — รัน axe-core 4.12.1 ซ้ำหลังแก้ =
+  **0 violations ทั้งสองหน้า** (ดูหัวข้อ live-stack ด้านล่าง)
+- **R3 — comment ของ token ใหม่พูดผิดสามข้อเท็จจริง**: ร่างแรกอ้างว่า
+  amber-600 "~2.8:1" และ "fail 1.4.11's 3:1" — วัดจริงจาก browser ได้
+  **2.98:1 บน `--color-page`** และ **3.14:1 บน `--color-surface`** (พื้นหลังที่
+  marker วางจริง ซึ่ง**ผ่าน** 3:1) แล้วอ้างว่า warning-strong ใหม่ "on cream
+  ~4.70:1" ทั้งที่ที่ใช้จริงมีจุดเดียวคือบน `bg-surface` วัดได้ 4.95:1 — เขียน
+  comment ที่พูดผิดสามข้อยิ่งกว่าไม่มี comment เลย (คนอ่านต่อไปจะเชื่อเลขผิด)
+  แก้ทั้ง `globals.css` และจุดที่พูดซ้ำใน ticket doc นี้ (ด้านบน) ให้ตรงกับที่วัด
+  จริง; ลบ `--color-warning` (ตัวฐาน) ทิ้งเพราะไม่มี utility ไหนอ้างถึงเลย
+  (Tailwind v4 tree-shake `@theme` var ที่ไม่ถูกใช้ออกจาก stylesheet อยู่แล้ว —
+  เก็บ token ที่ตายแล้วไว้เฉย ๆ สื่อผิดว่ามันยังมีชีวิต)
+- **R4 — banner พูดถึง UI ที่ไม่ได้อยู่บนจอจริง**: ข้อความเดิม "may be wrong
+  until this loads" อ้างถึง marker/read-count/bar ที่ตอน progress พังจะ
+  **หายไปเลย ไม่ใช่ผิด** (ยืนยันแล้วทั้ง 5 failure shape: banner=1,
+  progressbar=0, markers=0 เสมอ) ส่วนตัวเลขที่ยังโชว์อยู่จริง (`5/5 ready`,
+  `4 lessons ready`) ถูกต้อง 100% ไม่เกี่ยวกับ progress เลย — banner เดิมเลย
+  บอกผิดสองทาง (เตือนเรื่องข้อมูลที่ถูก, ไม่เตือนว่าอะไรหายไป) แก้เป็น "the read
+  markers, chapter read counts, and track progress bars are **hidden** until
+  this loads. Everything else on this page is unaffected."
+- **R5 — WHAT-comment ที่มีเพราะชื่อตัวแปรไม่สื่อความหมาย**: `available`/
+  `total` ใน `chapterReadStats` เดิม ต้องมี comment 2 บรรทัดอธิบายว่าตัวไหนคือ
+  อะไร — เปลี่ยนชื่อเป็น `withLesson`/`planned` แทน (ลบ 2 บรรทัดแรกของ
+  comment ทิ้งได้เลยเพราะชื่อสื่อเองแล้ว) เหลือแค่บรรทัดสุดท้ายที่เป็น WHY จริง
+  (ทำไมต้องมีทั้งคู่ — เผื่อ caller ต้องเทียบ gap)
+- **R6 — สองแหล่งความจริงสำหรับตัวเลขเดียวกัน (reviewer's S2, promoted)**:
+  `ChapterRow` เดิมเรียกทั้ง `countAvailableLessons(chapter.concepts)` และ
+  `chapterReadStats(...)` แยกกัน — สองลูปคนละที่คำนวณ available/total (ตอนนี้
+  `withLesson`/`planned`) เหมือนกันเป๊ะ แต่ implement แยกกัน แก้ `state` เงื่อนไข
+  `has_lesson` ที่ตัวเดียวแล้วลืมอีกตัว = บรรทัด "read" กับบรรทัด "ready" จะไม่
+  ตรงกันแบบเงียบ ๆ — แก้ให้ `chapterReadStats` คืนทั้งสามค่า (`read`,
+  `withLesson`, `planned`) จาก **ลูปเดียว** แล้วลบการเรียก
+  `countAvailableLessons` ออกจาก `TrackTopics.tsx` ทิ้ง (ยังใช้อยู่ใน
+  `learn/page.tsx`'s track-level aggregation เหมือนเดิม ไม่เกี่ยวกัน)
+- **R7 — บาร์เต็มยังอ่านเป็น "จบหลักสูตรแล้ว" ได้ (reviewer's S4, promoted)**:
+  ยืนยันจาก DOM จริง: การ์ด DDD โชว์บาร์เต็ม 100% + `4/4 lessons read` อยู่
+  เหนือบรรทัด `5 chapters · 33 concepts planned` ตรง ๆ — compliant กับ
+  constraint เดิมของ ticket ก็จริง (ตัวส่วนเป็น lesson ที่มีจริง) แต่บาร์เต็มคือ
+  สัญญาณ "จบแล้ว" ที่แรงที่สุดในหน้า ทั้งที่ 29 จาก 33 concept ยังไม่มี lesson
+  เลย แก้ด้วย copy: เพิ่ม `moreConceptsPlanned(totalConcepts, available)` (pure
+  function ใหม่ใน `curriculum.ts`, `Math.max(0, ...)` กันเลขติดลบถ้าสองตัวเลข
+  ที่มาจากคนละ derivation ไม่ตรงกัน) แล้วต่อท้ายบรรทัด read เป็น `"4/4 lessons
+  read · 29 more planned"` เมื่อ `more > 0` (ไม่ต่อเมื่อ `more === 0` — เช่น
+  ai-systems ที่ทุก concept มี lesson ครบแล้วในอนาคต)
+- **S3 — dead branch สองจุด**: `TrackCard.tsx`'s `readStats.available === 0`
+  guard เข้าไม่ถึงจริง (การ์ดที่ผ่าน filter `lessonsReady > 0` มาแล้วจาก
+  `learn/page.tsx` การันตี `available > 0` เสมอ) — คงไว้ใน `ProgressBar`
+  เท่านั้นตาม S5; `page.tsx`'s `trackTree ? trackReadStats(...) : null`
+  (`.find()` ที่หาไม่เจอไม่ได้จริง เพราะทุก `stats` มาจาก `tracks` เดิม) แก้ด้วย
+  `computeCardEntries()` ที่แนบ `tree: Track` ติดไปกับ `TrackStats` ตั้งแต่ต้น
+  เลย ไม่ต้อง `.find()` อีกที
+- **S5 — `ProgressBar`'s comment เป็น caller contract ที่เขียนไว้ผิดที่**:
+  ย้าย `{read, available}` เข้าไปให้ `ProgressBar` คำนวณ % เองข้างใน (พร้อม
+  divide-by-zero guard) แทนที่ `TrackCard` จะคำนวณแล้วส่ง `value` สำเร็จรูปมา —
+  ตอนนี้ caller ไม่มีทางส่ง percentage ผิด denominator มาได้เลยเพราะไม่มีช่องให้
+  ส่ง percentage ตรง ๆ อีกต่อไป (invariant กลายเป็นเรื่องโครงสร้าง ไม่ใช่ comment)
+- **S6 — `aria-label` อยู่บน `<span>` เฉย ๆ (role `generic`, ARIA 1.2 ห้ามตั้ง
+  ชื่อ role นี้)**: เพิ่ม `role="img"` ให้ marker span ทั้งสอง (ฟรี ไม่มี
+  ต้นทุน, spec-clean, NVDA/JAWS อ่านชื่อได้แน่นอนใน browse mode)
+- **S7 — แถวที่มี marker เยื้องเข้าไปมากกว่าแถวที่ไม่มี (title ไม่ตรงแนวที่
+  375px)**: เพิ่ม `MarkerSlot` component ที่ reserve พื้นที่ `h-4 w-4` เสมอ
+  ไม่ว่าจะมี marker จริงหรือไม่ (marker `"none"` render `<span>` เปล่าขนาด
+  เท่ากันแทนที่จะไม่ render อะไรเลย) — ยืนยันด้วย Playwright จริงที่ inject
+  chapter title ยาว 100 ตัวอักษรผ่าน `page.route` แล้ววัด `scrollWidth ===
+  clientWidth === 375` ยังผ่าน
+- **S8 — ตัวเลขในร่างแรกของ ticket doc ผิดจริง**: "DDD มี ... 27 concept ที่
+  วางแผนไว้" ผิด ของจริงจาก `GET /api/v1/curriculum` คือ **33** แก้แล้วในบรรทัด
+  เดิมด้านบน (พร้อมหมายเหตุว่าเลขนี้เคยผิด) — เช็คตัวเลขอื่นในเอกสารนี้ทั้งหมด
+  เทียบกับ curl จริงแล้วไม่พบตัวเลขผิดอีก (contrast แก้แล้วใน R3, ที่เหลือ
+  ตรงกับ live-stack ด้านล่าง)
+- **S9** — เปลี่ยนชื่อ `setProgressByKeyValue` → `setProgressIndex` (ผล
+  ต่อเนื่องจาก R1b ที่ยุบ state เหลือตัวเดียว, ชื่อเดิมอ้างถึง state ที่ไม่มีอยู่
+  แล้ว) และ destructure ผลจาก `Promise.all` ใน `load()` เปลี่ยนชื่อจาก
+  `progress` เป็น `progressResult` กันชนกับชื่อ state ตัวใหม่
+- **Mutation-testing รอบสอง — ครบ 20 จุด (18 ที่ reviewer สั่ง + 2 bonus)**,
+  แก้ source จริงทีละจุด รัน `npm test` แล้ว revert ทุกครั้ง (สคริปต์เดียวกับ
+  รอบแรก ขยายเป็น 5 ไฟล์: `curriculum.ts`, `TrackTopics.tsx`, `TrackCard.tsx`,
+  `ProgressBar.tsx`, `learn/page.tsx`):
+
+  | # | Mutation | ผลลัพธ์ |
+  |---|---|---|
+  | M1 | `conceptReadMarker`: สลับค่าคืน passed/in_progress | killed — `curriculum.test.ts`: "returns passed for a passed concept..." / "...distinct in_progress marker..." |
+  | M2 | `chapterReadStats`: นับ not_started เป็น read (`=== "passed"` → `!== "in_progress"`) | killed — "counts only passed concepts as read, out of has_lesson concepts in the chapter" |
+  | M3 | `chapterReadStats`: ลบ `read: progress ? read : null` guard | killed — "returns read: null when progress is unavailable, not a zeroed-out count" |
+  | M4 | `trackReadStats`: ลบ `read: progress ? done : null` guard | killed — "returns read: null when progress is unavailable, not a zeroed-out count" (track) |
+  | M5 | `trackReadStats`: ตัวส่วน `available` ยุบเท่ากับ `read` (`available: total` → `available: done`) | killed — "counts passed concepts across every chapter as read, out of lessons available" |
+  | M6 | `chapterReadStats`: `withLesson` นับ concept ที่ไม่มี lesson ด้วย | killed — "excludes a lesson-less concept from withLesson while still counting it in planned" |
+  | M7 | `conceptReadMarker`: ลบ `!hasLesson` short-circuit | killed — "returns none for a concept without a lesson, regardless of its recorded state" |
+  | M8 | `ConceptRow`: สลับ `topicSlug`/`concept.slug` ตอนเรียก `conceptReadMarker` | killed — `TrackTopics.test.tsx`: "marks a passed concept and an in_progress concept with distinct, named markers" |
+  | M9 | `ChapterRow`: guard `withLesson > 0` อ่อนลงเป็น `>= 0` | killed — "shows only the ready fallback, never a vacuous 0/0 read, for a chapter with zero lessons" |
+  | M10 | `ProgressBar`: ลบ divide-by-zero guard | killed — `ProgressBar.test.tsx`: "never divides by zero when available is 0" |
+  | M11 | `TrackCard`: สลับ `read`/`available` ในข้อความ | killed — `TrackCard.test.tsx`: "never swaps read and available in the printed count" |
+  | M12 | `TrackCard`: render บาร์แม้ `read === null` | killed — "hides the bar and the read count entirely when progress hasn't loaded" |
+  | M13 | `page.tsx`: ยัด `{}` แทน `null` ตอนส่ง `progress` เข้า `TrackDetail` | killed — `page.test.tsx`: "shows the banner and no markers on the detail view when the progress fetch fails" (หลังเพิ่ม assertion เช็ค chapter header text — **รอดรอบแรกของรอบสอง**, ดูรายละเอียด R1b) |
+  | M14 | `page.tsx`: error branch เก็บ `{}` แทน `null` | killed — เทสต์เดียวกับ M17/M18 (banner + progressbar count) |
+  | M15 | `MarkerSlot`: สลับชื่อ accessible ของ Read/In progress | killed — "never swaps which marker means passed and which means in_progress" |
+  | M16 | `ChapterRow`: เปลี่ยน label "read" เป็น "ready" | killed — "shows the chapter read count as 'read', never relabelled as 'ready'" |
+  | M17 | `page.tsx`: ไม่ render banner เลย (list view) | killed — `page.test.tsx`: "shows the banner and hides every bar when the progress fetch fails" |
+  | M18 | `page.tsx`: ส่ง `{}` เข้า `trackReadStats` แทน `progressIndex` จริง | killed — "never passes an empty progress map to a track card when real progress exists" |
+  | M19 (bonus) | `TrackCard`: ลบ copy "more planned" ทิ้ง (regression ของ R7) | killed — "surfaces how many more concepts are planned beyond what's readable today" |
+  | M20 (bonus) | `MarkerSlot`: ลบ `role="img"` ออกจาก marker (regression ของ S6) | killed — `getByRole("img", ...)` หา element ไม่เจอเลย ทำให้ทุกเทสต์ที่ใช้ marker assertion พังหมด |
+
+  **20/20 killed, ไม่มีจุดไหนรอด** (M13 รอดในการรันครั้งแรกของรอบนี้ — แก้โดย
+  เพิ่ม assertion เรื่อง chapter header text ในเทสต์ที่มีอยู่แล้ว ไม่ต้องเพิ่ม
+  เทสต์ใหม่ — รายละเอียดอยู่ใน R1b ด้านบน)
+- **axe-core 4.12.1 หลังแก้ R2** (`docker compose up -d --build` ใหม่ทั้งก้อน):
+  `/learn` (list view) = **0 violations**, `/learn?track=ddia` (detail view,
+  เปิด chapter แรกไว้) = **0 violations** (scope `wcag2a`+`wcag2aa` — ก่อนแก้
+  R2 มี `aria-progressbar-name` 3 จุดตรงตามที่ reviewer รายงาน)
+- **ทดสอบกับ live stack จริงรอบสอง** (`docker compose up -d --build`
+  ใหม่ทั้งก้อน — DB volume เดิมว่างเปล่าไปแล้วระหว่างสองรอบ ต้อง seed progress
+  ใหม่เองผ่าน `curl -X PUT .../api/v1/progress/{topic}/{concept}`: ddd
+  4/4 `passed`, ai-systems 2 concept `in_progress`):
+  - **ตัวเลขตรงกับ curl จริง**: การ์ด DDD โชว์ `"4/4 lessons read · 29 more
+    planned"` (บาร์ `aria-valuenow="100"`), ddia/ai-systems โชว์ `0/61`/`0/53`
+    ตรงกับที่ยังไม่มี progress ในสองแทร็กนี้ในรอบนี้
+  - **5 failure shape ทั้งหมด** (500, empty body, `{"entries":[]}` ผิด key,
+    `{"concepts":null}`, network abort): banner=1, progressbar=0, markers=0
+    ทุกเคส — console error เป็น 0 ยกเว้น 500/abort ที่มี browser's built-in
+    network log 1 บรรทัด (ไม่ใช่ error จากโค้ดแอป)
+  - **375px สามหน้า** (`/learn`, `/learn?track=ddd`, `/learn?track=ddia`):
+    `scrollWidth === clientWidth === 375` ทุกหน้า **บวก stress test เพิ่ม**:
+    mock chapter title ยาว 100 ตัวอักษรผ่าน `page.route` แล้ววัดซ้ำ ยัง
+    `scrollWidth === clientWidth === 375` (ยืนยัน S7's marker slot กันแถวเยื้อง
+    จริง แม้ title ยาวผิดปกติ)
+  - **Contrast วัดซ้ำบน container ใหม่ทั้งก้อน**: passed marker **5.40:1**,
+    in_progress marker **4.95:1**, read-count text **7.61:1** — ตรงกับที่
+    reviewer ยืนยันอิสระเป๊ะ ไม่มีค่าไหนขยับ
+- **Re-verify เต็มชุด**: `npm test` 54 → **76** (+22: 4 `ProgressBar.test.tsx`
+  + 6 `TrackCard.test.tsx` + 7 `TrackTopics.test.tsx` + 5
+  `app/(app)/learn/page.test.tsx`), `tsc --noEmit`/`eslint .`/`npm run build`
+  สะอาด, `go vet`/`go test` cached ผ่าน ยืนยันด้วย `git diff --name-only
+  develop... -- '*.go'` ว่างเปล่า
+- **ผลต่อ `docs/roadmap.md`'s กติกาข้อ 9**: ticket นี้คือตัวอย่างที่ mutation
+  ทั้งหมดรอดเพราะ "logic อยู่ใน component ที่ไม่มี jsdom test" — ตอนนี้ `web/`
+  มี jsdom + `@testing-library/react` แล้วจริง (ไม่ใช่แค่ Playwright ที่ทดสอบ
+  แค่ scenario ที่คิดไว้ล่วงหน้า) เป็นคำตอบจริงของ layer นี้ที่ก่อนหน้านี้ยังไม่มี
+### รอบ code-reviewer ที่ 2 (REQUEST_CHANGES, narrow → แก้ครบ)
+
+Reviewer รอบนี้ยืนยันอิสระว่าของรอบแรกถูกจริง (ทั้ง 18 mutation ของมันเองตาย,
+`read: 0` vs `read: null` แยกจาก DOM ได้จริง, contrast ตรงเป๊ะ, axe 0
+violations, `--color-warning` ไม่มี reference เหลือ, `@vitejs/plugin-react`
+เป็น vitest-only ไม่กระทบ Next build จริง) — ไม่มีอะไรต้อง revert จากตรงนั้น
+พบช่องโหว่ใหม่ 2 จุดใหญ่ที่ทั้งคู่เป็น pattern เดียวกับ R1: **โค้ดที่แก้แล้ว
+ถูกทดสอบ แต่จุดที่ "เรียกใช้" โค้ดที่แก้แล้วไม่ถูกทดสอบ**
+
+- **REQ-1 — ไม่มีอะไรพิสูจน์ว่า `TrackCard` ส่ง label ที่มีความหมายจริง**:
+  `ProgressBar.test.tsx` พิสูจน์แค่ว่า component เชื่อฟัง label ที่ส่งมา — ไม่มี
+  เทสต์ไหนพิสูจน์ว่า caller (`TrackCard`) ส่งอะไรที่มีประโยชน์จริง `label:
+  string` (required) บังคับแค่ "เป็น string อะไรก็ได้" — `label=""` หรือ
+  `label="reading progress"` (ตัดชื่อ track ทิ้ง ทำให้ทุกบาร์ชื่อซ้ำกันหมด) ก็
+  type-check ผ่าน ทั้งสองแบบ = `aria-progressbar-name` violation กลับมาเหมือน
+  R2 เดิม แก้ด้วย assertion เดียวใน `TrackCard.test.tsx`:
+  `expect(screen.getByRole("progressbar", { name: /Domain-Driven Design/
+  })).toBeTruthy()`
+- **REQ-2 — accordion ไม่มีเทสต์จริง และ `button.click()` ในเทสต์เป็นการกระทำ
+  ที่ไม่มีผล**: ต้นเหตุคือ `TrackTopics.tsx`'s `<ul>` เดิมสลับการมองเห็นด้วย
+  Tailwind **class** `hidden` (`display:none` ผ่าน CSS) — jsdom ไม่โหลด
+  stylesheet เลย ดังนั้น testing-library's accessibility filtering (ที่
+  `getByRole` ใช้ตัดสินว่า element ควร "มองไม่เห็น" หรือเปล่า) ไม่มีทางรู้ว่า
+  class นี้ซ่อนอะไรอยู่ — concept row เลย query เจอได้ทั้งตอนเปิดและปิด ผลคือ
+  `expect(screen.getAllByRole("img")).toHaveLength(2)` เดิมผ่านได้ใน DOM state
+  ที่**เกิดขึ้นจริงในเบราว์เซอร์ไม่ได้เลย** (Chrome ให้ 2 ตอนเปิด, 0 ตอนปิด แต่
+  เทสต์รายงาน 2 ทั้งสองกรณี) และ `openChapter()` helper ที่เรียกก่อนหน้าเป็น
+  no-op จริง ๆ — มูเทชันที่รอดทั้งหมด: hardcode `open` เป็น `false`, ไม่ apply
+  `hidden` เลย, invert `open`, hardcode `aria-expanded={true}`, ไม่ render
+  concept row ตอนปิด, ลบ `button.click()` ออกจาก `TrackTopics.test.tsx`/
+  `page.test.tsx` (ลบแล้วเทสต์ก็ยังผ่าน = เทสต์ไม่ได้พึ่ง click จริง) แก้ด้วย
+  **สลับ class `hidden` เป็น attribute `hidden` (`hidden={!open}`)** — jsdom
+  (ผ่าน `dom-accessibility-api` ที่ testing-library ใช้) เช็ค `hidden`
+  attribute ตรง ๆ ไม่ต้องพึ่ง CSS engine เลย ยืนยันในเบราว์เซอร์จริงว่ายังพับ/
+  กางถูกต้อง (`display:none` ↔ `display:block`, ไม่มี Tailwind utility ไหนตั้ง
+  `display` แข่งกับ native `[hidden]` บน `<ul>` นี้ — มีแค่ spacing/border/
+  padding class) เพิ่มเทสต์ชุดใหม่ยืนยัน state transition จริง (ก่อน/หลังคลิก
+  ต่างกันจริง ๆ), `aria-expanded` transition, `<ul>` ยังอยู่ใน DOM เสมอ (แค่
+  `hidden`) พร้อม children ครบ (ไม่ conditional-unmount), และพิสูจน์ว่าลบ
+  `fireEvent.click(...)` ออกจากเทสต์แล้วเทสต์นั้นพังจริง — เปลี่ยนจาก raw
+  `button.click()` เป็น `fireEvent.click()` ทั้งสองไฟล์ด้วย (raw `.click()`
+  ไม่รับประกันว่า React จะ flush state update ก่อน assertion ถัดไปที่เป็น
+  synchronous query อย่าง `getByRole`/`getByText` — ต่างจาก `findBy*` ที่ poll
+  ซ้ำจนกว่าจะเจอ เลยไม่เจอปัญหานี้ตอนแรก)
+- **`aria-valuetext` ถูกลบทิ้ง**: มูเทชันเปลี่ยนเป็น `` `${available} of
+  ${read} lessons read` `` (สลับ read/available) รอด และ Chrome's
+  `Accessibility.getFullAXTree` รายงาน `valuetext=""` บน node ทั้งที่ DOM
+  attribute ตั้งค่าไว้จริง — reviewer เลยยืนยันไม่ได้ว่ามันไปถึง AT จริงหรือไม่
+  a11y string ที่ทั้งพิสูจน์ไม่ได้ว่าไปถึง AT และไม่มีเทสต์ปิด แย่กว่าไม่มีเลย —
+  ลบทิ้ง (`aria-label` มีชื่ออยู่แล้ว, `aria-valuenow` มีค่าตัวเลขอยู่แล้ว)
+- **Assert 401 path (constraint 1 ของ ticket)**: เดิม `routerMock.replace`
+  ประกาศไว้ใน `page.test.tsx` แต่ไม่เคย assert เลย — มูเทชันที่รอด: ลบ
+  redirect ทิ้ง, redirect ไป `/dashboard` แทน `/token`, ปล่อยให้ 401 ตกไปที่
+  error state ทั่วไป, และ render `success` สำหรับ curriculum ว่างเปล่า เพิ่ม
+  เทสต์ 3 ชุดปิดครบ (`redirects to /token when the curriculum fetch is
+  unauthorized...`, `shows the generic error state, not a redirect, for a
+  non-401 curriculum failure`, `shows an empty state instead of a success
+  view when the curriculum has no tracks`)
+- **ลบ comment ที่เล่าประวัติ review แทนที่จะอธิบายโค้ด**: `(R1b: ...)`,
+  `(S7)`, `(they used to come from two separate loops)` ใน `curriculum.ts`/
+  `TrackTopics.tsx`/`learn/page.tsx`, และ parenthetical ของ
+  `computeCardEntries` ที่อธิบาย branch ที่ถูกลบไปแล้ว — CLAUDE.md อนุญาต
+  comment แค่สำหรับ constraint ที่โค้ดเองสื่อไม่ได้ (WHY จริง) ไม่ใช่ diff
+  history หรือ PR thread ID ที่ไม่มีความหมายกับคนอ่านอีก 6 เดือนข้างหน้า
+- **เทสต์ `Math.max(0, ...)` ใน `moreConceptsPlanned`**: ลบ floor ออกรอด
+  ก่อนหน้านี้ — เพิ่ม `"floors at zero instead of going negative when
+  available exceeds totalConcepts"` (`moreConceptsPlanned(4, 10)` ต้องได้
+  `0` ไม่ใช่ `-6`)
+- **เทสต์ S7 spacer**: `MarkerSlot`'s `"none"` case คืน `null` แทน placeholder
+  รอด — เพิ่ม `data-testid="concept-marker-slot"` ให้ทั้งสามสาขาของ
+  `MarkerSlot` แล้วเทสต์ `"still gives every concept row a marker slot even
+  when its state is not_started (S7 spacer)"` นับ slot ทั้งหมด**ในแค่ chapter
+  ที่เปิดอยู่**เท่านั้น (scope ผ่าน `within(list)` — ไม่งั้นจะนับ slot ของ
+  chapter อื่นที่ mounted-but-hidden ปนมาด้วย เพราะ `querySelectorAll` ไม่รู้
+  จัก `hidden` attribute เลย)
+- **Copy: "planned" ซ้ำสองที่**: `4/4 lessons read · 29 more planned` อยู่
+  เหนือ `5 chapters · 33 concepts planned` ตรง ๆ ทั้งคู่ถูกต้อง แต่ 29-vs-33
+  ชวนให้เข้าใจผิด — เลือกเก็บ "more planned" ไว้ที่บรรทัด read line เท่านั้น
+  (ใกล้บาร์ที่สุด ตรงจุดที่ R7 ตั้งใจแก้ "บาร์เต็ม = จบแล้ว" อยู่แล้ว) ตัดคำว่า
+  "planned" ออกจากบรรทัด `{chapterCount} chapters · {totalConcepts}
+  concepts` (บรรทัดนี้ยังจำเป็นอยู่ตอน progress ไม่พร้อม เพราะเป็นที่เดียวที่
+  บอก scope รวมของ track — แค่ไม่ต้องพูดคำว่า "planned" ซ้ำอีกที)
+- **Equivalent mutant ที่ไม่ต้องแก้** (ยืนยันจาก reviewer): มูเทชัน
+  `conceptReadMarker(hasLesson, progress ?? {}, topicSlug, conceptSlug)` ที่
+  call site ใน `ConceptRow` รอด — `{}` ทำให้ lookup ทุกตัวตกไปที่
+  `"not_started"` → `"none"` เหมือนกับตอน `progress` เป็น `null` ตรง ๆ (ผ่าน
+  guard `!progress` ของฟังก์ชันเอง) เพราะทั้งสอง path จบที่ `"none"`
+  เหมือนกันสำหรับ concept ที่ไม่มี entry ใน map เลย — DOM จึงเหมือนกันทุก byte
+  ไม่มีทางเขียนเทสต์ที่แยกสอง path นี้ออกจากกันได้โดยไม่ spy ที่ argument ตรง ๆ
+  (ซึ่งเป็นการเทส implementation ไม่ใช่ behavior) **guard ตัวจริงที่คุม
+  semantic นี้คือ `if (!hasLesson || !progress) return "none";` ภายใน
+  `conceptReadMarker` เอง ซึ่งถูกฆ่าแล้วโดย M7** (เรียกฟังก์ชันตรง ๆ ด้วย
+  `progress = null` แล้วยืนยันว่าไม่ throw/ไม่ fall-through ผิด) — ไม่ต้องทำ
+  อะไรเพิ่มกับจุดนี้
+- **Mutation-testing รอบสาม — 14 จุดใหม่ + reconfirm 8 จุดจากรอบก่อน (22
+  รวม)**, แก้ source/ไฟล์เทสต์จริงทีละจุด รัน `npm test` แล้ว revert ทุกครั้ง:
+
+  | # | Mutation | ผลลัพธ์ |
+  |---|---|---|
+  | N1 | `TrackCard`: `label` เป็น `""` | killed — `TrackCard.test.tsx`: "names the bar after this specific track, not a generic label shared by every card" |
+  | N2 | `TrackCard`: `label` ตัดชื่อ track ทิ้ง เหลือ "reading progress" เฉย ๆ | killed — เทสต์เดียวกับ N1 |
+  | N3 | `ChapterRow`: hardcode `hidden={true}` (ไม่เปิดเลย) | killed — `TrackTopics.test.tsx`: "hides concept rows...then reveals them" |
+  | N4 | `ChapterRow`: ลบ `hidden={!open}` ทิ้งทั้งหมด | killed — เทสต์เดียวกับ N3 |
+  | N5 | `ChapterRow`: invert เป็น `hidden={open}` | killed — เทสต์เดียวกับ N3 + "flips aria-expanded..." |
+  | N6 | `ChapterRow`: hardcode `aria-expanded={true}` | killed — "flips aria-expanded from false to true when opened" |
+  | N7 | `ChapterRow`: concept rows conditional-unmount ตอนปิด (`{open && chapter.concepts.map(...)}`) | killed — "keeps the concept list mounted (just hidden) while closed..." (เช็ค children count) |
+  | N8 | `TrackTopics.test.tsx`: ลบ `openChapter(...)` ออกจากเทสต์ marker | killed — เทสต์ marker เจอ 0 ไม่ใช่ 2 แล้ว fail เอง (พิสูจน์ click มีผลจริง) |
+  | N9 | `page.test.tsx`: ลบ `fireEvent.click(button)` ออกจากเทสต์ detail-view marker | killed — เทสต์เดียวกัน หา marker ไม่เจอ |
+  | N10 | `moreConceptsPlanned`: ลบ `Math.max(0, ...)` | killed — "floors at zero instead of going negative..." |
+  | N11 | `MarkerSlot`: `"none"` คืน `null` แทน spacer | killed — "still gives every concept row a marker slot..." (S7 spacer) |
+  | N12 | `page.tsx`: ลบ `UnauthorizedError` special case ทั้งก้อน | killed — "redirects to /token when the curriculum fetch is unauthorized..." |
+  | N13 | `page.tsx`: redirect ไป `/dashboard` แทน `/token` | killed — เทสต์เดียวกับ N12 |
+  | N14 | `page.tsx`: curriculum ว่างเปล่า render `success` แทน `empty` | killed — "shows an empty state instead of a success view..." |
+  | R1 | (reconfirm) `conceptReadMarker` สลับ passed/in_progress | killed |
+  | R2 | (reconfirm) `chapterReadStats` นับ not_started เป็น read | killed |
+  | R3 | (reconfirm) `trackReadStats` ลบ null guard | killed |
+  | R4 | (reconfirm) `ChapterRow`'s `withLesson > 0` → `>= 0` | killed |
+  | R5 | (reconfirm) `ProgressBar` ลบ divide-by-zero guard | killed |
+  | R6 | (reconfirm) `TrackCard` สลับ read/available ในข้อความ | killed |
+  | R7 | (reconfirm) `page.tsx` ส่ง `{}` เข้า `trackReadStats` | killed |
+  | R8 | (reconfirm) `MarkerSlot` สลับชื่อ Read/In progress | killed |
+
+  **22/22 killed, ไม่มีจุดไหนรอด** (บวก 1 equivalent mutant ที่บันทึกแยกไว้
+  ข้างบนว่าไม่ต้องแก้)
+- **Re-verify เต็มชุด**: `npm test` 76 → **87** (+11: 3
+  `moreConceptsPlanned` + 1 `TrackCard` label + 4 `TrackTopics` accordion +
+  3 `page.test.tsx` auth/empty), `tsc --noEmit`/`eslint .`/`npm run build`
+  สะอาด
+- **ยืนยัน accordion ในเบราว์เซอร์จริงหลังสลับเป็น `hidden` attribute**
+  (`docker compose up -d --build`, **ไม่ใช้ `-v`** ตาม ground rule ใหม่ — ดู
+  หมายเหตุด้านล่าง): ปิดอยู่ → `aria-expanded=false`, `display:none`,
+  ข้อความ concept มองไม่เห็น; คลิกเปิด → `aria-expanded=true`,
+  `display:block`, ข้อความมองเห็น; คลิกปิดอีกที → กลับไป `display:none`
+  ถูกต้อง (ไม่มี Tailwind utility ไหนบน `<ul>` นี้ตั้ง `display` แข่งกับ native
+  `[hidden]`) console error = 0 ตลอด
+- **Progressbar accessible name ยืนยันด้วย Playwright's AccName computation
+  (ไม่ใช่แค่อ่าน attribute)**: `getByRole("progressbar", {name: "Domain-Driven
+  Design reading progress", exact: true})` เจอ 1 ตัว, `getByRole("progressbar",
+  {name: "reading progress", exact: true})` (ชื่อ generic ที่ไม่มีชื่อ track)
+  เจอ **0** ตัว — สามการ์ดมีชื่อต่างกันจริง (`"Domain-Driven Design reading
+  progress"`, `"Designing Data-Intensive Applications reading progress"`,
+  `"AI & LLM Systems reading progress"`)
+- **axe-core 4.12.1 หลังรอบนี้**: `/learn` และ `/learn?track=ddia` (chapter
+  เปิดอยู่) = **0 violations** ทั้งคู่ (scope `wcag2a`+`wcag2aa`) ยังคง 0 เหมือน
+  รอบก่อน ไม่มี regression
+- **Regression sanity เร็ว ๆ**: ตัวเลขจริงตรงกับ curl (`"4/4 lessons read ·
+  29 more planned"` ยืนยัน copy fix ใหม่ทำงานถูก), mock 500 ยัง banner=1/
+  progressbar=0 เหมือนเดิม
+- **หมายเหตุ ground rule ใหม่**: ห้าม `docker compose down -v` หรือลบ Docker
+  volume โดยเด็ดขาดตั้งแต่ตอนนี้ — รอบนี้ทำ `docker compose up -d --build`
+  แล้วพบว่า volume ว่างเปล่า (ไม่ใช่จากคำสั่งของรอบนี้หรือรอบก่อนหน้าที่ผมรัน
+  เอง ซึ่งใช้ `docker compose down` เปล่า ๆ มาตลอด) seed ข้อมูล progress ใหม่
+  เองผ่าน curl ก่อนทดสอบ (ddd 4/4 passed, ai-systems 1 concept in_progress)
+  แล้ว teardown ท้ายรอบด้วย `docker compose down` (ไม่มี `-v`) ยืนยันด้วย
+  `docker volume ls` ว่า volume ยังอยู่หลัง teardown
+- Status: `implemented, PR pending — code-reviewer rounds 1–2 addressed`

@@ -3,14 +3,18 @@ import type { Chapter, Concept, ProgressEntry, ProgressState, Topic, Track } fro
 import type { TrackStats } from "../components/TrackCard";
 import {
   buildOtherTracks,
+  chapterReadStats,
   computeTrackProgress,
+  conceptReadMarker,
   countAvailableLessons,
   findNextLesson,
   indexProgress,
   locateLessonBreadcrumb,
+  moreConceptsPlanned,
   pickNextUp,
   pinFocusFirst,
   progressKey,
+  trackReadStats,
   type NextUpResult,
   type ProgressByKey,
 } from "./curriculum";
@@ -381,5 +385,87 @@ describe("buildOtherTracks", () => {
     ];
     const noLessons: NextUpResult = { kind: "no-lessons" };
     expect(buildOtherTracks(tracks, {}, null, noLessons).map((s) => s.track)).toEqual(["ddd"]);
+  });
+});
+
+// Shared by chapterReadStats/trackReadStats below: 2 chapters, and a mix of
+// all three progress states plus one lesson-less concept — a single-chapter
+// or single-state fixture previously let denominator-swap mutations survive
+// (UX-6's lesson).
+const readStatsTrack = track("ddd", [
+  topic("t1", 1, [
+    chapter("c1", 1, [concept("k1", true, 1), concept("k2", true, 2), concept("k3", true, 3)]),
+    chapter("c2", 2, [concept("k4", true, 1), concept("k5", false, 2)]),
+  ]),
+]);
+const readStatsProgress = progressMap([
+  ["t1", "k1", "passed"],
+  ["t1", "k2", "in_progress"],
+  ["t1", "k4", "passed"],
+]);
+
+describe("chapterReadStats", () => {
+  const c1Concepts = readStatsTrack.topics[0].chapters[0].concepts;
+  const c2Concepts = readStatsTrack.topics[0].chapters[1].concepts;
+
+  it("counts only passed concepts as read, out of has_lesson concepts in the chapter", () => {
+    // c1 is k1=passed, k2=in_progress, k3=not_started (no row at all) — a
+    // mutation that treats "not not_started" or "not in_progress" as read
+    // would count k1+k3 (=2) here instead of just k1 (=1).
+    expect(chapterReadStats("t1", c1Concepts, readStatsProgress)).toEqual({ read: 1, withLesson: 3, planned: 3 });
+  });
+
+  it("excludes a lesson-less concept from withLesson while still counting it in planned", () => {
+    expect(chapterReadStats("t1", c2Concepts, readStatsProgress)).toEqual({ read: 1, withLesson: 1, planned: 2 });
+  });
+
+  it("returns read: null when progress is unavailable, not a zeroed-out count", () => {
+    expect(chapterReadStats("t1", c1Concepts, null)).toEqual({ read: null, withLesson: 3, planned: 3 });
+  });
+});
+
+describe("trackReadStats", () => {
+  it("counts passed concepts across every chapter as read, out of lessons available", () => {
+    expect(trackReadStats(readStatsTrack, readStatsProgress)).toEqual({ read: 2, available: 4 });
+  });
+
+  it("returns read: null when progress is unavailable, not a zeroed-out count", () => {
+    expect(trackReadStats(readStatsTrack, null)).toEqual({ read: null, available: 4 });
+  });
+});
+
+describe("moreConceptsPlanned", () => {
+  it("subtracts lessons available from total concepts planned", () => {
+    expect(moreConceptsPlanned(33, 4)).toBe(29);
+  });
+
+  it("floors at zero instead of going negative when available exceeds totalConcepts", () => {
+    expect(moreConceptsPlanned(4, 10)).toBe(0);
+  });
+
+  it("returns zero when every planned concept already has a lesson", () => {
+    expect(moreConceptsPlanned(4, 4)).toBe(0);
+  });
+});
+
+describe("conceptReadMarker", () => {
+  it("returns none for a concept without a lesson, regardless of its recorded state", () => {
+    expect(conceptReadMarker(false, readStatsProgress, "t1", "k1")).toBe("none");
+  });
+
+  it("returns passed for a passed concept that has a lesson", () => {
+    expect(conceptReadMarker(true, readStatsProgress, "t1", "k1")).toBe("passed");
+  });
+
+  it("returns a distinct in_progress marker rather than collapsing it into passed", () => {
+    expect(conceptReadMarker(true, readStatsProgress, "t1", "k2")).toBe("in_progress");
+  });
+
+  it("returns none for a not_started concept that has a lesson", () => {
+    expect(conceptReadMarker(true, readStatsProgress, "t1", "k3")).toBe("none");
+  });
+
+  it("returns none for every concept when progress is unavailable, even a passed one", () => {
+    expect(conceptReadMarker(true, null, "t1", "k1")).toBe("none");
   });
 });

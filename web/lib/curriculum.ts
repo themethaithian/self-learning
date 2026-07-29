@@ -109,6 +109,74 @@ export function computeTrackProgress(track: Track, progressByKey: ProgressByKey)
   return { track: track.track, total, done };
 }
 
+export interface TrackReadStats {
+  read: number | null;
+  available: number;
+}
+
+// A full progress bar (read === available) still leaves totalConcepts -
+// available concepts with no lesson yet — this is the number that copy next
+// to the bar must surface so "100%" reads as "everything that exists today"
+// rather than "the whole track is done". Math.max guards against the two
+// counts (each derived independently) ever disagreeing in a way that would
+// print a negative "more planned".
+export function moreConceptsPlanned(totalConcepts: number, lessonsAvailable: number): number {
+  return Math.max(0, totalConcepts - lessonsAvailable);
+}
+
+// progress === null means "hasn't loaded" and always yields read: null, never
+// a fabricated { read: 0 } — a zero here would render as a confident, wrong
+// "0 read" bar instead of hiding it (the same rule getProgress()'s doc
+// comment describes, applied to the /learn track cards). `available` itself
+// doesn't depend on progress at all, so it's always a real number.
+export function trackReadStats(track: Track, progress: ProgressByKey | null): TrackReadStats {
+  const { done, total } = computeTrackProgress(track, progress ?? {});
+  return { read: progress ? done : null, available: total };
+}
+
+export interface ChapterReadStats {
+  read: number | null;
+  withLesson: number;
+  planned: number;
+}
+
+// Same null-means-not-loaded rule as trackReadStats, at chapter granularity —
+// and the single derivation `withLesson`/`planned` feed both the "read" line
+// and the "ready" line, so the two ratios can never disagree about what
+// counts as available.
+export function chapterReadStats(topicSlug: string, concepts: Concept[], progress: ProgressByKey | null): ChapterReadStats {
+  let planned = 0;
+  let withLesson = 0;
+  let read = 0;
+  for (const concept of concepts) {
+    planned += 1;
+    if (!concept.has_lesson) continue;
+    withLesson += 1;
+    if (progress && (progress[progressKey(topicSlug, concept.slug)] ?? "not_started") === "passed") read += 1;
+  }
+  return { read: progress ? read : null, withLesson, planned };
+}
+
+export type ConceptReadMarker = "passed" | "in_progress" | "none";
+
+// The full has_lesson/progress-availability check lives here, not at each
+// call site — a 61-row track only needs a marker on the few concepts that
+// are passed or in_progress; "not_started" and lesson-less concepts render
+// no marker at all (absence is the signal). Shape (not colour) distinguishes
+// the two states that do get one, per WCAG 1.4.1.
+export function conceptReadMarker(
+  hasLesson: boolean,
+  progress: ProgressByKey | null,
+  topicSlug: string,
+  conceptSlug: string,
+): ConceptReadMarker {
+  if (!hasLesson || !progress) return "none";
+  const state: ProgressState = progress[progressKey(topicSlug, conceptSlug)] ?? "not_started";
+  if (state === "passed") return "passed";
+  if (state === "in_progress") return "in_progress";
+  return "none";
+}
+
 export type NextUpResult =
   | {
       kind: "next";

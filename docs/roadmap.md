@@ -52,7 +52,7 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 | 0. Walking skeleton + reading slice | คลิก concept → อ่านบทเรียนจริง (mermaid + references + recall) | ✅ จบ |
 | 1. Content | เขียนบทเรียน 2 track ที่ตรงกับตำแหน่งที่สุด | ✅ จบ |
 | 2. Quality + รันเองได้ | MCQ ที่เดาไม่ได้ + `make dev` คำสั่งเดียว | ✅ จบ |
-| 3. Guided learning path | รู้ว่า "วันนี้อ่านอะไรต่อ" และอ่านถึงไหนแล้ว | 🔄 กำลังทำ (UX-6, UX-7) |
+| 3. Guided learning path | รู้ว่า "วันนี้อ่านอะไรต่อ" และอ่านถึงไหนแล้ว | 🔄 กำลังทำ (UX-7) |
 | 4. Measurable recall | quiz กดเลือกได้ + เก็บประวัติ + SRS ที่วัดผลได้ | ⏭ ถัดไป (Q-1…Q-3) |
 | 5. Visual simulation | บทเรียนที่เห็นภาพและโต้ตอบได้ | ⏭ หลัง phase 4 (SIM-0…SIM-3) |
 | — | Deploy ขึ้น VPS + track ที่เหลือ | ⏸ **พักไว้โดยตั้งใจ** |
@@ -88,10 +88,15 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 - [x] UX-4 (#45) 🔴 progress API — `GET /api/v1/progress` + `PUT /api/v1/progress/{topic}/{concept}`
   + bounded context `learning`
 - [x] UX-5 (#46) reader loop — breadcrumb + Finish + Next (+ vitest ตัวแรกของ `web/`)
-- [ ] UX-6 (PR pending) — หน้า `/today` + IA switch (nav เหลือ Today · Learn):
+- [x] UX-6 (#49) หน้า `/today` + IA switch (nav เหลือ Today · Learn):
   "วันนี้อ่านอะไรต่อ" ไล่จาก focus track ก่อน แล้ว fallback ตาม
   `TRACK_DISPLAY_ORDER` · `domain.Gate` ยังไม่ถูก wire (soft-guide เท่านั้น)
-- [ ] UX-7 — หน้า Progress + ตัวบอกสถานะทั้งแอป
+- [ ] UX-7 (PR pending) — reading-status indicator บน `/learn` (list +
+  track detail) เท่านั้น ไม่ใช่หน้า Progress แยก: `ProgressBar` + `n/N lessons
+  read` ต่อ track card (ตัวส่วน = lesson ที่มีจริง ไม่ใช่ concept ที่วางแผนไว้),
+  read-state marker (`passed`/`in_progress`, shape+aria-label ไม่ใช่สีอย่างเดียว)
+  ต่อ concept, read count ต่อ chapter header · ไม่แตะ `/lesson` reader
+- [ ] UX-8 — หน้า `/progress` รวม (ทำเมื่อใช้ UX-7 แล้วยังรู้สึกขาดภาพรวมเท่านั้น)
 
 ### Phase 4 — measurable recall ⏭
 - [ ] Q-1 — quiz **recall-first 3 stage**: ตอบในใจ → เลือกความมั่นใจ → เฉลย · shuffle ตัวเลือกตอน render
@@ -133,6 +138,10 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   แต่ `wantHeaders`/`wantMaxAge` ยังอ้าง `corsAllowedHeaders`/`corsMaxAge` = mutation ไม่มีทางจับได้
 - rating รายข้อในหน้า reader ไม่ถูก persist (ปลดใน Q-2) · `Button` variant `"danger"` ไม่มีใครใช้
   และจะตก AA (~4.39:1) วันที่มีคนใช้
+- **UX-7 (`/learn`): `TrackCard`'s `<h3>` sits under the page `<h1>` with no `<h2>` between**
+  — axe's `heading-order` (best-practice, ไม่ใช่ WCAG) เจอทั้งบน `/learn` และหน้าอื่นที่มีอยู่แล้วบน
+  `develop` ก่อน ticket นี้ ไม่ได้แก้ในรอบนี้เพราะเป็น pattern ที่ใช้ทั้งแอป ต้องแก้พร้อมกันทีเดียว
+  ไม่ใช่แก้เฉพาะการ์ดเดียว
 
 ## กติกาการทำงาน (ทุก ticket)
 
@@ -154,7 +163,9 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 9. **Mutation-test ตัว test เอง — เกือบทุก ticket ที่แตะ SQL หรือ fixture มี mutation ที่ทั้ง
    suite จับไม่ได้** (พบใน ≥10 PR: #7 fixture ASCII ล้วนซ่อน `utf8.RuneCountInString`→`len` ·
    #8 `Repository.Topics` ไม่มี test เลย 8/8 mutation รอด · #10 รอด 15/32 · #40 มี test ที่
-   เทียบกับตัวเอง · #41 รอด 5/11 · #45 รอด 5 · #46 รอด 2)
+   เทียบกับตัวเอง · #41 รอด 5/11 · #45 รอด 5 · #46 รอด 2 · UX-7 (ก่อนเปิด PR) รอด 11/18 —
+   ทุกจุดที่รอดอยู่ใน component (JSX) ไม่ใช่ `curriculum.ts` เพราะ `web/` ยังไม่มี jsdom
+   ตอนนั้น มี `@testing-library/react`/`jsdom` ทีหลังตอนแก้ ปิดครบ 20/20 รวม bonus 2 จุด)
    ส่วนใหญ่ code-reviewer จับก่อน merge — **มี 1 ครั้งที่หลุดขึ้น develop จริง**: #38 รายงาน
    `VIOLATIONS: NONE` ขณะที่ MCQ เดาถูก 89.6% เพราะวัด *"กฎที่ตั้งไว้ถูกละเมิดไหม"* แทน
    *"เดาด้วย heuristic ง่าย ๆ แล้วถูกกี่ %"* (แก้ใน #43)
