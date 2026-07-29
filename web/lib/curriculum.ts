@@ -143,7 +143,7 @@ export interface ChapterReadStats {
 // Same null-means-not-loaded rule as trackReadStats, at chapter granularity —
 // and the single derivation `withLesson`/`planned` feed both the "read" line
 // and the "ready" line, so the two ratios can never disagree about what
-// counts as available (they used to come from two separate loops).
+// counts as available.
 export function chapterReadStats(topicSlug: string, concepts: Concept[], progress: ProgressByKey | null): ChapterReadStats {
   let planned = 0;
   let withLesson = 0;

@@ -24,10 +24,8 @@ interface TrackCardEntry extends TrackStats {
 }
 
 // Carries the raw Track alongside its derived TrackStats so the render pass
-// never needs to re-find a track by slug (a lookup that can only ever
-// succeed here, since every entry was built from `tracks` in the first
-// place — the dead "not found" branch that used to guard that lookup is
-// gone because the case it guarded against can't happen).
+// never needs to re-find a track by slug — every entry is built from
+// `tracks` in the first place, so the tree it carries always exists.
 function computeCardEntries(tracks: Track[]): TrackCardEntry[] {
   return tracks.map((tree) => {
     let totalConcepts = 0;
@@ -84,8 +82,7 @@ function LearnView() {
   // null = "hasn't loaded" (or failed to load) — the one flag doubles as
   // both the availability signal and the data itself, so a track card or
   // chapter row can't end up with a real progress map but the "unavailable"
-  // banner still showing, or vice versa (R1b: the two used to be separate
-  // useState calls that had to be kept in sync by hand).
+  // banner still showing, or vice versa.
   const [progressIndex, setProgressIndex] = useState<ProgressByKey | null>(null);
   const { focusTrack, setFocusTrackValue, pendingTrack, error: focusError, setFocus: handleSetFocus, dismiss: dismissFocusError } =
     useFocusTrack();

@@ -10,6 +10,7 @@ import {
   findNextLesson,
   indexProgress,
   locateLessonBreadcrumb,
+  moreConceptsPlanned,
   pickNextUp,
   pinFocusFirst,
   progressKey,
@@ -430,6 +431,20 @@ describe("trackReadStats", () => {
 
   it("returns read: null when progress is unavailable, not a zeroed-out count", () => {
     expect(trackReadStats(readStatsTrack, null)).toEqual({ read: null, available: 4 });
+  });
+});
+
+describe("moreConceptsPlanned", () => {
+  it("subtracts lessons available from total concepts planned", () => {
+    expect(moreConceptsPlanned(33, 4)).toBe(29);
+  });
+
+  it("floors at zero instead of going negative when available exceeds totalConcepts", () => {
+    expect(moreConceptsPlanned(4, 10)).toBe(0);
+  });
+
+  it("returns zero when every planned concept already has a lesson", () => {
+    expect(moreConceptsPlanned(4, 4)).toBe(0);
   });
 });
 

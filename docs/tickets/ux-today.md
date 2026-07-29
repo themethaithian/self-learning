@@ -947,4 +947,159 @@ priority), เก็บที่ API/DB เพราะอ่านสลับ�
   ทั้งหมดรอดเพราะ "logic อยู่ใน component ที่ไม่มี jsdom test" — ตอนนี้ `web/`
   มี jsdom + `@testing-library/react` แล้วจริง (ไม่ใช่แค่ Playwright ที่ทดสอบ
   แค่ scenario ที่คิดไว้ล่วงหน้า) เป็นคำตอบจริงของ layer นี้ที่ก่อนหน้านี้ยังไม่มี
-- Status: `implemented, PR pending — code-reviewer round 1 addressed`
+### รอบ code-reviewer ที่ 2 (REQUEST_CHANGES, narrow → แก้ครบ)
+
+Reviewer รอบนี้ยืนยันอิสระว่าของรอบแรกถูกจริง (ทั้ง 18 mutation ของมันเองตาย,
+`read: 0` vs `read: null` แยกจาก DOM ได้จริง, contrast ตรงเป๊ะ, axe 0
+violations, `--color-warning` ไม่มี reference เหลือ, `@vitejs/plugin-react`
+เป็น vitest-only ไม่กระทบ Next build จริง) — ไม่มีอะไรต้อง revert จากตรงนั้น
+พบช่องโหว่ใหม่ 2 จุดใหญ่ที่ทั้งคู่เป็น pattern เดียวกับ R1: **โค้ดที่แก้แล้ว
+ถูกทดสอบ แต่จุดที่ "เรียกใช้" โค้ดที่แก้แล้วไม่ถูกทดสอบ**
+
+- **REQ-1 — ไม่มีอะไรพิสูจน์ว่า `TrackCard` ส่ง label ที่มีความหมายจริง**:
+  `ProgressBar.test.tsx` พิสูจน์แค่ว่า component เชื่อฟัง label ที่ส่งมา — ไม่มี
+  เทสต์ไหนพิสูจน์ว่า caller (`TrackCard`) ส่งอะไรที่มีประโยชน์จริง `label:
+  string` (required) บังคับแค่ "เป็น string อะไรก็ได้" — `label=""` หรือ
+  `label="reading progress"` (ตัดชื่อ track ทิ้ง ทำให้ทุกบาร์ชื่อซ้ำกันหมด) ก็
+  type-check ผ่าน ทั้งสองแบบ = `aria-progressbar-name` violation กลับมาเหมือน
+  R2 เดิม แก้ด้วย assertion เดียวใน `TrackCard.test.tsx`:
+  `expect(screen.getByRole("progressbar", { name: /Domain-Driven Design/
+  })).toBeTruthy()`
+- **REQ-2 — accordion ไม่มีเทสต์จริง และ `button.click()` ในเทสต์เป็นการกระทำ
+  ที่ไม่มีผล**: ต้นเหตุคือ `TrackTopics.tsx`'s `<ul>` เดิมสลับการมองเห็นด้วย
+  Tailwind **class** `hidden` (`display:none` ผ่าน CSS) — jsdom ไม่โหลด
+  stylesheet เลย ดังนั้น testing-library's accessibility filtering (ที่
+  `getByRole` ใช้ตัดสินว่า element ควร "มองไม่เห็น" หรือเปล่า) ไม่มีทางรู้ว่า
+  class นี้ซ่อนอะไรอยู่ — concept row เลย query เจอได้ทั้งตอนเปิดและปิด ผลคือ
+  `expect(screen.getAllByRole("img")).toHaveLength(2)` เดิมผ่านได้ใน DOM state
+  ที่**เกิดขึ้นจริงในเบราว์เซอร์ไม่ได้เลย** (Chrome ให้ 2 ตอนเปิด, 0 ตอนปิด แต่
+  เทสต์รายงาน 2 ทั้งสองกรณี) และ `openChapter()` helper ที่เรียกก่อนหน้าเป็น
+  no-op จริง ๆ — มูเทชันที่รอดทั้งหมด: hardcode `open` เป็น `false`, ไม่ apply
+  `hidden` เลย, invert `open`, hardcode `aria-expanded={true}`, ไม่ render
+  concept row ตอนปิด, ลบ `button.click()` ออกจาก `TrackTopics.test.tsx`/
+  `page.test.tsx` (ลบแล้วเทสต์ก็ยังผ่าน = เทสต์ไม่ได้พึ่ง click จริง) แก้ด้วย
+  **สลับ class `hidden` เป็น attribute `hidden` (`hidden={!open}`)** — jsdom
+  (ผ่าน `dom-accessibility-api` ที่ testing-library ใช้) เช็ค `hidden`
+  attribute ตรง ๆ ไม่ต้องพึ่ง CSS engine เลย ยืนยันในเบราว์เซอร์จริงว่ายังพับ/
+  กางถูกต้อง (`display:none` ↔ `display:block`, ไม่มี Tailwind utility ไหนตั้ง
+  `display` แข่งกับ native `[hidden]` บน `<ul>` นี้ — มีแค่ spacing/border/
+  padding class) เพิ่มเทสต์ชุดใหม่ยืนยัน state transition จริง (ก่อน/หลังคลิก
+  ต่างกันจริง ๆ), `aria-expanded` transition, `<ul>` ยังอยู่ใน DOM เสมอ (แค่
+  `hidden`) พร้อม children ครบ (ไม่ conditional-unmount), และพิสูจน์ว่าลบ
+  `fireEvent.click(...)` ออกจากเทสต์แล้วเทสต์นั้นพังจริง — เปลี่ยนจาก raw
+  `button.click()` เป็น `fireEvent.click()` ทั้งสองไฟล์ด้วย (raw `.click()`
+  ไม่รับประกันว่า React จะ flush state update ก่อน assertion ถัดไปที่เป็น
+  synchronous query อย่าง `getByRole`/`getByText` — ต่างจาก `findBy*` ที่ poll
+  ซ้ำจนกว่าจะเจอ เลยไม่เจอปัญหานี้ตอนแรก)
+- **`aria-valuetext` ถูกลบทิ้ง**: มูเทชันเปลี่ยนเป็น `` `${available} of
+  ${read} lessons read` `` (สลับ read/available) รอด และ Chrome's
+  `Accessibility.getFullAXTree` รายงาน `valuetext=""` บน node ทั้งที่ DOM
+  attribute ตั้งค่าไว้จริง — reviewer เลยยืนยันไม่ได้ว่ามันไปถึง AT จริงหรือไม่
+  a11y string ที่ทั้งพิสูจน์ไม่ได้ว่าไปถึง AT และไม่มีเทสต์ปิด แย่กว่าไม่มีเลย —
+  ลบทิ้ง (`aria-label` มีชื่ออยู่แล้ว, `aria-valuenow` มีค่าตัวเลขอยู่แล้ว)
+- **Assert 401 path (constraint 1 ของ ticket)**: เดิม `routerMock.replace`
+  ประกาศไว้ใน `page.test.tsx` แต่ไม่เคย assert เลย — มูเทชันที่รอด: ลบ
+  redirect ทิ้ง, redirect ไป `/dashboard` แทน `/token`, ปล่อยให้ 401 ตกไปที่
+  error state ทั่วไป, และ render `success` สำหรับ curriculum ว่างเปล่า เพิ่ม
+  เทสต์ 3 ชุดปิดครบ (`redirects to /token when the curriculum fetch is
+  unauthorized...`, `shows the generic error state, not a redirect, for a
+  non-401 curriculum failure`, `shows an empty state instead of a success
+  view when the curriculum has no tracks`)
+- **ลบ comment ที่เล่าประวัติ review แทนที่จะอธิบายโค้ด**: `(R1b: ...)`,
+  `(S7)`, `(they used to come from two separate loops)` ใน `curriculum.ts`/
+  `TrackTopics.tsx`/`learn/page.tsx`, และ parenthetical ของ
+  `computeCardEntries` ที่อธิบาย branch ที่ถูกลบไปแล้ว — CLAUDE.md อนุญาต
+  comment แค่สำหรับ constraint ที่โค้ดเองสื่อไม่ได้ (WHY จริง) ไม่ใช่ diff
+  history หรือ PR thread ID ที่ไม่มีความหมายกับคนอ่านอีก 6 เดือนข้างหน้า
+- **เทสต์ `Math.max(0, ...)` ใน `moreConceptsPlanned`**: ลบ floor ออกรอด
+  ก่อนหน้านี้ — เพิ่ม `"floors at zero instead of going negative when
+  available exceeds totalConcepts"` (`moreConceptsPlanned(4, 10)` ต้องได้
+  `0` ไม่ใช่ `-6`)
+- **เทสต์ S7 spacer**: `MarkerSlot`'s `"none"` case คืน `null` แทน placeholder
+  รอด — เพิ่ม `data-testid="concept-marker-slot"` ให้ทั้งสามสาขาของ
+  `MarkerSlot` แล้วเทสต์ `"still gives every concept row a marker slot even
+  when its state is not_started (S7 spacer)"` นับ slot ทั้งหมด**ในแค่ chapter
+  ที่เปิดอยู่**เท่านั้น (scope ผ่าน `within(list)` — ไม่งั้นจะนับ slot ของ
+  chapter อื่นที่ mounted-but-hidden ปนมาด้วย เพราะ `querySelectorAll` ไม่รู้
+  จัก `hidden` attribute เลย)
+- **Copy: "planned" ซ้ำสองที่**: `4/4 lessons read · 29 more planned` อยู่
+  เหนือ `5 chapters · 33 concepts planned` ตรง ๆ ทั้งคู่ถูกต้อง แต่ 29-vs-33
+  ชวนให้เข้าใจผิด — เลือกเก็บ "more planned" ไว้ที่บรรทัด read line เท่านั้น
+  (ใกล้บาร์ที่สุด ตรงจุดที่ R7 ตั้งใจแก้ "บาร์เต็ม = จบแล้ว" อยู่แล้ว) ตัดคำว่า
+  "planned" ออกจากบรรทัด `{chapterCount} chapters · {totalConcepts}
+  concepts` (บรรทัดนี้ยังจำเป็นอยู่ตอน progress ไม่พร้อม เพราะเป็นที่เดียวที่
+  บอก scope รวมของ track — แค่ไม่ต้องพูดคำว่า "planned" ซ้ำอีกที)
+- **Equivalent mutant ที่ไม่ต้องแก้** (ยืนยันจาก reviewer): มูเทชัน
+  `conceptReadMarker(hasLesson, progress ?? {}, topicSlug, conceptSlug)` ที่
+  call site ใน `ConceptRow` รอด — `{}` ทำให้ lookup ทุกตัวตกไปที่
+  `"not_started"` → `"none"` เหมือนกับตอน `progress` เป็น `null` ตรง ๆ (ผ่าน
+  guard `!progress` ของฟังก์ชันเอง) เพราะทั้งสอง path จบที่ `"none"`
+  เหมือนกันสำหรับ concept ที่ไม่มี entry ใน map เลย — DOM จึงเหมือนกันทุก byte
+  ไม่มีทางเขียนเทสต์ที่แยกสอง path นี้ออกจากกันได้โดยไม่ spy ที่ argument ตรง ๆ
+  (ซึ่งเป็นการเทส implementation ไม่ใช่ behavior) **guard ตัวจริงที่คุม
+  semantic นี้คือ `if (!hasLesson || !progress) return "none";` ภายใน
+  `conceptReadMarker` เอง ซึ่งถูกฆ่าแล้วโดย M7** (เรียกฟังก์ชันตรง ๆ ด้วย
+  `progress = null` แล้วยืนยันว่าไม่ throw/ไม่ fall-through ผิด) — ไม่ต้องทำ
+  อะไรเพิ่มกับจุดนี้
+- **Mutation-testing รอบสาม — 14 จุดใหม่ + reconfirm 8 จุดจากรอบก่อน (22
+  รวม)**, แก้ source/ไฟล์เทสต์จริงทีละจุด รัน `npm test` แล้ว revert ทุกครั้ง:
+
+  | # | Mutation | ผลลัพธ์ |
+  |---|---|---|
+  | N1 | `TrackCard`: `label` เป็น `""` | killed — `TrackCard.test.tsx`: "names the bar after this specific track, not a generic label shared by every card" |
+  | N2 | `TrackCard`: `label` ตัดชื่อ track ทิ้ง เหลือ "reading progress" เฉย ๆ | killed — เทสต์เดียวกับ N1 |
+  | N3 | `ChapterRow`: hardcode `hidden={true}` (ไม่เปิดเลย) | killed — `TrackTopics.test.tsx`: "hides concept rows...then reveals them" |
+  | N4 | `ChapterRow`: ลบ `hidden={!open}` ทิ้งทั้งหมด | killed — เทสต์เดียวกับ N3 |
+  | N5 | `ChapterRow`: invert เป็น `hidden={open}` | killed — เทสต์เดียวกับ N3 + "flips aria-expanded..." |
+  | N6 | `ChapterRow`: hardcode `aria-expanded={true}` | killed — "flips aria-expanded from false to true when opened" |
+  | N7 | `ChapterRow`: concept rows conditional-unmount ตอนปิด (`{open && chapter.concepts.map(...)}`) | killed — "keeps the concept list mounted (just hidden) while closed..." (เช็ค children count) |
+  | N8 | `TrackTopics.test.tsx`: ลบ `openChapter(...)` ออกจากเทสต์ marker | killed — เทสต์ marker เจอ 0 ไม่ใช่ 2 แล้ว fail เอง (พิสูจน์ click มีผลจริง) |
+  | N9 | `page.test.tsx`: ลบ `fireEvent.click(button)` ออกจากเทสต์ detail-view marker | killed — เทสต์เดียวกัน หา marker ไม่เจอ |
+  | N10 | `moreConceptsPlanned`: ลบ `Math.max(0, ...)` | killed — "floors at zero instead of going negative..." |
+  | N11 | `MarkerSlot`: `"none"` คืน `null` แทน spacer | killed — "still gives every concept row a marker slot..." (S7 spacer) |
+  | N12 | `page.tsx`: ลบ `UnauthorizedError` special case ทั้งก้อน | killed — "redirects to /token when the curriculum fetch is unauthorized..." |
+  | N13 | `page.tsx`: redirect ไป `/dashboard` แทน `/token` | killed — เทสต์เดียวกับ N12 |
+  | N14 | `page.tsx`: curriculum ว่างเปล่า render `success` แทน `empty` | killed — "shows an empty state instead of a success view..." |
+  | R1 | (reconfirm) `conceptReadMarker` สลับ passed/in_progress | killed |
+  | R2 | (reconfirm) `chapterReadStats` นับ not_started เป็น read | killed |
+  | R3 | (reconfirm) `trackReadStats` ลบ null guard | killed |
+  | R4 | (reconfirm) `ChapterRow`'s `withLesson > 0` → `>= 0` | killed |
+  | R5 | (reconfirm) `ProgressBar` ลบ divide-by-zero guard | killed |
+  | R6 | (reconfirm) `TrackCard` สลับ read/available ในข้อความ | killed |
+  | R7 | (reconfirm) `page.tsx` ส่ง `{}` เข้า `trackReadStats` | killed |
+  | R8 | (reconfirm) `MarkerSlot` สลับชื่อ Read/In progress | killed |
+
+  **22/22 killed, ไม่มีจุดไหนรอด** (บวก 1 equivalent mutant ที่บันทึกแยกไว้
+  ข้างบนว่าไม่ต้องแก้)
+- **Re-verify เต็มชุด**: `npm test` 76 → **87** (+11: 3
+  `moreConceptsPlanned` + 1 `TrackCard` label + 4 `TrackTopics` accordion +
+  3 `page.test.tsx` auth/empty), `tsc --noEmit`/`eslint .`/`npm run build`
+  สะอาด
+- **ยืนยัน accordion ในเบราว์เซอร์จริงหลังสลับเป็น `hidden` attribute**
+  (`docker compose up -d --build`, **ไม่ใช้ `-v`** ตาม ground rule ใหม่ — ดู
+  หมายเหตุด้านล่าง): ปิดอยู่ → `aria-expanded=false`, `display:none`,
+  ข้อความ concept มองไม่เห็น; คลิกเปิด → `aria-expanded=true`,
+  `display:block`, ข้อความมองเห็น; คลิกปิดอีกที → กลับไป `display:none`
+  ถูกต้อง (ไม่มี Tailwind utility ไหนบน `<ul>` นี้ตั้ง `display` แข่งกับ native
+  `[hidden]`) console error = 0 ตลอด
+- **Progressbar accessible name ยืนยันด้วย Playwright's AccName computation
+  (ไม่ใช่แค่อ่าน attribute)**: `getByRole("progressbar", {name: "Domain-Driven
+  Design reading progress", exact: true})` เจอ 1 ตัว, `getByRole("progressbar",
+  {name: "reading progress", exact: true})` (ชื่อ generic ที่ไม่มีชื่อ track)
+  เจอ **0** ตัว — สามการ์ดมีชื่อต่างกันจริง (`"Domain-Driven Design reading
+  progress"`, `"Designing Data-Intensive Applications reading progress"`,
+  `"AI & LLM Systems reading progress"`)
+- **axe-core 4.12.1 หลังรอบนี้**: `/learn` และ `/learn?track=ddia` (chapter
+  เปิดอยู่) = **0 violations** ทั้งคู่ (scope `wcag2a`+`wcag2aa`) ยังคง 0 เหมือน
+  รอบก่อน ไม่มี regression
+- **Regression sanity เร็ว ๆ**: ตัวเลขจริงตรงกับ curl (`"4/4 lessons read ·
+  29 more planned"` ยืนยัน copy fix ใหม่ทำงานถูก), mock 500 ยัง banner=1/
+  progressbar=0 เหมือนเดิม
+- **หมายเหตุ ground rule ใหม่**: ห้าม `docker compose down -v` หรือลบ Docker
+  volume โดยเด็ดขาดตั้งแต่ตอนนี้ — รอบนี้ทำ `docker compose up -d --build`
+  แล้วพบว่า volume ว่างเปล่า (ไม่ใช่จากคำสั่งของรอบนี้หรือรอบก่อนหน้าที่ผมรัน
+  เอง ซึ่งใช้ `docker compose down` เปล่า ๆ มาตลอด) seed ข้อมูล progress ใหม่
+  เองผ่าน curl ก่อนทดสอบ (ddd 4/4 passed, ai-systems 1 concept in_progress)
+  แล้ว teardown ท้ายรอบด้วย `docker compose down` (ไม่มี `-v`) ยืนยันด้วย
+  `docker volume ls` ว่า volume ยังอยู่หลัง teardown
+- Status: `implemented, PR pending — code-reviewer rounds 1–2 addressed`

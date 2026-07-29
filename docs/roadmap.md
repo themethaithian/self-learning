@@ -138,6 +138,10 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   แต่ `wantHeaders`/`wantMaxAge` ยังอ้าง `corsAllowedHeaders`/`corsMaxAge` = mutation ไม่มีทางจับได้
 - rating รายข้อในหน้า reader ไม่ถูก persist (ปลดใน Q-2) · `Button` variant `"danger"` ไม่มีใครใช้
   และจะตก AA (~4.39:1) วันที่มีคนใช้
+- **UX-7 (`/learn`): `TrackCard`'s `<h3>` sits under the page `<h1>` with no `<h2>` between**
+  — axe's `heading-order` (best-practice, ไม่ใช่ WCAG) เจอทั้งบน `/learn` และหน้าอื่นที่มีอยู่แล้วบน
+  `develop` ก่อน ticket นี้ ไม่ได้แก้ในรอบนี้เพราะเป็น pattern ที่ใช้ทั้งแอป ต้องแก้พร้อมกันทีเดียว
+  ไม่ใช่แก้เฉพาะการ์ดเดียว
 
 ## กติกาการทำงาน (ทุก ticket)
 

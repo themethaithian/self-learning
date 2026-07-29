@@ -52,7 +52,7 @@ export function TrackCard({ stats, readStats, isFocus, onSetFocus, saving, busy 
       )}
 
       <p className="text-xs text-muted">
-        {plural(stats.chapterCount, "chapter")} · {plural(stats.totalConcepts, "concept")} planned
+        {plural(stats.chapterCount, "chapter")} · {plural(stats.totalConcepts, "concept")}
       </p>
 
       <LinkButton href={`/learn?track=${encodeURIComponent(stats.track)}`} variant="ghost">

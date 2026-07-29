@@ -25,6 +25,11 @@ describe("TrackCard", () => {
     expect(screen.getByText(/^1\/4 lessons read/)).toBeTruthy();
   });
 
+  it("names the bar after this specific track, not a generic label shared by every card", () => {
+    renderCard({ read: 1, available: 4 });
+    expect(screen.getByRole("progressbar", { name: /Domain-Driven Design/ })).toBeTruthy();
+  });
+
   it("never swaps read and available in the printed count", () => {
     renderCard({ read: 1, available: 4 });
     expect(screen.queryByText(/^4\/1 lessons read/)).toBeNull();
@@ -58,10 +63,10 @@ describe("TrackCard", () => {
     expect(screen.queryByText(/more planned/)).toBeNull();
   });
 
-  it("a full bar still shows the planned-concepts line so it never reads as curriculum-finished", () => {
+  it("a full bar still shows the concept-count line so it never reads as curriculum-finished", () => {
     renderCard({ read: 4, available: 4 });
     const bar = screen.getByRole("progressbar");
     expect(bar.getAttribute("aria-valuenow")).toBe("100");
-    expect(screen.getByText(/33 concepts planned/)).toBeTruthy();
+    expect(screen.getByText(/33 concepts/)).toBeTruthy();
   });
 });

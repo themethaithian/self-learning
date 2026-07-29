@@ -1,19 +1,24 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
-import type { Chapter, Concept, CurriculumResponse, FocusTrack, ProgressResult, Topic } from "@/lib/api";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { UnauthorizedError, type Chapter, type Concept, type CurriculumResponse, type FocusTrack, type ProgressResult, type Topic } from "@/lib/api";
 
-const routerMock = { replace: vi.fn(), push: vi.fn() };
-const searchParamsMock = vi.fn(() => new URLSearchParams());
+// vi.hoisted so these exist before vi.mock's factory runs — a plain `const`
+// here would still hit a TDZ error once the file also imports a real (non
+// type-only) value from "@/lib/api", since that import resolves the mocked
+// module before this file's own top-level statements run.
+const { routerMock, searchParamsMock, getCurriculum, getFocusTrack, getProgress } = vi.hoisted(() => ({
+  routerMock: { replace: vi.fn(), push: vi.fn() },
+  searchParamsMock: vi.fn(() => new URLSearchParams()),
+  getCurriculum: vi.fn<() => Promise<CurriculumResponse>>(),
+  getFocusTrack: vi.fn<() => Promise<FocusTrack>>(),
+  getProgress: vi.fn<() => Promise<ProgressResult>>(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => routerMock,
   useSearchParams: () => searchParamsMock(),
 }));
-
-const getCurriculum = vi.fn<() => Promise<CurriculumResponse>>();
-const getFocusTrack = vi.fn<() => Promise<FocusTrack>>();
-const getProgress = vi.fn<() => Promise<ProgressResult>>();
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -98,6 +103,37 @@ describe("LearnPage — list view", () => {
     expect(screen.queryAllByRole("progressbar")).toHaveLength(0);
     expect(screen.queryByText(/lessons read\b/)).toBeNull();
   });
+
+  it("shows an empty state instead of a success view when the curriculum has no tracks", async () => {
+    getCurriculum.mockResolvedValue({ tracks: [] });
+    getProgress.mockResolvedValue({ kind: "ok", entries: [] });
+    render(<LearnPage />);
+
+    await waitFor(() => expect(screen.getByText(/No curriculum has been imported yet/)).toBeTruthy());
+    expect(screen.queryAllByRole("progressbar")).toHaveLength(0);
+    expect(routerMock.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("LearnPage — auth failure", () => {
+  it("redirects to /token when the curriculum fetch is unauthorized, not to any other route", async () => {
+    getCurriculum.mockRejectedValue(new UnauthorizedError());
+    getProgress.mockResolvedValue({ kind: "ok", entries: [] });
+    render(<LearnPage />);
+
+    await waitFor(() => expect(routerMock.replace).toHaveBeenCalledWith("/token"));
+    expect(routerMock.replace).not.toHaveBeenCalledWith("/dashboard");
+    expect(routerMock.replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the generic error state, not a redirect, for a non-401 curriculum failure", async () => {
+    getCurriculum.mockRejectedValue(new Error("network request failed"));
+    getProgress.mockResolvedValue({ kind: "ok", entries: [] });
+    render(<LearnPage />);
+
+    await waitFor(() => expect(screen.getByText(/Could not load the curriculum/)).toBeTruthy());
+    expect(routerMock.replace).not.toHaveBeenCalled();
+  });
 });
 
 describe("LearnPage — track detail view", () => {
@@ -107,7 +143,7 @@ describe("LearnPage — track detail view", () => {
     render(<LearnPage />);
 
     const button = await screen.findByRole("button", { name: /Model-Driven Foundations/ });
-    button.click();
+    fireEvent.click(button);
     expect(await screen.findByRole("img", { name: "Read" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "In progress" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -120,7 +156,7 @@ describe("LearnPage — track detail view", () => {
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     const button = await screen.findByRole("button", { name: /Model-Driven Foundations/ });
-    button.click();
+    fireEvent.click(button);
     expect(screen.queryAllByRole("img")).toHaveLength(0);
     // The chapter header must fall back to "n/N ready", never a confident
     // "0/3 read" — that would happen if a failed fetch's null ever got

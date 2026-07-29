@@ -10,22 +10,32 @@ interface ProgressProp {
   progress: ProgressByKey | null;
 }
 
-// Every row reserves this slot whether or not it renders a marker (S7), so
+// Every row reserves this slot whether or not it renders a marker, so
 // a track that mixes marked and unmarked concepts still keeps every title
 // starting at the same x position — otherwise "not_started" rows (no
 // marker) sit flush left while "passed"/"in_progress" rows indent one icon
 // further, and the list goes ragged at narrow widths.
 function MarkerSlot({ marker }: { marker: "passed" | "in_progress" | "none" }) {
-  if (marker === "none") return <span className="inline-block h-4 w-4 shrink-0" />;
+  if (marker === "none") return <span data-testid="concept-marker-slot" className="inline-block h-4 w-4 shrink-0" />;
   if (marker === "passed") {
     return (
-      <span role="img" aria-label="Read" className="inline-flex h-4 w-4 shrink-0 items-center text-success-strong">
+      <span
+        data-testid="concept-marker-slot"
+        role="img"
+        aria-label="Read"
+        className="inline-flex h-4 w-4 shrink-0 items-center text-success-strong"
+      >
         <CheckIcon />
       </span>
     );
   }
   return (
-    <span role="img" aria-label="In progress" className="inline-flex h-4 w-4 shrink-0 items-center text-warning-strong">
+    <span
+      data-testid="concept-marker-slot"
+      role="img"
+      aria-label="In progress"
+      className="inline-flex h-4 w-4 shrink-0 items-center text-warning-strong"
+    >
       <InProgressIcon />
     </span>
   );
@@ -109,10 +119,7 @@ function ChapterRow({ topicSlug, chapter, progress }: { topicSlug: string; chapt
         )}
       </button>
 
-      <ul
-        id={conceptsId}
-        className={`space-y-1 border-t border-subtle px-4 py-3 pl-9 ${open ? "" : "hidden"}`}
-      >
+      <ul id={conceptsId} hidden={!open} className="space-y-1 border-t border-subtle px-4 py-3 pl-9">
         {chapter.concepts.map((concept, index) => (
           <li key={concept.slug}>
             <ConceptRow topicSlug={topicSlug} concept={concept} step={index + 1} progress={progress} />
