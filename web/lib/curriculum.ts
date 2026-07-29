@@ -153,3 +153,18 @@ export function pickNextUp(tracks: Track[], progressByKey: ProgressByKey, focusT
 
   return anyLessonExists ? { kind: "all-done" } : { kind: "no-lessons" };
 }
+
+// Extracted out of the page component so the dedupe rule (don't list the
+// track pickNextUp already surfaced as Next Up) is covered by a plain unit
+// test instead of living untested inside JSX.
+export function buildOtherTracks(
+  tracks: Track[],
+  progressByKey: ProgressByKey,
+  focusTrack: string | null,
+  nextUp: NextUpResult,
+): TrackProgressStats[] {
+  return pinFocusFirst(sortTracksByDisplayOrder(tracks), focusTrack)
+    .map((track) => computeTrackProgress(track, progressByKey))
+    .filter((stats) => stats.total > 0)
+    .filter((stats) => !(nextUp.kind === "next" && stats.track === nextUp.track));
+}

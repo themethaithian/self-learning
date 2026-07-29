@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Chapter, Concept, ProgressEntry, ProgressState, Topic, Track } from "./api";
 import type { TrackStats } from "../components/TrackCard";
 import {
+  buildOtherTracks,
   computeTrackProgress,
   countAvailableLessons,
   findNextLesson,
@@ -10,6 +11,7 @@ import {
   pickNextUp,
   pinFocusFirst,
   progressKey,
+  type NextUpResult,
   type ProgressByKey,
 } from "./curriculum";
 
@@ -346,5 +348,38 @@ describe("indexProgress", () => {
 describe("progressKey", () => {
   it("cannot collide when characters shift between topic and concept, unlike plain concatenation", () => {
     expect(progressKey("ab", "c")).not.toBe(progressKey("a", "bc"));
+  });
+});
+
+describe("buildOtherTracks", () => {
+  it("excludes the track pickNextUp is currently pointing at", () => {
+    const tracks = [
+      track("ddd", [topic("t1", 1, [chapter("c1", 1, [concept("k1", true, 1)])])]),
+      track("go", [topic("t2", 1, [chapter("c2", 1, [concept("k2", true, 1)])])]),
+    ];
+    const nextUp = pickNextUp(tracks, {}, null);
+    expect(buildOtherTracks(tracks, {}, null, nextUp).map((s) => s.track)).toEqual(["go"]);
+  });
+
+  it("includes every lesson-bearing track when there is no active next-up pick", () => {
+    const tracks = [
+      track("ddd", [topic("t1", 1, [chapter("c1", 1, [concept("k1", true, 1)])])]),
+      track("go", [topic("t2", 1, [chapter("c2", 1, [concept("k2", true, 1)])])]),
+    ];
+    const progress = progressMap([
+      ["t1", "k1", "passed"],
+      ["t2", "k2", "passed"],
+    ]);
+    const allDone: NextUpResult = { kind: "all-done" };
+    expect(buildOtherTracks(tracks, progress, null, allDone).map((s) => s.track)).toEqual(["ddd", "go"]);
+  });
+
+  it("excludes a track with zero lessons", () => {
+    const tracks = [
+      track("aws", [topic("t1", 1, [chapter("c1", 1, [concept("k1", false, 1)])])]),
+      track("ddd", [topic("t2", 1, [chapter("c2", 1, [concept("k2", true, 1)])])]),
+    ];
+    const noLessons: NextUpResult = { kind: "no-lessons" };
+    expect(buildOtherTracks(tracks, {}, null, noLessons).map((s) => s.track)).toEqual(["ddd"]);
   });
 });

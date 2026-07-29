@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCurriculum, getFocusTrack, getProgress, UnauthorizedError, type Track } from "@/lib/api";
-import { computeTrackProgress, indexProgress, pickNextUp, pinFocusFirst, type NextUpResult, type ProgressByKey } from "@/lib/curriculum";
-import { sortTracksByDisplayOrder, trackLabel } from "@/lib/trackMeta";
+import { buildOtherTracks, indexProgress, pickNextUp, type NextUpResult, type ProgressByKey } from "@/lib/curriculum";
+import { trackLabel } from "@/lib/trackMeta";
 import { useFocusTrack } from "@/lib/useFocusTrack";
 import { Card } from "@/components/Card";
 import { Button, LinkButton } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
 import { FocusToggleButton } from "@/components/FocusToggleButton";
+import { plural } from "@/components/TrackCard";
 import { TodaySkeleton } from "@/components/Skeleton";
 import { BookIcon, WarningIcon } from "@/components/icons";
 
@@ -81,9 +82,7 @@ function OtherTrackRow({
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-subtle bg-surface px-4 py-3">
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-heading">{label}</p>
-        <p className="text-xs text-muted">
-          {progressAvailable ? `${done}/${total} done` : `${total} lesson${total === 1 ? "" : "s"}`}
-        </p>
+        <p className="text-xs text-muted">{progressAvailable ? `${done}/${total} done` : plural(total, "lesson")}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <FocusToggleButton isFocus={isFocus} saving={saving} busy={busy} onToggle={() => onSetFocus(isFocus ? null : track)} />
@@ -110,7 +109,7 @@ export default function TodayPage() {
     setState({ status: "loading" });
     try {
       const [curriculum, progress, focus] = await Promise.all([getCurriculum(), getProgress(), getFocusTrack()]);
-      if (progress.ok) {
+      if (progress.kind === "ok") {
         setProgressByKeyValue(indexProgress(progress.entries));
         setProgressAvailable(true);
       } else {
@@ -148,16 +147,14 @@ export default function TodayPage() {
 
   const { tracks } = state;
   const nextUp = pickNextUp(tracks, progressByKey, focusTrack);
-  const otherTracks = pinFocusFirst(sortTracksByDisplayOrder(tracks), focusTrack)
-    .map((track) => ({ label: trackLabel(track.track), ...computeTrackProgress(track, progressByKey) }))
-    .filter((stats) => stats.total > 0)
-    .filter((stats) => !(nextUp.kind === "next" && stats.track === nextUp.track));
+  const otherTracks = buildOtherTracks(tracks, progressByKey, focusTrack, nextUp);
 
   return (
     <div className="space-y-8">
       {!progressAvailable && (
         <div role="alert" className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger-strong">
-          Could not load your reading progress — counts below and the Continue/Start label above may be out of date.
+          Could not load your reading progress — the pick below, its Continue/Start label, and every count under
+          Other tracks may be wrong until this loads.
         </div>
       )}
 
@@ -179,14 +176,18 @@ export default function TodayPage() {
 
       <NextUpSection next={nextUp} />
 
-      {otherTracks.length > 0 && (
+      {/* Only shown alongside an actual "next" pick — once every track is
+          finished or empty there's nothing left to contrast Next Up against,
+          and this would otherwise render "you're all caught up" followed by
+          a redundant list of every track. */}
+      {nextUp.kind === "next" && otherTracks.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-xs font-medium uppercase tracking-wide text-faint">Other tracks</h2>
           <div className="space-y-2">
             {otherTracks.map((stats) => (
               <OtherTrackRow
                 key={stats.track}
-                label={stats.label}
+                label={trackLabel(stats.track)}
                 done={stats.done}
                 total={stats.total}
                 track={stats.track}

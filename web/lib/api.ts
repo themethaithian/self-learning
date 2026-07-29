@@ -162,22 +162,21 @@ interface ProgressListResponse {
   concepts: ProgressEntry[];
 }
 
-export type ProgressResult = { ok: true; entries: ProgressEntry[] } | { ok: false };
+export type ProgressResult = { kind: "ok"; entries: ProgressEntry[] } | { kind: "error" };
 
-// A failure is reported explicitly as {ok: false} rather than degrading to
-// an empty entries list — an empty list and "couldn't load" must stay
-// distinguishable to the caller, or a track the user has actually read
-// renders as 0 done (the same false-"finished"/false-"zero" bug this epic
-// already refuses to ship as an always-full progress bar). The
-// Array.isArray guard covers a 200 response with an unexpected body too, so
-// this can never resolve to {ok: true, entries: undefined}.
+// A response whose body doesn't actually contain a concepts array — a
+// renamed key, an error payload shaped differently, anything that isn't the
+// documented shape — is reported the same as a fetch failure ({kind:
+// "error"}), never as success with an empty history. The failure mode this
+// guards against is a FALSE "ok" (which /today would render as a confident
+// "0 done"), not merely an undefined entries field.
 export async function getProgress(): Promise<ProgressResult> {
   try {
     const res = await apiFetch<ProgressListResponse>("/api/v1/progress");
-    return { ok: true, entries: Array.isArray(res.concepts) ? res.concepts : [] };
+    return Array.isArray(res?.concepts) ? { kind: "ok", entries: res.concepts } : { kind: "error" };
   } catch (err) {
     if (err instanceof UnauthorizedError) throw err;
-    return { ok: false };
+    return { kind: "error" };
   }
 }
 
