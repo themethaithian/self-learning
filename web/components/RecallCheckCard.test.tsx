@@ -566,4 +566,15 @@ describe("RecallCheckCard — save-status indicator", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(screen.queryByText("Not saved")).toBeNull();
   });
+
+  it("shows 'Saving…' on saveStatus='saving', with no Retry affordance", () => {
+    renderCard(mcqCheck, { rng: zeroRng, saveStatus: "saving" });
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(screen.getByText("Saving…")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
 });

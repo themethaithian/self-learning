@@ -116,16 +116,25 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   `RecallAttempt`), `POST /api/v1/progress/{topic}/{concept}/attempts` — `graded_by='self'`
   เกิดจริงครั้งแรกที่นี่ · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table อยู่ที่
   [`docs/tickets/quiz.md`](tickets/quiz.md)
-- [ ] Q-2b (implemented, PR pending) — wire the quiz to the attempts API: **ticket ที่ทำให้
-  ข้อมูล in-memory ของ Q-1 (confidence ที่เลือก, ตัวเลือกที่กด, ผลถูก/ผิด) persist จริงในที่สุด
-  แทนที่จะหายตอน refresh** — `web/lib/api.ts`'s `postAttempt` เรียก endpoint ของ Q-2a จาก
-  `RecallCheckCard` (ยิงเมื่อ attempt ครบจริง: mcq ที่ stage 3, short_answer ที่ Pass/Not yet —
-  resubmit เมื่อ rating เปลี่ยน) ผ่าน `lesson/page.tsx` (identity guard เดียวกับ `finish()`'s
-  `stillCurrent()`, per-check "Not saved" + Retry indicator, aggregate banner เหนือปุ่ม Finish
-  เมื่อมี attempt ที่ยังไม่ save) · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table +
-  Playwright/SQL evidence อยู่ที่ [`docs/tickets/quiz.md`](tickets/quiz.md)
+- [ ] Q-2b (implemented, round 2 fixes applied post code-review, PR pending) — wire the quiz to
+  the attempts API: **ticket ที่ทำให้ข้อมูล in-memory ของ Q-1 (confidence ที่เลือก, ตัวเลือกที่กด,
+  ผลถูก/ผิด) persist จริงในที่สุด แทนที่จะหายตอน refresh** — `web/lib/api.ts`'s `postAttempt`
+  เรียก endpoint ของ Q-2a จาก `RecallCheckCard` (ยิงเมื่อ attempt ครบจริง: mcq ที่ stage 3 ทันที;
+  short_answer debounce 1s ก่อน submit — กัน flip-flop ของ Pass/Not yet เขียนหลายแถวโดยไม่ตั้งใจ,
+  flush ทันทีตอน Finish/navigate away) ผ่าน `lesson/page.tsx` (identity guard คนละกลไกกับ
+  `finish()`'s slug-based `stillCurrent()` เดิม — ใช้ `loadGenerationRef` นับ "visit" แทน slug
+  equality, จำเป็นเพราะการกลับมาที่ lesson เดิมมี slug ซ้ำกับ visit ก่อนหน้า; per-check
+  "Not saved" + Retry indicator, aggregate banner ทั้ง "saving" และ "error" เหนือปุ่ม Finish)
+  · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table + Playwright/SQL evidence อยู่ที่
+  [`docs/tickets/quiz.md`](tickets/quiz.md)
 - [ ] Q-2c — `review_cards`/`review_logs` + SM-2 scheduling (อ่าน `recall_attempts` ที่ Q-2a
   สร้างไว้ ไม่ใช่ schema ใหม่ที่ไม่เกี่ยวกัน) · สโคปที่ [`docs/tickets/quiz.md`](tickets/quiz.md)
+  · **ข้อกำหนดจาก Q-2b's code review (ยังไม่แก้ในรอบนี้ — ห้ามแก้ migration ในรอบ Q-2b)**: query
+  ที่อ่าน "แถวล่าสุดของ check_key นี้" ต้อง `ORDER BY created_at DESC, id DESC` ไม่ใช่แค่
+  `created_at DESC` เฉย ๆ — `recall_attempts.created_at` เป็น `TIMESTAMP` (second precision)
+  พิสูจน์แล้วว่าสองแถวที่ submit ห่างกันจริงในเวลาปกติ (ไม่ใช่ race condition) ตกอยู่วินาทีเดียวกัน
+  ได้จริง ทำให้ `created_at DESC` เดี่ยว ๆ เรียงลำดับ "ล่าสุด" ผิดได้ (Pass→Not yet ในวินาทีเดียวกัน
+  อาจอ่านกลับมาเป็น Pass) — `id` เป็น `AUTO_INCREMENT` (monotonic เสมอ) จึงต้องเป็น tie-breaker
 - [ ] Q-3 — เพิ่ม `explanation` ให้ MCQ ครบทั้ง 356 ข้อ (ตอนนี้ 0 ข้อมี) — รอบเดียวกับที่ขัดเกลา
   distractor ที่หลุดธีม **3 concept** (`b-trees`, `column-oriented-storage`, `process-pauses`)
 

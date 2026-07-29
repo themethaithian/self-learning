@@ -742,15 +742,19 @@ Status: implemented, round 2 fixes applied post code-review, PR pending
   ว่างเปล่าจริง. `web/lib/api.ts` เพิ่ม `postAttempt` + types (`AttemptConfidence`,
   `AttemptOutcome`, `AttemptInput`, `AttemptRecord`, `PostAttemptResult`).
   `web/components/RecallCheckCard.tsx` เพิ่ม prop `onAttemptReady` (ยิงเมื่อ attempt
-  ครบจริง), `saveStatus`/`onRetrySave` (แสดง "Not saved" + Retry ต่อการ์ด), export
-  `AttemptSaveStatus` ใหม่, ย้าย `selectedOptionText`/`isMcqCorrect` มาก่อน effect
-  เดิม (ต้องใช้ในทั้งสอง effect), `Confidence` type เปลี่ยนมา alias จาก
-  `AttemptConfidence` ของ api.ts แทนที่จะ derive เองจาก `CONFIDENCE_OPTIONS`.
-  `web/app/(app)/lesson/page.tsx` เพิ่ม `attemptStatus`/`pendingAttemptsRef` state,
-  `submitAttempt`/`handleAttemptReady`/`handleRetrySave`, banner รวม "Some recall
-  attempts didn't save" เหนือปุ่ม Finish. เทสต์ใหม่ใน `api.test.ts` (+4),
-  `RecallCheckCard.test.tsx` (+12), `page.test.tsx` (+9, ไฟล์เดียวกับที่ UX-5 ปักไว้
-  ไม่ใช่ไฟล์แยก) — รวม `npm test` **124 → 152**
+  ครบจริง — export type `CompletedAttempt` ด้วย, รอบ 2), `saveStatus`/`onRetrySave`
+  (แสดง "Saving…"/"Not saved" + Retry ต่อการ์ด), export `AttemptSaveStatus` ใหม่.
+  `web/app/(app)/lesson/page.tsx` เพิ่ม `attemptStatus`/`pendingAttemptsRef`/
+  `debounceTimersRef`/`loadGenerationRef` state, `submitAttempt`/`flushPendingAttempt`/
+  `flushAllPendingAttempts`/`handleAttemptReady`/`handleRetrySave`, banner "Saving N
+  recall attempt(s)…" + "Some recall attempts didn't save" เหนือปุ่ม Finish (รอบ 2
+  แยกสองบรรทัด). **รอบ 2 (หลัง code review)**: `loadGenerationRef` แทน slug-based
+  identity guard เดิม, short_answer debounce 1s ก่อน submit จริง (mcq ยังทันที),
+  flush 3 เส้นทาง (quiet period/Finish/navigate away), แก้ dead branch + silent-drop
+  path ใน `submitAttempt`/`handleAttemptReady` — รายละเอียดเต็มอยู่ที่หัวข้อ "รอบ
+  code-reviewer" ด้านล่าง. เทสต์สุดท้าย: `api.test.ts` **6 → 11** (+5),
+  `RecallCheckCard.test.tsx` **30 → 44** (+14), `page.test.tsx` **2 → 20** (+18,
+  ไฟล์เดียวกับที่ UX-5 ปักไว้ ไม่ใช่ไฟล์แยก) — รวม `npm test` **124 → 161**
 
 ### การตัดสินใจหลัก
 
@@ -788,17 +792,22 @@ Status: implemented, round 2 fixes applied post code-review, PR pending
   เลือกยอมรับความเสี่ยง duplicate (เหมือนกับ double-submit โดยตั้งใจ, เป็น data
   problem ที่ Q-2c อ่าน `created_at DESC` ล่าสุดอยู่แล้วไม่กระทบ) ดีกว่าทิ้ง retry
   affordance ไป
-- **Identity guard: `submitAttempt` reuse `currentIdentityRef`/`stillCurrent()`
-  เดิมของ `finish()`, ไม่สร้างกลไกใหม่**: attempt state (`attemptStatus`,
-  `pendingAttemptsRef`) เป็นของ `LessonView` (parent) ไม่ใช่ของ `RecallCheckCard`
-  โดยตั้งใจ — ถ้าให้ `RecallCheckCard` เก็บ save-status เองในเครื่อง (local state)
-  ความปลอดภัยจาก lesson A รั่วเข้า lesson B จะได้มาฟรีจากการที่การ์ดทั้งก้อน unmount
+- **Identity guard: attempt state อยู่ที่ `LessonView` (parent) ไม่ใช่
+  `RecallCheckCard`, และ `stillCurrent()` เทียบ "visit" ไม่ใช่ slug (แก้ในรอบ
+  2 — ดู R1/R2 ของ "รอบ code-reviewer" ด้านล่างสำหรับหลักฐานและรายละเอียดเต็ม)**:
+  attempt state (`attemptStatus`, `pendingAttemptsRef`) เป็นของ parent โดยตั้งใจ
+  — ถ้าให้ `RecallCheckCard` เก็บ save-status เองในเครื่อง (local state) ความ
+  ปลอดภัยจาก lesson A รั่วเข้า lesson B จะได้มาฟรีจากการที่การ์ดทั้งก้อน unmount
   ตอนเปลี่ยน lesson (ข้อสรุปเดิมจาก Q-1's M11) แต่ banner รวม "some attempts
-  didn't save" เหนือปุ่ม Finish (requirement ข้อ 4 ของ ticket) ต้องอ่าน state ข้าม
-  ทุกการ์ดพร้อมกัน — บังคับให้ state ต้องอยู่ที่ parent ซึ่ง **ไม่** unmount ข้าม
-  query-param navigation (ต่างจาก child cards) จึงต้องมี `stillCurrent()` guard
-  จริงเหมือน `finish()` ไม่ใช่ได้มาฟรีจาก unmount — พิสูจน์เป็นมูเทชันจริงด้านล่าง
-  (M10) ว่าไม่มี guard นี้ = ข้อมูลรั่วจริงผ่าน aggregate banner
+  didn't save"/"saving" เหนือปุ่ม Finish ต้องอ่าน state ข้ามทุกการ์ดพร้อมกัน —
+  บังคับให้ state ต้องอยู่ที่ parent ซึ่ง **ไม่** unmount ข้าม query-param
+  navigation (ต่างจาก child cards) จึงต้องมี guard จริง ไม่ใช่ได้มาฟรีจาก
+  unmount. **รอบแรกใช้ slug equality (`currentIdentityRef`) เหมือน `finish()`
+  เดิม แล้วพบว่าไม่พอจริง**: slug เทียบได้แค่ "lesson นี้ตรงกับที่จอแสดงอยู่
+  หรือเปล่า" ไม่ใช่ "response นี้เป็นของ visit ที่เริ่มมันขึ้นมาจริงหรือเปล่า" —
+  กลับมาที่ lesson เดิมซ้ำ (A → B → กลับมา A) มี slug เดิมทุกตัวอักษรกับ visit
+  ก่อนหน้า ทำให้ response ค้างของ visit แรกถูกเข้าใจผิดว่าเป็นของ visit ปัจจุบัน
+  ได้ — แก้ด้วย `loadGenerationRef` (นับ visit จริง ไม่ใช่ slug)
 - **Error handling ไม่แยกตาม HTTP status (400/404/413/500 ทั้งหมด =
   `{kind:"error"}` เดียวกัน)**: ตั้งใจไม่ทำ granular error taxonomy ต่อ ticket
   scope ("Not saved" + Retry พอสำหรับ v1) — ต่างจาก `finishState.error` เดิมที่โชว์
@@ -926,15 +935,199 @@ ubiquitous-language` เดิม (มีทั้ง mcq และ short_answer
 - ไม่แก้ granular error message ต่อ HTTP status ของ attempts POST — `{kind:
   "error"}` เดียวพอสำหรับ "Not saved" + Retry ตาม scope ที่ ticket กำหนด
   (`400`/`404`/`413`/`500` แสดงผลเหมือนกันหมดจากมุมผู้ใช้)
-- ไม่ป้องกัน race ระหว่าง correction สองครั้งที่ยิงเร็วมาก (short_answer สลับ
-  Pass/Not yet ก่อนแถวแรก resolve) จน UI status อาจแสดงผลไม่ตรงลำดับชั่วคราว — ทั้ง
-  สอง POST ยัง insert แถวถูกต้องเสมอ (data ไม่เสียหาย) กระทบแค่ transient UI display
-  ซึ่งประเมินว่าความเสี่ยงต่ำ (ต้องคลิกสลับเร็วมากในหน้าต่างสั้น ๆ)
 - ไม่มี "your attempt history" view, ไม่แตะ `review_cards`/`review_logs`/SM-2 —
   Q-2c
 - ไม่เปลี่ยน 3-stage flow เดิมของ Q-1 เลย
+- ไม่แก้ `finish()`'s identity guard เดิม (UX-5) ให้ใช้ `loadGenerationRef`
+  ด้วย — ดู R1 ของรอบ code-reviewer ด้านล่างสำหรับเหตุผลที่ scope จำกัดเฉพาะ
+  `submitAttempt`
 
-Status: implemented, PR pending
+### รอบ code-reviewer (REQUEST_CHANGES → แก้ครบ)
+
+Reviewer รัน mutation set ของตัวเอง **14 จุดตามที่ ticket เรียกร้อง ตายหมดจริง**
+แต่เพิ่มอีก **5 จุดที่รอด** จาก edge case ที่รอบแรกไม่ได้ทดสอบ:
+
+- **R1/R2 (blocking, แก้แล้ว) — identity guard เทียบ slug ไม่ใช่ "visit"**:
+  `currentIdentityRef` (topic/concept equality) แยกไม่ออกระหว่าง "กลับมาที่
+  lesson เดิมอีกครั้ง" กับ "ยังเป็น visit เดิม" — reviewer พิสูจน์สดด้วย A → B →
+  กลับมา A: attempt ของ visit แรกค้างอยู่ (POST ช้า, `AbortSignal.timeout` 10
+  วินาทีทำให้เรื่องนี้เป็นเรื่องปกติบนมือถือ ไม่ใช่ edge case แปลก) พอกลับมา A
+  (visit ใหม่) แล้ว POST ของ visit ใหม่ fail จริง (เห็น "Not saved" + banner
+  ถูกต้อง) แต่พอ visit แรกที่ค้างอยู่ resolve เป็น `{kind:"ok"}` ทีหลัง —
+  `stillCurrent()` เดิม (เทียบ slug) คืน **true** เพราะ topic/concept ของสอง
+  visit เหมือนกัน → เขียนทับสถานะ "error" จริงด้วย "saved" ปลอม (R1), และใน
+  variant ที่ visit สองไม่แตะอะไรเลย stale error ของ visit แรกก็ leak เข้ามา
+  โดยไม่มี Retry ให้กด เพราะ `pendingAttemptsRef` ถูก reset ไปแล้วตอนเปลี่ยน
+  lesson (R2) — ตรงกับ bug class เดียวกับที่ UX-6 เคยเจอมาก่อน (slug equality
+  ข้าม lifecycle boundary ไม่ใช่ identity ที่แท้จริง). แก้ด้วย `loadGenerationRef`
+  (ref นับเลข bump ทุกครั้งที่ effect โหลด lesson รันใหม่ **รวมถึงการโหลด
+  lesson เดิมซ้ำ**) — `submitAttempt` capture generation ตอนเริ่ม แล้วเทียบ
+  `loadGenerationRef.current === generation` แทน slug equality เดิม. **ไม่แก้
+  `finish()`'s guard เดิม (UX-5) ให้ใช้กลไกเดียวกัน** แม้จะมี bug class
+  เดียวกันในทางทฤษฎี เพราะ reviewer ไม่ได้ชี้จุดนั้น และเป็นโค้ด pre-existing
+  นอก scope ของ Q-2b — บันทึกไว้เป็นความเสี่ยงที่รู้ตัวแล้วด้านล่าง
+- **R3 (blocking, แก้แล้ว) — retry ไม่เคย assert request body**: มูเทต
+  `handleRetrySave` ให้ resend `{...stored, confidence:"guessed"}` แทน `stored`
+  ตรง ๆ แล้ว `npm test` ยังเขียว 161/161 — เทสต์เดิมเช็คแค่ "เรียก postAttempt
+  2 ครั้ง" กับ "indicator หาย" ไม่เคยเทียบว่า call ที่สองส่งอะไรจริง ทั้งที่
+  ตารางเป็น append-only ไม่มี idempotency key: retry ที่ผิด payload = แถวผิด
+  ถาวร ไม่ใช่ glitch ชั่วคราว. เพิ่ม `expect(postAttempt.mock.calls[1]).toEqual
+  (postAttempt.mock.calls[0])` เข้าไปในเทสต์เดิม
+- **R4 (blocking, แก้แล้ว) — "saving" state ทั้งก้อนไม่มีเทสต์คุ้มครองเลย**:
+  มูเทต 3 จุดตายทั้งหมดหลังแก้ (ก่อนแก้ **ไม่มีจุดไหนถูกจับเลยสักจุด**): (a) ลบ
+  `setAttemptStatus(...,"saving")` ใน `submitAttempt`, (b) ลบ `"Saving…"` render
+  ใน `RecallCheckCard`, (c) ลบ `if (attemptStatus[position]==="saving") return;`
+  ใน `handleRetrySave`. (a)/(b) แก้ด้วยเทสต์ใหม่ที่ pin สถานะ "saving" ตรง ๆ ทั้ง
+  ที่ระดับ `RecallCheckCard` เดี่ยว ๆ และที่ระดับ `LessonPage` เต็มระบบ (deferred
+  promise คุม timing). **(c) พิสูจน์แล้วว่าเป็น equivalent mutant จริง ไม่ใช่
+  survivor ที่ต้องแก้** — ปุ่ม Retry render เฉพาะตอน `saveStatus==="error"`
+  เท่านั้น, พอกด Retry ครั้งแรก React commit สถานะ "saving" (ลบปุ่มออกจาก DOM)
+  **ก่อน** browser event ถัดไปจะประมวลผลได้เสมอ (ยืนยันด้วย probe แยกต่างหาก:
+  `fireEvent.click` ครั้งที่สองบน DOM node ที่ถูกถอดออกไปแล้วไม่ trigger handler
+  ซ้ำเลย เพราะ synthetic event bubble ไม่ถึง root listener ของ React ถ้า node
+  หลุดจาก tree แล้ว — ทดสอบจริงด้วย component จำลองแยกต่างหาก ไม่ใช่แค่คาดเดา)
+  เก็บ guard นี้ไว้เป็น defense-in-depth (เผื่ออนาคตเปลี่ยนให้ Retry โชว์ตอน
+  "saving" ด้วย เหมือน pattern ของปุ่ม Finish ที่ใช้ `aria-disabled` ไม่ใช่ลบปุ่ม
+  ทิ้ง) แต่ **ไม่มีเทสต์ไหน kill มันได้จริงในโครงสร้างปัจจุบัน** — บันทึกตรง ๆ
+  แทนที่จะเสแสร้งว่ามี. เพิ่มเติม: "Finish อ่านว่าเสร็จทั้งที่ attempt ยังค้างอยู่"
+  พิสูจน์สดว่าเป็นจริง (banner รวมเดิมเช็คแค่ `"error"` ไม่เช็ค `"saving"`) — แก้
+  โดยเพิ่ม `savingAttemptCount` + banner แยก ("Saving N recall attempts…", role
+  ="status", สีกลาง ไม่ใช่สี danger เพราะไม่ใช่ error) แสดงคู่กับ "Lesson
+  finished" ได้พร้อมกัน ไม่ใช่แทนที่กัน — เพิ่มเทสต์ยืนยันทั้งสอง banner โชว์
+  พร้อมกันจริง
+- **R5 (blocking, แก้แล้ว) — flip-flop รัวๆ เขียนหลายแถว รวมถึงแถวซ้ำไบต์ต่อไบต์**:
+  พิสูจน์สดว่า Pass/Not yet/Pass/Not yet บนการ์ดเดียวเขียน **4 แถว** ใต้
+  `check_key` เดียวกัน โดยแถว 1&3 และ 2&4 เหมือนกันทุกไบต์ — เอกสารรอบแรกแก้ตัวว่า
+  "การแก้ไขคือข้อมูลใหม่ที่มีค่า" ซึ่งใช้ได้กับการแก้ไข**ครั้งแรก**เท่านั้น ไม่ใช่
+  แถว 3/4 ที่เป็นแค่ความลังเลของ UI. แก้ด้วย **debounce ก่อนส่ง ไม่ใช่กันการย้อน
+  กลับไปค่าเดิม** (ทางเลือกหลังทำให้ "แถวล่าสุด" ไม่ใช่คำตอบล่าสุดของ user จริง
+  ซึ่งแย่กว่า) — `handleAttemptReady` เลื่อนการ submit ของ short_answer ออกไป
+  **1000ms** (mcq ไม่ต้องเพราะ input freeze ทันทีที่ reveal, มีค่าเดียวเสมอ) เคลียร์
+  timer เดิมทุกครั้งที่มีการเปลี่ยนแปลงใหม่ (`clearTimeout` + `setTimeout` ใหม่)
+  ทำให้มีแค่ค่าสุดท้ายที่ settle จริงเท่านั้นถูกส่ง. Flush ทันที (ข้าม debounce)
+  ใน 3 จุดตามที่ ticket เรียกร้อง: (1) quiet period หมดเวลาเอง (2) `Finish` ถูก
+  กด (`flushAllPendingAttempts()` ก่อนเรียก `finish()`) (3) navigate ออก (effect
+  cleanup ของ per-navigation effect เรียก `flushAllPendingAttempts()` **ก่อน**
+  effect ใหม่จะ null `currentIdentityRef`/bump generation ทำให้ยังส่งด้วย
+  identity/generation ของ lesson เดิมได้ถูกต้อง) — ทดสอบครบทั้ง 3 เส้นทาง
+  รวมถึง "ตอบแล้วออกจากหน้าเร็ว ๆ ก็ยังเขียนแค่แถวเดียว" ด้วย fake timers
+  (`vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync`) และพิสูจน์สดด้วย
+  Playwright ว่า flip-flop จริงเขียนแค่ **1 แถว** พร้อมค่าที่ settle จริง (ดู
+  Live evidence รอบ 2 ด้านล่าง)
+- **R6 (แก้แล้ว) — คำกล่าวอ้าง 3 จุดที่ไม่จริง**:
+  - "ทั้งสอง POST ยัง insert แถวถูกต้องเสมอ กระทบแค่ transient UI display" —
+    **เท็จ**: `created_at` เป็น `TIMESTAMP` second-precision
+    (`migrations/006_recall.sql:19`) และ query ที่ Q-2c จะใช้คือ `WHERE
+    check_key = ? ORDER BY created_at DESC` — reviewer พิสูจน์ว่าสองแถวที่
+    submit ห่างกันจริงในเวลาปกติ (ไม่ใช่ race) ตกวินาทีเดียวกันได้จริง ทำให้
+    "แถวล่าสุด" อ่านผิดได้ (Pass→Not yet ในวินาทีเดียวกันอ่านกลับมาเป็น Pass) —
+    แก้คำอธิบายเป็น data-ordering risk ไม่ใช่ display glitch, และบันทึกเป็น
+    ข้อกำหนดของ Q-2c ใน `docs/roadmap.md` (`ORDER BY created_at DESC, id DESC`
+    — **ไม่แก้ migration ในรอบนี้**, R5's debounce ปิด root cause นี้ไปแล้วสำหรับ
+    flip-flop โดยเฉพาะอยู่แล้วด้วย)
+  - "Q-2c อ่าน `created_at DESC` ล่าสุดอยู่แล้วไม่กระทบ" — อ้างพฤติกรรมของ
+    ticket ที่**ยังไม่เริ่ม** (`Q-2c — not started` อยู่ไม่กี่บรรทัดถัดจากนี้เอง
+    ในไฟล์เดียวกัน) เป็น mitigation ที่มีอยู่จริง — ลบประโยคนี้ทิ้ง
+  - `RecallCheckCard.tsx`'s comment เดิมอ้างว่า guard กัน "React StrictMode's
+    double-invoked effects" — **StrictMode double-invoke เฉพาะตอน mount**, effect
+    นี้ early-return ตอน mount (`stage==="recall"`) แล้วมารายงานจริงตอน state
+    เปลี่ยนทีหลังซึ่ง StrictMode ไม่ double-invoke ซ้ำ — ยืนยันเชิงประจักษ์ว่า
+    ปิด dedup check แล้ว StrictMode test **ยังผ่าน** (มีแค่เทสต์ "re-render
+    เปลี่ยน callback identity" เท่านั้นที่จับได้จริง) — M1 row ของตารางมูเทชัน
+    ด้านล่างยอมรับเรื่องนี้อยู่แล้ว แต่ comment/prose ยังพูดตรงข้าม แก้ให้ตรงกัน
+- **R7 (แก้แล้ว) — comment เกินจริง/ล้าสมัย**: `RecallCheckCard.tsx`'s comment
+  บน `lastReportedAttemptRef` ตัดเหลือประโยคเดียว (resubmit policy) ตัด
+  StrictMode parenthetical ที่ผิดทิ้ง; comment บน prop `onAttemptReady` ที่พูดว่า
+  "fires again each time rating changes = new honest data point, save it"
+  ตัดทิ้งทั้งหมด เพราะ R5 เปลี่ยนพฤติกรรมจริงแล้ว (ไม่ใช่ทุกครั้งที่เปลี่ยนจะกลาย
+  เป็นแถวใหม่อีกต่อไป — เฉพาะค่าที่ settle) ชื่อ prop + type `CompletedAttempt`
+  พอเป็น self-documenting โดยไม่ต้องมี comment ผิด ๆ
+- **Also fixed (เล็ก ๆ ทั้งหมด)**: ลบ dead branch ใน `submitAttempt`'s catch
+  (`postAttempt` ไม่ throw อะไรนอกจาก `UnauthorizedError` แล้ว จึง `if
+  (!stillCurrent()) return; setAttemptStatus(...)` หลัง Unauthorized check
+  เดิมเข้าไม่ถึงได้เลย); `submitAttempt`/`handleAttemptReady`'s silent-drop path
+  (`!identity`/`!check`) เปลี่ยนจาก `return` เฉย ๆ เป็น mark `"error"` ก่อน
+  return (ทั้งสอง edge case แทบเป็นไปไม่ได้ในทางปฏิบัติ วิเคราะห์แล้วว่า
+  unreachable ผ่าน UI จริง จึง**ไม่มีเทสต์ pin** — บันทึกตรง ๆ); export
+  `CompletedAttempt` จาก `RecallCheckCard` แทน inline type ซ้ำใน
+  `handleAttemptReady` (กัน field ใหม่ถูก spread เข้า runtime แล้วเงียบ ๆ หายไป
+  ที่ `submitAttempt`'s explicit field list); ลบ `type Confidence =
+  AttemptConfidence` ที่เป็น pass-through เปล่า ๆ ใช้ `AttemptConfidence` ตรง ๆ;
+  แก้ `api.ts`'s comment ที่อ้างว่า "callers here (RecallCheckCard/lesson page)"
+  ทั้งที่ `RecallCheckCard` ไม่เคยเรียก `postAttempt` เอง; เพิ่มเทสต์
+  slug-encoding ให้ `postAttempt`
+
+### Mutation table รอบ 2 (14/14 required + 5 reviewer-found — 4 killed, 1 equivalent)
+
+รัน `npx vitest run` เต็มชุดหลังแก้แต่ละจุด แล้ว revert ทุกครั้ง — รวม re-verify
+มูเทชัน 11 จุดจากรอบแรก (M1-M11 เดิม, ดูตารางรอบแรกด้านบน) **ผ่านซ้ำทุกจุดหลัง
+restructure** (เช็คจุดที่โค้ดย้ายที่จริง: M6/M9 ย้ายเข้า `submitAttempt`/
+`handleAttemptReady` ใหม่ — kill ซ้ำได้เหมือนเดิม, M2 spot-check เพิ่มเติมใน
+`RecallCheckCard` ที่ไม่ถูกแก้เลยในรอบนี้ — kill เหมือนเดิม):
+
+| # | Mutation | ผลลัพธ์ |
+|---|---|---|
+| R1/R2 | `stillCurrent()` ใน `submitAttempt` เทียบ slug (`currentIdentityRef`) แทน `loadGenerationRef` | killed — 2 เทสต์ใหม่: "a stale OK response from an earlier visit..." และ "a stale failure response from an earlier visit..." (ทั้งคู่ A→B→A) |
+| R3 | `handleRetrySave` ส่ง `{...stored, confidence:"guessed"}` แทน `stored` ตรง ๆ | killed — assertion ใหม่ `expect(postAttempt.mock.calls[1]).toEqual(postAttempt.mock.calls[0])` ในเทสต์ retry เดิม |
+| R4a | ลบ `setAttemptStatus(...,"saving")` ใน `submitAttempt` | killed — 2 เทสต์ ("shows the pending-count banner..." + "surfaces a still-saving attempt...") |
+| R4b | ลบ `{saveStatus === "saving" && <p>Saving…</p>}` ใน `RecallCheckCard` | killed — 2 เทสต์ (component-level ใหม่ "shows 'Saving…' on saveStatus='saving'" + page-level "shows the pending-count banner...") |
+| R4c | ลบ `if (attemptStatus[position]==="saving") return;` ใน `handleRetrySave` | **equivalent mutant ยืนยันแล้ว** — Retry button unmount ทันทีที่ status เปลี่ยนจาก "error" (React commit synchronous ภายใน `act()` เดียวกับคลิกแรก) ทำให้คลิกซ้ำ (จริงหรือ synthetic) ไปไม่ถึง handler เลย พิสูจน์ด้วย probe component แยกต่างหาก (`fireEvent.click` ซ้ำบน node ที่ unmount แล้ว → handler เรียกแค่ 1 ครั้ง) — ไม่แก้โค้ด เก็บ guard ไว้เป็น defense-in-depth |
+| R6c | comment เดิมอ้าง StrictMode ผิด (guard ไม่ได้มาจาก StrictMode จริง) | ไม่ใช่ mutation — แก้ comment/doc ให้ตรงกับ M1's ผลจริงที่มีอยู่แล้ว |
+| M6 (re-verify) | `handleAttemptReady` ส่ง `check.expected_answer` แทน `check.question` (ย้ายที่แล้วยัง kill ได้) | killed — 4 เทสต์ (เพิ่มจาก 2 เดิม เพราะเทสต์ debounce ใหม่ก็แตะจุดเดียวกัน) |
+| M9 (re-verify) | 401 redirect ใน `submitAttempt`'s catch (ย้ายที่แล้วยัง kill ได้) | killed — 1 เทสต์เหมือนเดิม |
+| M2 (spot-check) | `isMcqCorrect` invert ใน `RecallCheckCard` (ไม่ถูกแก้ในรอบนี้เลย ยืนยันไม่ regress) | killed — 4 เทสต์เหมือนเดิม |
+
+**สรุป: 14/14 มูเทชันที่ ticket รอบ 2 เรียกร้องตายหมด, 5 จุดที่ reviewer เจอเพิ่ม
+4 killed จริง 1 equivalent (บันทึกไว้ตรง ๆ ไม่ใช่ซ่อน), 3 จุด re-verify จากรอบแรก
+ไม่มี regression จากการ restructure**
+
+### Live verification รอบ 2 (docker compose up -d --build, ไม่ใช้ -v)
+
+Stack เดิม, lesson `domain-driven-design/ubiquitous-language` เดิม (5 recall
+checks: short_answer/mcq/mcq/short_answer/mcq):
+
+- **Flip-flop เขียนแค่ 1 แถว พร้อมค่าที่ settle จริง**: Pass → Not yet → Pass
+  รัว ๆ บนการ์ดเดียว (`confidence=Guessed`) รอ 1.8 วินาที (เกิน debounce
+  window 1s) → `SELECT` เห็นแค่ **1 แถวใหม่** (`guessed, correct` — ตรงกับ
+  Pass ตัวสุดท้ายที่กด ไม่ใช่ตัวกลางที่เป็น Not yet)
+- **A → B → A ผ่าน client-side navigation จริง (ปุ่ม Next แล้วกด Back ของ
+  browser จริง ๆ — ไม่ใช่ `page.goto` ซึ่งจะ abort request ที่ค้างอยู่แทนที่จะ
+  ทดสอบอะไร)**: ตอบ mcq ที่ visit แรก (POST ถูก intercept หน่วงเวลา 4 วินาที
+  ผ่าน Playwright route), กด "Model-Driven Design →" (Next, client-side จริง
+  — ยืนยัน URL เปลี่ยนเป็น `concept=model-driven-design`), กด browser Back
+  (ยืนยัน URL กลับมา `concept=ubiquitous-language` — visit ใหม่, generation
+  bump แล้ว), ไม่แตะอะไรใน visit สอง, รอให้ POST ของ visit แรกที่ค้างอยู่
+  resolve (`{kind:"ok"}` จริง — แถวถูกเขียนจริงใน DB ยืนยันด้วย `SELECT`
+  ทีหลัง) → **banner รวม "recall attempts didn't save" count = 0, "Not saved"
+  count = 0** ทั้งคู่ — stale response ของ visit แรกไม่ leak เข้ามาใน visit
+  สองที่ไม่ได้แตะอะไรเลยจริง (ตรงกับ R2's scenario เป๊ะ)
+- **Finish อ่านว่าเสร็จพร้อมกับ attempt ที่ยังค้างอยู่ ยังโชว์ทั้งคู่พร้อมกัน**:
+  lesson นี้ถูก mark `passed` ไว้แล้วจากการทดสอบ Q-1/Q-2a รอบก่อน — reset
+  ชั่วคราวเป็น `in_progress` ด้วย SQL ตรง ๆ (บันทึกค่าดั้งเดิมไว้ก่อน) เพื่อทดสอบ
+  เส้นทางกด Finish จริง, ตอบครบทั้ง 5 checks เร็ว ๆ (POST ทุกตัวถูกหน่วง 3
+  วินาที), กด "Finish lesson" → banner "Lesson finished" โผล่จริง **พร้อมกับ**
+  banner "Saving N recall attempt(s)…" ที่ยังอยู่ (count = 1 พอดี ตอนเช็ค) —
+  ยืนยันว่า Finish ไม่ทำให้ attempt ที่ยังค้างอยู่หายไปจากสายตาผู้ใช้เงียบ ๆ
+  อีกต่อไป — restore `lesson_progress` กลับเป็นค่าดั้งเดิมทันทีหลังทดสอบ
+  (`state='passed'`, `first_passed_at` เดิมเป๊ะ, ยืนยันด้วย `SELECT` ก่อน/หลัง)
+- **Cleanup**: ลบแถวที่ script นี้สร้างทั้งหมด (`id > 18`, รวม 7 แถวจากรอบสุดท้าย
+  ที่รันสำเร็จ — บวกแถวจาก debug run ที่ครัชระหว่างพัฒนา script ซึ่งลบไปแล้ว
+  ก่อนรันรอบสุดท้ายด้วย) ยืนยันด้วย `SELECT` ก่อน (`COUNT=20, MAX(id)=61` จาก
+  debug runs) และหลัง (`COUNT=13, MAX(id)=18` — กลับสู่สภาพเดิมของ Q-2a's dev
+  data เป๊ะ)
+
+### Review focus (รอบ 2)
+
+- ทำไม `submitAttempt`'s identity guard ต้องเปลี่ยนจากเทียบ slug
+  (`currentIdentityRef`) เป็นนับ "visit" (`loadGenerationRef`) ทั้งที่
+  `finish()` ข้างล่างยังใช้ slug comparison เดิมอยู่ไม่ได้แก้?
+- ทำไมมูเทชัน "ลบ `if (attemptStatus[position]==="saving") return;`" ถึงไม่มี
+  เทสต์ไหน kill ได้เลย ทั้งที่โค้ดบรรทัดนี้ยังคงอยู่ในไฟล์ — เป็น coverage gap
+  จริงหรือเป็น equivalent mutant? อะไรคือหลักฐานที่แยกสองเรื่องนี้ออกจากกันได้?
+- ทำไมการแก้ flip-flop (R5) ต้องเป็น debounce-ก่อนส่ง แทนที่จะเป็น "กันการ
+  ย้อนกลับไปค่าเดิมที่เคย submit แล้ว"?
+
+Status: implemented, round 2 fixes applied post code-review, PR pending
 
 ## Q-2c — review_cards/review_logs + SM-2 scheduling (not started)
 

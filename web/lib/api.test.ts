@@ -104,6 +104,34 @@ describe("postAttempt", () => {
       postAttempt("t1", "c1", { question: "Q", confidence: "guessed", outcome: "correct", selected_option: null }),
     ).rejects.toBeInstanceOf(UnauthorizedError);
   });
+
+  it("percent-encodes topic and concept in the URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(201, {
+        check_key: "k",
+        question: "Q",
+        kind: "mcq",
+        confidence: "guessed",
+        outcome: "correct",
+        selected_option: null,
+        graded_by: "self",
+        created_at: "2026-01-01T00:00:00Z",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await postAttempt("a topic/slash", "a concept?", {
+      question: "Q",
+      confidence: "guessed",
+      outcome: "correct",
+      selected_option: null,
+    });
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain(
+      `/api/v1/progress/${encodeURIComponent("a topic/slash")}/${encodeURIComponent("a concept?")}/attempts`,
+    );
+  });
 });
 
 describe("getFocusTrack", () => {

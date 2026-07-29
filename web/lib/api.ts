@@ -218,9 +218,9 @@ export interface AttemptRecord {
 export type PostAttemptResult = { kind: "ok"; record: AttemptRecord } | { kind: "error" };
 
 // {kind:"error"} (not a thrown ApiError) on a non-auth failure, unlike
-// getLesson/setProgress — callers here (RecallCheckCard/lesson page) need to
-// tell "saved" from "not saved" per check and keep the reader usable either
-// way, the same reason getProgress returns a result instead of throwing.
+// getLesson/setProgress — the lesson page needs to tell "saved" from "not
+// saved" per check and keep the reader usable either way, the same reason
+// getProgress returns a result instead of throwing.
 // UnauthorizedError still throws: it is a whole-session condition (the
 // bearer token itself is invalid), not a per-attempt one, and every other
 // caller in this file redirects on it the same way.

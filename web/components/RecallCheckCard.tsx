@@ -19,13 +19,11 @@ const CONFIDENCE_OPTIONS = [
   { value: "confident", label: "Confident" },
 ] as const;
 
-type Confidence = AttemptConfidence;
-
 type RecallStage = "recall" | "commit" | "reveal";
 
 export type AttemptSaveStatus = "idle" | "saving" | "saved" | "error";
 
-interface CompletedAttempt {
+export interface CompletedAttempt {
   confidence: AttemptConfidence;
   outcome: AttemptOutcome;
   selectedOption: string | null;
@@ -49,10 +47,6 @@ interface RecallCheckCardProps {
   check: RecallCheck;
   index: number;
   onFinishedChange: (position: number, finished: boolean) => void;
-  // Fired once per distinct completed attempt: mcq reaches this exactly once
-  // (its inputs freeze at reveal), short_answer fires again each time the
-  // Pass/Not yet rating actually changes — a corrected self-rating is a new,
-  // honest data point for SRS, not noise to suppress (see quiz.md).
   onAttemptReady: (position: number, attempt: CompletedAttempt) => void;
   saveStatus: AttemptSaveStatus;
   onRetrySave: () => void;
@@ -73,17 +67,14 @@ export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(
 
   const [stage, setStage] = useState<RecallStage>("recall");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [confidence, setConfidence] = useState<Confidence | null>(null);
+  const [confidence, setConfidence] = useState<AttemptConfidence | null>(null);
   const [shortAnswerRating, setShortAnswerRating] = useState<RecallRating | null>(null);
 
   const commitRef = useRef<HTMLDivElement>(null);
   const revealRef = useRef<HTMLDivElement>(null);
-  // Guards onAttemptReady against firing twice for the same completed
-  // attempt — a re-render (including React StrictMode's double-invoked
-  // effects in development) must not re-post it. Keyed by the attempt's own
-  // content, not a plain "have we submitted yet" flag, so a short_answer
-  // rating correction (Pass -> Not yet) is recognised as a genuinely new
-  // attempt and still reported.
+  // Keyed by the attempt's own content, not a plain "already submitted"
+  // flag, so a short_answer rating correction is still recognised and
+  // reported, not silently swallowed as a duplicate.
   const lastReportedAttemptRef = useRef<string | null>(null);
 
   // selectedIndex indexes into shuffledOptions (this card's own stable
