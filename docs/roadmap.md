@@ -99,9 +99,15 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 - [ ] UX-8 — หน้า `/progress` รวม (ทำเมื่อใช้ UX-7 แล้วยังรู้สึกขาดภาพรวมเท่านั้น)
 
 ### Phase 4 — measurable recall ⏭
-- [ ] Q-1 — quiz **recall-first 3 stage**: ตอบในใจ → เลือกความมั่นใจ → เฉลย · shuffle ตัวเลือกตอน render
-  · **ต้องแก้ก่อน**: `GET /lessons/{topic}/{concept}` ส่ง `expected_answer` มาใน payload อยู่แล้ว
-  (design.md §API บอกว่าต้องตัดออก แต่โค้ดจริงส่ง) → เฉลยอยู่ในมือ client ตั้งแต่ก่อนกดเฉลย
+- [ ] Q-1 — quiz **recall-first 3 stage**: Recall (เห็นคำถามอย่างเดียว, mcq ไม่โชว์ตัวเลือก)
+  → Commit (เลือกตัวเลือก [mcq] + ระดับความมั่นใจ Guessed/Unsure/Confident ก่อนเห็นเฉลยเสมอ)
+  → Reveal (mark ถูก/ผิดจากการเทียบ `expected_answer` ไม่ใช่ self-report) · shuffle ตัวเลือกด้วย
+  Fisher-Yates ตอน render (เสถียรตลอดอายุการ์ดผ่าน lazy `useState`, `rng` inject ได้เพื่อเทสต์) ·
+  รายละเอียดเต็มใน [`docs/tickets/quiz.md`](tickets/quiz.md)
+  · **ตัดสินใจแล้ว ไม่ต้อง revisit**: `expected_answer` **ยังอยู่**ใน payload ต่อไปใน v1 — v1
+  self-graded (คนตอบ = คนให้คะแนนเอง) ทำ endpoint เฉลยแยกไม่ได้อะไรเพิ่ม มีแต่เสีย round trip +
+  failure state ใหม่ ค่อยย้าย server-side ตอน Q-2 ที่เริ่ม submit attempt จริงและออกแบบ endpoint
+  จาก requirement จริง (design.md §API ที่บอกว่าต้องตัดเป็นข้อความล้าสมัย ไม่ใช่ bug ของโค้ด)
 - [ ] Q-2 — schema `recall_attempts` / `review_cards` / `review_logs`
   · key ด้วย `check_key = SHA256(topic/concept/question)` **ไม่ใช้ FK ไป `recall_checks.id`**
   เพราะ importer ลบแล้ว insert ใหม่ทุกครั้ง (`lessons` เท่านั้นที่ id คงที่ผ่าน `LAST_INSERT_ID(id)`)
@@ -132,8 +138,9 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 ## หนี้ที่รู้ตัว (ยังไม่แก้ ตั้งใจปล่อย)
 
 - **`docs/design.md` ล้าสมัยหลายจุด** — §7 ยังเขียนว่า "195 concepts" (จริง 309), layout ยังเป็น
-  5 track (ก่อนมี ddia/ai-systems), 6 bounded context ที่ไม่มี `prefs`, และ §API ระบุว่า
-  `GET /lessons/{id}` ต้องตัด expected answer ออกซึ่งโค้ดจริงไม่ได้ตัด
+  5 track (ก่อนมี ddia/ai-systems), 6 bounded context ที่ไม่มี `prefs`, และ §API ยังบอกว่า
+  `GET /lessons/{id}` ต้องตัด expected answer ออก — Q-1 ตัดสินใจแล้วว่า v1 (self-graded) ไม่ตัด
+  (เหตุผลเต็มอยู่ที่บรรทัด Q-1 ด้านบน) เพราะฉะนั้นบรรทัดนี้ใน design.md **ล้าสมัย ไม่ใช่ code ผิด**
 - **`cors_test.go` ยังเทียบกับ constant ตัวเองบางส่วน** — `wantMethods` ถูกแก้เป็น literal แล้วใน #41
   แต่ `wantHeaders`/`wantMaxAge` ยังอ้าง `corsAllowedHeaders`/`corsMaxAge` = mutation ไม่มีทางจับได้
 - rating รายข้อในหน้า reader ไม่ถูก persist (ปลดใน Q-2) · `Button` variant `"danger"` ไม่มีใครใช้

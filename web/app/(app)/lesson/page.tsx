@@ -14,7 +14,7 @@ import {
 import { findNextLesson, locateLessonBreadcrumb, type NextLessonResult } from "@/lib/curriculum";
 import { trackLabel } from "@/lib/trackMeta";
 import { LessonBody } from "@/components/LessonBody";
-import { RecallCheckCard, type RecallRating } from "@/components/RecallCheckCard";
+import { RecallCheckCard } from "@/components/RecallCheckCard";
 import { EmptyState } from "@/components/EmptyState";
 import { Button, LinkButton } from "@/components/Button";
 import { Card } from "@/components/Card";
@@ -104,7 +104,7 @@ function LessonView() {
 
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [tracks, setTracks] = useState<Track[] | null>(null);
-  const [ratings, setRatings] = useState<Record<number, RecallRating>>({});
+  const [finishedChecks, setFinishedChecks] = useState<Record<number, boolean>>({});
   const [finishState, setFinishState] = useState<FinishState>({ status: "idle" });
   const [alreadyPassed, setAlreadyPassed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
@@ -131,7 +131,7 @@ function LessonView() {
     let cancelled = false;
     currentIdentityRef.current = null;
     setState({ status: "loading" });
-    setRatings({});
+    setFinishedChecks({});
     setFinishState({ status: "idle" });
     setAlreadyPassed(false);
 
@@ -191,8 +191,8 @@ function LessonView() {
     };
   }, [router]);
 
-  const handleRate = useCallback((position: number, value: RecallRating) => {
-    setRatings((prev) => ({ ...prev, [position]: value }));
+  const handleCheckFinishedChange = useCallback((position: number, finished: boolean) => {
+    setFinishedChecks((prev) => (prev[position] === finished ? prev : { ...prev, [position]: finished }));
   }, []);
 
   const currentLesson = state.status === "success" ? state.lesson : null;
@@ -265,8 +265,8 @@ function LessonView() {
     : [LEARN_CRUMB, { label: lesson.title_en }];
 
   const totalChecks = lesson.recall_checks.length;
-  const ratedCount = lesson.recall_checks.filter((check) => ratings[check.position] != null).length;
-  const allRated = ratedCount === totalChecks;
+  const finishedCount = lesson.recall_checks.filter((check) => finishedChecks[check.position]).length;
+  const allFinished = finishedCount === totalChecks;
 
   async function finish() {
     const identity = { topic: lesson.topic, concept: lesson.concept };
@@ -297,9 +297,9 @@ function LessonView() {
 
   function handleFinishClick() {
     if (finishState.status === "saving") return;
-    if (!allRated) {
-      const firstUnrated = lesson.recall_checks.find((check) => ratings[check.position] == null);
-      const el = firstUnrated ? cardRefs.current[firstUnrated.position] : null;
+    if (!allFinished) {
+      const firstUnfinished = lesson.recall_checks.find((check) => !finishedChecks[check.position]);
+      const el = firstUnfinished ? cardRefs.current[firstUnfinished.position] : null;
       el?.scrollIntoView({ behavior: "smooth", block: "center" });
       el?.focus({ preventScroll: true });
       return;
@@ -345,8 +345,7 @@ function LessonView() {
                 }}
                 check={check}
                 index={index}
-                rating={ratings[check.position] ?? null}
-                onRate={(value) => handleRate(check.position, value)}
+                onFinishedChange={handleCheckFinishedChange}
               />
             ))}
           </div>
@@ -368,15 +367,15 @@ function LessonView() {
           ) : (
             <>
               <Button
-                aria-disabled={!allRated || finishState.status === "saving"}
-                aria-describedby={!allRated ? "finish-hint" : undefined}
+                aria-disabled={!allFinished || finishState.status === "saving"}
+                aria-describedby={!allFinished ? "finish-hint" : undefined}
                 onClick={handleFinishClick}
               >
                 {finishState.status === "saving" ? "Saving…" : "Finish lesson"}
               </Button>
-              {!allRated && (
+              {!allFinished && (
                 <p id="finish-hint" className="text-xs text-muted">
-                  Rate all {totalChecks} check{totalChecks === 1 ? "" : "s"} to finish ({ratedCount}/{totalChecks} rated)
+                  Complete all {totalChecks} check{totalChecks === 1 ? "" : "s"} to finish ({finishedCount}/{totalChecks} done)
                 </p>
               )}
               {finishState.status === "error" && (
