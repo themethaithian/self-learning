@@ -768,4 +768,69 @@ describe("LessonPage — attempt submission (Q-2b)", () => {
       if (originalDescriptor) Object.defineProperty(Document.prototype, "visibilityState", originalDescriptor);
     }
   });
+
+  it("the real browser sequence (visibilitychange:hidden, then pagehide) flushes exactly once per check, not twice", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState");
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    try {
+      // A tab close/reload really does fire both, in this order — a
+      // visibilitychange flush that clears the timer but forgets to delete
+      // the map entry lets the pagehide flush see it again and re-submit.
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+        window.dispatchEvent(new Event("pagehide"));
+      });
+
+      expect(postAttempt).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+      if (originalDescriptor) Object.defineProperty(Document.prototype, "visibilityState", originalDescriptor);
+    }
+  });
+
+  it("removes the pagehide/visibilitychange listeners on unmount", async () => {
+    // Not a flush-count assertion: the per-navigation effect's own cleanup
+    // already flushes on unmount (R5), so any pending debounce timer is
+    // gone before a stale pagehide listener could double-flush it — that
+    // confound would mask the exact mutation this test exists to catch.
+    // Spying directly on add/removeEventListener pins the cleanup itself.
+    const windowAdd = vi.spyOn(window, "addEventListener");
+    const windowRemove = vi.spyOn(window, "removeEventListener");
+    const docAdd = vi.spyOn(document, "addEventListener");
+    const docRemove = vi.spyOn(document, "removeEventListener");
+
+    setParams("t1", "c1");
+    const { unmount } = render(<LessonPage />);
+    await screen.findByText("Question for c1");
+
+    const pagehideRegistration = windowAdd.mock.calls.find(([type]) => type === "pagehide");
+    const visibilitychangeRegistration = docAdd.mock.calls.find(([type]) => type === "visibilitychange");
+    expect(pagehideRegistration).toBeTruthy();
+    expect(visibilitychangeRegistration).toBeTruthy();
+
+    unmount();
+
+    // A leftover listener firing for a component that no longer exists is
+    // the same "stale work attributed to the wrong lesson" class R1 fixed
+    // for late responses — here it would arrive through the listener itself.
+    expect(windowRemove).toHaveBeenCalledWith("pagehide", pagehideRegistration![1]);
+    expect(docRemove).toHaveBeenCalledWith("visibilitychange", visibilitychangeRegistration![1]);
+
+    windowAdd.mockRestore();
+    windowRemove.mockRestore();
+    docAdd.mockRestore();
+    docRemove.mockRestore();
+  });
 });

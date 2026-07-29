@@ -757,10 +757,14 @@ Status: implemented, round 2 fixes applied post code-review, PR pending
   debounce timer ที่ยังไม่หมดเวลา), `postAttempt`/`submitAttempt` เพิ่ม
   `options?: {keepalive: boolean}`, effect ใหม่ฟัง `pagehide`/
   `visibilitychange` flush ด้วย `keepalive:true` — รายละเอียดเต็มอยู่ที่หัวข้อ
-  "รอบ code-reviewer 3" ด้านล่าง. เทสต์สุดท้าย: `api.test.ts` **6 → 12** (+6),
-  `RecallCheckCard.test.tsx` **30 → 44** (+14), `page.test.tsx` **2 → 25**
-  (+23, ไฟล์เดียวกับที่ UX-5 ปักไว้ ไม่ใช่ไฟล์แยก) — รวม `npm test`
-  **124 → 167**
+  "รอบ code-reviewer 3" ด้านล่าง. **รอบ 4 (หลัง code review 3, SHIP พร้อม
+  follow-up)**: ไม่มีการแก้ production code เลย — เพิ่มเทสต์ 2 ตัวปักหมุด
+  `delete debounceTimersRef.current[position]` และ `removeEventListener`
+  cleanup ที่ไม่มีเทสต์คุ้มครองมาก่อน (ทั้งสองบรรทัดถูกอยู่แล้ว) — ดูหัวข้อ
+  "รอบ code-reviewer 4" ด้านล่าง. เทสต์สุดท้าย: `api.test.ts` **6 → 12**
+  (+6), `RecallCheckCard.test.tsx` **30 → 44** (+14), `page.test.tsx`
+  **2 → 27** (+25, ไฟล์เดียวกับที่ UX-5 ปักไว้ ไม่ใช่ไฟล์แยก) — รวม
+  `npm test` **124 → 169**
 
 ### การตัดสินใจหลัก
 
@@ -866,7 +870,12 @@ Status: implemented, round 2 fixes applied post code-review, PR pending
   banner แรก) แต่ไม่มี control โต้ตอบข้างในเช่นกัน จึงไม่เข้าเงื่อนไขที่ REQ-3
   กังวลไว้
 
-### Mutation table (11/11 required mutations killed — 0 survivor)
+### Mutation table รอบ 1 (11/11 mutations ที่ทดลองในรอบนี้ตายหมด — ไม่ใช่ข้อสรุปว่าไม่มี gap เหลือ)
+
+**หัวข้อนี้จำกัดเฉพาะ 11 มูเทชันที่ทดลองในรอบแรกเท่านั้น** — รอบ code-reviewer
+2/3/4 ด้านล่างเจอ survivor จริงเพิ่มอีกหลายจุดที่ชุดนี้ไม่ครอบคลุม (identity
+guard, retry-body, "saving" state, multi-check flush, unload listener
+cleanup) ดูตารางของแต่ละรอบสำหรับรายละเอียด
 
 รัน `npx vitest run components/RecallCheckCard.test.tsx "app/(app)/lesson/page.test.tsx"`
 หลังแก้แต่ละจุด แล้ว revert ทุกครั้ง:
@@ -1361,11 +1370,82 @@ Stack เดิม, lesson `domain-driven-design/ubiquitous-language` เดิ�
   จะรันได้เลย ยังทำให้ attempt ที่กำลัง debounce อยู่หายได้ในทางทฤษฎี — ไม่มี
   ทางปิดได้สนิทจาก client-side ฝั่งเดียว (ต้องมี mechanism ฝั่ง server เช่น
   ส่ง state บางส่วนไปเก็บไว้ก่อน ซึ่งอยู่นอก scope ของ ticket นี้)
+- **ข้อควรระวังที่ต้องอ่านคู่กับ headline "flip-flop เขียนแค่ 1 แถว" ของรอบ 2
+  (พบใน code review รอบ 4) — ประโยคนั้นเป็นจริงเฉพาะตอนแท็บยัง visible อยู่
+  ตลอด**: ถ้าสลับแท็บ (`visibilitychange` → `hidden`) กลางคันระหว่างที่ค่า
+  ยังไม่ settle (ยังอยู่ใน debounce window), flush ที่เกิดจาก
+  pagehide/visibilitychange จะส่งค่า**ที่ยังไม่ settle**ออกไปทันที ไม่ใช่รอ
+  ให้ user ตัดสินใจจบก่อน — ถ้ามีการแก้ไข rating อีกครั้งหลังจากนั้น (เช่น
+  กลับมาที่แท็บแล้วเปลี่ยนใจ) จะได้แถวที่สองสำหรับ check เดียวกัน (พิสูจน์สด:
+  `correct` ตามด้วย `incorrect` บน check เดียวกัน) — **นี่คือ trade-off ที่
+  ถูกต้อง ไม่ใช่บั๊ก**: durability (ไม่เสียข้อมูลตอนปิดแท็บ) สำคัญกว่า dedup
+  ในกรณีนี้ และทั้งสองแถวเป็น honest state ที่ user เชื่อจริง ณ ขณะนั้น (ค่าที่
+  ถูก flush ก่อนสลับแท็บ + ค่าที่แก้ไขทีหลัง) เพียงแต่ headline "เขียนแค่ 1
+  แถว" ต้องอ่านว่า "เขียนแค่ 1 แถว **ถ้าแท็บไม่ถูกสลับหรือปิดกลางคัน**" ไม่ใช่
+  จริงเสมอไปทุกกรณี
 - **`finish()`'s slug-based identity guard ยังไม่ย้ายมาใช้ `loadGenerationRef`**
   — ดูหัวข้อ "finish()" ท้ายไฟล์นี้สำหรับเหตุผลแบบ blast-radius (ไม่ใช่แค่
   "อยู่นอก scope") และ follow-up ใน `docs/roadmap.md`
 
-Status: implemented, round 3 fixes applied post code-review, PR pending
+### รอบ code-reviewer 4 (SHIP พร้อม 2 follow-up บังคับก่อน PR)
+
+Reviewer ยืนยัน round 1-3 ทั้งหมดถูกต้องและพิสูจน์สดแล้วจริง (SHIP) แต่เจอ
+survivor เพิ่ม 2 จุดที่เป็น regression class เดียวกับที่ ticket นี้ใช้เวลา
+ทั้ง 3 รอบแก้ — โค้ดถูกอยู่แล้วทั้งคู่ ขาดแค่เทสต์ pin:
+
+- **ปักหมุด (blocking, แก้แล้ว) — `delete debounceTimersRef.current[position]`
+  ใน `clearPendingTimer` ไม่มีเทสต์คุ้มครองเลย**: ลบบรรทัดนี้ทิ้ง **รอดทั้งชุด
+  169 เทสต์** — เป็นบรรทัดเดียวที่กันไม่ให้ลำดับเหตุการณ์จริงของ browser
+  (`visibilitychange`→`hidden` ตามด้วย `pagehide` ติดกัน ซึ่งเกิดขึ้นจริงตอน
+  ปิดแท็บ/reload) flush ซ้ำสองครั้ง: `visibilitychange` flush เคลียร์ timer
+  ด้วย `clearTimeout` แต่ถ้าไม่ `delete` key ออกจาก `debounceTimersRef.current`
+  ด้วย `pagehide`'s `flushAllPendingAttempts` ที่ iterate keys ทีหลังจะยังเห็น
+  key เดิมอยู่แล้ว flush ซ้ำ — ทุก reload จริงจะเขียนแถวซ้ำเงียบ ๆ โดย suite
+  ทั้งชุดยังเขียว. เพิ่มเทสต์ "the real browser sequence (visibilitychange:
+  hidden, then pagehide) flushes exactly once per check, not twice" —
+  dispatch ทั้งสอง event ติดกันในลำดับจริง แล้ว assert `postAttempt` ถูกเรียก
+  พอดี **1 ครั้ง**
+- **ปักหมุด (blocking, แก้แล้ว) — `removeEventListener` cleanup ของ
+  pagehide/visibilitychange listener ไม่มีเทสต์คุ้มครองเลย**: ลบทั้งคู่ทิ้ง
+  **รอดทั้งชุด 169 เทสต์** เช่นกัน — listener ที่ค้างอยู่หลัง unmount จะยัง
+  fire flush ให้ lesson ที่ปิดไปแล้ว เป็น bug class เดียวกับ R1 (stale work
+  ถูก attribute ผิดที่) แค่มาทาง listener แทนที่จะมาทาง response ที่ค้างอยู่.
+  **เทสต์แรกที่ลองเขียน (เช็คว่า `postAttempt` ไม่ถูกเรียกหลัง unmount+
+  pagehide) ใช้ไม่ได้จริง** — per-navigation effect's cleanup เอง (จาก R5
+  รอบ 2) ก็ flush ตอน unmount เหมือนกัน ทำให้ debounce timer ถูกเคลียร์ไปแล้ว
+  ก่อนที่ listener (ถ้ายังไม่ถูกลบ) จะมีอะไรให้ flush ซ้ำ — confound นี้จะบัง
+  ไม่ให้เห็น mutation เลยไม่ว่าจะแก้โค้ดถูกหรือผิด. แก้โดยเปลี่ยนวิธีทดสอบ:
+  spy ตรงที่ `window.addEventListener`/`removeEventListener` และ
+  `document.addEventListener`/`removeEventListener` แล้ว assert ว่า unmount
+  เรียก `removeEventListener` ด้วย handler reference **เดียวกัน**กับที่
+  `addEventListener` ใช้ตอน mount — ปักหมุดที่ cleanup โดยตรง ไม่ผ่าน
+  side-effect ที่ confound ได้
+- **near-equivalent (ยืนยันแล้ว, ไม่แก้) — ตัด `document.visibilityState ===
+  "hidden"` เช็คออกจาก `handleVisibilityChange`**: มูเทตแล้ว**รอดทั้ง 169
+  เทสต์เหมือนกัน** — แต่เหตุผลต่างจากสองข้อบน: เทสต์ทุกตัวที่ dispatch
+  `visibilitychange` ตั้ง `document.visibilityState = "hidden"` ไว้ก่อนเสมอ
+  (จำลองสถานการณ์จริงที่มันจะเกิด) ทำให้ผลลัพธ์เหมือนกันไม่ว่าจะเช็คเงื่อนไข
+  นี้หรือไม่ — ต่างจากสองข้อบนที่โค้ดถูกอยู่แล้วแค่ไม่มีเทสต์ ข้อนี้คือ
+  "มูเทตแล้วสังเกตไม่ออกจากมุมที่ทดสอบอยู่จริง" ซึ่งอาจสังเกตออกได้ถ้าเพิ่ม
+  เทสต์ที่ dispatch `visibilitychange` ตอน visibilityState เป็น `"visible"`
+  (ยืนยันว่า flush ไม่ถูกเรียกตอนกลับมาเปิดแท็บ) — **ไม่เพิ่มเทสต์นั้นในรอบนี้**
+  เพราะไม่ใช่ regression class ที่ ticket นี้กังวล (การ flush เกินความจำเป็น
+  ตอนกลับมาเปิดแท็บไม่ทำข้อมูลเสียหาย แค่ทำงานถี่กว่าที่จำเป็น) — บันทึกไว้
+  ตรง ๆ ว่าเป็น survivor ที่ยอมรับได้ ไม่ใช่ equivalent แบบสมบูรณ์
+
+### Mutation table รอบ 4
+
+| # | Mutation | ผลลัพธ์ |
+|---|---|---|
+| 1 | ลบ `delete debounceTimersRef.current[position];` ออกจาก `clearPendingTimer` | killed — "the real browser sequence (visibilitychange:hidden, then pagehide) flushes exactly once per check, not twice" |
+| 2 | ลบ `removeEventListener` ทั้งสองบรรทัดออกจาก cleanup ของ pagehide/visibilitychange effect | killed — "removes the pagehide/visibilitychange listeners on unmount" |
+| 3 | ตัด `document.visibilityState === "hidden"` เช็คออกจาก `handleVisibilityChange` | **survived (ยอมรับ, บันทึกไว้ตรง ๆ)** — ทุกเทสต์ตั้ง visibilityState เป็น "hidden" ก่อน dispatch เสมอ ไม่มีเทสต์ที่ dispatch ตอน "visible" เพื่อพิสูจน์ว่าไม่ flush เกินจำเป็น — ความเสี่ยงต่ำ (ไม่ทำข้อมูลเสียหาย แค่ flush ถี่กว่าที่จำเป็น) จึงไม่ปิดในรอบนี้ |
+
+**สรุป: 2/2 มูเทชันที่รอบ 4 เรียกร้องตายหมด, 1 survivor ที่ยอมรับได้บันทึกไว้
+ตรง ๆ (ไม่ใช่ equivalent สมบูรณ์)** — โค้ด production ไม่เปลี่ยนเลยในรอบนี้
+(เพิ่มแค่เทสต์) จึงไม่ต้อง rebuild stack ใหม่สำหรับ live verification
+
+Status: implemented, round 4 fixes applied post code-review, PR pending
 
 ## Q-2c — review_cards/review_logs + SM-2 scheduling (not started)
 

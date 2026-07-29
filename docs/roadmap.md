@@ -116,7 +116,7 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   `RecallAttempt`), `POST /api/v1/progress/{topic}/{concept}/attempts` — `graded_by='self'`
   เกิดจริงครั้งแรกที่นี่ · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table อยู่ที่
   [`docs/tickets/quiz.md`](tickets/quiz.md)
-- [ ] Q-2b (implemented, round 3 fixes applied post code-review, PR pending) — wire the quiz to
+- [ ] Q-2b (implemented, round 4 fixes applied post code-review — SHIP, PR pending) — wire the quiz to
   the attempts API: **ticket ที่ทำให้ข้อมูล in-memory ของ Q-1 (confidence ที่เลือก, ตัวเลือกที่กด,
   ผลถูก/ผิด) persist จริงในที่สุด แทนที่จะหายตอน refresh** — `web/lib/api.ts`'s `postAttempt`
   เรียก endpoint ของ Q-2a จาก `RecallCheckCard` (ยิงเมื่อ attempt ครบจริง: mcq ที่ stage 3 ทันที;
