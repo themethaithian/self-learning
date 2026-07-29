@@ -2,7 +2,7 @@ import { Card } from "@/components/Card";
 import { LinkButton } from "@/components/Button";
 import { FocusToggleButton } from "@/components/FocusToggleButton";
 import { ProgressBar } from "@/components/ProgressBar";
-import type { TrackReadStats } from "@/lib/curriculum";
+import { moreConceptsPlanned, type TrackReadStats } from "@/lib/curriculum";
 
 export interface TrackStats {
   track: string;
@@ -14,7 +14,7 @@ export interface TrackStats {
 
 interface TrackCardProps {
   stats: TrackStats;
-  readStats: TrackReadStats | null;
+  readStats: TrackReadStats;
   isFocus: boolean;
   onSetFocus: (track: string | null) => void;
   saving: boolean;
@@ -26,6 +26,7 @@ export function plural(count: number, word: string): string {
 }
 
 export function TrackCard({ stats, readStats, isFocus, onSetFocus, saving, busy }: TrackCardProps) {
+  const more = moreConceptsPlanned(stats.totalConcepts, readStats.available);
   return (
     <Card className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -38,11 +39,12 @@ export function TrackCard({ stats, readStats, isFocus, onSetFocus, saving, busy 
         />
       </div>
 
-      {readStats ? (
+      {readStats.read !== null ? (
         <div className="space-y-1.5">
-          <ProgressBar value={readStats.available === 0 ? 0 : (readStats.read / readStats.available) * 100} />
+          <ProgressBar read={readStats.read} available={readStats.available} label={`${stats.label} reading progress`} />
           <p className="text-xs text-muted">
             {readStats.read}/{readStats.available} {readStats.available === 1 ? "lesson" : "lessons"} read
+            {more > 0 && ` · ${more} more planned`}
           </p>
         </div>
       ) : (

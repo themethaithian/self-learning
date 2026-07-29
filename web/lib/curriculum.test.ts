@@ -408,42 +408,49 @@ describe("chapterReadStats", () => {
   const c2Concepts = readStatsTrack.topics[0].chapters[1].concepts;
 
   it("counts only passed concepts as read, out of has_lesson concepts in the chapter", () => {
-    expect(chapterReadStats("t1", c1Concepts, readStatsProgress, true)).toEqual({ read: 1, available: 3, total: 3 });
+    // c1 is k1=passed, k2=in_progress, k3=not_started (no row at all) — a
+    // mutation that treats "not not_started" or "not in_progress" as read
+    // would count k1+k3 (=2) here instead of just k1 (=1).
+    expect(chapterReadStats("t1", c1Concepts, readStatsProgress)).toEqual({ read: 1, withLesson: 3, planned: 3 });
   });
 
-  it("excludes a lesson-less concept from available while still counting it in total", () => {
-    expect(chapterReadStats("t1", c2Concepts, readStatsProgress, true)).toEqual({ read: 1, available: 1, total: 2 });
+  it("excludes a lesson-less concept from withLesson while still counting it in planned", () => {
+    expect(chapterReadStats("t1", c2Concepts, readStatsProgress)).toEqual({ read: 1, withLesson: 1, planned: 2 });
   });
 
-  it("returns null when progress is unavailable, not a zeroed-out object", () => {
-    expect(chapterReadStats("t1", c1Concepts, readStatsProgress, false)).toBeNull();
+  it("returns read: null when progress is unavailable, not a zeroed-out count", () => {
+    expect(chapterReadStats("t1", c1Concepts, null)).toEqual({ read: null, withLesson: 3, planned: 3 });
   });
 });
 
 describe("trackReadStats", () => {
   it("counts passed concepts across every chapter as read, out of lessons available", () => {
-    expect(trackReadStats(readStatsTrack, readStatsProgress, true)).toEqual({ read: 2, available: 4 });
+    expect(trackReadStats(readStatsTrack, readStatsProgress)).toEqual({ read: 2, available: 4 });
   });
 
-  it("returns null when progress is unavailable, not a zeroed-out object", () => {
-    expect(trackReadStats(readStatsTrack, readStatsProgress, false)).toBeNull();
+  it("returns read: null when progress is unavailable, not a zeroed-out count", () => {
+    expect(trackReadStats(readStatsTrack, null)).toEqual({ read: null, available: 4 });
   });
 });
 
 describe("conceptReadMarker", () => {
   it("returns none for a concept without a lesson, regardless of its recorded state", () => {
-    expect(conceptReadMarker(false, "passed")).toBe("none");
+    expect(conceptReadMarker(false, readStatsProgress, "t1", "k1")).toBe("none");
   });
 
   it("returns passed for a passed concept that has a lesson", () => {
-    expect(conceptReadMarker(true, "passed")).toBe("passed");
+    expect(conceptReadMarker(true, readStatsProgress, "t1", "k1")).toBe("passed");
   });
 
   it("returns a distinct in_progress marker rather than collapsing it into passed", () => {
-    expect(conceptReadMarker(true, "in_progress")).toBe("in_progress");
+    expect(conceptReadMarker(true, readStatsProgress, "t1", "k2")).toBe("in_progress");
   });
 
   it("returns none for a not_started concept that has a lesson", () => {
-    expect(conceptReadMarker(true, "not_started")).toBe("none");
+    expect(conceptReadMarker(true, readStatsProgress, "t1", "k3")).toBe("none");
+  });
+
+  it("returns none for every concept when progress is unavailable, even a passed one", () => {
+    expect(conceptReadMarker(true, null, "t1", "k1")).toBe("none");
   });
 });

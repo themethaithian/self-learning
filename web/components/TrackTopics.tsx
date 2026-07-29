@@ -2,25 +2,30 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { Chapter, Concept, ProgressState, Topic } from "@/lib/api";
-import { chapterReadStats, conceptReadMarker, countAvailableLessons, progressKey, type ProgressByKey } from "@/lib/curriculum";
+import type { Chapter, Concept, Topic } from "@/lib/api";
+import { chapterReadStats, conceptReadMarker, type ProgressByKey } from "@/lib/curriculum";
 import { ChevronIcon, CheckIcon, InProgressIcon } from "@/components/icons";
 
-interface ProgressProps {
-  progressByKey: ProgressByKey;
-  progressAvailable: boolean;
+interface ProgressProp {
+  progress: ProgressByKey | null;
 }
 
-function ConceptMarker({ marker }: { marker: "passed" | "in_progress" }) {
+// Every row reserves this slot whether or not it renders a marker (S7), so
+// a track that mixes marked and unmarked concepts still keeps every title
+// starting at the same x position — otherwise "not_started" rows (no
+// marker) sit flush left while "passed"/"in_progress" rows indent one icon
+// further, and the list goes ragged at narrow widths.
+function MarkerSlot({ marker }: { marker: "passed" | "in_progress" | "none" }) {
+  if (marker === "none") return <span className="inline-block h-4 w-4 shrink-0" />;
   if (marker === "passed") {
     return (
-      <span className="inline-flex shrink-0 items-center text-success-strong" aria-label="Read">
+      <span role="img" aria-label="Read" className="inline-flex h-4 w-4 shrink-0 items-center text-success-strong">
         <CheckIcon />
       </span>
     );
   }
   return (
-    <span className="inline-flex shrink-0 items-center text-warning-strong" aria-label="In progress">
+    <span role="img" aria-label="In progress" className="inline-flex h-4 w-4 shrink-0 items-center text-warning-strong">
       <InProgressIcon />
     </span>
   );
@@ -30,17 +35,15 @@ function ConceptRow({
   topicSlug,
   concept,
   step,
-  progressByKey,
-  progressAvailable,
-}: { topicSlug: string; concept: Concept; step: number } & ProgressProps) {
+  progress,
+}: { topicSlug: string; concept: Concept; step: number } & ProgressProp) {
   const trailing = concept.has_lesson
     ? typeof concept.est_minutes === "number" && concept.est_minutes > 0
       ? `~${concept.est_minutes} min`
       : null
     : "No lesson yet";
 
-  const state: ProgressState = progressByKey[progressKey(topicSlug, concept.slug)] ?? "not_started";
-  const marker = progressAvailable ? conceptReadMarker(concept.has_lesson, state) : "none";
+  const marker = conceptReadMarker(concept.has_lesson, progress, topicSlug, concept.slug);
 
   const rowClassName =
     "-mx-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg px-2 py-1 text-sm";
@@ -49,7 +52,7 @@ function ConceptRow({
     <>
       <span className={`flex min-w-0 items-baseline gap-2 break-words ${titleClassName}`}>
         <span className="text-xs text-faint">{step}.</span>
-        {marker !== "none" && <ConceptMarker marker={marker} />}
+        <MarkerSlot marker={marker} />
         {concept.title}
       </span>
       {trailing && <span className="shrink-0 text-xs text-faint">{trailing}</span>}
@@ -70,11 +73,10 @@ function ConceptRow({
   );
 }
 
-function ChapterRow({ topicSlug, chapter, progressByKey, progressAvailable }: { topicSlug: string; chapter: Chapter } & ProgressProps) {
+function ChapterRow({ topicSlug, chapter, progress }: { topicSlug: string; chapter: Chapter } & ProgressProp) {
   const [open, setOpen] = useState(false);
   const conceptsId = `chapter-${chapter.slug}-concepts`;
-  const { available, total } = countAvailableLessons(chapter.concepts);
-  const readStats = chapterReadStats(topicSlug, chapter.concepts, progressByKey, progressAvailable);
+  const { read, withLesson, planned } = chapterReadStats(topicSlug, chapter.concepts, progress);
 
   return (
     <div className="rounded-xl border border-subtle bg-surface">
@@ -89,20 +91,20 @@ function ChapterRow({ topicSlug, chapter, progressByKey, progressAvailable }: { 
           <ChevronIcon open={open} />
           <span className="break-words">{chapter.title}</span>
         </span>
-        {readStats && readStats.available > 0 ? (
+        {read !== null && withLesson > 0 ? (
           <span className="flex shrink-0 flex-col items-end text-xs leading-tight text-faint">
             <span>
-              {readStats.read}/{readStats.available} read
+              {read}/{withLesson} read
             </span>
-            {readStats.available < readStats.total && (
+            {withLesson < planned && (
               <span>
-                {readStats.available}/{readStats.total} ready
+                {withLesson}/{planned} ready
               </span>
             )}
           </span>
         ) : (
           <span className="shrink-0 text-xs text-faint">
-            {available}/{total} ready
+            {withLesson}/{planned} ready
           </span>
         )}
       </button>
@@ -113,13 +115,7 @@ function ChapterRow({ topicSlug, chapter, progressByKey, progressAvailable }: { 
       >
         {chapter.concepts.map((concept, index) => (
           <li key={concept.slug}>
-            <ConceptRow
-              topicSlug={topicSlug}
-              concept={concept}
-              step={index + 1}
-              progressByKey={progressByKey}
-              progressAvailable={progressAvailable}
-            />
+            <ConceptRow topicSlug={topicSlug} concept={concept} step={index + 1} progress={progress} />
           </li>
         ))}
       </ul>
@@ -127,27 +123,21 @@ function ChapterRow({ topicSlug, chapter, progressByKey, progressAvailable }: { 
   );
 }
 
-function ChapterList({ topicSlug, chapters, progressByKey, progressAvailable }: { topicSlug: string; chapters: Chapter[] } & ProgressProps) {
+function ChapterList({ topicSlug, chapters, progress }: { topicSlug: string; chapters: Chapter[] } & ProgressProp) {
   return (
     <div className="space-y-2">
       {chapters.map((chapter) => (
-        <ChapterRow
-          key={chapter.slug}
-          topicSlug={topicSlug}
-          chapter={chapter}
-          progressByKey={progressByKey}
-          progressAvailable={progressAvailable}
-        />
+        <ChapterRow key={chapter.slug} topicSlug={topicSlug} chapter={chapter} progress={progress} />
       ))}
     </div>
   );
 }
 
-function TopicSection({ topic, progressByKey, progressAvailable }: { topic: Topic } & ProgressProps) {
+function TopicSection({ topic, progress }: { topic: Topic } & ProgressProp) {
   return (
     <div className="space-y-2">
       <h3 className="text-sm font-semibold text-heading">{topic.title}</h3>
-      <ChapterList topicSlug={topic.slug} chapters={topic.chapters} progressByKey={progressByKey} progressAvailable={progressAvailable} />
+      <ChapterList topicSlug={topic.slug} chapters={topic.chapters} progress={progress} />
     </div>
   );
 }
@@ -155,21 +145,14 @@ function TopicSection({ topic, progressByKey, progressAvailable }: { topic: Topi
 // A single-topic track's topic title duplicates the page's own heading (the
 // curriculum currently models most tracks as one topic per book/subject), so
 // that layer is skipped and its chapters render directly.
-export function TrackTopics({ topics, progressByKey, progressAvailable }: { topics: Topic[] } & ProgressProps) {
+export function TrackTopics({ topics, progress }: { topics: Topic[] } & ProgressProp) {
   if (topics.length === 1) {
-    return (
-      <ChapterList
-        topicSlug={topics[0].slug}
-        chapters={topics[0].chapters}
-        progressByKey={progressByKey}
-        progressAvailable={progressAvailable}
-      />
-    );
+    return <ChapterList topicSlug={topics[0].slug} chapters={topics[0].chapters} progress={progress} />;
   }
   return (
     <div className="space-y-6">
       {topics.map((topic) => (
-        <TopicSection key={topic.slug} topic={topic} progressByKey={progressByKey} progressAvailable={progressAvailable} />
+        <TopicSection key={topic.slug} topic={topic} progress={progress} />
       ))}
     </div>
   );

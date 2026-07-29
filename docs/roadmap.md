@@ -159,7 +159,9 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 9. **Mutation-test ตัว test เอง — เกือบทุก ticket ที่แตะ SQL หรือ fixture มี mutation ที่ทั้ง
    suite จับไม่ได้** (พบใน ≥10 PR: #7 fixture ASCII ล้วนซ่อน `utf8.RuneCountInString`→`len` ·
    #8 `Repository.Topics` ไม่มี test เลย 8/8 mutation รอด · #10 รอด 15/32 · #40 มี test ที่
-   เทียบกับตัวเอง · #41 รอด 5/11 · #45 รอด 5 · #46 รอด 2)
+   เทียบกับตัวเอง · #41 รอด 5/11 · #45 รอด 5 · #46 รอด 2 · UX-7 (ก่อนเปิด PR) รอด 11/18 —
+   ทุกจุดที่รอดอยู่ใน component (JSX) ไม่ใช่ `curriculum.ts` เพราะ `web/` ยังไม่มี jsdom
+   ตอนนั้น มี `@testing-library/react`/`jsdom` ทีหลังตอนแก้ ปิดครบ 20/20 รวม bonus 2 จุด)
    ส่วนใหญ่ code-reviewer จับก่อน merge — **มี 1 ครั้งที่หลุดขึ้น develop จริง**: #38 รายงาน
    `VIOLATIONS: NONE` ขณะที่ MCQ เดาถูก 89.6% เพราะวัด *"กฎที่ตั้งไว้ถูกละเมิดไหม"* แทน
    *"เดาด้วย heuristic ง่าย ๆ แล้วถูกกี่ %"* (แก้ใน #43)
