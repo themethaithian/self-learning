@@ -228,11 +228,12 @@ export async function postAttempt(
   topicSlug: string,
   conceptSlug: string,
   attempt: AttemptInput,
+  options?: { keepalive?: boolean },
 ): Promise<PostAttemptResult> {
   try {
     const record = await apiFetch<AttemptRecord>(
       `/api/v1/progress/${encodeURIComponent(topicSlug)}/${encodeURIComponent(conceptSlug)}/attempts`,
-      { method: "POST", body: JSON.stringify(attempt) },
+      { method: "POST", body: JSON.stringify(attempt), keepalive: options?.keepalive },
     );
     return { kind: "ok", record };
   } catch (err) {

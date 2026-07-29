@@ -162,7 +162,7 @@ function LessonView() {
   // A stale response is one whose *visit* has ended, not one whose slugs no
   // longer match the screen — see loadGenerationRef above.
   const submitAttempt = useCallback(
-    async (position: number, payload: AttemptPayload) => {
+    async (position: number, payload: AttemptPayload, opts?: { keepalive?: boolean }) => {
       pendingAttemptsRef.current[position] = payload;
       const identity = currentIdentityRef.current;
       if (!identity) {
@@ -175,12 +175,18 @@ function LessonView() {
       setAttemptStatus((prev) => ({ ...prev, [position]: "saving" }));
 
       try {
-        const result = await postAttempt(identity.topic, identity.concept, {
+        const body = {
           question: payload.question,
           confidence: payload.confidence,
           outcome: payload.outcome,
           selected_option: payload.selectedOption,
-        });
+        };
+        // keepalive is only threaded through as an actual 4th argument when
+        // requested (pagehide/visibilitychange) — every other call keeps the
+        // exact 3-argument shape callers already assert on.
+        const result = opts?.keepalive
+          ? await postAttempt(identity.topic, identity.concept, body, { keepalive: true })
+          : await postAttempt(identity.topic, identity.concept, body);
         if (!stillCurrent()) return;
         setAttemptStatus((prev) => ({ ...prev, [position]: result.kind === "ok" ? "saved" : "error" }));
       } catch (err) {
@@ -190,21 +196,34 @@ function LessonView() {
     [router],
   );
 
+  const clearPendingTimer = useCallback((position: number) => {
+    const timer = debounceTimersRef.current[position];
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    delete debounceTimersRef.current[position];
+  }, []);
+
+  // Unconditional: called both for an actual pending timer (quiet period,
+  // Finish, navigate-away) and for Retry, which has no timer of its own but
+  // must still cancel one — a short_answer correction made after a failure
+  // schedules a fresh timer while the old "error" status (and its Retry
+  // button) is still on screen, and Retry firing alongside that timer later
+  // is two submissions of two different values under one check_key.
   const flushPendingAttempt = useCallback(
-    (position: number) => {
-      const timer = debounceTimersRef.current[position];
-      if (timer === undefined) return;
-      clearTimeout(timer);
-      delete debounceTimersRef.current[position];
+    (position: number, opts?: { keepalive?: boolean }) => {
+      clearPendingTimer(position);
       const payload = pendingAttemptsRef.current[position];
-      if (payload) void submitAttempt(position, payload);
+      if (payload) void submitAttempt(position, payload, opts);
     },
-    [submitAttempt],
+    [clearPendingTimer, submitAttempt],
   );
 
-  const flushAllPendingAttempts = useCallback(() => {
-    Object.keys(debounceTimersRef.current).forEach((key) => flushPendingAttempt(Number(key)));
-  }, [flushPendingAttempt]);
+  const flushAllPendingAttempts = useCallback(
+    (opts?: { keepalive?: boolean }) => {
+      Object.keys(debounceTimersRef.current).forEach((key) => flushPendingAttempt(Number(key), opts));
+    },
+    [flushPendingAttempt],
+  );
 
   const handleAttemptReady = useCallback(
     (position: number, attempt: CompletedAttempt) => {
@@ -224,24 +243,27 @@ function LessonView() {
         return;
       }
 
-      const existingTimer = debounceTimersRef.current[position];
-      if (existingTimer !== undefined) clearTimeout(existingTimer);
+      clearPendingTimer(position);
       debounceTimersRef.current[position] = setTimeout(() => {
         delete debounceTimersRef.current[position];
         void submitAttempt(position, payload);
       }, SHORT_ANSWER_SUBMIT_DEBOUNCE_MS);
     },
-    [currentLesson, submitAttempt],
+    [currentLesson, submitAttempt, clearPendingTimer],
   );
 
+  // Routed through flushPendingAttempt, not a bare submitAttempt call: a
+  // short_answer correction made after a failure schedules a fresh debounce
+  // timer while the old "error" status (and Retry button) is still on
+  // screen — clicking Retry must cancel that timer, not race it, or the
+  // timer's later fire and Retry's own submission both land as two rows.
   const handleRetrySave = useCallback(
     (position: number) => {
       if (attemptStatus[position] === "saving") return;
-      const stored = pendingAttemptsRef.current[position];
-      if (!stored) return;
-      void submitAttempt(position, stored);
+      if (!pendingAttemptsRef.current[position]) return;
+      flushPendingAttempt(position);
     },
-    [attemptStatus, submitAttempt],
+    [attemptStatus, flushPendingAttempt],
   );
 
   // One effect owns both the lesson fetch and the mark-in-progress write so
@@ -309,6 +331,28 @@ function LessonView() {
       flushAllPendingAttempts();
     };
   }, [topicSlug, conceptSlug, router, retryToken, flushAllPendingAttempts]);
+
+  // A hard navigation (reload, close tab, switch app on mobile) doesn't run
+  // this component's own cleanup the way an in-SPA lesson change does —
+  // pagehide + visibilitychange:hidden is the reliable pair for catching
+  // that (beforeunload alone is unreliable on mobile Safari, the reviewing
+  // device). keepalive keeps the request alive past unload; sendBeacon can't
+  // carry the Authorization header, so fetch(...,{keepalive:true}) is used
+  // instead (see api.ts's postAttempt).
+  useEffect(() => {
+    function flushForUnload() {
+      flushAllPendingAttempts({ keepalive: true });
+    }
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") flushForUnload();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", flushForUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", flushForUnload);
+    };
+  }, [flushAllPendingAttempts]);
 
   // The curriculum tree only powers the breadcrumb and Next — its failure
   // must never turn a successfully loaded lesson into a page-level error.

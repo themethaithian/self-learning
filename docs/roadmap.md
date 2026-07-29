@@ -116,17 +116,24 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   `RecallAttempt`), `POST /api/v1/progress/{topic}/{concept}/attempts` — `graded_by='self'`
   เกิดจริงครั้งแรกที่นี่ · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table อยู่ที่
   [`docs/tickets/quiz.md`](tickets/quiz.md)
-- [ ] Q-2b (implemented, round 2 fixes applied post code-review, PR pending) — wire the quiz to
+- [ ] Q-2b (implemented, round 3 fixes applied post code-review, PR pending) — wire the quiz to
   the attempts API: **ticket ที่ทำให้ข้อมูล in-memory ของ Q-1 (confidence ที่เลือก, ตัวเลือกที่กด,
   ผลถูก/ผิด) persist จริงในที่สุด แทนที่จะหายตอน refresh** — `web/lib/api.ts`'s `postAttempt`
   เรียก endpoint ของ Q-2a จาก `RecallCheckCard` (ยิงเมื่อ attempt ครบจริง: mcq ที่ stage 3 ทันที;
   short_answer debounce 1s ก่อน submit — กัน flip-flop ของ Pass/Not yet เขียนหลายแถวโดยไม่ตั้งใจ,
-  flush ทันทีตอน Finish/navigate away) ผ่าน `lesson/page.tsx` (identity guard คนละกลไกกับ
-  `finish()`'s slug-based `stillCurrent()` เดิม — ใช้ `loadGenerationRef` นับ "visit" แทน slug
-  equality, จำเป็นเพราะการกลับมาที่ lesson เดิมมี slug ซ้ำกับ visit ก่อนหน้า; per-check
-  "Not saved" + Retry indicator, aggregate banner ทั้ง "saving" และ "error" เหนือปุ่ม Finish)
-  · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table + Playwright/SQL evidence อยู่ที่
-  [`docs/tickets/quiz.md`](tickets/quiz.md)
+  flush ทันทีตอน Finish/navigate away/Retry/`pagehide`+`visibilitychange` ด้วย `keepalive:true`)
+  ผ่าน `lesson/page.tsx` (identity guard คนละกลไกกับ `finish()`'s slug-based `stillCurrent()` เดิม
+  — ใช้ `loadGenerationRef` นับ "visit" แทน slug equality, จำเป็นเพราะการกลับมาที่ lesson เดิมมี
+  slug ซ้ำกับ visit ก่อนหน้า; per-check "Not saved" + Retry indicator, aggregate banner ทั้ง
+  "saving" และ "error" เหนือปุ่ม Finish) · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table +
+  Playwright/SQL evidence อยู่ที่ [`docs/tickets/quiz.md`](tickets/quiz.md)
+  · **หนี้ที่รู้ตัวแล้ว (follow-up เล็ก ๆ ทำเมื่อสะดวก, ไม่ใช่ ticket แยก)**: `lesson/page.tsx`
+  มี identity mechanism สองแบบข้าง ๆ กัน — `submitAttempt` ใช้ `loadGenerationRef` (นับ visit)
+  แต่ `finish()` ยังใช้ `currentIdentityRef` (slug equality) เดิมจาก UX-5 — ย้าย `finish()` มาใช้
+  `loadGenerationRef` เหมือนกัน (แค่เปลี่ยน `stillCurrent()`'s เงื่อนไข 2 บรรทัด) แล้วลบ
+  `currentIdentityRef`/slug guard ทิ้งไปเลย ไม่ใช่เพราะ `finish()` มีบั๊กจริงตอนนี้ (blast radius
+  ของมันเล็กกว่า attempt case มาก — ดูเหตุผลเต็มที่ quiz.md's หัวข้อ "finish()") แต่เพราะมีสอง
+  identity mechanism ซ้อนกันอยู่ในไฟล์เดียวเป็นกับดักสำหรับคนอ่านโค้ดครั้งถัดไป
 - [ ] Q-2c — `review_cards`/`review_logs` + SM-2 scheduling (อ่าน `recall_attempts` ที่ Q-2a
   สร้างไว้ ไม่ใช่ schema ใหม่ที่ไม่เกี่ยวกัน) · สโคปที่ [`docs/tickets/quiz.md`](tickets/quiz.md)
   · **ข้อกำหนดจาก Q-2b's code review (ยังไม่แก้ในรอบนี้ — ห้ามแก้ migration ในรอบ Q-2b)**: query

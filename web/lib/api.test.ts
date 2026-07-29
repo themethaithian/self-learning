@@ -132,6 +132,28 @@ describe("postAttempt", () => {
       `/api/v1/progress/${encodeURIComponent("a topic/slash")}/${encodeURIComponent("a concept?")}/attempts`,
     );
   });
+
+  it("forwards keepalive:true to fetch when requested (pagehide/visibilitychange flush) and omits it otherwise", async () => {
+    const record = {
+      check_key: "k",
+      question: "Q",
+      kind: "mcq",
+      confidence: "guessed",
+      outcome: "correct",
+      selected_option: null,
+      graded_by: "self",
+      created_at: "2026-01-01T00:00:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, record));
+    vi.stubGlobal("fetch", fetchMock);
+    const attempt = { question: "Q", confidence: "guessed" as const, outcome: "correct" as const, selected_option: null };
+
+    await postAttempt("t1", "c1", attempt, { keepalive: true });
+    expect(fetchMock.mock.calls[0][1].keepalive).toBe(true);
+
+    await postAttempt("t1", "c1", attempt);
+    expect(fetchMock.mock.calls[1][1].keepalive).toBeUndefined();
+  });
 });
 
 describe("getFocusTrack", () => {

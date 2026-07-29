@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { UnauthorizedError, type AttemptInput, type CurriculumResponse, type Lesson, type PostAttemptResult, type ProgressEntry } from "@/lib/api";
 
 // Must match web/app/(app)/lesson/page.tsx's private SHORT_ANSWER_SUBMIT_DEBOUNCE_MS
@@ -66,6 +66,31 @@ function shortAnswerLesson(topic: string, concept: string): Lesson {
         type: "short_answer",
         question: `Short question for ${concept}`,
         expected_answer: `Short answer for ${concept}`,
+      },
+    ],
+  };
+}
+
+function twoShortAnswerLesson(topic: string, concept: string): Lesson {
+  return {
+    topic,
+    concept,
+    title_en: `Lesson ${concept}`,
+    est_minutes: 5,
+    body_md: "Body text.",
+    references: [],
+    recall_checks: [
+      {
+        position: 0,
+        type: "short_answer",
+        question: `First question for ${concept}`,
+        expected_answer: `First answer for ${concept}`,
+      },
+      {
+        position: 1,
+        type: "short_answer",
+        question: `Second question for ${concept}`,
+        expected_answer: `Second answer for ${concept}`,
       },
     ],
   };
@@ -556,5 +581,191 @@ describe("LessonPage — attempt submission (Q-2b)", () => {
     // Finish only writes lesson_progress — the still-pending recall attempt
     // must remain visible, not disappear just because the lesson reads as done.
     expect(screen.getByText("Saving 1 recall attempt…")).toBeTruthy();
+  });
+
+  it("Retry cancels a live debounce timer instead of racing it — a correction made while 'Not saved' is showing must not also let the old timer fire", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    postAttempt.mockResolvedValueOnce({ kind: "error" });
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SHORT_ANSWER_SUBMIT_DEBOUNCE_MS);
+    });
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Not saved")).toBeTruthy();
+
+    // "Not saved"/Retry stays on screen (saveStatus only changes on a
+    // submitAttempt result) while this correction schedules a fresh timer.
+    fireEvent.click(screen.getByRole("button", { name: "Not yet" }));
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+
+    postAttempt.mockResolvedValueOnce(okAttemptResult());
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(postAttempt).toHaveBeenCalledTimes(2);
+
+    // The timer Retry must have cancelled — if it didn't, this fires a 3rd,
+    // duplicate POST for the same (already-flushed) correction.
+    await vi.advanceTimersByTimeAsync(SHORT_ANSWER_SUBMIT_DEBOUNCE_MS);
+    expect(postAttempt).toHaveBeenCalledTimes(2);
+    expect(postAttempt).toHaveBeenLastCalledWith("t1", "sa1", {
+      question: "Short question for sa1",
+      confidence: "guessed",
+      outcome: "incorrect",
+      selected_option: null,
+    });
+  });
+
+  function cardFor(question: string) {
+    const card = screen.getByText(question).closest(".rounded-2xl") as HTMLElement;
+    return within(card);
+  }
+
+  it("flushes BOTH pending short_answer submissions on Finish, not just the first", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(twoShortAnswerLesson("t1", "sa2")));
+    setParams("t1", "sa2");
+    render(<LessonPage />);
+    await screen.findByText("First question for sa2");
+
+    const card0 = cardFor("First question for sa2");
+    fireEvent.click(card0.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(card0.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(card0.getByRole("button", { name: "Reveal answer" }));
+    const card1 = cardFor("Second question for sa2");
+    fireEvent.click(card1.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(card1.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(card1.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(card0.getByRole("button", { name: "Pass" }));
+    fireEvent.click(card1.getByRole("button", { name: "Not yet" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish lesson" }));
+
+    expect(postAttempt).toHaveBeenCalledTimes(2);
+    const byQuestion = Object.fromEntries(
+      postAttempt.mock.calls.map((call) => [(call[2] as AttemptInput).question, call[2]]),
+    );
+    expect(byQuestion["First question for sa2"]).toEqual({
+      question: "First question for sa2",
+      confidence: "guessed",
+      outcome: "correct",
+      selected_option: null,
+    });
+    expect(byQuestion["Second question for sa2"]).toEqual({
+      question: "Second question for sa2",
+      confidence: "guessed",
+      outcome: "incorrect",
+      selected_option: null,
+    });
+  });
+
+  it("flushes BOTH pending short_answer submissions when navigating away, not just the first", async () => {
+    getLesson.mockImplementation((topic: string, concept: string) =>
+      Promise.resolve(concept === "sa2" ? twoShortAnswerLesson("t1", "sa2") : lessonB),
+    );
+    setParams("t1", "sa2");
+    const { rerender } = render(<LessonPage />);
+    await screen.findByText("First question for sa2");
+
+    const card0 = cardFor("First question for sa2");
+    fireEvent.click(card0.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(card0.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(card0.getByRole("button", { name: "Reveal answer" }));
+    const card1 = cardFor("Second question for sa2");
+    fireEvent.click(card1.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(card1.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(card1.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(card0.getByRole("button", { name: "Pass" }));
+    fireEvent.click(card1.getByRole("button", { name: "Not yet" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    setParams("t1", "c2");
+    rerender(<LessonPage />);
+
+    expect(postAttempt).toHaveBeenCalledTimes(2);
+    const byQuestion = Object.fromEntries(
+      postAttempt.mock.calls.map((call) => [(call[2] as AttemptInput).question, call[2]]),
+    );
+    expect(byQuestion["First question for sa2"]).toEqual({
+      question: "First question for sa2",
+      confidence: "guessed",
+      outcome: "correct",
+      selected_option: null,
+    });
+    expect(byQuestion["Second question for sa2"]).toEqual({
+      question: "Second question for sa2",
+      confidence: "guessed",
+      outcome: "incorrect",
+      selected_option: null,
+    });
+  });
+
+  it("flushes a pending short_answer submission with keepalive on pagehide (a reload shortly after rating still writes it)", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+    expect(postAttempt).toHaveBeenLastCalledWith(
+      "t1",
+      "sa1",
+      { question: "Short question for sa1", confidence: "guessed", outcome: "correct", selected_option: null },
+      { keepalive: true },
+    );
+  });
+
+  it("flushes a pending short_answer submission with keepalive on visibilitychange -> hidden", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState");
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    try {
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      expect(postAttempt).toHaveBeenCalledTimes(1);
+      expect(postAttempt).toHaveBeenLastCalledWith(
+        "t1",
+        "sa1",
+        { question: "Short question for sa1", confidence: "guessed", outcome: "correct", selected_option: null },
+        { keepalive: true },
+      );
+    } finally {
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+      if (originalDescriptor) Object.defineProperty(Document.prototype, "visibilityState", originalDescriptor);
+    }
   });
 });
