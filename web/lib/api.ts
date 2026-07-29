@@ -162,17 +162,22 @@ interface ProgressListResponse {
   concepts: ProgressEntry[];
 }
 
-// Absence from the returned list means "not started" per the API contract,
-// so a fetch failure degrades to the same shape a genuinely empty history
-// would have — /today can still render Next Up, just without knowing what's
-// in progress, instead of losing the whole page over one non-essential call.
-export async function getProgress(): Promise<ProgressEntry[]> {
+export type ProgressResult = { ok: true; entries: ProgressEntry[] } | { ok: false };
+
+// A failure is reported explicitly as {ok: false} rather than degrading to
+// an empty entries list — an empty list and "couldn't load" must stay
+// distinguishable to the caller, or a track the user has actually read
+// renders as 0 done (the same false-"finished"/false-"zero" bug this epic
+// already refuses to ship as an always-full progress bar). The
+// Array.isArray guard covers a 200 response with an unexpected body too, so
+// this can never resolve to {ok: true, entries: undefined}.
+export async function getProgress(): Promise<ProgressResult> {
   try {
     const res = await apiFetch<ProgressListResponse>("/api/v1/progress");
-    return res.concepts;
+    return { ok: true, entries: Array.isArray(res.concepts) ? res.concepts : [] };
   } catch (err) {
     if (err instanceof UnauthorizedError) throw err;
-    return [];
+    return { ok: false };
   }
 }
 

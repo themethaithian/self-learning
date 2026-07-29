@@ -7,8 +7,7 @@ interface FocusToggleButtonProps {
 
 // aria-disabled, not the disabled attribute: a native disabled button is
 // forced to blur, which would kick keyboard focus off this button the
-// instant its own click starts the request (TrackCard/UX-2's finding, reused
-// wherever a track's focus can be toggled — currently TrackCard and /today).
+// instant its own click starts the request (UX-2's finding).
 export function FocusToggleButton({ isFocus, saving, busy, onToggle }: FocusToggleButtonProps) {
   return (
     <button

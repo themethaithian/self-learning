@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { Chapter, Concept, ProgressState, Topic, Track } from "./api";
+import type { Chapter, Concept, ProgressEntry, ProgressState, Topic, Track } from "./api";
 import type { TrackStats } from "../components/TrackCard";
 import {
   computeTrackProgress,
   countAvailableLessons,
   findNextLesson,
+  indexProgress,
   locateLessonBreadcrumb,
   pickNextUp,
   pinFocusFirst,
@@ -302,5 +303,48 @@ describe("computeTrackProgress", () => {
   it("returns zero total for a track with no lessons", () => {
     const t = track("ddd", [topic("t1", 1, [chapter("c1", 1, [concept("k1", false, 1)])])]);
     expect(computeTrackProgress(t, {})).toEqual({ track: "ddd", done: 0, total: 0 });
+  });
+
+  it("does not count an in_progress lesson as done", () => {
+    const t = track("ddd", [
+      topic("t1", 1, [chapter("c1", 1, [concept("k1", true, 1), concept("k2", true, 2), concept("k3", true, 3)])]),
+    ]);
+    const progress = progressMap([
+      ["t1", "k1", "passed"],
+      ["t1", "k2", "in_progress"],
+    ]);
+    expect(computeTrackProgress(t, progress)).toEqual({ track: "ddd", done: 1, total: 3 });
+  });
+});
+
+describe("indexProgress", () => {
+  it("indexes entries by topic and concept, preserving state", () => {
+    const entries: ProgressEntry[] = [
+      { topic: "t1", concept: "k1", state: "passed", last_read_at: null, first_passed_at: null },
+      { topic: "t2", concept: "k2", state: "in_progress", last_read_at: null, first_passed_at: null },
+    ];
+    expect(indexProgress(entries)).toEqual({
+      [progressKey("t1", "k1")]: "passed",
+      [progressKey("t2", "k2")]: "in_progress",
+    });
+  });
+
+  it("keys by topic then concept, not the reverse", () => {
+    const entries: ProgressEntry[] = [
+      { topic: "alpha", concept: "beta", state: "passed", last_read_at: null, first_passed_at: null },
+    ];
+    const index = indexProgress(entries);
+    expect(index[progressKey("alpha", "beta")]).toBe("passed");
+    expect(index[progressKey("beta", "alpha")]).toBeUndefined();
+  });
+
+  it("returns an empty map for an empty entry list", () => {
+    expect(indexProgress([])).toEqual({});
+  });
+});
+
+describe("progressKey", () => {
+  it("cannot collide when characters shift between topic and concept, unlike plain concatenation", () => {
+    expect(progressKey("ab", "c")).not.toBe(progressKey("a", "bc"));
   });
 });

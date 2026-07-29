@@ -127,8 +127,7 @@ export type NextUpResult =
 // (no track has a lesson at all) are both empty results but mean opposite
 // things to the user — collapsing them into one null/done state would show
 // "nice work, you finished everything" when really nothing has been
-// imported yet (same UX-5 lesson findNextLesson already applies: "next" |
-// "end-of-track" | "not-found" instead of a single null).
+// imported yet.
 export function pickNextUp(tracks: Track[], progressByKey: ProgressByKey, focusTrack: string | null): NextUpResult {
   const ordered = pinFocusFirst(sortTracksByDisplayOrder(tracks), focusTrack);
   let anyLessonExists = false;
@@ -147,7 +146,7 @@ export function pickNextUp(tracks: Track[], progressByKey: ProgressByKey, focusT
         chapterTitle: item.chapterTitle,
         title: item.title,
         estMinutes: item.estMinutes,
-        state: state === "in_progress" ? "in_progress" : "not_started",
+        state,
       };
     }
   }

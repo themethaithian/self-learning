@@ -88,9 +88,9 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 - [x] UX-4 (#45) 🔴 progress API — `GET /api/v1/progress` + `PUT /api/v1/progress/{topic}/{concept}`
   + bounded context `learning`
 - [x] UX-5 (#46) reader loop — breadcrumb + Finish + Next (+ vitest ตัวแรกของ `web/`)
-- [~] UX-6 — หน้า `/today` + IA switch (nav เหลือ Today · Learn): "วันนี้อ่านอะไรต่อ"
-  ไล่จาก focus track ก่อน แล้ว fallback ตาม `TRACK_DISPLAY_ORDER` · `domain.Gate`
-  ยังไม่ถูก wire (soft-guide เท่านั้น) — PR pending
+- [ ] UX-6 (PR pending) — หน้า `/today` + IA switch (nav เหลือ Today · Learn):
+  "วันนี้อ่านอะไรต่อ" ไล่จาก focus track ก่อน แล้ว fallback ตาม
+  `TRACK_DISPLAY_ORDER` · `domain.Gate` ยังไม่ถูก wire (soft-guide เท่านั้น)
 - [ ] UX-7 — หน้า Progress + ตัวบอกสถานะทั้งแอป
 
 ### Phase 4 — measurable recall ⏭

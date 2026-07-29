@@ -35,9 +35,9 @@ export function TrackCard({ stats, isFocus, onSetFocus, saving, busy }: TrackCar
         />
       </div>
 
-      {/* No ProgressBar here yet: reading progress isn't tracked (UX-4), and a
-          bar that's always full (n = lessonsReady = N) would read as "fully
-          read" when really nothing has been read at all — worse than no bar. */}
+      {/* No ProgressBar here: this card counts lesson availability
+          (lessonsReady of totalConcepts), not reading completion, so a bar
+          would always render full — completion numbers live on /today. */}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-xs text-muted">
         <span>{plural(stats.lessonsReady, "lesson")} ready</span>
         <span>

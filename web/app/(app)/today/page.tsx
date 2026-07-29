@@ -2,16 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  getCurriculum,
-  getFocusTrack,
-  getProgress,
-  setFocusTrack as putFocusTrack,
-  UnauthorizedError,
-  type Track,
-} from "@/lib/api";
-import { computeTrackProgress, indexProgress, pickNextUp, type NextUpResult, type ProgressByKey } from "@/lib/curriculum";
+import { getCurriculum, getFocusTrack, getProgress, UnauthorizedError, type Track } from "@/lib/api";
+import { computeTrackProgress, indexProgress, pickNextUp, pinFocusFirst, type NextUpResult, type ProgressByKey } from "@/lib/curriculum";
 import { sortTracksByDisplayOrder, trackLabel } from "@/lib/trackMeta";
+import { useFocusTrack } from "@/lib/useFocusTrack";
 import { Card } from "@/components/Card";
 import { Button, LinkButton } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
@@ -67,6 +61,7 @@ function OtherTrackRow({
   done,
   total,
   track,
+  progressAvailable,
   isFocus,
   onSetFocus,
   saving,
@@ -76,6 +71,7 @@ function OtherTrackRow({
   done: number;
   total: number;
   track: string;
+  progressAvailable: boolean;
   isFocus: boolean;
   onSetFocus: (track: string | null) => void;
   saving: boolean;
@@ -86,7 +82,7 @@ function OtherTrackRow({
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-heading">{label}</p>
         <p className="text-xs text-muted">
-          {done}/{total} done
+          {progressAvailable ? `${done}/${total} done` : `${total} lesson${total === 1 ? "" : "s"}`}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -103,19 +99,24 @@ export default function TodayPage() {
   const router = useRouter();
   const [state, setState] = useState<ViewState>({ status: "loading" });
   const [progressByKey, setProgressByKeyValue] = useState<ProgressByKey>({});
-  const [focusTrack, setFocusTrackValue] = useState<string | null>(null);
-  const [pendingTrack, setPendingTrack] = useState<string | null>(null);
-  const [focusError, setFocusError] = useState<string | null>(null);
+  const [progressAvailable, setProgressAvailable] = useState(true);
+  const { focusTrack, setFocusTrackValue, pendingTrack, error: focusError, setFocus: handleSetFocus, dismiss: dismissFocusError } =
+    useFocusTrack();
 
-  // getProgress/getFocusTrack already degrade non-auth failures to empty
-  // defaults internally (see lib/api.ts) — a failing progress or focus-track
-  // call resolves rather than rejects, so it can never take the curriculum
-  // load down with it.
+  // getFocusTrack already degrades non-auth failures to {track: null}
+  // internally (see lib/api.ts) — only getCurriculum() failing can reject
+  // this Promise.all, so progress/focus-track never take the page down.
   const load = useCallback(async () => {
     setState({ status: "loading" });
     try {
       const [curriculum, progress, focus] = await Promise.all([getCurriculum(), getProgress(), getFocusTrack()]);
-      setProgressByKeyValue(indexProgress(progress));
+      if (progress.ok) {
+        setProgressByKeyValue(indexProgress(progress.entries));
+        setProgressAvailable(true);
+      } else {
+        setProgressByKeyValue({});
+        setProgressAvailable(false);
+      }
       setFocusTrackValue(focus.track);
       setState({ status: "success", tracks: curriculum.tracks });
     } catch (err) {
@@ -125,30 +126,11 @@ export default function TodayPage() {
       }
       setState({ status: "error", message: err instanceof Error ? err.message : "Something went wrong" });
     }
-  }, [router]);
+  }, [router, setFocusTrackValue]);
 
   useEffect(() => {
     load();
   }, [load]);
-
-  const handleSetFocus = useCallback(
-    async (track: string | null) => {
-      const previous = focusTrack;
-      const pendingCard = track ?? previous;
-      setFocusTrackValue(track);
-      setPendingTrack(pendingCard);
-      setFocusError(null);
-      try {
-        await putFocusTrack(track);
-      } catch {
-        setFocusTrackValue(previous);
-        setFocusError("Could not save focus track — please try again.");
-      } finally {
-        setPendingTrack(null);
-      }
-    },
-    [focusTrack],
-  );
 
   if (state.status === "loading") {
     return <TodaySkeleton />;
@@ -166,12 +148,19 @@ export default function TodayPage() {
 
   const { tracks } = state;
   const nextUp = pickNextUp(tracks, progressByKey, focusTrack);
-  const otherTracks = sortTracksByDisplayOrder(tracks)
+  const otherTracks = pinFocusFirst(sortTracksByDisplayOrder(tracks), focusTrack)
     .map((track) => ({ label: trackLabel(track.track), ...computeTrackProgress(track, progressByKey) }))
-    .filter((stats) => stats.total > 0);
+    .filter((stats) => stats.total > 0)
+    .filter((stats) => !(nextUp.kind === "next" && stats.track === nextUp.track));
 
   return (
     <div className="space-y-8">
+      {!progressAvailable && (
+        <div role="alert" className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger-strong">
+          Could not load your reading progress — counts below and the Continue/Start label above may be out of date.
+        </div>
+      )}
+
       {focusError && (
         <div
           role="alert"
@@ -180,7 +169,7 @@ export default function TodayPage() {
           <span>{focusError}</span>
           <button
             type="button"
-            onClick={() => setFocusError(null)}
+            onClick={dismissFocusError}
             className="rounded-md text-xs font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
           >
             Dismiss
@@ -201,6 +190,7 @@ export default function TodayPage() {
                 done={stats.done}
                 total={stats.total}
                 track={stats.track}
+                progressAvailable={progressAvailable}
                 isFocus={stats.track === focusTrack}
                 onSetFocus={handleSetFocus}
                 saving={pendingTrack === stats.track}
