@@ -193,3 +193,51 @@ export function setProgress(
     { method: "PUT", body: JSON.stringify({ state }) },
   );
 }
+
+export type AttemptConfidence = "guessed" | "unsure" | "confident";
+export type AttemptOutcome = "correct" | "incorrect";
+
+export interface AttemptInput {
+  question: string;
+  confidence: AttemptConfidence;
+  outcome: AttemptOutcome;
+  selected_option: string | null;
+}
+
+export interface AttemptRecord {
+  check_key: string;
+  question: string;
+  kind: "short_answer" | "mcq";
+  confidence: AttemptConfidence;
+  outcome: AttemptOutcome;
+  selected_option: string | null;
+  graded_by: string;
+  created_at: string;
+}
+
+export type PostAttemptResult = { kind: "ok"; record: AttemptRecord } | { kind: "error" };
+
+// {kind:"error"} (not a thrown ApiError) on a non-auth failure, unlike
+// getLesson/setProgress — the lesson page needs to tell "saved" from "not
+// saved" per check and keep the reader usable either way, the same reason
+// getProgress returns a result instead of throwing.
+// UnauthorizedError still throws: it is a whole-session condition (the
+// bearer token itself is invalid), not a per-attempt one, and every other
+// caller in this file redirects on it the same way.
+export async function postAttempt(
+  topicSlug: string,
+  conceptSlug: string,
+  attempt: AttemptInput,
+  options?: { keepalive?: boolean },
+): Promise<PostAttemptResult> {
+  try {
+    const record = await apiFetch<AttemptRecord>(
+      `/api/v1/progress/${encodeURIComponent(topicSlug)}/${encodeURIComponent(conceptSlug)}/attempts`,
+      { method: "POST", body: JSON.stringify(attempt), keepalive: options?.keepalive },
+    );
+    return { kind: "ok", record };
+  } catch (err) {
+    if (err instanceof UnauthorizedError) throw err;
+    return { kind: "error" };
+  }
+}

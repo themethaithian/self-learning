@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StrictMode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { RecallCheckCard, isRecallCheckFinished } from "./RecallCheckCard";
@@ -21,10 +22,37 @@ const shortAnswerCheck: RecallCheck = {
   expected_answer: "Consistency, Availability, Partition tolerance",
 };
 
-function renderCard(check: RecallCheck, opts?: { rng?: () => number; onFinishedChange?: (p: number, f: boolean) => void }) {
+interface CompletedAttempt {
+  confidence: "guessed" | "unsure" | "confident";
+  outcome: "correct" | "incorrect";
+  selectedOption: string | null;
+}
+
+function renderCard(
+  check: RecallCheck,
+  opts?: {
+    rng?: () => number;
+    onFinishedChange?: (p: number, f: boolean) => void;
+    onAttemptReady?: (p: number, a: CompletedAttempt) => void;
+    saveStatus?: "idle" | "saving" | "saved" | "error";
+    onRetrySave?: () => void;
+  },
+) {
   const onFinishedChange = opts?.onFinishedChange ?? vi.fn();
-  const utils = render(<RecallCheckCard check={check} index={0} onFinishedChange={onFinishedChange} rng={opts?.rng} />);
-  return { ...utils, onFinishedChange };
+  const onAttemptReady = opts?.onAttemptReady ?? vi.fn();
+  const onRetrySave = opts?.onRetrySave ?? vi.fn();
+  const utils = render(
+    <RecallCheckCard
+      check={check}
+      index={0}
+      onFinishedChange={onFinishedChange}
+      onAttemptReady={onAttemptReady}
+      saveStatus={opts?.saveStatus ?? "idle"}
+      onRetrySave={onRetrySave}
+      rng={opts?.rng}
+    />,
+  );
+  return { ...utils, onFinishedChange, onAttemptReady, onRetrySave };
 }
 
 describe("isRecallCheckFinished — the one place 'finished' is defined", () => {
@@ -142,13 +170,41 @@ describe("RecallCheckCard — the shuffle", () => {
     const rng = vi.fn(zeroRng);
     const onFinishedChange = vi.fn();
     const { rerender } = render(
-      <RecallCheckCard check={mcqCheck} index={0} onFinishedChange={onFinishedChange} rng={rng} />,
+      <RecallCheckCard
+        check={mcqCheck}
+        index={0}
+        onFinishedChange={onFinishedChange}
+        onAttemptReady={vi.fn()}
+        saveStatus="idle"
+        onRetrySave={vi.fn()}
+        rng={rng}
+      />,
     );
     const callsAfterMount = rng.mock.calls.length;
     expect(callsAfterMount).toBeGreaterThan(0);
 
-    rerender(<RecallCheckCard check={mcqCheck} index={0} onFinishedChange={onFinishedChange} rng={rng} />);
-    rerender(<RecallCheckCard check={mcqCheck} index={0} onFinishedChange={onFinishedChange} rng={rng} />);
+    rerender(
+      <RecallCheckCard
+        check={mcqCheck}
+        index={0}
+        onFinishedChange={onFinishedChange}
+        onAttemptReady={vi.fn()}
+        saveStatus="idle"
+        onRetrySave={vi.fn()}
+        rng={rng}
+      />,
+    );
+    rerender(
+      <RecallCheckCard
+        check={mcqCheck}
+        index={0}
+        onFinishedChange={onFinishedChange}
+        onAttemptReady={vi.fn()}
+        saveStatus="idle"
+        onRetrySave={vi.fn()}
+        rng={rng}
+      />,
+    );
 
     expect(rng.mock.calls.length).toBe(callsAfterMount);
   });
@@ -160,7 +216,16 @@ describe("RecallCheckCard — the shuffle", () => {
     // caller-supplied rng, which is the only path production traffic takes.
     const orders = new Set<string>();
     for (let i = 0; i < 40; i++) {
-      const { unmount } = render(<RecallCheckCard check={mcqCheck} index={0} onFinishedChange={vi.fn()} />);
+      const { unmount } = render(
+        <RecallCheckCard
+          check={mcqCheck}
+          index={0}
+          onFinishedChange={vi.fn()}
+          onAttemptReady={vi.fn()}
+          saveStatus="idle"
+          onRetrySave={vi.fn()}
+        />,
+      );
       fireEvent.click(screen.getByRole("button", { name: "Show options" }));
       const order = screen
         .getAllByRole("radio", { name: /^Option/ })
@@ -308,5 +373,208 @@ describe("RecallCheckCard — finished callback", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Pass" }));
     expect(onFinishedChange).toHaveBeenLastCalledWith(1, true);
+  });
+});
+
+describe("RecallCheckCard — onAttemptReady (Q-2b)", () => {
+  it("fires once, at stage 3, not at stage 2 (commit)", () => {
+    const onAttemptReady = vi.fn();
+    renderCard(mcqCheck, { rng: zeroRng, onAttemptReady });
+
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    expect(onAttemptReady).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+    expect(onAttemptReady).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports outcome=correct with the picked option text when the mcq answer is right", () => {
+    const onAttemptReady = vi.fn();
+    renderCard(mcqCheck, { rng: zeroRng, onAttemptReady });
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    // Shuffled order is [B, C, A]; index 0 (B) is the expected_answer.
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(onAttemptReady).toHaveBeenCalledWith(0, {
+      confidence: "confident",
+      outcome: "correct",
+      selectedOption: "Option B",
+    });
+  });
+
+  it("reports outcome=incorrect with the picked option text when the mcq answer is wrong", () => {
+    const onAttemptReady = vi.fn();
+    renderCard(mcqCheck, { rng: zeroRng, onAttemptReady });
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    // Shuffled order is [B, C, A]; index 2 (A) is wrong.
+    fireEvent.click(screen.getAllByRole("radio")[2]);
+    fireEvent.click(screen.getByRole("radio", { name: "Unsure" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(onAttemptReady).toHaveBeenCalledWith(0, {
+      confidence: "unsure",
+      outcome: "incorrect",
+      selectedOption: "Option A",
+    });
+  });
+
+  it.each(["Guessed", "Unsure", "Confident"] as const)(
+    "propagates confidence='%s' verbatim, not a hardcoded default",
+    (label) => {
+      const onAttemptReady = vi.fn();
+      renderCard(mcqCheck, { rng: zeroRng, onAttemptReady });
+      fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+      fireEvent.click(screen.getAllByRole("radio")[0]);
+      fireEvent.click(screen.getByRole("radio", { name: label }));
+      fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+      expect(onAttemptReady).toHaveBeenCalledWith(
+        0,
+        expect.objectContaining({ confidence: label.toLowerCase() }),
+      );
+    },
+  );
+
+  it("reports selectedOption=null for short_answer (never the mcq option shape)", () => {
+    const onAttemptReady = vi.fn();
+    renderCard(shortAnswerCheck, { onAttemptReady });
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+
+    expect(onAttemptReady).toHaveBeenCalledWith(1, {
+      confidence: "guessed",
+      outcome: "correct",
+      selectedOption: null,
+    });
+  });
+
+  it("re-fires as a correction when the short_answer rating changes (Pass -> Not yet), but not on a repeat click of the same rating", () => {
+    const onAttemptReady = vi.fn();
+    renderCard(shortAnswerCheck, { onAttemptReady });
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(onAttemptReady).toHaveBeenCalledTimes(1);
+    expect(onAttemptReady).toHaveBeenLastCalledWith(1, { confidence: "confident", outcome: "correct", selectedOption: null });
+
+    // Clicking the same rating again must not resubmit — React bails out of
+    // a state update to an identical primitive, so the effect never re-runs.
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(onAttemptReady).toHaveBeenCalledTimes(1);
+
+    // An actual correction (Pass -> Not yet) is new information for SRS —
+    // decided as "resubmit", not "ignore" or "first one wins" (see quiz.md).
+    fireEvent.click(screen.getByRole("button", { name: "Not yet" }));
+    expect(onAttemptReady).toHaveBeenCalledTimes(2);
+    expect(onAttemptReady).toHaveBeenLastCalledWith(1, { confidence: "confident", outcome: "incorrect", selectedOption: null });
+  });
+
+  it("does not re-fire on a re-render that leaves the completed attempt unchanged, even if onAttemptReady's own identity changes", () => {
+    const calls: unknown[] = [];
+    function Wrapper() {
+      const [, setTick] = useState(0);
+      return (
+        <>
+          <button onClick={() => setTick((t) => t + 1)}>bump</button>
+          <RecallCheckCard
+            check={mcqCheck}
+            index={0}
+            onFinishedChange={vi.fn()}
+            onAttemptReady={(p, a) => calls.push([p, a])}
+            saveStatus="idle"
+            onRetrySave={vi.fn()}
+            rng={zeroRng}
+          />
+        </>
+      );
+    }
+    render(<Wrapper />);
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+    expect(calls).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "bump" }));
+    expect(calls).toHaveLength(1);
+  });
+
+  it("does not call onAttemptReady twice under React StrictMode's double-invoked effects", () => {
+    const onAttemptReady = vi.fn();
+    render(
+      <StrictMode>
+        <RecallCheckCard
+          check={mcqCheck}
+          index={0}
+          onFinishedChange={vi.fn()}
+          onAttemptReady={onAttemptReady}
+          saveStatus="idle"
+          onRetrySave={vi.fn()}
+          rng={zeroRng}
+        />
+      </StrictMode>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(onAttemptReady).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("RecallCheckCard — save-status indicator", () => {
+  it("shows nothing extra while idle or saved", () => {
+    renderCard(mcqCheck, { rng: zeroRng, saveStatus: "idle" });
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(screen.queryByText("Not saved")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("shows a 'Not saved' alert with a Retry action on saveStatus='error' — never implying success", () => {
+    const onRetrySave = vi.fn();
+    renderCard(mcqCheck, { rng: zeroRng, saveStatus: "error", onRetrySave });
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(screen.getByRole("alert").textContent).toContain("Not saved");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetrySave).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show the Retry affordance when saveStatus='saved' (the save actually succeeded)", () => {
+    renderCard(mcqCheck, { rng: zeroRng, saveStatus: "saved" });
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByText("Not saved")).toBeNull();
+  });
+
+  it("shows 'Saving…' on saveStatus='saving', with no Retry affordance", () => {
+    renderCard(mcqCheck, { rng: zeroRng, saveStatus: "saving" });
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(screen.getByText("Saving…")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });

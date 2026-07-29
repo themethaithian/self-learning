@@ -1,14 +1,20 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { CurriculumResponse, Lesson, ProgressEntry } from "@/lib/api";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { UnauthorizedError, type AttemptInput, type CurriculumResponse, type Lesson, type PostAttemptResult, type ProgressEntry } from "@/lib/api";
 
-const { routerMock, searchParamsMock, getLesson, getCurriculum, setProgress } = vi.hoisted(() => ({
+// Must match web/app/(app)/lesson/page.tsx's private SHORT_ANSWER_SUBMIT_DEBOUNCE_MS
+// (not exported — Next.js's App Router rejects arbitrary named exports from
+// a page.tsx file).
+const SHORT_ANSWER_SUBMIT_DEBOUNCE_MS = 1000;
+
+const { routerMock, searchParamsMock, getLesson, getCurriculum, setProgress, postAttempt } = vi.hoisted(() => ({
   routerMock: { replace: vi.fn(), push: vi.fn() },
   searchParamsMock: vi.fn(() => new URLSearchParams()),
   getLesson: vi.fn<(topic: string, concept: string) => Promise<Lesson>>(),
   getCurriculum: vi.fn<() => Promise<CurriculumResponse>>(),
   setProgress: vi.fn<(topic: string, concept: string, state: "in_progress" | "passed") => Promise<ProgressEntry>>(),
+  postAttempt: vi.fn<(topic: string, concept: string, attempt: AttemptInput) => Promise<PostAttemptResult>>(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -18,7 +24,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
-  return { ...actual, getLesson, getCurriculum, setProgress };
+  return { ...actual, getLesson, getCurriculum, setProgress, postAttempt };
 });
 
 const { default: LessonPage } = await import("./page");
@@ -46,6 +52,66 @@ function lesson(topic: string, concept: string): Lesson {
 const lessonA = lesson("t1", "c1");
 const lessonB = lesson("t1", "c2");
 
+function shortAnswerLesson(topic: string, concept: string): Lesson {
+  return {
+    topic,
+    concept,
+    title_en: `Lesson ${concept}`,
+    est_minutes: 5,
+    body_md: "Body text.",
+    references: [],
+    recall_checks: [
+      {
+        position: 0,
+        type: "short_answer",
+        question: `Short question for ${concept}`,
+        expected_answer: `Short answer for ${concept}`,
+      },
+    ],
+  };
+}
+
+function twoShortAnswerLesson(topic: string, concept: string): Lesson {
+  return {
+    topic,
+    concept,
+    title_en: `Lesson ${concept}`,
+    est_minutes: 5,
+    body_md: "Body text.",
+    references: [],
+    recall_checks: [
+      {
+        position: 0,
+        type: "short_answer",
+        question: `First question for ${concept}`,
+        expected_answer: `First answer for ${concept}`,
+      },
+      {
+        position: 1,
+        type: "short_answer",
+        question: `Second question for ${concept}`,
+        expected_answer: `Second answer for ${concept}`,
+      },
+    ],
+  };
+}
+
+function okAttemptResult(): PostAttemptResult {
+  return {
+    kind: "ok",
+    record: {
+      check_key: "k",
+      question: "q",
+      kind: "mcq",
+      confidence: "confident",
+      outcome: "correct",
+      selected_option: null,
+      graded_by: "self",
+      created_at: "2026-01-01T00:00:00Z",
+    },
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   getCurriculum.mockResolvedValue({ tracks: [] });
@@ -53,6 +119,11 @@ beforeEach(() => {
   getLesson.mockImplementation((topic: string, concept: string) =>
     Promise.resolve(concept === "c1" ? lessonA : lessonB),
   );
+  postAttempt.mockResolvedValue(okAttemptResult());
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 function setParams(topic: string, concept: string) {
@@ -129,5 +200,637 @@ describe("LessonPage — finish() lesson-identity guard (pre-existing since UX-5
     // Lesson B must not be marked finished by a response meant for lesson A.
     expect(screen.queryByText("Lesson finished")).toBeNull();
     expect(screen.getByRole("button", { name: "Finish lesson" })).toBeTruthy();
+  });
+});
+
+async function completeMcq(correct: boolean) {
+  await screen.findByText("Question for c1");
+  fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+  fireEvent.click(screen.getByRole("radio", { name: correct ? "Answer for c1" : "Wrong for c1" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+  fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+}
+
+describe("LessonPage — attempt submission (Q-2b)", () => {
+  it("POSTs the exact body (question/confidence/outcome/selected_option) exactly once when an mcq check completes correctly", async () => {
+    setParams("t1", "c1");
+    render(<LessonPage />);
+    await completeMcq(true);
+
+    await waitFor(() => expect(postAttempt).toHaveBeenCalledTimes(1));
+    expect(postAttempt).toHaveBeenCalledWith("t1", "c1", {
+      question: "Question for c1",
+      confidence: "confident",
+      outcome: "correct",
+      selected_option: "Answer for c1",
+    });
+  });
+
+  it("POSTs outcome=incorrect with the picked (wrong) option text, not a hardcoded outcome", async () => {
+    setParams("t1", "c1");
+    render(<LessonPage />);
+    await completeMcq(false);
+
+    await waitFor(() => expect(postAttempt).toHaveBeenCalledTimes(1));
+    expect(postAttempt).toHaveBeenCalledWith(
+      "t1",
+      "c1",
+      expect.objectContaining({ outcome: "incorrect", selected_option: "Wrong for c1" }),
+    );
+  });
+
+  it("does not submit at stage 2 (commit) — only once Reveal is reached", async () => {
+    setParams("t1", "c1");
+    render(<LessonPage />);
+    await screen.findByText("Question for c1");
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Answer for c1" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(postAttempt).not.toHaveBeenCalled();
+  });
+
+  it.each(["Guessed", "Unsure", "Confident"] as const)(
+    "propagates confidence='%s' verbatim in the request body",
+    async (label) => {
+      setParams("t1", "c1");
+      render(<LessonPage />);
+      await screen.findByText("Question for c1");
+      fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+      fireEvent.click(screen.getByRole("radio", { name: "Answer for c1" }));
+      fireEvent.click(screen.getByRole("radio", { name: label }));
+      fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+      await waitFor(() =>
+        expect(postAttempt).toHaveBeenCalledWith(
+          "t1",
+          "c1",
+          expect.objectContaining({ confidence: label.toLowerCase() }),
+        ),
+      );
+    },
+  );
+
+  it("short_answer: submits selected_option=null, and re-submits as a correction once the rating settles", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    await vi.advanceTimersByTimeAsync(SHORT_ANSWER_SUBMIT_DEBOUNCE_MS);
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+    expect(postAttempt).toHaveBeenLastCalledWith("t1", "sa1", {
+      question: "Short question for sa1",
+      confidence: "guessed",
+      outcome: "correct",
+      selected_option: null,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Not yet" }));
+    await vi.advanceTimersByTimeAsync(SHORT_ANSWER_SUBMIT_DEBOUNCE_MS);
+    expect(postAttempt).toHaveBeenCalledTimes(2);
+    expect(postAttempt).toHaveBeenLastCalledWith("t1", "sa1", {
+      question: "Short question for sa1",
+      confidence: "guessed",
+      outcome: "incorrect",
+      selected_option: null,
+    });
+  });
+
+  it("settles before sending: rapid Pass/Not yet/Pass toggles on one check produce exactly one row, carrying the final settled value", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    fireEvent.click(screen.getByRole("button", { name: "Not yet" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(SHORT_ANSWER_SUBMIT_DEBOUNCE_MS);
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+    expect(postAttempt).toHaveBeenLastCalledWith(
+      "t1",
+      "sa1",
+      expect.objectContaining({ outcome: "correct" }),
+    );
+  });
+
+  it("flushes a pending short_answer submission on Finish, even before the debounce window elapses", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish lesson" }));
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+    expect(postAttempt).toHaveBeenCalledWith("t1", "sa1", {
+      question: "Short question for sa1",
+      confidence: "guessed",
+      outcome: "correct",
+      selected_option: null,
+    });
+  });
+
+  it("flushes a pending short_answer submission when navigating away, even before the debounce window elapses", async () => {
+    getLesson.mockImplementation((topic: string, concept: string) =>
+      Promise.resolve(concept === "sa1" ? shortAnswerLesson("t1", "sa1") : lessonB),
+    );
+    setParams("t1", "sa1");
+    const { rerender } = render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    setParams("t1", "c2");
+    rerender(<LessonPage />);
+
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+    expect(postAttempt).toHaveBeenCalledWith("t1", "sa1", {
+      question: "Short question for sa1",
+      confidence: "guessed",
+      outcome: "correct",
+      selected_option: null,
+    });
+  });
+
+  it("shows a 'Not saved' indicator (never a false success) on a failed save, then clears it once Retry succeeds", async () => {
+    postAttempt.mockResolvedValueOnce({ kind: "error" });
+    setParams("t1", "c1");
+    render(<LessonPage />);
+    await completeMcq(true);
+
+    await screen.findByText("Not saved");
+
+    // A deferred promise (not mockResolvedValueOnce) so the assertions below
+    // run strictly after the retry has actually settled — a bare `waitFor`
+    // on "Not saved" disappearing would also pass transiently during the
+    // "saving" state in between, before the retry's own result lands, and
+    // that false pass would hide a regression where the retry succeeds but
+    // the indicator wrongly stays (or the Retry affordance never clears).
+    let resolveRetry: (result: PostAttemptResult) => void = () => {};
+    const retryPromise = new Promise<PostAttemptResult>((resolve) => {
+      resolveRetry = resolve;
+    });
+    postAttempt.mockReturnValueOnce(retryPromise);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(postAttempt).toHaveBeenCalledTimes(2));
+    // The retry must resend exactly what the original attempt sent — on an
+    // append-only table with no idempotency key, a wrong retry payload is a
+    // permanently wrong row, not a transient glitch.
+    expect(postAttempt.mock.calls[1]).toEqual(postAttempt.mock.calls[0]);
+
+    await act(async () => {
+      resolveRetry(okAttemptResult());
+      await retryPromise;
+    });
+
+    expect(screen.queryByText("Not saved")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("surfaces unsaved attempts near Finish instead of silently implying everything recorded", async () => {
+    postAttempt.mockResolvedValueOnce({ kind: "error" });
+    setParams("t1", "c1");
+    render(<LessonPage />);
+    await completeMcq(true);
+
+    await screen.findByText(/recall attempts didn.t save/);
+  });
+
+  it("redirects to /token on a 401 from the attempts endpoint, matching useFocusTrack's policy", async () => {
+    postAttempt.mockRejectedValueOnce(new UnauthorizedError());
+    setParams("t1", "c1");
+    render(<LessonPage />);
+    await completeMcq(true);
+
+    await waitFor(() => expect(routerMock.replace).toHaveBeenCalledWith("/token"));
+  });
+
+  it("ignores a stale attempt response for a lesson the user has already navigated away from", async () => {
+    let resolveAttempt: (result: PostAttemptResult) => void = () => {};
+    const attemptPromise = new Promise<PostAttemptResult>((resolve) => {
+      resolveAttempt = resolve;
+    });
+    postAttempt.mockReturnValueOnce(attemptPromise);
+
+    setParams("t1", "c1");
+    const { rerender } = render(<LessonPage />);
+    await completeMcq(true);
+    await waitFor(() => expect(postAttempt).toHaveBeenCalledTimes(1));
+
+    // Navigate to a different lesson while lesson A's attempt POST is still
+    // in flight, same as the finish() guard test above.
+    setParams("t1", "c2");
+    rerender(<LessonPage />);
+    await screen.findByText("Question for c2");
+
+    await act(async () => {
+      resolveAttempt({ kind: "error" });
+      await attemptPromise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Lesson B's own (untouched) check is still at stage 1 (recall) — its
+    // per-check "Not saved" indicator only renders at stage 3, so asserting
+    // on that text alone would pass even with the guard deleted. The
+    // aggregate Finish-step banner is keyed by lesson-view-level state
+    // (attemptStatus), not by a child's stage, so it is the assertion that
+    // actually observes whether lesson A's stale response leaked in.
+    expect(screen.queryByText(/recall attempts didn.t save/)).toBeNull();
+    expect(screen.queryByText("Not saved")).toBeNull();
+  });
+
+  // currentIdentityRef alone (topic/concept equality) cannot distinguish "a
+  // later visit to this lesson" from "still the same visit" — only
+  // loadGenerationRef (bumped on every load, including a revisit of the same
+  // slugs) can. Both tests below revisit the SAME lesson (A -> B -> A) so a
+  // slug-only guard would wrongly treat visit 1's stale response as current.
+  it("a stale OK response from an earlier visit to the same lesson does not overwrite a genuine failure from the current visit", async () => {
+    let resolveFirstVisit: (result: PostAttemptResult) => void = () => {};
+    const firstVisitPromise = new Promise<PostAttemptResult>((resolve) => {
+      resolveFirstVisit = resolve;
+    });
+    postAttempt.mockReturnValueOnce(firstVisitPromise);
+
+    setParams("t1", "c1");
+    const { rerender } = render(<LessonPage />);
+    await completeMcq(true);
+    await waitFor(() => expect(postAttempt).toHaveBeenCalledTimes(1));
+
+    setParams("t1", "c2");
+    rerender(<LessonPage />);
+    await screen.findByText("Question for c2");
+
+    // Revisit c1 (same slugs as visit 1, a distinct visit) and get a genuine
+    // failure this time.
+    postAttempt.mockResolvedValueOnce({ kind: "error" });
+    setParams("t1", "c1");
+    rerender(<LessonPage />);
+    await completeMcq(true);
+    await waitFor(() => expect(postAttempt).toHaveBeenCalledTimes(2));
+    await screen.findByText("Not saved");
+    await screen.findByText(/recall attempts didn.t save/);
+
+    // Visit 1's request finally resolves OK — it must not be read as "the
+    // current attempt succeeded" just because its topic/concept still match.
+    await act(async () => {
+      resolveFirstVisit(okAttemptResult());
+      await firstVisitPromise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Not saved")).toBeTruthy();
+    expect(screen.queryByText(/recall attempts didn.t save/)).toBeTruthy();
+  });
+
+  it("a stale failure response from an earlier visit to the same lesson does not leak into a fresh, untouched revisit", async () => {
+    let resolveFirstVisit: (result: PostAttemptResult) => void = () => {};
+    const firstVisitPromise = new Promise<PostAttemptResult>((resolve) => {
+      resolveFirstVisit = resolve;
+    });
+    postAttempt.mockReturnValueOnce(firstVisitPromise);
+
+    setParams("t1", "c1");
+    const { rerender } = render(<LessonPage />);
+    await completeMcq(true);
+    await waitFor(() => expect(postAttempt).toHaveBeenCalledTimes(1));
+
+    setParams("t1", "c2");
+    rerender(<LessonPage />);
+    await screen.findByText("Question for c2");
+
+    // Revisit c1 — same slugs as visit 1, but nothing is answered this time.
+    setParams("t1", "c1");
+    rerender(<LessonPage />);
+    await screen.findByText("Question for c1");
+
+    await act(async () => {
+      resolveFirstVisit({ kind: "error" });
+      await firstVisitPromise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Not saved")).toBeNull();
+    expect(screen.queryByText(/recall attempts didn.t save/)).toBeNull();
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the pending-count banner and the per-check 'Saving…' text while an attempt is in flight, then clears both", async () => {
+    let resolveAttempt: (result: PostAttemptResult) => void = () => {};
+    const attemptPromise = new Promise<PostAttemptResult>((resolve) => {
+      resolveAttempt = resolve;
+    });
+    postAttempt.mockReturnValueOnce(attemptPromise);
+
+    setParams("t1", "c1");
+    render(<LessonPage />);
+    await completeMcq(true);
+
+    await screen.findByText("Saving 1 recall attempt…");
+    expect(screen.getByText("Saving…")).toBeTruthy();
+
+    await act(async () => {
+      resolveAttempt(okAttemptResult());
+      await attemptPromise;
+    });
+    expect(screen.queryByText("Saving 1 recall attempt…")).toBeNull();
+    expect(screen.queryByText("Saving…")).toBeNull();
+  });
+
+  it("surfaces a still-saving attempt even after Finish completes, instead of implying everything is recorded", async () => {
+    // Deliberately never resolved — this test only cares that the pending
+    // state survives Finish, not about what happens once the POST settles.
+    postAttempt.mockReturnValueOnce(new Promise<PostAttemptResult>(() => {}));
+
+    setParams("t1", "c1");
+    render(<LessonPage />);
+    await completeMcq(true);
+    await screen.findByText("Saving 1 recall attempt…");
+
+    expect(screen.getByRole("button", { name: "Finish lesson" }).getAttribute("aria-disabled")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "Finish lesson" }));
+    await screen.findByText("Lesson finished");
+
+    // Finish only writes lesson_progress — the still-pending recall attempt
+    // must remain visible, not disappear just because the lesson reads as done.
+    expect(screen.getByText("Saving 1 recall attempt…")).toBeTruthy();
+  });
+
+  it("Retry cancels a live debounce timer instead of racing it — a correction made while 'Not saved' is showing must not also let the old timer fire", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    postAttempt.mockResolvedValueOnce({ kind: "error" });
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SHORT_ANSWER_SUBMIT_DEBOUNCE_MS);
+    });
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Not saved")).toBeTruthy();
+
+    // "Not saved"/Retry stays on screen (saveStatus only changes on a
+    // submitAttempt result) while this correction schedules a fresh timer.
+    fireEvent.click(screen.getByRole("button", { name: "Not yet" }));
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+
+    postAttempt.mockResolvedValueOnce(okAttemptResult());
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(postAttempt).toHaveBeenCalledTimes(2);
+
+    // The timer Retry must have cancelled — if it didn't, this fires a 3rd,
+    // duplicate POST for the same (already-flushed) correction.
+    await vi.advanceTimersByTimeAsync(SHORT_ANSWER_SUBMIT_DEBOUNCE_MS);
+    expect(postAttempt).toHaveBeenCalledTimes(2);
+    expect(postAttempt).toHaveBeenLastCalledWith("t1", "sa1", {
+      question: "Short question for sa1",
+      confidence: "guessed",
+      outcome: "incorrect",
+      selected_option: null,
+    });
+  });
+
+  function cardFor(question: string) {
+    const card = screen.getByText(question).closest(".rounded-2xl") as HTMLElement;
+    return within(card);
+  }
+
+  it("flushes BOTH pending short_answer submissions on Finish, not just the first", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(twoShortAnswerLesson("t1", "sa2")));
+    setParams("t1", "sa2");
+    render(<LessonPage />);
+    await screen.findByText("First question for sa2");
+
+    const card0 = cardFor("First question for sa2");
+    fireEvent.click(card0.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(card0.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(card0.getByRole("button", { name: "Reveal answer" }));
+    const card1 = cardFor("Second question for sa2");
+    fireEvent.click(card1.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(card1.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(card1.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(card0.getByRole("button", { name: "Pass" }));
+    fireEvent.click(card1.getByRole("button", { name: "Not yet" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish lesson" }));
+
+    expect(postAttempt).toHaveBeenCalledTimes(2);
+    const byQuestion = Object.fromEntries(
+      postAttempt.mock.calls.map((call) => [(call[2] as AttemptInput).question, call[2]]),
+    );
+    expect(byQuestion["First question for sa2"]).toEqual({
+      question: "First question for sa2",
+      confidence: "guessed",
+      outcome: "correct",
+      selected_option: null,
+    });
+    expect(byQuestion["Second question for sa2"]).toEqual({
+      question: "Second question for sa2",
+      confidence: "guessed",
+      outcome: "incorrect",
+      selected_option: null,
+    });
+  });
+
+  it("flushes BOTH pending short_answer submissions when navigating away, not just the first", async () => {
+    getLesson.mockImplementation((topic: string, concept: string) =>
+      Promise.resolve(concept === "sa2" ? twoShortAnswerLesson("t1", "sa2") : lessonB),
+    );
+    setParams("t1", "sa2");
+    const { rerender } = render(<LessonPage />);
+    await screen.findByText("First question for sa2");
+
+    const card0 = cardFor("First question for sa2");
+    fireEvent.click(card0.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(card0.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(card0.getByRole("button", { name: "Reveal answer" }));
+    const card1 = cardFor("Second question for sa2");
+    fireEvent.click(card1.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(card1.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(card1.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(card0.getByRole("button", { name: "Pass" }));
+    fireEvent.click(card1.getByRole("button", { name: "Not yet" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    setParams("t1", "c2");
+    rerender(<LessonPage />);
+
+    expect(postAttempt).toHaveBeenCalledTimes(2);
+    const byQuestion = Object.fromEntries(
+      postAttempt.mock.calls.map((call) => [(call[2] as AttemptInput).question, call[2]]),
+    );
+    expect(byQuestion["First question for sa2"]).toEqual({
+      question: "First question for sa2",
+      confidence: "guessed",
+      outcome: "correct",
+      selected_option: null,
+    });
+    expect(byQuestion["Second question for sa2"]).toEqual({
+      question: "Second question for sa2",
+      confidence: "guessed",
+      outcome: "incorrect",
+      selected_option: null,
+    });
+  });
+
+  it("flushes a pending short_answer submission with keepalive on pagehide (a reload shortly after rating still writes it)", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    expect(postAttempt).toHaveBeenCalledTimes(1);
+    expect(postAttempt).toHaveBeenLastCalledWith(
+      "t1",
+      "sa1",
+      { question: "Short question for sa1", confidence: "guessed", outcome: "correct", selected_option: null },
+      { keepalive: true },
+    );
+  });
+
+  it("flushes a pending short_answer submission with keepalive on visibilitychange -> hidden", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState");
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    try {
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      expect(postAttempt).toHaveBeenCalledTimes(1);
+      expect(postAttempt).toHaveBeenLastCalledWith(
+        "t1",
+        "sa1",
+        { question: "Short question for sa1", confidence: "guessed", outcome: "correct", selected_option: null },
+        { keepalive: true },
+      );
+    } finally {
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+      if (originalDescriptor) Object.defineProperty(Document.prototype, "visibilityState", originalDescriptor);
+    }
+  });
+
+  it("the real browser sequence (visibilitychange:hidden, then pagehide) flushes exactly once per check, not twice", async () => {
+    getLesson.mockImplementation(() => Promise.resolve(shortAnswerLesson("t1", "sa1")));
+    setParams("t1", "sa1");
+    render(<LessonPage />);
+    await screen.findByText("Short question for sa1");
+    fireEvent.click(screen.getByRole("button", { name: "I've answered" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Guessed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Pass" }));
+    expect(postAttempt).not.toHaveBeenCalled();
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState");
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    try {
+      // A tab close/reload really does fire both, in this order — a
+      // visibilitychange flush that clears the timer but forgets to delete
+      // the map entry lets the pagehide flush see it again and re-submit.
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+        window.dispatchEvent(new Event("pagehide"));
+      });
+
+      expect(postAttempt).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+      if (originalDescriptor) Object.defineProperty(Document.prototype, "visibilityState", originalDescriptor);
+    }
+  });
+
+  it("removes the pagehide/visibilitychange listeners on unmount", async () => {
+    // Not a flush-count assertion: the per-navigation effect's own cleanup
+    // already flushes on unmount (R5), so any pending debounce timer is
+    // gone before a stale pagehide listener could double-flush it — that
+    // confound would mask the exact mutation this test exists to catch.
+    // Spying directly on add/removeEventListener pins the cleanup itself.
+    const windowAdd = vi.spyOn(window, "addEventListener");
+    const windowRemove = vi.spyOn(window, "removeEventListener");
+    const docAdd = vi.spyOn(document, "addEventListener");
+    const docRemove = vi.spyOn(document, "removeEventListener");
+
+    setParams("t1", "c1");
+    const { unmount } = render(<LessonPage />);
+    await screen.findByText("Question for c1");
+
+    const pagehideRegistration = windowAdd.mock.calls.find(([type]) => type === "pagehide");
+    const visibilitychangeRegistration = docAdd.mock.calls.find(([type]) => type === "visibilitychange");
+    expect(pagehideRegistration).toBeTruthy();
+    expect(visibilitychangeRegistration).toBeTruthy();
+
+    unmount();
+
+    // A leftover listener firing for a component that no longer exists is
+    // the same "stale work attributed to the wrong lesson" class R1 fixed
+    // for late responses — here it would arrive through the listener itself.
+    expect(windowRemove).toHaveBeenCalledWith("pagehide", pagehideRegistration![1]);
+    expect(docRemove).toHaveBeenCalledWith("visibilitychange", visibilitychangeRegistration![1]);
+
+    windowAdd.mockRestore();
+    windowRemove.mockRestore();
+    docAdd.mockRestore();
+    docRemove.mockRestore();
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useEffect, useRef, useState } from "react";
-import type { RecallCheck } from "@/lib/api";
+import type { AttemptConfidence, AttemptOutcome, RecallCheck } from "@/lib/api";
 import { shuffleOptions } from "@/lib/shuffle";
 import { Button } from "@/components/Button";
 import { CheckIcon, XIcon } from "@/components/icons";
@@ -19,9 +19,15 @@ const CONFIDENCE_OPTIONS = [
   { value: "confident", label: "Confident" },
 ] as const;
 
-type Confidence = (typeof CONFIDENCE_OPTIONS)[number]["value"];
-
 type RecallStage = "recall" | "commit" | "reveal";
+
+export type AttemptSaveStatus = "idle" | "saving" | "saved" | "error";
+
+export interface CompletedAttempt {
+  confidence: AttemptConfidence;
+  outcome: AttemptOutcome;
+  selectedOption: string | null;
+}
 
 /**
  * The one place "finished" is defined per check type: mcq has no self-report,
@@ -41,11 +47,14 @@ interface RecallCheckCardProps {
   check: RecallCheck;
   index: number;
   onFinishedChange: (position: number, finished: boolean) => void;
+  onAttemptReady: (position: number, attempt: CompletedAttempt) => void;
+  saveStatus: AttemptSaveStatus;
+  onRetrySave: () => void;
   rng?: () => number;
 }
 
 export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(function RecallCheckCard(
-  { check, index, onFinishedChange, rng },
+  { check, index, onFinishedChange, onAttemptReady, saveStatus, onRetrySave, rng },
   ref,
 ) {
   const hasOptions = check.type === "mcq" && !!check.options && check.options.length > 0;
@@ -58,11 +67,21 @@ export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(
 
   const [stage, setStage] = useState<RecallStage>("recall");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [confidence, setConfidence] = useState<Confidence | null>(null);
+  const [confidence, setConfidence] = useState<AttemptConfidence | null>(null);
   const [shortAnswerRating, setShortAnswerRating] = useState<RecallRating | null>(null);
 
   const commitRef = useRef<HTMLDivElement>(null);
   const revealRef = useRef<HTMLDivElement>(null);
+  // Keyed by the attempt's own content, not a plain "already submitted"
+  // flag, so a short_answer rating correction is still recognised and
+  // reported, not silently swallowed as a duplicate.
+  const lastReportedAttemptRef = useRef<string | null>(null);
+
+  // selectedIndex indexes into shuffledOptions (this card's own stable
+  // order), never the option text — two options with identical text would
+  // otherwise both light up as "selected" together.
+  const selectedOptionText = hasOptions && selectedIndex != null ? shuffledOptions[selectedIndex] : null;
+  const isMcqCorrect = selectedOptionText != null && selectedOptionText === check.expected_answer;
 
   useEffect(() => {
     if (stage === "commit") commitRef.current?.focus({ preventScroll: true });
@@ -73,18 +92,24 @@ export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(
     onFinishedChange(check.position, isRecallCheckFinished(check.type, stage, shortAnswerRating));
   }, [check.position, check.type, stage, shortAnswerRating, onFinishedChange]);
 
+  useEffect(() => {
+    if (!isRecallCheckFinished(check.type, stage, shortAnswerRating) || confidence == null) return;
+    const outcome: AttemptOutcome =
+      check.type === "mcq" ? (isMcqCorrect ? "correct" : "incorrect") : shortAnswerRating === "pass" ? "correct" : "incorrect";
+    const selectedOption = check.type === "mcq" ? selectedOptionText : null;
+
+    const signature = `${confidence}|${outcome}|${selectedOption ?? ""}`;
+    if (lastReportedAttemptRef.current === signature) return;
+    lastReportedAttemptRef.current = signature;
+    onAttemptReady(check.position, { confidence, outcome, selectedOption });
+  }, [check.position, check.type, stage, shortAnswerRating, confidence, selectedOptionText, isMcqCorrect, onAttemptReady]);
+
   const canReveal = hasOptions ? selectedIndex != null && confidence != null : confidence != null;
 
   function handleReveal() {
     if (!canReveal) return;
     setStage("reveal");
   }
-
-  // selectedIndex indexes into shuffledOptions (this card's own stable
-  // order), never the option text — two options with identical text would
-  // otherwise both light up as "selected" together.
-  const selectedOptionText = hasOptions && selectedIndex != null ? shuffledOptions[selectedIndex] : null;
-  const isMcqCorrect = selectedOptionText != null && selectedOptionText === check.expected_answer;
 
   return (
     <div
@@ -243,6 +268,28 @@ export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(
                   {opt.label}
                 </button>
               ))}
+            </div>
+          )}
+
+          {saveStatus === "saving" && <p className="text-xs text-faint">Saving…</p>}
+
+          {saveStatus === "error" && (
+            // role=alert, not status: this only mounts once per failed save
+            // (a fixed one-shot condition here, unlike the short_answer
+            // buttons above whose aria-pressed toggles repeatedly — the
+            // reason role=status stays scoped to the mcq correctness line
+            // instead of wrapping this whole panel, per Q-1's REQ-3).
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-medium text-danger-strong"
+            >
+              <span className="flex items-center gap-1">
+                <XIcon />
+                Not saved
+              </span>
+              <Button variant="ghost" onClick={onRetrySave}>
+                Retry
+              </Button>
             </div>
           )}
         </div>

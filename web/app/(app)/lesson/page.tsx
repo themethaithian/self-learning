@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   getCurriculum,
   getLesson,
+  postAttempt,
   setProgress,
   NotFoundError,
   UnauthorizedError,
@@ -14,7 +15,7 @@ import {
 import { findNextLesson, locateLessonBreadcrumb, type NextLessonResult } from "@/lib/curriculum";
 import { trackLabel } from "@/lib/trackMeta";
 import { LessonBody } from "@/components/LessonBody";
-import { RecallCheckCard } from "@/components/RecallCheckCard";
+import { RecallCheckCard, type AttemptSaveStatus, type CompletedAttempt } from "@/components/RecallCheckCard";
 import { EmptyState } from "@/components/EmptyState";
 import { Button, LinkButton } from "@/components/Button";
 import { Card } from "@/components/Card";
@@ -38,6 +39,24 @@ interface NavInfo {
   location: { track: string; chapterTitle: string };
   next: NextLessonResult;
 }
+
+interface AttemptPayload extends CompletedAttempt {
+  question: string;
+}
+
+// short_answer's Pass/Not yet can flip back and forth before the user
+// settles on one — submitting every intermediate value would append one
+// permanently-ordered row per flip-flop into an append-only table with no
+// upsert, and Q-2c's "latest rating" read can't break ties within the same
+// second (recall_attempts.created_at is TIMESTAMP, second precision).
+// Debouncing collapses a burst of changes into the single settled value.
+// mcq never needs this: its inputs freeze the instant it reaches reveal, so
+// it always has exactly one value to submit and does so immediately.
+//
+// Not exported: Next.js's App Router restricts page.tsx to its recognised
+// exports (default component, metadata, ...) — an arbitrary named export
+// here fails the generated route type-check. Tests duplicate this literal.
+const SHORT_ANSWER_SUBMIT_DEBOUNCE_MS = 1000;
 
 const LEARN_CRUMB: Crumb = { label: "Learn", href: "/learn" };
 
@@ -108,7 +127,17 @@ function LessonView() {
   const [finishState, setFinishState] = useState<FinishState>({ status: "idle" });
   const [alreadyPassed, setAlreadyPassed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  const [attemptStatus, setAttemptStatus] = useState<Record<number, AttemptSaveStatus>>({});
   const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  // Retry (and a debounce flush) re-sends the latest payload already
+  // computed for this position — RecallCheckCard only reports a completed
+  // attempt once (or once per short_answer correction), so neither must
+  // require the user to redo the check to reconstruct it.
+  const pendingAttemptsRef = useRef<Record<number, AttemptPayload>>({});
+  // Pending short_answer submissions waiting out the debounce window (see
+  // SHORT_ANSWER_SUBMIT_DEBOUNCE_MS) — flushed early on Finish and on
+  // navigating away so a settled answer is never lost to a page transition.
+  const debounceTimersRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const finishedBannerRef = useRef<HTMLDivElement>(null);
   // The single source of truth for "which lesson is actually on screen right
   // now" — finish() is owned by a click handler, not the effect below, so it
@@ -116,6 +145,126 @@ function LessonView() {
   // async work the effect itself started). Cleared the instant navigation
   // starts, (re)set once the new lesson is confirmed current.
   const currentIdentityRef = useRef<{ topic: string; concept: string } | null>(null);
+  // Identifies a *visit*, not a lesson: revisiting the same topic/concept
+  // bumps this too, unlike currentIdentityRef which is only slug-keyed and
+  // so cannot tell "this response belongs to the visit that started it"
+  // apart from "this response's slugs happen to match what's on screen now"
+  // — a real gap when the user leaves and comes back to the same lesson
+  // while an earlier visit's request is still in flight.
+  const loadGenerationRef = useRef(0);
+
+  const handleCheckFinishedChange = useCallback((position: number, finished: boolean) => {
+    setFinishedChecks((prev) => (prev[position] === finished ? prev : { ...prev, [position]: finished }));
+  }, []);
+
+  const currentLesson = state.status === "success" ? state.lesson : null;
+
+  // A stale response is one whose *visit* has ended, not one whose slugs no
+  // longer match the screen — see loadGenerationRef above.
+  const submitAttempt = useCallback(
+    async (position: number, payload: AttemptPayload, opts?: { keepalive?: boolean }) => {
+      pendingAttemptsRef.current[position] = payload;
+      const identity = currentIdentityRef.current;
+      if (!identity) {
+        setAttemptStatus((prev) => ({ ...prev, [position]: "error" }));
+        return;
+      }
+      const generation = loadGenerationRef.current;
+      const stillCurrent = () => loadGenerationRef.current === generation;
+
+      setAttemptStatus((prev) => ({ ...prev, [position]: "saving" }));
+
+      try {
+        const body = {
+          question: payload.question,
+          confidence: payload.confidence,
+          outcome: payload.outcome,
+          selected_option: payload.selectedOption,
+        };
+        // keepalive is only threaded through as an actual 4th argument when
+        // requested (pagehide/visibilitychange) — every other call keeps the
+        // exact 3-argument shape callers already assert on.
+        const result = opts?.keepalive
+          ? await postAttempt(identity.topic, identity.concept, body, { keepalive: true })
+          : await postAttempt(identity.topic, identity.concept, body);
+        if (!stillCurrent()) return;
+        setAttemptStatus((prev) => ({ ...prev, [position]: result.kind === "ok" ? "saved" : "error" }));
+      } catch (err) {
+        if (err instanceof UnauthorizedError) router.replace("/token");
+      }
+    },
+    [router],
+  );
+
+  const clearPendingTimer = useCallback((position: number) => {
+    const timer = debounceTimersRef.current[position];
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    delete debounceTimersRef.current[position];
+  }, []);
+
+  // Unconditional: called both for an actual pending timer (quiet period,
+  // Finish, navigate-away) and for Retry, which has no timer of its own but
+  // must still cancel one — a short_answer correction made after a failure
+  // schedules a fresh timer while the old "error" status (and its Retry
+  // button) is still on screen, and Retry firing alongside that timer later
+  // is two submissions of two different values under one check_key.
+  const flushPendingAttempt = useCallback(
+    (position: number, opts?: { keepalive?: boolean }) => {
+      clearPendingTimer(position);
+      const payload = pendingAttemptsRef.current[position];
+      if (payload) void submitAttempt(position, payload, opts);
+    },
+    [clearPendingTimer, submitAttempt],
+  );
+
+  const flushAllPendingAttempts = useCallback(
+    (opts?: { keepalive?: boolean }) => {
+      Object.keys(debounceTimersRef.current).forEach((key) => flushPendingAttempt(Number(key), opts));
+    },
+    [flushPendingAttempt],
+  );
+
+  const handleAttemptReady = useCallback(
+    (position: number, attempt: CompletedAttempt) => {
+      const check = currentLesson?.recall_checks.find((c) => c.position === position);
+      if (!check) {
+        // The position this claims to belong to isn't in the lesson
+        // currently on screen — nothing valid to retry, but silently
+        // dropping it would leave no trace that anything went wrong.
+        setAttemptStatus((prev) => ({ ...prev, [position]: "error" }));
+        return;
+      }
+      const payload: AttemptPayload = { question: check.question, ...attempt };
+      pendingAttemptsRef.current[position] = payload;
+
+      if (check.type !== "short_answer") {
+        void submitAttempt(position, payload);
+        return;
+      }
+
+      clearPendingTimer(position);
+      debounceTimersRef.current[position] = setTimeout(() => {
+        delete debounceTimersRef.current[position];
+        void submitAttempt(position, payload);
+      }, SHORT_ANSWER_SUBMIT_DEBOUNCE_MS);
+    },
+    [currentLesson, submitAttempt, clearPendingTimer],
+  );
+
+  // Routed through flushPendingAttempt, not a bare submitAttempt call: a
+  // short_answer correction made after a failure schedules a fresh debounce
+  // timer while the old "error" status (and Retry button) is still on
+  // screen — clicking Retry must cancel that timer, not race it, or the
+  // timer's later fire and Retry's own submission both land as two rows.
+  const handleRetrySave = useCallback(
+    (position: number) => {
+      if (attemptStatus[position] === "saving") return;
+      if (!pendingAttemptsRef.current[position]) return;
+      flushPendingAttempt(position);
+    },
+    [attemptStatus, flushPendingAttempt],
+  );
 
   // One effect owns both the lesson fetch and the mark-in-progress write so
   // they share a single `cancelled` flag. Navigating lesson -> Next -> Back
@@ -123,6 +272,8 @@ function LessonView() {
   // new searchParams) — without this guard a late response for the OLD
   // lesson could set state for whatever lesson is on screen now.
   useEffect(() => {
+    loadGenerationRef.current += 1;
+
     if (!topicSlug || !conceptSlug) {
       setState({ status: "error", message: "Missing topic or concept in the URL." });
       return;
@@ -134,6 +285,9 @@ function LessonView() {
     setFinishedChecks({});
     setFinishState({ status: "idle" });
     setAlreadyPassed(false);
+    setAttemptStatus({});
+    pendingAttemptsRef.current = {};
+    debounceTimersRef.current = {};
 
     async function run() {
       let lesson: Lesson;
@@ -172,8 +326,33 @@ function LessonView() {
     run();
     return () => {
       cancelled = true;
+      // A settled short_answer rating waiting out its debounce window must
+      // not be lost just because the user moved on before it fired.
+      flushAllPendingAttempts();
     };
-  }, [topicSlug, conceptSlug, router, retryToken]);
+  }, [topicSlug, conceptSlug, router, retryToken, flushAllPendingAttempts]);
+
+  // A hard navigation (reload, close tab, switch app on mobile) doesn't run
+  // this component's own cleanup the way an in-SPA lesson change does —
+  // pagehide + visibilitychange:hidden is the reliable pair for catching
+  // that (beforeunload alone is unreliable on mobile Safari, the reviewing
+  // device). keepalive keeps the request alive past unload; sendBeacon can't
+  // carry the Authorization header, so fetch(...,{keepalive:true}) is used
+  // instead (see api.ts's postAttempt).
+  useEffect(() => {
+    function flushForUnload() {
+      flushAllPendingAttempts({ keepalive: true });
+    }
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") flushForUnload();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", flushForUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", flushForUnload);
+    };
+  }, [flushAllPendingAttempts]);
 
   // The curriculum tree only powers the breadcrumb and Next — its failure
   // must never turn a successfully loaded lesson into a page-level error.
@@ -190,12 +369,6 @@ function LessonView() {
       cancelled = true;
     };
   }, [router]);
-
-  const handleCheckFinishedChange = useCallback((position: number, finished: boolean) => {
-    setFinishedChecks((prev) => (prev[position] === finished ? prev : { ...prev, [position]: finished }));
-  }, []);
-
-  const currentLesson = state.status === "success" ? state.lesson : null;
 
   const navInfo = useMemo<NavInfo | null>(() => {
     if (!tracks || !currentLesson) return null;
@@ -267,6 +440,9 @@ function LessonView() {
   const totalChecks = lesson.recall_checks.length;
   const finishedCount = lesson.recall_checks.filter((check) => finishedChecks[check.position]).length;
   const allFinished = finishedCount === totalChecks;
+  const attemptStatusValues = Object.values(attemptStatus);
+  const savingAttemptCount = attemptStatusValues.filter((s) => s === "saving").length;
+  const hasFailedAttempt = attemptStatusValues.includes("error");
 
   async function finish() {
     const identity = { topic: lesson.topic, concept: lesson.concept };
@@ -304,6 +480,9 @@ function LessonView() {
       el?.focus({ preventScroll: true });
       return;
     }
+    // A short_answer rating chosen just before clicking Finish may still be
+    // sitting in its debounce window — Finish must not race it.
+    flushAllPendingAttempts();
     void finish();
   }
 
@@ -346,6 +525,9 @@ function LessonView() {
                 check={check}
                 index={index}
                 onFinishedChange={handleCheckFinishedChange}
+                onAttemptReady={handleAttemptReady}
+                saveStatus={attemptStatus[check.position] ?? "idle"}
+                onRetrySave={() => handleRetrySave(check.position)}
               />
             ))}
           </div>
@@ -354,6 +536,25 @@ function LessonView() {
 
       <section className="max-w-[68ch] space-y-4">
         <div className="space-y-2">
+          {savingAttemptCount > 0 && (
+            // Finish only writes lesson_progress — it says nothing about
+            // whether recall_attempts caught up, so "Lesson finished" alone
+            // would read as fully recorded even while a save is still in
+            // flight (its own resolution is silently dropped if the user
+            // has since navigated away, per submitAttempt's stillCurrent).
+            <div role="status" className="rounded-xl border border-subtle bg-page px-4 py-3 text-sm text-muted">
+              Saving {savingAttemptCount} recall attempt{savingAttemptCount === 1 ? "" : "s"}…
+            </div>
+          )}
+          {hasFailedAttempt && (
+            <div
+              role="alert"
+              className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger-strong"
+            >
+              Some recall attempts didn&apos;t save — retry them above, or your recall history for this lesson will be
+              incomplete.
+            </div>
+          )}
           {finished ? (
             <div
               ref={finishedBannerRef}
