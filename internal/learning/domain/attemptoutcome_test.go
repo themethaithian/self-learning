@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -43,5 +44,19 @@ func TestAttemptOutcomeZeroValue(t *testing.T) {
 	var o AttemptOutcome
 	if !o.IsZero() {
 		t.Errorf("zero-value AttemptOutcome.IsZero() = false, want true")
+	}
+}
+
+// TestAttemptOutcomeAcceptedSetIsExactly pins the exhaustive member list —
+// see TestConfidenceAcceptedSetIsExactly's doc comment for why a table of
+// known-good/known-bad cases alone cannot catch a member being added.
+func TestAttemptOutcomeAcceptedSetIsExactly(t *testing.T) {
+	want := []string{"correct", "incorrect"}
+	var got []string
+	for _, o := range attemptOutcomes {
+		got = append(got, o.value)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("attemptOutcomes = %v, want exactly %v", got, want)
 	}
 }

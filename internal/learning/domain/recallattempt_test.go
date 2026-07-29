@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -49,9 +50,23 @@ func TestCheckKindZeroValue(t *testing.T) {
 	}
 }
 
+// TestCheckKindAcceptedSetIsExactly pins the exhaustive member list — see
+// confidence_test.go's TestConfidenceAcceptedSetIsExactly for why a table of
+// known-good/known-bad cases alone cannot catch a member being added.
+func TestCheckKindAcceptedSetIsExactly(t *testing.T) {
+	want := []string{"short_answer", "mcq"}
+	var got []string
+	for _, k := range checkKinds {
+		got = append(got, k.value)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("checkKinds = %v, want exactly %v", got, want)
+	}
+}
+
 func mustCheckKey(t *testing.T, topic, conceptSlug, question string) CheckKey {
 	t.Helper()
-	k, err := NewCheckKey(topic, mustLessonRef(t, conceptSlug), question)
+	k, err := NewCheckKey(topic, mustLessonRef(t, conceptSlug), mustCanonicalQuestion(t, question))
 	if err != nil {
 		t.Fatalf("NewCheckKey(%q, %q, %q) failed: %v", topic, conceptSlug, question, err)
 	}

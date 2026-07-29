@@ -37,9 +37,12 @@ var ErrInvalidSlug = errors.New("learning: invalid topic or concept slug")
 // ever match (see domain.CheckKey's doc comment).
 var ErrCheckNotInLesson = errors.New("learning: recall check not found in this lesson")
 
-// ErrInvalidAttempt is returned when kind, confidence, outcome, or the
-// selected-option/kind pairing fails domain validation. Checked before any
-// repository round trip, the same way ErrInvalidSlug is.
+// ErrInvalidAttempt is returned when confidence, outcome, question
+// non-emptiness, or the selected-option/kind pairing fails domain
+// validation. confidence/outcome/question are checked before any repository
+// round trip, the same way ErrInvalidSlug is; the selected-option/kind
+// pairing can only be checked once kind is resolved from recall_checks.type,
+// inside RecordAttempt's build closure.
 var ErrInvalidAttempt = errors.New("learning: invalid recall attempt")
 
 // ProgressEntry is one concept's persisted progress, addressed by topic and
@@ -92,22 +95,27 @@ type Repository interface {
 
 	// RecordAttempt resolves the recall check identified by (topicSlug,
 	// conceptSlug, question), then calls build with that check's CANONICAL
-	// question text — never question itself. This matters because
+	// question and its real kind — never question itself, and never a
+	// client-supplied kind. Canonical question matters because
 	// recall_checks.question is matched under MySQL's case/accent-
 	// insensitive collation, but domain.CheckKey hashes byte-exact: hashing
 	// the caller's raw question instead of the canonical one would let a
 	// case-variant phrasing pass the lesson-membership check yet mint a
 	// DIFFERENT check_key than the canonical text would, silently forking
-	// one question's attempt history (see domain.CheckKey's doc comment).
-	// It rejects a question that does not belong to that lesson
-	// (ErrCheckNotInLesson) or a lesson that does not exist
+	// one question's attempt history (see domain.CanonicalQuestion's doc
+	// comment). kind is server-resolved for the same reason CheckKey is:
+	// it is static curriculum content the server already owns, not a
+	// client judgement like outcome is — a trusted client-supplied kind
+	// could store an mcq's selected_option against what the database says
+	// is a short_answer check. It rejects a question that does not belong
+	// to that lesson (ErrCheckNotInLesson) or a lesson that does not exist
 	// (ErrLessonNotFound) without ever calling build. If build itself
 	// errors (e.g. domain.NewRecallAttempt's mcq-only invariant), that
 	// error is returned with nothing inserted — mirroring how Transition
 	// never writes when decide errors. Attempts are append-only, so this is
 	// a resolve-then-insert, never a Transition-style locked
 	// read-modify-write.
-	RecordAttempt(ctx context.Context, topicSlug, conceptSlug, question string, build func(canonicalQuestion string) (domain.RecallAttempt, error)) (AttemptRecord, error)
+	RecordAttempt(ctx context.Context, topicSlug, conceptSlug, question string, build func(canonicalQuestion domain.CanonicalQuestion, kind domain.CheckKind) (domain.RecallAttempt, error)) (AttemptRecord, error)
 }
 
 type Service struct {
@@ -220,15 +228,19 @@ func newConceptRef(conceptSlug string) (domain.LessonRef, error) {
 	return ref, nil
 }
 
-// RecordAttempt persists one self-graded recall-check attempt. kind,
-// confidence, outcome, and question-non-emptiness are all validated here,
-// before any repository round trip. The CheckKey cannot be one of them: it
-// must hash the DB's own canonical question text, not rawQuestion — a
-// case-variant question can pass "belongs to this lesson" under MySQL's
-// collation yet hash differently from the canonical text (see
-// domain.CheckKey's doc comment) — so build defers CheckKey construction
-// until the repository hands back the canonical text it actually matched.
-func (s Service) RecordAttempt(ctx context.Context, topicSlug, conceptSlug, rawQuestion, rawKind, rawConfidence, rawOutcome string, rawSelectedOption *string) (AttemptRecord, error) {
+// RecordAttempt persists one self-graded recall-check attempt. confidence,
+// outcome, and question-non-emptiness are all validated here, before any
+// repository round trip. kind and the CheckKey cannot be validated here: kind
+// is resolved server-side from recall_checks.type and CheckKey must hash the
+// DB's own canonical question text, not rawQuestion — a case-variant
+// question can pass "belongs to this lesson" under MySQL's collation yet
+// hash differently from the canonical text (see domain.CanonicalQuestion's
+// doc comment) — so build defers both until the repository hands back what
+// it actually matched. trimmedQuestion (not rawQuestion) is what gets sent
+// to the repository, so the "belongs to this lesson" lookup compares the
+// same text CheckKey will hash, not a version that still carries whitespace
+// domain.NewCanonicalQuestion would have trimmed away.
+func (s Service) RecordAttempt(ctx context.Context, topicSlug, conceptSlug, rawQuestion, rawConfidence, rawOutcome string, rawSelectedOption *string) (AttemptRecord, error) {
 	if err := validateTopicSlugShape(topicSlug); err != nil {
 		return AttemptRecord{}, err
 	}
@@ -237,10 +249,6 @@ func (s Service) RecordAttempt(ctx context.Context, topicSlug, conceptSlug, rawQ
 		return AttemptRecord{}, err
 	}
 
-	kind, err := domain.NewCheckKind(rawKind)
-	if err != nil {
-		return AttemptRecord{}, fmt.Errorf("%w: %w", ErrInvalidAttempt, err)
-	}
 	confidence, err := domain.NewConfidence(rawConfidence)
 	if err != nil {
 		return AttemptRecord{}, fmt.Errorf("%w: %w", ErrInvalidAttempt, err)
@@ -249,12 +257,13 @@ func (s Service) RecordAttempt(ctx context.Context, topicSlug, conceptSlug, rawQ
 	if err != nil {
 		return AttemptRecord{}, fmt.Errorf("%w: %w", ErrInvalidAttempt, err)
 	}
-	if strings.TrimSpace(rawQuestion) == "" {
+	trimmedQuestion := strings.TrimSpace(rawQuestion)
+	if trimmedQuestion == "" {
 		return AttemptRecord{}, fmt.Errorf("%w: %w", ErrInvalidAttempt, domain.ErrInvalidCheckKey)
 	}
 	selectedOption := normalizeSelectedOption(rawSelectedOption)
 
-	build := func(canonicalQuestion string) (domain.RecallAttempt, error) {
+	build := func(canonicalQuestion domain.CanonicalQuestion, kind domain.CheckKind) (domain.RecallAttempt, error) {
 		checkKey, err := domain.NewCheckKey(topicSlug, conceptRef, canonicalQuestion)
 		if err != nil {
 			return domain.RecallAttempt{}, fmt.Errorf("%w: %w", ErrInvalidAttempt, err)
@@ -266,7 +275,7 @@ func (s Service) RecordAttempt(ctx context.Context, topicSlug, conceptSlug, rawQ
 		return attempt, nil
 	}
 
-	entry, err := s.repo.RecordAttempt(ctx, topicSlug, conceptSlug, rawQuestion, build)
+	entry, err := s.repo.RecordAttempt(ctx, topicSlug, conceptSlug, trimmedQuestion, build)
 	if err != nil {
 		return AttemptRecord{}, fmt.Errorf("learning: record attempt %s/%s: %w", topicSlug, conceptSlug, err)
 	}

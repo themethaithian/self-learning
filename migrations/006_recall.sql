@@ -1,8 +1,9 @@
 -- check_key is CHAR(64) ascii_bin, not the table's default utf8mb4_0900_ai_ci:
 -- it always holds lowercase hex we produce ourselves (never user-facing
 -- text needing accent/case folding), so byte-exact comparison is what a hash
--- column needs, and ascii halves the byte width of utf8mb4 for an index this
--- will be queried through on every SRS review (Q-2c).
+-- column needs, and ascii (1 byte/char) is a QUARTER the byte width of
+-- utf8mb4 (up to 4 bytes/char) for an index this will be queried through on
+-- every SRS review (Q-2c).
 --
 -- No UNIQUE constraint on check_key: recall_attempts is append-only, many
 -- rows per check_key over time.

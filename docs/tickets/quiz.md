@@ -288,7 +288,13 @@ Status: implemented, round 2 fixes applied post code-review, PR pending
   + `Repository.RecordAttempt`, `internal/learning/infra/handler.go` เพิ่ม route
   `POST /api/v1/progress/{topic}/{concept}/attempts`. Backend ล้วน —
   `git diff --name-only develop... -- 'web/*'` ว่างเปล่าจริง, ไม่แตะ
-  `web/components/RecallCheckCard.tsx` เลย (นั่นคือ Q-2b)
+  `web/components/RecallCheckCard.tsx` เลย (นั่นคือ Q-2b). **รอบ 2 (หลัง code
+  review)**: เพิ่มไฟล์ที่ 6 `canonicalquestion.go` (`domain.CanonicalQuestion`,
+  R3), `kind` ถูกตัดออกจาก request body ทั้งหมด (ตอนนี้ resolve จาก
+  `recall_checks.type` เสมอ, R1), เพิ่มเทสต์ exhaustive-set 4 ตัวสำหรับ enum
+  ทั้งสี่ (R2), และ `stub_driver_test.go` โมเดล `recall_checks.type` +
+  ENUM validity ของ `recall_attempts` เพิ่ม (R4) — รายละเอียดทั้งหมดอยู่ที่หัวข้อ
+  "รอบ code-reviewer 2" ด้านล่าง
 
 ### การตัดสินใจหลัก
 
@@ -325,12 +331,18 @@ Status: implemented, round 2 fixes applied post code-review, PR pending
 - **Index `(check_key, created_at DESC)`**: ตรงกับ query pattern ของ Q-2c
   (`WHERE check_key = ? ORDER BY created_at DESC`) แม้ query นี้ยังไม่ถูกเขียนใน
   รอบนี้ก็ตาม — เตรียม index ไว้ตอนสร้างตาราง ถูกกว่าเพิ่มทีหลัง
-- **`kind` เป็น field ที่ client ส่งมา ไม่ใช่ server อ่านจาก `recall_checks.type`**:
-  request body มี `question`/`kind`/`confidence`/`outcome`/`selected_option` —
-  server เชื่อ client สำหรับเนื้อหาที่ไม่กระทบ identity (kind/confidence/outcome/
-  selected_option ทั้งหมด) เหมือนกับที่เชื่อ client เรื่องถูก/ผิด (ดูข้อถัดไป)
-  ส่วนที่ server ต้อง**ยืนยันเอง**มีแค่ "คำถามนี้เป็นของ lesson นี้จริงไหม" เพราะ
-  เป็นเรื่อง identity/scoping ที่ client พิสูจน์เองไม่ได้
+- **`kind` เป็น field ที่ server resolve จาก `recall_checks.type` เอง — ไม่ใช่
+  client ส่งมา (แก้ในรอบ 2, ดู R1 ในหัวข้อ "รอบ code-reviewer 2" ด้านล่าง;
+  ย่อหน้านี้เคยเขียนตรงข้ามในรอบแรกและถูกพิสูจน์ว่าผิดจริง)**: request body มีแค่
+  `question`/`confidence`/`outcome`/`selected_option` — server เชื่อ client
+  เฉพาะเนื้อหาที่เป็น**การตัดสินใจของ user จริง** (`outcome` self-graded,
+  `confidence` self-reported, `selected_option` คือสิ่งที่กดจริง) ส่วน `kind`
+  เป็น curriculum content ที่ server เป็นเจ้าของอยู่แล้วผ่าน `recall_checks.type`
+  ไม่ใช่ user judgement เหมือน `outcome` เลย — เชื่อ client เรื่องนี้จะเปิดช่องให้
+  `type='mcq'` กับ `selected_option` ปลอมไปเก็บใต้คำถาม `short_answer` จริงได้
+  (พิสูจน์แล้วจริงในรอบ 2). server ต้อง**ยืนยันเอง**สองเรื่อง: "คำถามนี้เป็นของ
+  lesson นี้จริงไหม" (identity/scoping) และ "คำถามนี้ kind อะไรจริง" (content,
+  ไม่ใช่ identity แต่ก็ไม่ใช่ user judgement)
 - **Grading ยังเป็น self-graded**: `graded_by` เก็บต่อแถว default เป็น `'self'`
   — `domain.GradedBySelf` เป็นค่าเดียวที่ `Service.RecordAttempt` ส่งเข้า
   `domain.NewRecallAttempt` จริง ๆ (enum เองมีทั้ง `self`/`llm` เผื่ออนาคต แต่
@@ -381,13 +393,38 @@ Status: implemented, round 2 fixes applied post code-review, PR pending
 | 9 | ลบเช็ค `selectedOption != nil && !kind.IsMCQ()` ออกจาก `NewRecallAttempt` | killed — `TestNewRecallAttempt` (`selected option on short_answer is rejected` case) + `TestServiceRecordAttempt_SelectedOptionOnShortAnswerRejected` |
 | 10 | ลบ ambiguous-match guard ออกจาก `resolveRecallCheck` (`QueryContext`+loop → `QueryRowContext` ตัวเดียว, ตาม R1's code review round) | killed — `TestRepositoryRecordAttempt_AmbiguousCaseVariantRejected` (seed 2 recall_checks ที่ fold เป็นคำถามเดียวกันใน lesson เดียวกัน ยืนยันว่า error ไม่ใช่แค่เลือกแถวแรกเงียบ ๆ) |
 | 11 | ลบ `.Truncate(time.Second)` ออกจาก `now` ก่อน insert (R2's fix) | killed — `TestRepositoryRecordAttempt_CreatedAtTruncatedToSeconds` (assert `CreatedAt.Nanosecond() == 0`) |
+| 12 | `Repository.RecordAttempt` ส่ง kind ที่ hardcode (`"short_answer"`) เข้า `build` แทน kind ที่ resolve จาก `rc.type` จริง (round 2, R1's kind fix) | killed — `TestRepositoryRecordAttempt_KindResolvedFromRecallChecksType` (ใหม่ในรอบ 2, seed สอง lesson คนละ kind ยืนยันว่า kind ที่ได้กลับมาตรงกับที่ seed เสมอ) |
 
-**สรุป: 11/11 มูเทชันตายหมด ไม่มี survivor ที่เป็น coverage gap จริง** — มูเทชัน #6
-เป็น equivalent mutant ที่ **ตั้งใจ**ปล่อยไว้ที่ app layer (เพราะ `'llm'` เข้าไม่ถึง
-ได้จริงผ่าน endpoint วันนี้ตามการออกแบบ) แต่มี test จริงที่ repository layer
-กัน regression ไว้ล่วงหน้าสำหรับตอนที่ Q-2c/LLM adapter มาเสียบจริง. #1/#2/#10/#11
-ถูก re-run หลังรอบ code-reviewer (ดูหัวข้อถัดไป) เพื่อยืนยันว่าการ refactor เป็น
-`build` closure ไม่ทำให้ coverage เดิมถอยหลัง — ตายเหมือนเดิมทุกจุด
+**สรุปรอบแรก (retracted บางส่วนในรอบ 2 — ดูด้านล่าง): เดิมเขียนว่า "11/11 มูเทชันตายหมด
+ไม่มี survivor ที่เป็น coverage gap จริง"** — ประโยคนี้**เกินจริง** พบใน code review
+รอบ 2 (นี่เป็น ticket ที่สองแล้วที่ claim ความครบของ mutation testing เกินจริงกว่าที่
+ทดสอบจริง ดู Q-1's ticket สำหรับครั้งแรก): #7a/#7b/#7c เดิมทดสอบด้วยค่าปลอมที่
+**บังเอิญตรงกับ literal ที่ test table ใช้เป็น "unknown value" case อยู่แล้ว**
+(`"partial"` สำหรับ outcome, ทำนองเดียวกันกับ confidence/kind/graded_by) — เทสต์
+เดิมไม่เคย assert ว่า **enum ทั้งชุด** ตรงกับ literal list ที่กำหนดไว้ แค่ assert
+ว่าค่าที่ทดลองสามค่าถูกปฏิเสธ. ทดสอบด้วยค่าปลอม**คนละตัว**ที่ไม่ตรงกับ literal เดิม
+(`"maybe"`/`"essay"`/`"skipped"`/`"robot"` — เพิ่มเข้า `confidences`/`checkKinds`/
+`attemptOutcomes`/`gradedBys` ทีละตัว) ยืนยันว่า **ทั้งสี่ค่าปลอมนี้ survive เทสต์
+เดิมทั้ง 266 ข้อในรอบนั้น** — แก้แล้วในรอบ 2 (ดู R2 ด้านล่าง) ด้วยเทสต์ใหม่ที่เทียบ
+array ทั้งชุดกับ literal slice ตรง ๆ (`TestConfidenceAcceptedSetIsExactly` และเทสต์
+คู่กันอีกสามตัว) — ทดสอบซ้ำด้วยค่าปลอมชุดเดียวกันหลังแก้: **ตายครบทั้งสี่**.
+มูเทชัน #6 (graded_by hardcode) ยังเป็น equivalent mutant ที่ **ตั้งใจ**ปล่อยไว้ที่
+app layer เหมือนเดิม (เพราะ `'llm'` เข้าไม่ถึงได้จริงผ่าน endpoint วันนี้ตามการ
+ออกแบบ) แต่มี test จริงที่ repository layer กัน regression ไว้ล่วงหน้าสำหรับตอนที่
+Q-2c/LLM adapter มาเสียบจริง.
+
+**หมายเหตุเรื่อง #4/#5 (SQL literal-pin mutations)**: ทั้งสอง kill ได้เพราะ
+`TestSelectRecallCheckExistsSQLShape`/`TestInsertRecallAttemptSQLShape` เทียบ
+literal string ตรง ๆ — **ถ้าใครแก้ SQL source พร้อมแก้ `want` literal ในเทสต์ให้
+ตรงกันไปด้วย (ไม่ใช่แค่แก้ source อย่างเดียว) มูเทชันนี้จะไม่ตายเลย** ตารางด้านบน
+บันทึกจุดนี้ไว้ตรง ๆ แทนที่จะให้อ่านว่าเป็น kill แบบไม่มีเงื่อนไข — ป้องกันด้วย
+review เท่านั้น (คนแก้ SQL + เทสต์คู่กันในคอมมิตเดียวควรโดนจับตอน diff review)
+ไม่มีกลไกอัตโนมัติกันจุดนี้ได้
+
+**ยืนยันซ้ำหลังรอบ 2 (R1's kind fix + CanonicalQuestion refactor)**: มูเทชัน
+#1/#2/#3/#4/#5/#6/#9/#10/#11 (ทุกจุดที่โค้ดที่เกี่ยวข้องถูก refactor ในรอบ 2) ถูก
+re-run ทีละจุดอีกครั้งบนโค้ดหลังแก้ครบ — ตายเหมือนเดิมทุกจุด ไม่มี regression จาก
+การ refactor เป็น `CanonicalQuestion` type และการตัด `kind` ออกจาก request
 
 ### รอบ code-reviewer (CHANGES NEEDED → แก้ครบ)
 
@@ -478,6 +515,95 @@ signature เป็น `build` closure) ถูก re-run ครบหลัง�
 ด้านบนแล้ว (อัปเดตแล้วให้ตรงกับโค้ดหลังแก้), ผลลัพธ์เดิมทั้งหมดยังตายเหมือนเดิม
 ไม่มี regression จากการ refactor
 
+### รอบ code-reviewer 2 (REQUEST_CHANGES → แก้ครบ)
+
+Reviewer พิสูจน์สดว่า `kind` ที่ client ส่งมาเป็นช่องโหว่จริง ไม่ใช่การตัดสินใจ
+ที่ปิดเรียบร้อยแล้วอย่างที่รอบแรกเขียนไว้ (S3 ด้านบน) — **S3's decision ถูก
+พลิกในรอบนี้**: `recall_checks.id=5270` (`type='short_answer'`, `options`
+NULL) ยิง POST ด้วย `kind:"mcq"` + `selected_option` ที่กุขึ้นเอง → **201**,
+เก็บเป็น `type='mcq'` ใต้ `check_key` เดียวกับแถว `short_answer` ข้างเคียง —
+invariant ที่ตรวจกับ input ที่ client คุมได้ไม่ใช่ invariant จริง (`kind` ผ่านเข้า
+`NewRecallAttempt`'s เช็ค "selected option เฉพาะ mcq" แต่ `kind` เองมาจาก
+client ที่โกหกได้)
+
+- **R1 (blocking, แก้แล้ว) — ตัด `kind` ออกจาก request body ทั้งหมด, server
+  resolve จาก `recall_checks.type`**: เหตุผลที่ "client ส่ง kind เอง" ใช้ไม่ได้
+  อีกต่อไป — `outcome` เชื่อ client ได้เพราะ self-graded (คนตอบ = คนให้คะแนน)
+  แต่ `kind` เป็น curriculum content ที่ server เป็นเจ้าของอยู่แล้ว ไม่ใช่การ
+  ตัดสินใจของ user. แก้ตาม pattern เดียวกับที่ R1 (รอบแรก) แก้ให้ `question`:
+  `selectRecallCheckExistsSQL` เพิ่ม `rc.type` เข้า SELECT (query เดียวกับที่คืน
+  `rc.question` อยู่แล้ว ไม่มี round trip เพิ่ม), `resolveRecallCheck` คืน
+  `kindRaw` เพิ่ม, `Repository.RecordAttempt`'s `build` closure เปลี่ยน
+  signature เป็น `func(domain.CanonicalQuestion, domain.CheckKind)
+  (domain.RecallAttempt, error)` — kind เป็น parameter ที่ resolve แล้วเหมือน
+  question. `Service.RecordAttempt` ตัด `rawKind` param ออกทั้งหมด (6 params
+  เหลือแทน 7), `recordAttemptRequest`'s `Kind` field ถูกลบ — client ที่ส่ง
+  `"kind":"..."` มาจะโดน `DisallowUnknownFields()` ปฏิเสธเป็น 400 เหมือน field
+  แปลกอื่น ๆ (ยืนยันด้วย `TestHandlerPostAttempt_KindFieldRejected` ใหม่, และ
+  curl สดด้านล่าง) — ทำให้ "kind ไม่ตรงกับ recall_checks.type" **เป็นไปไม่ได้
+  โดยโครงสร้าง** ไม่ใช่แค่ถูก validate แล้วปฏิเสธ
+- **R2 (blocking, แก้แล้ว) — ไม่มีเทสต์ pin accepted-set ของ enum ทั้งชุด, claim
+  "11/11 killed" เดิมเป็น coincidence**: ดูตาราง mutation ด้านบน (ย่อหน้า
+  "สรุปรอบแรก") สำหรับรายละเอียดเต็ม — สรุปสั้น: เพิ่มเทสต์ใหม่ 1 ตัวต่อ enum
+  (`TestConfidenceAcceptedSetIsExactly`, `TestCheckKindAcceptedSetIsExactly`,
+  `TestAttemptOutcomeAcceptedSetIsExactly`, `TestGradedByAcceptedSetIsExactly`)
+  เทียบ array ทั้งชุดกับ `[]string` literal ด้วย `slices.Equal` — เพิ่ม**หรือ**
+  ลบสมาชิกกี่ตัวก็ fail ทันที ไม่ต้องเดาว่าเทสต์ table เดิมมีค่าที่ตรงกับ
+  ค่าปลอมพอดีหรือเปล่า
+- **R3 (แก้แล้ว, promoted จาก reviewer's S1) — แทนที่ caller invariant ด้วย
+  type**: `checkkey.go`'s doc comment (29 บรรทัด) เป็น WHY ที่ถูกต้องและ
+  reviewer ยืนยันทุกข้อเท็จจริงแล้ว **ไม่ได้ตัดทิ้งเพราะอยากสั้นลง** — ตัดทิ้ง
+  เฉพาะประโยคที่ชดเชยด้วยคำอธิบายแทนที่จะบังคับด้วย type: "Callers MUST resolve
+  and pass the DB's own canonical question, never raw client input" เพิ่ม type
+  ใหม่ `domain.CanonicalQuestion` (`internal/learning/domain/canonicalquestion.go`)
+  — `NewCanonicalQuestion(raw string)` trim แล้ว reject ค่าว่าง (ย้าย trim
+  logic มาจาก `checkkey.go` เดิม). `NewCheckKey`'s พารามิเตอร์ที่สามเปลี่ยนจาก
+  `string` เป็น `CanonicalQuestion` — `Service.RecordAttempt`'s `build`
+  closure ไม่มีจุดไหนสร้าง `CanonicalQuestion` จาก `rawQuestion` เองเลย (รับ
+  แค่ตัวที่ repository resolve มาให้เป็น parameter) จึงไม่มีที่ทางให้เผลอ
+  สร้างจาก raw client input ได้อีก — เป็นหลักการเดียวกับที่ R1 ใช้กับ `kind`
+  ในรอบนี้เป๊ะ ๆ
+- **R4 (แก้แล้ว, promoted จาก reviewer's S2) — stub driver ตาบอดสองจุดที่ R1
+  (ทั้งสองรอบ) อยู่พอดี**: `stub_driver_test.go` เดิมไม่มีคอลัมน์ `recall_checks.type`
+  เลย และไม่ enforce ENUM ของ `recall_attempts` เลย (MySQL ภายใต้
+  `STRICT_TRANS_TABLES` ปฏิเสธค่า out-of-ENUM ด้วย error 1265) — แก้ทั้งสองจุด:
+  `seedRecallCheck` รับ `kind` เพิ่ม, `selectRecallCheckExistsSQL`'s stub
+  dispatch คืน `rc.type` เป็นคอลัมน์ที่สาม (`recallCheckMatch`/`seededRecallCheck`
+  เก็บ kind ไว้คู่กับ question); `insertRecallAttemptSQL`'s exec handler เพิ่ม
+  `validateRecallAttemptEnums` เทียบ `type`/`confidence`/`outcome`/`graded_by`
+  กับ literal set ที่ mirror `migrations/006_recall.sql`'s ENUM ทุกคอลัมน์ตรง ๆ
+  คืน error จำลอง MySQL 1265 ถ้าไม่ match — เพิ่มเทสต์
+  `TestStubInsertRecallAttemptRejectsInvalidEnumValue` (4 subtests, หนึ่งต่อ
+  คอลัมน์) ยืนยันว่า fidelity fix เองทำงานจริง โดยเรียก `db.ExecContext` ตรง ๆ
+  ข้าม domain-layer validation ไปเลย (ทดสอบตัว stub เอง ไม่ใช่ path ของ
+  `RecordAttempt`)
+- **R5 (แก้แล้ว) — จุดเล็กหลายจุด**:
+  - `service.go`'s `RecordAttempt` เดิมส่ง `rawQuestion` **ไม่ trim** เข้า
+    query resolve ทั้งที่ `NewCanonicalQuestion`/`NewCheckKey` trim อยู่แล้ว —
+    ถ้า client ส่งคำถามที่มี trailing space จะได้ 400 "question not found"
+    ทั้งที่จริงเป็นคำถามที่ถูกต้อง แก้ให้ trim ก่อนส่งเข้า `s.repo.RecordAttempt`
+    (`trimmedQuestion` แทน `rawQuestion`) ให้ตรงกับสิ่งที่ hash จริง
+  - `migrations/006_recall.sql`'s comment เขียนผิดว่า ascii "halves the byte
+    width of utf8mb4" — จริง ๆ คือ **quarters** (ascii 1 byte/char เทียบ
+    utf8mb4 สูงสุด 4 bytes/char) แก้ข้อความให้ตรง
+  - `TestServiceRecordAttempt_EchoesSubmittedValues` เปลี่ยนเป็น table-driven
+    ครบทั้งสาม `Confidence` (`guessed`/`unsure`/`confident`) แทนที่จะ assert
+    แค่ `"confident"` ตัวเดียว
+  - Cleanup แถว synthetic ใน dev DB: ลบ `id=4` (จาก stale-image test รอบก่อน)
+    และ `id` 10–13 (เขียนโดย reviewer ระหว่างพิสูจน์ R1 — รวมถึงแถว 13 ที่**คือ
+    R1's ตัวบั๊กเอง**, `type='mcq'` ใต้ `check_key` เดียวกับแถว `short_answer`)
+    หลังแก้ R1 แล้วแถวพวกนี้เป็น invalid data ที่จะทำให้ Q-2b/Q-2c สับสน — ลบทิ้ง
+    ยืนยันด้วย `SELECT` ก่อน/หลัง ด้านล่าง
+- **R6 (แก้แล้ว) — เอกสารเกินจริง**: ดูย่อหน้า "สรุปรอบแรก" ในตาราง mutation
+  ด้านบนสำหรับรายละเอียดตัวเลขจริง (18/21 killed จาก reviewer's independent set,
+  4 survivor ทั้งหมดเป็น R2's class) แทนที่ "11/11 ไม่มี survivor"
+- **จุดที่รู้ตัวแล้วไม่แก้ (by design)**: `RecordAttempt` เป็น resolve-then-insert
+  ไม่มี transaction (ถูกแล้ว — append-only ไม่มี read-modify-write ให้ race) แต่
+  `import-lessons` ทำ `DELETE FROM recall_checks` แล้ว insert ใหม่ — POST attempt
+  ที่มาถึงพอดีในหน้าต่างนั้นจะได้ 400 (คำถามหาไม่เจอชั่วคราว) แอปนี้ single-user
+  และ import เป็น manual step ไม่ใช่ automated job ที่รันพร้อมกับ traffic จริง
+  จึงรับความเสี่ยงนี้ไว้โดยไม่ใส่ lock เพิ่ม — บันทึกไว้เป็น known window เฉย ๆ
+
 ### Live verification (docker + curl + MySQL)
 
 Stack: `docker compose up -d --build` (ไม่ลบ volume, ไม่ใช้ `-v` ตอนปิด).
@@ -516,6 +642,42 @@ Stack: `docker compose up -d --build` (ไม่ลบ volume, ไม่ใช�
 (รายละเอียด output/curl commands ทั้งหมดอยู่ใน PR description ของ
 `ticket/q-2a-recall-attempts`)
 
+### Live verification รอบ 2 (หลังแก้ R1's kind fix + CanonicalQuestion refactor)
+
+Rebuild image จริง (`docker compose build api` แล้ว `docker compose up -d api`,
+ไม่ใช้ `-v`) หลัง `go vet ./...`/`gofmt -l .`/`go test -count=1 ./...` เขียวหมด
+บนโค้ดที่จะ commit เพื่อไม่ให้เกิดปัญหาเดิม (รอบก่อนหน้าเจอ image ที่ build จาก
+source กลางอากาศระหว่างมูเทตพอดี — ดูหมายเหตุด้านบน):
+
+- **ส่ง `kind` ใน request body → 400 ทันที**: `{"question":"...","kind":"mcq",...}`
+  ไปที่ endpoint เดิม → `{"error":"invalid request body"}`, HTTP 400 —
+  `recordAttemptRequest` ไม่มี field `Kind` อีกแล้ว `DisallowUnknownFields()`
+  ปฏิเสธเหมือน field แปลกอื่น ๆ — พิสูจน์ว่า "kind ไม่ตรงกับ recall_checks.type"
+  เป็นไปไม่ได้จริงในทางปฏิบัติ ไม่ใช่แค่ validate แล้วปฏิเสธ
+- **case-variant → canonical check_key เดิม ยังคงอยู่หลัง refactor**: submit
+  คำถาม mcq จริง (`ทำไมคำว่า Account...`) ด้วย casing ปกติ ได้
+  `check_key=321730c1eb55d0131a5fe466611d192a4691eb0a908d008e9771d9da4994883c`,
+  `kind:"mcq"` (resolve จาก DB เอง ไม่ใช่จาก request). submit คำถามเดิมแบบ
+  `ACCOUNT` ตัวใหญ่ทั้งหมด → **`check_key` เดิมทุกตัวอักษร** และ response's
+  `question` คืนข้อความ canonical (`Account` ตัวพิมพ์ปกติ) — ยืนยันว่า
+  `CanonicalQuestion` refactor ไม่ทำให้พฤติกรรม R1's fix เปลี่ยนเลย
+- **`check_key` ตรวจข้ามสามวิธี**: Go (จากค่าที่ API ตอบ), `sha256sum` ของ
+  `printf 'domain-driven-design/ubiquitous-language/ทำไมคำว่า Account...'`,
+  และ MySQL's **`SHA2(CONCAT(topic,'/',concept,'/',question), 256)`** เอง —
+  ทั้งสามวิธีให้ hex เดียวกันเป๊ะ (`321730c1...`) พิสูจน์ว่าไม่ใช่แค่ Go เห็นด้วย
+  กับตัวเอง
+- **append-only ยังคงอยู่**: `SELECT id, type, confidence, outcome, created_at
+  FROM recall_attempts WHERE check_key='321730c1...'` เห็น 6 แถวสำหรับคำถาม
+  เดียวกัน (รวมสองแถวใหม่จากรอบนี้) ทุกแถว `type='mcq'` ตรงกัน (พิสูจน์ R1's kind
+  fix แบบ positive: ไม่มีแถวไหนเป็น `type` อื่นใต้ `check_key` เดียวกันอีกแล้ว)
+- **Cleanup**: ลบแถว synthetic `id=4` (stale-image bug รอบก่อน) และ `id`
+  10–13 (รวมแถว 13 ที่เป็น R1's ตัวบั๊กเอง — `type='mcq'` ใต้ `check_key`
+  เดียวกับแถว `short_answer`) ยืนยันด้วย `SELECT` ก่อนลบ (เห็นเนื้อหาตรงกับที่
+  reviewer อธิบายไว้เป๊ะ) และหลังลบ (เหลือแถวที่ถูกต้องทั้งหมด, ไม่มี `type`
+  ขัดแย้งกันใต้ `check_key` เดียวกันอีกเลย)
+
+(รายละเอียด curl/SQL command ทั้งหมดของรอบ 2 อยู่ใน PR description)
+
 ### จงใจไม่ทำในรอบนี้
 
 - **ป้องกัน concept slug ซ้ำข้ามสองบทของ topic เดียวกันแล้ว (แก้เพิ่มจากรอบ
@@ -530,21 +692,27 @@ Stack: `docker compose up -d --build` (ไม่ลบ volume, ไม่ใช�
 - **ไม่แตะ frontend เลย** — `RecallCheckCard`'s confidence/selected
   option/outcome ยังอยู่ใน memory เหมือนเดิม จะหายตอน refresh เหมือนที่ Q-1 บันทึก
   ไว้ — Q-2b คือ ticket ที่เรียก endpoint นี้จริงแล้ว persist เป็นครั้งแรก
-- **ไม่ตรวจ `kind` ที่ client ส่งมาย้อนกลับกับ `recall_checks.type` จริงใน DB** —
-  client บอก kind เอง (ดู "การตัดสินใจหลัก" ด้านบน) ถ้าพบว่าจำเป็นต้อง
-  cross-check จริง (เช่น เจอ client bug ส่ง kind ผิดจริง) ค่อยเพิ่มทีหลัง
+- **`kind` cross-check กับ `recall_checks.type` — ตัดสินใจแล้วในรอบ 2, ไม่ใช่
+  "จงใจไม่ทำ" อีกต่อไป**: รอบแรกเขียนว่า "client บอก kind เอง, ไม่ cross-check"
+  เป็นการตัดสินใจที่ตั้งใจ — code review รอบ 2 พิสูจน์ว่านั่นเป็นช่องโหว่จริง
+  (ดู R1 ในหัวข้อ "รอบ code-reviewer 2" ด้านบน) แก้โดย**ตัด `kind` ออกจาก client
+  ทั้งหมด** (แรงกว่าแค่ cross-check แล้วปฏิเสธ) — บรรทัดนี้เก็บไว้เป็นประวัติว่า
+  การตัดสินใจรอบแรกเปลี่ยนไปยังไงและทำไม ไม่ใช่ debt ที่ยังค้างอยู่
 
 ### Review focus
 
 - ทำไมการ hash คำถามที่ client ส่งมาโดยตรง (แทนคำถาม canonical ที่ resolve จาก
-  DB) ถึงเป็นบั๊กจริง ทั้งที่เช็ค "คำถามเป็นของ lesson นี้" ผ่านแล้วก็ตาม?
+  DB) ถึงเป็นบั๊กจริง ทั้งที่เช็ค "คำถามเป็นของ lesson นี้" ผ่านแล้วก็ตาม? —
+  แล้ว `kind` ในรอบ 2 เป็นบั๊กชนิดเดียวกันตรงไหน ต่างกันตรงไหน?
 - ทำไมมูเทชัน hardcode `graded_by` เป็น `"self"` ถึง kill ที่ repository-layer
   test แต่ **ไม่** kill ที่ app-layer test ทั้งที่แก้โค้ด production จุดเดียวกัน —
   เป็น coverage gap จริงหรือเป็น equivalent mutant?
-- ทำไม `check_key` ต้อง hash `topic + "/" + concept + "/" + trimmed-question`
+- ทำไม `check_key` ต้อง hash `topic + "/" + concept + "/" + canonical-question`
   แทนที่จะ FK ไปตรง ๆ ที่ `recall_checks.id` หรือใช้ `(lesson_id, position)`?
+- ทำไมเทสต์แบบ "ลองค่าที่ถูก 3 ค่า + ค่าผิด 1 ค่า" ถึงไม่พอสำหรับปิด enum ทั้งชุด
+  ทั้งที่ค่าที่ถูกทั้งหมดถูกทดสอบแล้วจริง ๆ?
 
-Status: implemented, PR pending
+Status: implemented, round 2 fixes applied post code-review, PR pending
 
 ## Q-2b — frontend wiring (not started)
 

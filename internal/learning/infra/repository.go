@@ -74,14 +74,21 @@ ORDER BY t.slug, co.slug`
 	// client-supplied question that does not match any recall_checks row
 	// for this exact (topic, concept) never inserts a recall_attempts row
 	// (see domain.CheckKey's doc comment on why an orphan check_key is
-	// unrecoverable). It also returns rc.question itself: recall_checks.question
-	// matches under MySQL's case/accent-insensitive collation, so the row
-	// this WHERE clause matched can have different bytes than what the
-	// caller sent — the caller must hash THIS returned text, never its own
-	// input, or a case-variant question would mint a different check_key
-	// than the canonical one (see domain.CheckKey's doc comment).
+	// unrecoverable). It also returns rc.question and rc.type themselves:
+	// recall_checks.question matches under MySQL's case/accent-insensitive
+	// collation, so the row this WHERE clause matched can have different
+	// bytes than what the caller sent — the caller must hash THIS returned
+	// text, never its own input, or a case-variant question would mint a
+	// different check_key than the canonical one (see
+	// domain.CanonicalQuestion's doc comment). rc.type is the check's real
+	// kind, resolved here rather than trusted from the client: kind is
+	// static curriculum content the server already owns, unlike outcome
+	// (which is genuinely the client's self-graded judgement) — a client
+	// that could claim any kind could store a selected_option on what the
+	// database says is a short_answer check, and future SRS reads keyed by
+	// check_key would see one check_key with inconsistent recorded kinds.
 	selectRecallCheckExistsSQL = `
-SELECT l.id, rc.question
+SELECT l.id, rc.question, rc.type
 FROM recall_checks rc
 JOIN lessons l ON l.id = rc.lesson_id
 JOIN concepts co ON co.id = l.concept_id
@@ -293,44 +300,45 @@ func nullTimePtr(t sql.NullTime) *time.Time {
 // return first, forking or merging attempt history in a way no caller asked
 // for. That should never happen given how lessons are authored, but Query
 // (not QueryRow) lets it fail loudly instead of guessing.
-func resolveRecallCheck(ctx context.Context, db *sql.DB, topicSlug, conceptSlug, question string) (lessonID int64, canonicalQuestion string, err error) {
+func resolveRecallCheck(ctx context.Context, db *sql.DB, topicSlug, conceptSlug, question string) (lessonID int64, canonicalQuestion, kindRaw string, err error) {
 	rows, err := db.QueryContext(ctx, selectRecallCheckExistsSQL, topicSlug, conceptSlug, question)
 	if err != nil {
-		return 0, "", err
+		return 0, "", "", err
 	}
 	defer rows.Close()
 
 	found := false
 	for rows.Next() {
 		if found {
-			return 0, "", fmt.Errorf("infra: question %q matches more than one recall_checks row in %s/%s under case/accent-insensitive collation — cannot resolve a single canonical check_key", question, topicSlug, conceptSlug)
+			return 0, "", "", fmt.Errorf("infra: question %q matches more than one recall_checks row in %s/%s under case/accent-insensitive collation — cannot resolve a single canonical check_key", question, topicSlug, conceptSlug)
 		}
-		if err := rows.Scan(&lessonID, &canonicalQuestion); err != nil {
-			return 0, "", err
+		if err := rows.Scan(&lessonID, &canonicalQuestion, &kindRaw); err != nil {
+			return 0, "", "", err
 		}
 		found = true
 	}
 	if err := rows.Err(); err != nil {
-		return 0, "", err
+		return 0, "", "", err
 	}
 	if !found {
-		return 0, "", sql.ErrNoRows
+		return 0, "", "", sql.ErrNoRows
 	}
-	return lessonID, canonicalQuestion, nil
+	return lessonID, canonicalQuestion, kindRaw, nil
 }
 
 // RecordAttempt is a resolve-then-insert, not Transition's locked
 // read-modify-write: recall_attempts is append-only, so there is no stored
 // state a concurrent writer could race against — only the "question
 // belongs to this lesson" resolution needs the database at all. build is
-// called with the CANONICAL question selectRecallCheckExistsSQL matched,
-// never question itself — see that constant's own doc comment for why.
+// called with the CANONICAL question and kind selectRecallCheckExistsSQL
+// matched — never the caller's own question string, and never a
+// client-supplied kind — see that constant's own doc comment for why.
 func (r *Repository) RecordAttempt(
 	ctx context.Context,
 	topicSlug, conceptSlug, question string,
-	build func(canonicalQuestion string) (domain.RecallAttempt, error),
+	build func(canonicalQuestion domain.CanonicalQuestion, kind domain.CheckKind) (domain.RecallAttempt, error),
 ) (learningapp.AttemptRecord, error) {
-	lessonID, canonicalQuestion, err := resolveRecallCheck(ctx, r.db, topicSlug, conceptSlug, question)
+	lessonID, canonicalQuestionRaw, kindRaw, err := resolveRecallCheck(ctx, r.db, topicSlug, conceptSlug, question)
 	if errors.Is(err, sql.ErrNoRows) {
 		exists, existsErr := r.lessonExists(ctx, topicSlug, conceptSlug)
 		if existsErr != nil {
@@ -345,7 +353,16 @@ func (r *Repository) RecordAttempt(
 		return learningapp.AttemptRecord{}, fmt.Errorf("infra: record attempt %s/%s: resolve check: %w", topicSlug, conceptSlug, err)
 	}
 
-	attempt, err := build(canonicalQuestion)
+	canonicalQuestion, err := domain.NewCanonicalQuestion(canonicalQuestionRaw)
+	if err != nil {
+		return learningapp.AttemptRecord{}, fmt.Errorf("infra: record attempt %s/%s: canonical question: %w", topicSlug, conceptSlug, err)
+	}
+	kind, err := domain.NewCheckKind(kindRaw)
+	if err != nil {
+		return learningapp.AttemptRecord{}, fmt.Errorf("infra: record attempt %s/%s: recall_checks.type %q: %w", topicSlug, conceptSlug, kindRaw, err)
+	}
+
+	attempt, err := build(canonicalQuestion, kind)
 	if err != nil {
 		return learningapp.AttemptRecord{}, err
 	}
@@ -371,7 +388,7 @@ func (r *Repository) RecordAttempt(
 
 	return learningapp.AttemptRecord{
 		CheckKey:       attempt.CheckKey().String(),
-		Question:       canonicalQuestion,
+		Question:       canonicalQuestion.String(),
 		Kind:           attempt.Kind(),
 		Confidence:     attempt.Confidence(),
 		Outcome:        attempt.Outcome(),

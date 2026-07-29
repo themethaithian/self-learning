@@ -16,7 +16,7 @@ import (
 type progressService interface {
 	ListProgress(ctx context.Context) ([]learningapp.ProgressEntry, error)
 	SetProgress(ctx context.Context, topicSlug, conceptSlug, rawState string) (learningapp.ProgressEntry, error)
-	RecordAttempt(ctx context.Context, topicSlug, conceptSlug, rawQuestion, rawKind, rawConfidence, rawOutcome string, rawSelectedOption *string) (learningapp.AttemptRecord, error)
+	RecordAttempt(ctx context.Context, topicSlug, conceptSlug, rawQuestion, rawConfidence, rawOutcome string, rawSelectedOption *string) (learningapp.AttemptRecord, error)
 }
 
 type Handler struct {
@@ -108,9 +108,14 @@ func (h *Handler) putProgress(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, toProgressEntryDTO(entry))
 }
 
+// recordAttemptRequest has no kind field on purpose: kind is static
+// curriculum content the server already owns (recall_checks.type), not a
+// client judgement like outcome is — trusting a client-supplied kind would
+// let it disagree with the actual check, corrupting a check_key's later SRS
+// reads (R1). DisallowUnknownFields (below) rejects a body that includes
+// one instead of silently ignoring it.
 type recordAttemptRequest struct {
 	Question       string  `json:"question"`
-	Kind           string  `json:"kind"`
 	Confidence     string  `json:"confidence"`
 	Outcome        string  `json:"outcome"`
 	SelectedOption *string `json:"selected_option"`
@@ -145,7 +150,7 @@ func (h *Handler) postAttempt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry, err := h.service.RecordAttempt(r.Context(), topic, concept, body.Question, body.Kind, body.Confidence, body.Outcome, body.SelectedOption)
+	entry, err := h.service.RecordAttempt(r.Context(), topic, concept, body.Question, body.Confidence, body.Outcome, body.SelectedOption)
 	if err != nil {
 		switch {
 		case errors.Is(err, learningapp.ErrLessonNotFound):

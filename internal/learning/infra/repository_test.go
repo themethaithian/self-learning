@@ -49,26 +49,26 @@ func mustAttemptOutcome(t *testing.T, raw string) domain.AttemptOutcome {
 	return o
 }
 
+func mustCanonicalQuestion(t *testing.T, raw string) domain.CanonicalQuestion {
+	t.Helper()
+	q, err := domain.NewCanonicalQuestion(raw)
+	if err != nil {
+		t.Fatalf("NewCanonicalQuestion(%q) failed: %v", raw, err)
+	}
+	return q
+}
+
 func mustCheckKey(t *testing.T, topic, conceptSlug, question string) domain.CheckKey {
 	t.Helper()
 	concept, err := domain.NewLessonRef(conceptSlug)
 	if err != nil {
 		t.Fatalf("NewLessonRef(%q) failed: %v", conceptSlug, err)
 	}
-	k, err := domain.NewCheckKey(topic, concept, question)
+	k, err := domain.NewCheckKey(topic, concept, mustCanonicalQuestion(t, question))
 	if err != nil {
 		t.Fatalf("NewCheckKey(%q, %q, %q) failed: %v", topic, conceptSlug, question, err)
 	}
 	return k
-}
-
-func mustRecallAttempt(t *testing.T, checkKey domain.CheckKey, kind, confidence, outcome string, selectedOption *string, gradedBy domain.GradedBy) domain.RecallAttempt {
-	t.Helper()
-	a, err := domain.NewRecallAttempt(checkKey, mustCheckKind(t, kind), mustConfidence(t, confidence), mustAttemptOutcome(t, outcome), selectedOption, gradedBy)
-	if err != nil {
-		t.Fatalf("NewRecallAttempt() failed: %v", err)
-	}
-	return a
 }
 
 func TestRepositoryTransition_LessonNotFound(t *testing.T) {
@@ -473,7 +473,7 @@ func TestLessonProgressTableNameConsistency(t *testing.T) {
 
 func TestSelectRecallCheckExistsSQLShape(t *testing.T) {
 	want := `
-SELECT l.id, rc.question
+SELECT l.id, rc.question, rc.type
 FROM recall_checks rc
 JOIN lessons l ON l.id = rc.lesson_id
 JOIN concepts co ON co.id = l.concept_id
@@ -509,21 +509,30 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 // buildAttemptFunc returns a build closure matching Repository.RecordAttempt's
 // contract: it derives the CheckKey from whatever canonicalQuestion it is
-// CALLED with, never from a question captured at closure-creation time —
-// exactly what app.Service.RecordAttempt's own build closure must do (R1).
-func buildAttemptFunc(t *testing.T, topic, conceptSlug, kind, confidence, outcome string, selectedOption *string, gradedBy domain.GradedBy) func(string) (domain.RecallAttempt, error) {
+// CALLED with, never from a question captured at closure-creation time, and
+// it uses whatever kind it is CALLED with, never a kind supplied by the
+// test — exactly what app.Service.RecordAttempt's own build closure does
+// (R1, both for the question and for kind).
+func buildAttemptFunc(t *testing.T, topic, conceptSlug, confidence, outcome string, selectedOption *string, gradedBy domain.GradedBy) func(domain.CanonicalQuestion, domain.CheckKind) (domain.RecallAttempt, error) {
 	t.Helper()
-	return func(canonicalQuestion string) (domain.RecallAttempt, error) {
-		checkKey := mustCheckKey(t, topic, conceptSlug, canonicalQuestion)
-		return mustRecallAttempt(t, checkKey, kind, confidence, outcome, selectedOption, gradedBy), nil
+	concept, err := domain.NewLessonRef(conceptSlug)
+	if err != nil {
+		t.Fatalf("NewLessonRef(%q) failed: %v", conceptSlug, err)
+	}
+	return func(canonicalQuestion domain.CanonicalQuestion, kind domain.CheckKind) (domain.RecallAttempt, error) {
+		checkKey, err := domain.NewCheckKey(topic, concept, canonicalQuestion)
+		if err != nil {
+			return domain.RecallAttempt{}, err
+		}
+		return domain.NewRecallAttempt(checkKey, kind, mustConfidence(t, confidence), mustAttemptOutcome(t, outcome), selectedOption, gradedBy)
 	}
 }
 
 // neverCalledBuild fails the test immediately if RecordAttempt ever invokes
 // build — used by tests expecting resolution to fail before build runs.
-func neverCalledBuild(t *testing.T) func(string) (domain.RecallAttempt, error) {
-	return func(canonicalQuestion string) (domain.RecallAttempt, error) {
-		t.Fatalf("build must not be called when the lesson/question does not resolve (got canonicalQuestion=%q)", canonicalQuestion)
+func neverCalledBuild(t *testing.T) func(domain.CanonicalQuestion, domain.CheckKind) (domain.RecallAttempt, error) {
+	return func(canonicalQuestion domain.CanonicalQuestion, kind domain.CheckKind) (domain.RecallAttempt, error) {
+		t.Fatalf("build must not be called when the lesson/question does not resolve (got canonicalQuestion=%q, kind=%q)", canonicalQuestion.String(), kind.String())
 		return domain.RecallAttempt{}, nil
 	}
 }
@@ -543,7 +552,7 @@ func TestRepositoryRecordAttempt_LessonNotFound(t *testing.T) {
 // of its recall_checks must reject, not silently mint an orphan check_key.
 func TestRepositoryRecordAttempt_CheckNotInLesson(t *testing.T) {
 	data := newStubData()
-	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?")
+	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?", "short_answer")
 	db := openStubDB(t, data)
 	repo := NewRepository(db)
 
@@ -562,7 +571,7 @@ func TestRepositoryRecordAttempt_CheckNotInLesson(t *testing.T) {
 // same-concept-slug lesson under a different topic.
 func TestRepositoryRecordAttempt_ScopedByBothSlugs(t *testing.T) {
 	data := newStubData()
-	data.seedRecallCheck("topic-a", "shared-slug", 101, "Only in topic-a")
+	data.seedRecallCheck("topic-a", "shared-slug", 101, "Only in topic-a", "short_answer")
 	data.seedLesson("topic-b", "shared-slug", 202)
 	db := openStubDB(t, data)
 	repo := NewRepository(db)
@@ -575,14 +584,14 @@ func TestRepositoryRecordAttempt_ScopedByBothSlugs(t *testing.T) {
 
 func TestRepositoryRecordAttempt_Success(t *testing.T) {
 	data := newStubData()
-	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?")
+	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?", "mcq")
 	db := openStubDB(t, data)
 	repo := NewRepository(db)
 	selected := "Option B"
 	wantKey := mustCheckKey(t, "ddia", "b-trees", "What is a B-tree?")
 
 	entry, err := repo.RecordAttempt(context.Background(), "ddia", "b-trees", "What is a B-tree?",
-		buildAttemptFunc(t, "ddia", "b-trees", "mcq", "confident", "incorrect", &selected, domain.GradedBySelf))
+		buildAttemptFunc(t, "ddia", "b-trees", "confident", "incorrect", &selected, domain.GradedBySelf))
 	if err != nil {
 		t.Fatalf("RecordAttempt() unexpected error: %v", err)
 	}
@@ -623,13 +632,13 @@ func TestRepositoryRecordAttempt_Success(t *testing.T) {
 // question's attempt history.
 func TestRepositoryRecordAttempt_CaseVariantResolvesToCanonicalCheckKey(t *testing.T) {
 	data := newStubData()
-	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?")
+	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?", "short_answer")
 	db := openStubDB(t, data)
 	repo := NewRepository(db)
 	wantKey := mustCheckKey(t, "ddia", "b-trees", "What is a B-tree?")
 
 	entry, err := repo.RecordAttempt(context.Background(), "ddia", "b-trees", "what is a b-tree?",
-		buildAttemptFunc(t, "ddia", "b-trees", "short_answer", "unsure", "correct", nil, domain.GradedBySelf))
+		buildAttemptFunc(t, "ddia", "b-trees", "unsure", "correct", nil, domain.GradedBySelf))
 	if err != nil {
 		t.Fatalf("RecordAttempt() unexpected error: %v", err)
 	}
@@ -651,8 +660,8 @@ func TestRepositoryRecordAttempt_CaseVariantResolvesToCanonicalCheckKey(t *testi
 // and build must never run, mirroring lockLesson's own duplicate-match guard.
 func TestRepositoryRecordAttempt_AmbiguousCaseVariantRejected(t *testing.T) {
 	data := newStubData()
-	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?")
-	data.seedRecallCheck("ddia", "b-trees", 1, "what is a b-tree?")
+	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?", "short_answer")
+	data.seedRecallCheck("ddia", "b-trees", 1, "what is a b-tree?", "short_answer")
 	db := openStubDB(t, data)
 	repo := NewRepository(db)
 
@@ -674,10 +683,10 @@ func TestRepositoryRecordAttempt_AmbiguousCaseVariantRejected(t *testing.T) {
 // to one.
 func TestRepositoryRecordAttempt_AppendOnly(t *testing.T) {
 	data := newStubData()
-	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?")
+	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?", "short_answer")
 	db := openStubDB(t, data)
 	repo := NewRepository(db)
-	build := buildAttemptFunc(t, "ddia", "b-trees", "short_answer", "unsure", "correct", nil, domain.GradedBySelf)
+	build := buildAttemptFunc(t, "ddia", "b-trees", "unsure", "correct", nil, domain.GradedBySelf)
 
 	if _, err := repo.RecordAttempt(context.Background(), "ddia", "b-trees", "What is a B-tree?", build); err != nil {
 		t.Fatalf("first RecordAttempt() unexpected error: %v", err)
@@ -699,7 +708,7 @@ func TestRepositoryRecordAttempt_AppendOnly(t *testing.T) {
 // hardcoded "self" — see quiz.md's mutation table, mutation #6.
 func TestRepositoryRecordAttempt_GradedByThreadsThrough(t *testing.T) {
 	data := newStubData()
-	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?")
+	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?", "short_answer")
 	db := openStubDB(t, data)
 	repo := NewRepository(db)
 	llmGraded, err := domain.NewGradedBy("llm")
@@ -708,7 +717,7 @@ func TestRepositoryRecordAttempt_GradedByThreadsThrough(t *testing.T) {
 	}
 
 	entry, err := repo.RecordAttempt(context.Background(), "ddia", "b-trees", "What is a B-tree?",
-		buildAttemptFunc(t, "ddia", "b-trees", "short_answer", "unsure", "correct", nil, llmGraded))
+		buildAttemptFunc(t, "ddia", "b-trees", "unsure", "correct", nil, llmGraded))
 	if err != nil {
 		t.Fatalf("RecordAttempt() unexpected error: %v", err)
 	}
@@ -728,12 +737,12 @@ func TestRepositoryRecordAttempt_GradedByThreadsThrough(t *testing.T) {
 // truncated value RFC3339 formatting reports, off by up to a second.
 func TestRepositoryRecordAttempt_CreatedAtTruncatedToSeconds(t *testing.T) {
 	data := newStubData()
-	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?")
+	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?", "short_answer")
 	db := openStubDB(t, data)
 	repo := NewRepository(db)
 
 	entry, err := repo.RecordAttempt(context.Background(), "ddia", "b-trees", "What is a B-tree?",
-		buildAttemptFunc(t, "ddia", "b-trees", "short_answer", "unsure", "correct", nil, domain.GradedBySelf))
+		buildAttemptFunc(t, "ddia", "b-trees", "unsure", "correct", nil, domain.GradedBySelf))
 	if err != nil {
 		t.Fatalf("RecordAttempt() unexpected error: %v", err)
 	}
@@ -744,5 +753,47 @@ func TestRepositoryRecordAttempt_CreatedAtTruncatedToSeconds(t *testing.T) {
 	stored := data.attemptsFor(1)
 	if len(stored) != 1 || !stored[0].createdAt.Equal(entry.CreatedAt) {
 		t.Fatalf("stored created_at = %v, want it to equal the echoed %v exactly", stored, entry.CreatedAt)
+	}
+}
+
+// TestRepositoryRecordAttempt_KindResolvedFromRecallChecksType pins R1's
+// kind fix: kind is no longer part of Service/Repository.RecordAttempt's
+// signature at all, so a client cannot submit one that disagrees with
+// recall_checks.type — this is now structurally impossible, not merely
+// rejected. This test proves the positive side: whatever kind is stored
+// always matches the seeded recall_checks row, regardless of two different
+// lessons seeding two different kinds side by side.
+func TestRepositoryRecordAttempt_KindResolvedFromRecallChecksType(t *testing.T) {
+	data := newStubData()
+	data.seedRecallCheck("ddia", "b-trees", 1, "What is a B-tree?", "mcq")
+	data.seedRecallCheck("ddia", "another-concept", 2, "A short-answer question", "short_answer")
+	db := openStubDB(t, data)
+	repo := NewRepository(db)
+
+	mcqEntry, err := repo.RecordAttempt(context.Background(), "ddia", "b-trees", "What is a B-tree?",
+		buildAttemptFunc(t, "ddia", "b-trees", "confident", "correct", nil, domain.GradedBySelf))
+	if err != nil {
+		t.Fatalf("RecordAttempt() unexpected error: %v", err)
+	}
+	if mcqEntry.Kind.String() != "mcq" {
+		t.Errorf("Kind = %q, want %q (resolved from recall_checks.type)", mcqEntry.Kind.String(), "mcq")
+	}
+
+	shortAnswerEntry, err := repo.RecordAttempt(context.Background(), "ddia", "another-concept", "A short-answer question",
+		buildAttemptFunc(t, "ddia", "another-concept", "confident", "correct", nil, domain.GradedBySelf))
+	if err != nil {
+		t.Fatalf("RecordAttempt() unexpected error: %v", err)
+	}
+	if shortAnswerEntry.Kind.String() != "short_answer" {
+		t.Errorf("Kind = %q, want %q (resolved from recall_checks.type)", shortAnswerEntry.Kind.String(), "short_answer")
+	}
+
+	stored1 := data.attemptsFor(1)
+	if len(stored1) != 1 || stored1[0].kind != "mcq" {
+		t.Fatalf("stored kind for lesson 1 = %+v, want %q", stored1, "mcq")
+	}
+	stored2 := data.attemptsFor(2)
+	if len(stored2) != 1 || stored2[0].kind != "short_answer" {
+		t.Fatalf("stored kind for lesson 2 = %+v, want %q", stored2, "short_answer")
 	}
 }

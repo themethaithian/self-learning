@@ -11,6 +11,15 @@ func mustLessonRef(t *testing.T, raw string) LessonRef {
 	return r
 }
 
+func mustCanonicalQuestion(t *testing.T, raw string) CanonicalQuestion {
+	t.Helper()
+	q, err := NewCanonicalQuestion(raw)
+	if err != nil {
+		t.Fatalf("NewCanonicalQuestion(%q) failed: %v", raw, err)
+	}
+	return q
+}
+
 func mustChunkState(t *testing.T, raw string) ChunkState {
 	t.Helper()
 	s, err := NewChunkState(raw)

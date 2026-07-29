@@ -34,13 +34,21 @@ type fakeRepository struct {
 	touchCalls  int
 
 	// recallChecks models recall_checks: which (topic, concept) has which
-	// question texts, keyed case-folded (canonical text as the value) so a
-	// case-variant question is rejected/resolved the same way the real
-	// case-insensitive JOIN in infra would (R1).
-	recallChecks map[conceptKey]map[string]string
+	// question texts and their kind, keyed case-folded (canonical question
+	// as the value) so a case-variant question resolves the same way the
+	// real case-insensitive JOIN in infra would (R1). kind is resolved from
+	// the seeded row here, exactly as Repository.RecordAttempt resolves it
+	// from rc.type — never taken from any caller-supplied value, since kind
+	// is no longer part of Service.RecordAttempt's signature at all (R1).
+	recallChecks map[conceptKey]map[string]recallCheckSeed
 
 	recordAttemptErr   error
 	recordAttemptCalls []recordAttemptCall
+}
+
+type recallCheckSeed struct {
+	question string
+	kind     string
 }
 
 type recordAttemptCall struct {
@@ -59,16 +67,16 @@ func (f *fakeRepository) withLesson(topic, concept string) *fakeRepository {
 	return f
 }
 
-func (f *fakeRepository) withRecallCheck(topic, concept, question string) *fakeRepository {
+func (f *fakeRepository) withRecallCheck(topic, concept, question, kind string) *fakeRepository {
 	f.lessons[conceptKey{topic, concept}] = true
 	if f.recallChecks == nil {
-		f.recallChecks = map[conceptKey]map[string]string{}
+		f.recallChecks = map[conceptKey]map[string]recallCheckSeed{}
 	}
 	k := conceptKey{topic, concept}
 	if f.recallChecks[k] == nil {
-		f.recallChecks[k] = map[string]string{}
+		f.recallChecks[k] = map[string]recallCheckSeed{}
 	}
-	f.recallChecks[k][foldQuestion(question)] = question
+	f.recallChecks[k][foldQuestion(question)] = recallCheckSeed{question: question, kind: kind}
 	return f
 }
 
@@ -131,9 +139,10 @@ func (f *fakeRepository) AllProgress(context.Context) ([]ProgressEntry, error) {
 // RecordAttempt mirrors infra's own contract: a missing lesson or a question
 // that does not match this lesson's recall_checks is answered directly by
 // the fake, never silently accepted. build is called with the CANONICAL
-// (as-seeded) question text, never the caller's raw casing — the same
-// resolve-then-key contract the real repository implements (R1).
-func (f *fakeRepository) RecordAttempt(_ context.Context, topic, concept, question string, build func(string) (domain.RecallAttempt, error)) (AttemptRecord, error) {
+// (as-seeded) question text and kind, never anything a caller of
+// Service.RecordAttempt could supply — the same resolve-then-key contract
+// the real repository implements (R1).
+func (f *fakeRepository) RecordAttempt(_ context.Context, topic, concept, question string, build func(domain.CanonicalQuestion, domain.CheckKind) (domain.RecallAttempt, error)) (AttemptRecord, error) {
 	f.recordAttemptCalls = append(f.recordAttemptCalls, recordAttemptCall{topic: topic, concept: concept, question: question})
 	if f.recordAttemptErr != nil {
 		return AttemptRecord{}, f.recordAttemptErr
@@ -142,12 +151,21 @@ func (f *fakeRepository) RecordAttempt(_ context.Context, topic, concept, questi
 	if !f.lessons[k] {
 		return AttemptRecord{}, ErrLessonNotFound
 	}
-	canonicalQuestion, ok := f.recallChecks[k][foldQuestion(question)]
+	seed, ok := f.recallChecks[k][foldQuestion(question)]
 	if !ok {
 		return AttemptRecord{}, ErrCheckNotInLesson
 	}
 
-	attempt, err := build(canonicalQuestion)
+	canonicalQuestion, err := domain.NewCanonicalQuestion(seed.question)
+	if err != nil {
+		return AttemptRecord{}, err
+	}
+	kind, err := domain.NewCheckKind(seed.kind)
+	if err != nil {
+		return AttemptRecord{}, err
+	}
+
+	attempt, err := build(canonicalQuestion, kind)
 	if err != nil {
 		return AttemptRecord{}, err
 	}
@@ -155,7 +173,7 @@ func (f *fakeRepository) RecordAttempt(_ context.Context, topic, concept, questi
 
 	return AttemptRecord{
 		CheckKey:       attempt.CheckKey().String(),
-		Question:       canonicalQuestion,
+		Question:       seed.question,
 		Kind:           attempt.Kind(),
 		Confidence:     attempt.Confidence(),
 		Outcome:        attempt.Outcome(),
@@ -344,17 +362,17 @@ func TestServiceListProgress_ErrorPropagates(t *testing.T) {
 func TestServiceRecordAttempt_LessonNotFound(t *testing.T) {
 	svc := NewService(newFakeRepository())
 
-	_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "What is a B-tree?", "short_answer", "unsure", "correct", nil)
+	_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "What is a B-tree?", "unsure", "correct", nil)
 	if !errors.Is(err, ErrLessonNotFound) {
 		t.Fatalf("RecordAttempt() error = %v, want it to wrap ErrLessonNotFound", err)
 	}
 }
 
 func TestServiceRecordAttempt_CheckNotInLesson(t *testing.T) {
-	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "What is a B-tree?")
+	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "What is a B-tree?", "short_answer")
 	svc := NewService(repo)
 
-	_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "A different question entirely", "short_answer", "unsure", "correct", nil)
+	_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "A different question entirely", "unsure", "correct", nil)
 	if !errors.Is(err, ErrCheckNotInLesson) {
 		t.Fatalf("RecordAttempt() error = %v, want it to wrap ErrCheckNotInLesson", err)
 	}
@@ -376,10 +394,10 @@ func TestServiceRecordAttempt_InvalidSlug(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newFakeRepository().withRecallCheck(tt.topic, tt.concept, "q")
+			repo := newFakeRepository().withRecallCheck(tt.topic, tt.concept, "q", "short_answer")
 			svc := NewService(repo)
 
-			_, err := svc.RecordAttempt(context.Background(), tt.topic, tt.concept, "q", "short_answer", "unsure", "correct", nil)
+			_, err := svc.RecordAttempt(context.Background(), tt.topic, tt.concept, "q", "unsure", "correct", nil)
 			if !errors.Is(err, ErrInvalidSlug) {
 				t.Fatalf("RecordAttempt() error = %v, want it to wrap ErrInvalidSlug", err)
 			}
@@ -393,23 +411,20 @@ func TestServiceRecordAttempt_InvalidSlug(t *testing.T) {
 func TestServiceRecordAttempt_InvalidFields(t *testing.T) {
 	tests := []struct {
 		name       string
-		kind       string
 		confidence string
 		outcome    string
 	}{
-		{name: "invalid kind", kind: "fill_in_blank", confidence: "unsure", outcome: "correct"},
-		{name: "empty kind", kind: "", confidence: "unsure", outcome: "correct"},
-		{name: "invalid confidence", kind: "short_answer", confidence: "certain", outcome: "correct"},
-		{name: "empty confidence", kind: "short_answer", confidence: "", outcome: "correct"},
-		{name: "invalid outcome", kind: "short_answer", confidence: "unsure", outcome: "partial"},
-		{name: "empty outcome", kind: "short_answer", confidence: "unsure", outcome: ""},
+		{name: "invalid confidence", confidence: "certain", outcome: "correct"},
+		{name: "empty confidence", confidence: "", outcome: "correct"},
+		{name: "invalid outcome", confidence: "unsure", outcome: "partial"},
+		{name: "empty outcome", confidence: "unsure", outcome: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "q")
+			repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "q", "short_answer")
 			svc := NewService(repo)
 
-			_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "q", tt.kind, tt.confidence, tt.outcome, nil)
+			_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "q", tt.confidence, tt.outcome, nil)
 			if !errors.Is(err, ErrInvalidAttempt) {
 				t.Fatalf("RecordAttempt() error = %v, want it to wrap ErrInvalidAttempt", err)
 			}
@@ -421,16 +436,18 @@ func TestServiceRecordAttempt_InvalidFields(t *testing.T) {
 }
 
 // TestServiceRecordAttempt_SelectedOptionOnShortAnswerRejected pins
-// RecallAttempt's own invariant surfacing as ErrInvalidAttempt. The
-// repository IS invoked (it must resolve the canonical question before the
-// CheckKey — and therefore the RecallAttempt — can even be built, R1), but
-// build() itself must reject before anything is ever inserted.
+// RecallAttempt's own invariant surfacing as ErrInvalidAttempt, with kind
+// resolved from the repository's seeded recall check (R1) rather than any
+// client-supplied value. The repository IS invoked (it must resolve the
+// canonical question and kind before the CheckKey — and therefore the
+// RecallAttempt — can even be built), but build() itself must reject before
+// anything is ever inserted.
 func TestServiceRecordAttempt_SelectedOptionOnShortAnswerRejected(t *testing.T) {
-	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "q")
+	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "q", "short_answer")
 	svc := NewService(repo)
 
 	selected := "Option B"
-	_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "q", "short_answer", "unsure", "correct", &selected)
+	_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "q", "unsure", "correct", &selected)
 	if !errors.Is(err, ErrInvalidAttempt) {
 		t.Fatalf("RecordAttempt() error = %v, want it to wrap ErrInvalidAttempt", err)
 	}
@@ -445,37 +462,51 @@ func TestServiceRecordAttempt_SelectedOptionOnShortAnswerRejected(t *testing.T) 
 // TestServiceRecordAttempt_EchoesSubmittedValues guards against a bug class
 // Q-1's frontend review found: a value the user picked never actually
 // asserted anywhere downstream. Every field submitted must come back
-// exactly as sent, not a hardcoded stand-in.
+// exactly as sent, not a hardcoded stand-in — table-driven over all three
+// Confidence values (R5) so the assertion isn't tied to a single value
+// "confident" happening to also be, say, the zero value of some type.
 func TestServiceRecordAttempt_EchoesSubmittedValues(t *testing.T) {
-	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "Which option is correct?")
-	svc := NewService(repo)
+	tests := []struct {
+		confidence string
+		outcome    string
+	}{
+		{confidence: "guessed", outcome: "correct"},
+		{confidence: "unsure", outcome: "incorrect"},
+		{confidence: "confident", outcome: "incorrect"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.confidence, func(t *testing.T) {
+			repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "Which option is correct?", "mcq")
+			svc := NewService(repo)
 
-	selected := "Option B"
-	entry, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "Which option is correct?", "mcq", "confident", "incorrect", &selected)
-	if err != nil {
-		t.Fatalf("RecordAttempt() unexpected error: %v", err)
-	}
-	if entry.Kind.String() != "mcq" {
-		t.Errorf("Kind = %q, want %q", entry.Kind.String(), "mcq")
-	}
-	if entry.Confidence.String() != "confident" {
-		t.Errorf("Confidence = %q, want %q", entry.Confidence.String(), "confident")
-	}
-	if entry.Outcome.String() != "incorrect" {
-		t.Errorf("Outcome = %q, want %q", entry.Outcome.String(), "incorrect")
-	}
-	if entry.SelectedOption == nil || *entry.SelectedOption != "Option B" {
-		t.Errorf("SelectedOption = %v, want %q", entry.SelectedOption, "Option B")
-	}
-	if entry.GradedBy.String() != "self" {
-		t.Errorf("GradedBy = %q, want %q", entry.GradedBy.String(), "self")
-	}
-	if len(repo.recordAttemptCalls) != 1 {
-		t.Fatalf("repository RecordAttempt called %d times, want 1", len(repo.recordAttemptCalls))
-	}
-	call := repo.recordAttemptCalls[0]
-	if call.attempt.Confidence().String() != "confident" || call.attempt.Outcome().String() != "incorrect" {
-		t.Errorf("repository received attempt %+v, want the submitted confidence/outcome unchanged", call.attempt)
+			selected := "Option B"
+			entry, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "Which option is correct?", tt.confidence, tt.outcome, &selected)
+			if err != nil {
+				t.Fatalf("RecordAttempt() unexpected error: %v", err)
+			}
+			if entry.Kind.String() != "mcq" {
+				t.Errorf("Kind = %q, want %q", entry.Kind.String(), "mcq")
+			}
+			if entry.Confidence.String() != tt.confidence {
+				t.Errorf("Confidence = %q, want %q", entry.Confidence.String(), tt.confidence)
+			}
+			if entry.Outcome.String() != tt.outcome {
+				t.Errorf("Outcome = %q, want %q", entry.Outcome.String(), tt.outcome)
+			}
+			if entry.SelectedOption == nil || *entry.SelectedOption != "Option B" {
+				t.Errorf("SelectedOption = %v, want %q", entry.SelectedOption, "Option B")
+			}
+			if entry.GradedBy.String() != "self" {
+				t.Errorf("GradedBy = %q, want %q", entry.GradedBy.String(), "self")
+			}
+			if len(repo.recordAttemptCalls) != 1 {
+				t.Fatalf("repository RecordAttempt called %d times, want 1", len(repo.recordAttemptCalls))
+			}
+			call := repo.recordAttemptCalls[0]
+			if call.attempt.Confidence().String() != tt.confidence || call.attempt.Outcome().String() != tt.outcome {
+				t.Errorf("repository received attempt %+v, want the submitted confidence=%q/outcome=%q unchanged", call.attempt, tt.confidence, tt.outcome)
+			}
+		})
 	}
 }
 
@@ -485,10 +516,10 @@ func TestServiceRecordAttempt_EchoesSubmittedValues(t *testing.T) {
 // text, and Service's build closure must derive the CheckKey from THAT
 // parameter — never from the outer rawQuestion the client actually sent.
 func TestServiceRecordAttempt_CheckKeyDerivedFromCanonicalQuestion(t *testing.T) {
-	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "What is a B-tree?")
+	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "What is a B-tree?", "short_answer")
 	svc := NewService(repo)
 
-	entry, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "what is a b-tree?", "short_answer", "unsure", "correct", nil)
+	entry, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "what is a b-tree?", "unsure", "correct", nil)
 	if err != nil {
 		t.Fatalf("RecordAttempt() unexpected error: %v", err)
 	}
@@ -500,7 +531,7 @@ func TestServiceRecordAttempt_CheckKeyDerivedFromCanonicalQuestion(t *testing.T)
 	if err != nil {
 		t.Fatalf("NewLessonRef() failed: %v", err)
 	}
-	wantKey, err := domain.NewCheckKey("ddia", conceptRef, "What is a B-tree?")
+	wantKey, err := domain.NewCheckKey("ddia", conceptRef, mustCanonicalQuestion(t, "What is a B-tree?"))
 	if err != nil {
 		t.Fatalf("NewCheckKey() failed: %v", err)
 	}
@@ -508,13 +539,22 @@ func TestServiceRecordAttempt_CheckKeyDerivedFromCanonicalQuestion(t *testing.T)
 		t.Errorf("CheckKey = %q, want %q (derived from the canonical question, not the raw submitted casing)", entry.CheckKey, wantKey.String())
 	}
 
-	rawKey, err := domain.NewCheckKey("ddia", conceptRef, "what is a b-tree?")
+	rawKey, err := domain.NewCheckKey("ddia", conceptRef, mustCanonicalQuestion(t, "what is a b-tree?"))
 	if err != nil {
 		t.Fatalf("NewCheckKey() failed: %v", err)
 	}
 	if entry.CheckKey == rawKey.String() {
 		t.Errorf("CheckKey matched the raw-submitted-casing hash — must be derived from the canonical question instead")
 	}
+}
+
+func mustCanonicalQuestion(t *testing.T, raw string) domain.CanonicalQuestion {
+	t.Helper()
+	q, err := domain.NewCanonicalQuestion(raw)
+	if err != nil {
+		t.Fatalf("NewCanonicalQuestion(%q) failed: %v", raw, err)
+	}
+	return q
 }
 
 func TestServiceRecordAttempt_EmptyQuestionRejected(t *testing.T) {
@@ -527,10 +567,10 @@ func TestServiceRecordAttempt_EmptyQuestionRejected(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "q")
+			repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "q", "short_answer")
 			svc := NewService(repo)
 
-			_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", tt.question, "short_answer", "unsure", "correct", nil)
+			_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", tt.question, "unsure", "correct", nil)
 			if !errors.Is(err, ErrInvalidAttempt) {
 				t.Fatalf("RecordAttempt(question=%q) error = %v, want it to wrap ErrInvalidAttempt", tt.question, err)
 			}
@@ -542,11 +582,11 @@ func TestServiceRecordAttempt_EmptyQuestionRejected(t *testing.T) {
 }
 
 func TestServiceRecordAttempt_EmptySelectedOptionTreatedAsAbsent(t *testing.T) {
-	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "q")
+	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "q", "mcq")
 	svc := NewService(repo)
 
 	empty := "   "
-	entry, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "q", "mcq", "unsure", "correct", &empty)
+	entry, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "q", "unsure", "correct", &empty)
 	if err != nil {
 		t.Fatalf("RecordAttempt() unexpected error: %v", err)
 	}
@@ -557,11 +597,11 @@ func TestServiceRecordAttempt_EmptySelectedOptionTreatedAsAbsent(t *testing.T) {
 
 func TestServiceRecordAttempt_RepoErrorPropagates(t *testing.T) {
 	repoErr := errors.New("connection lost")
-	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "q")
+	repo := newFakeRepository().withRecallCheck("ddia", "b-trees", "q", "short_answer")
 	repo.recordAttemptErr = repoErr
 	svc := NewService(repo)
 
-	_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "q", "short_answer", "unsure", "correct", nil)
+	_, err := svc.RecordAttempt(context.Background(), "ddia", "b-trees", "q", "unsure", "correct", nil)
 	if !errors.Is(err, repoErr) {
 		t.Fatalf("RecordAttempt() error = %v, want it to wrap %v", err, repoErr)
 	}

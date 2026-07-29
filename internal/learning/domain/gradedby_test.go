@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -49,5 +50,19 @@ func TestGradedByZeroValue(t *testing.T) {
 	var g GradedBy
 	if !g.IsZero() {
 		t.Errorf("zero-value GradedBy.IsZero() = false, want true")
+	}
+}
+
+// TestGradedByAcceptedSetIsExactly pins the exhaustive member list — see
+// TestConfidenceAcceptedSetIsExactly's doc comment for why a table of
+// known-good/known-bad cases alone cannot catch a member being added.
+func TestGradedByAcceptedSetIsExactly(t *testing.T) {
+	want := []string{"self", "llm"}
+	var got []string
+	for _, g := range gradedBys {
+		got = append(got, g.value)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("gradedBys = %v, want exactly %v", got, want)
 	}
 }

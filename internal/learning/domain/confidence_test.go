@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -44,5 +45,23 @@ func TestConfidenceZeroValue(t *testing.T) {
 	var c Confidence
 	if !c.IsZero() {
 		t.Errorf("zero-value Confidence.IsZero() = false, want true")
+	}
+}
+
+// TestConfidenceAcceptedSetIsExactly pins the exhaustive member list, not
+// just "these three strings work" — a table of only-known-good/known-bad
+// cases (as TestNewConfidence has) cannot catch a member being ADDED to
+// confidences without a matching test case, since an untested new member
+// simply never gets tried. Comparing the whole array against a literal
+// slice fails on any addition or removal, not only on the specific values a
+// table happened to enumerate.
+func TestConfidenceAcceptedSetIsExactly(t *testing.T) {
+	want := []string{"guessed", "unsure", "confident"}
+	var got []string
+	for _, c := range confidences {
+		got = append(got, c.value)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("confidences = %v, want exactly %v", got, want)
 	}
 }

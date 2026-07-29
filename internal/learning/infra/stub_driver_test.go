@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -54,15 +55,16 @@ type stubData struct {
 	progress map[int64]stubProgressRow
 
 	// recallChecks models recall_checks: lessonID -> (case-folded question
-	// -> every canonical, as-stored question folding to it). Folded because
-	// real MySQL matches recall_checks.question under utf8mb4_0900_ai_ci
-	// (case/accent insensitive) — the stub must fold the same way, or a
-	// regression that hashes the caller's raw casing instead of the resolved
-	// canonical text (R1) would go undetected by every test here. A slice,
-	// not a single string, because two recall_checks rows in the same lesson
-	// can fold to the same key (differing only by case/accent) — real MySQL
-	// would return both, and resolveRecallCheck must refuse to pick one.
-	recallChecks map[int64]map[string][]string
+	// -> every canonical row folding to it, each carrying its own kind).
+	// Folded because real MySQL matches recall_checks.question under
+	// utf8mb4_0900_ai_ci (case/accent insensitive) — the stub must fold the
+	// same way, or a regression that hashes the caller's raw casing instead
+	// of the resolved canonical text (R1) would go undetected by every test
+	// here. A slice, not a single value, because two recall_checks rows in
+	// the same lesson can fold to the same key (differing only by
+	// case/accent) — real MySQL would return both, and resolveRecallCheck
+	// must refuse to pick one.
+	recallChecks map[int64]map[string][]seededRecallCheck
 	attempts     []stubRecallAttempt
 
 	locksMu sync.Mutex
@@ -70,6 +72,16 @@ type stubData struct {
 
 	queryErr error
 	execErr  error
+}
+
+// seededRecallCheck is one recall_checks row as the stub models it: the
+// canonical (as-seeded) question text and its kind — both are what
+// selectRecallCheckExistsSQL's real JOIN would return, never anything a
+// caller of RecordAttempt supplies (R1's question fix and R1's kind fix
+// are the same shape of bug, fixed the same way).
+type seededRecallCheck struct {
+	question string
+	kind     string
 }
 
 type stubRecallAttempt struct {
@@ -116,26 +128,27 @@ func (d *stubData) addLessonLocked(topicSlug, conceptSlug string, lessonID int64
 func foldQuestion(question string) string { return strings.ToLower(question) }
 
 // seedRecallCheck registers lessonID (creating its lesson row if needed) as
-// owning question, the same shape selectRecallCheckExistsSQL's JOIN
-// verifies against a real recall_checks table. Looked up by foldQuestion,
-// same as the real column's case-insensitive collation, but the CANONICAL
-// (as-seeded) text is what gets returned to a matching query — never the
-// caller's casing. Calling this twice for the same lesson with questions
-// that fold to the same key (e.g. differing only by case) seeds BOTH —
-// modelling two distinct recall_checks rows that happen to collide under
-// MySQL's collation, for the ambiguous-match test.
-func (d *stubData) seedRecallCheck(topicSlug, conceptSlug string, lessonID int64, question string) {
+// owning question with the given kind, the same shape
+// selectRecallCheckExistsSQL's JOIN verifies against a real recall_checks
+// table. Looked up by foldQuestion, same as the real column's
+// case-insensitive collation, but the CANONICAL (as-seeded) question and
+// kind are what get returned to a matching query — never the caller's
+// casing, and never a client-supplied kind (R1). Calling this twice for the
+// same lesson with questions that fold to the same key (e.g. differing only
+// by case) seeds BOTH — modelling two distinct recall_checks rows that
+// happen to collide under MySQL's collation, for the ambiguous-match test.
+func (d *stubData) seedRecallCheck(topicSlug, conceptSlug string, lessonID int64, question, kind string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.addLessonLocked(topicSlug, conceptSlug, lessonID)
 	if d.recallChecks == nil {
-		d.recallChecks = map[int64]map[string][]string{}
+		d.recallChecks = map[int64]map[string][]seededRecallCheck{}
 	}
 	if d.recallChecks[lessonID] == nil {
-		d.recallChecks[lessonID] = map[string][]string{}
+		d.recallChecks[lessonID] = map[string][]seededRecallCheck{}
 	}
 	key := foldQuestion(question)
-	d.recallChecks[lessonID][key] = append(d.recallChecks[lessonID][key], question)
+	d.recallChecks[lessonID][key] = append(d.recallChecks[lessonID][key], seededRecallCheck{question: question, kind: kind})
 }
 
 func (d *stubData) attemptsFor(lessonID int64) []stubRecallAttempt {
@@ -271,6 +284,31 @@ func argOptionalString(a driver.NamedValue) *string {
 	return &s
 }
 
+// recallAttemptEnumColumns mirrors migrations/006_recall.sql's ENUM column
+// definitions exactly. Without this, the stub would accept any string for
+// type/confidence/outcome/graded_by — real MySQL under STRICT_TRANS_TABLES
+// rejects an out-of-set ENUM value with error 1265 ("Data truncated"), so a
+// Go-side array widened without a matching migration change would insert
+// successfully here and only fail against the real database, exactly the
+// blind spot that let R1's kind bug and a bad confidence/outcome/graded_by
+// value alike go undetected by every test that only exercises this stub.
+var recallAttemptEnumColumns = map[string][]string{
+	"type":       {"short_answer", "mcq"},
+	"confidence": {"guessed", "unsure", "confident"},
+	"outcome":    {"correct", "incorrect"},
+	"graded_by":  {"self", "llm"},
+}
+
+func validateRecallAttemptEnums(kind, confidence, outcome, gradedBy string) error {
+	values := map[string]string{"type": kind, "confidence": confidence, "outcome": outcome, "graded_by": gradedBy}
+	for column, value := range values {
+		if !slices.Contains(recallAttemptEnumColumns[column], value) {
+			return fmt.Errorf("learningstub: Data truncated for column '%s' at row 1 (simulated MySQL error 1265): %q is not in ENUM%v", column, value, recallAttemptEnumColumns[column])
+		}
+	}
+	return nil
+}
+
 // ExecContext dispatches by matching query against the same Go constant
 // production sent, then applies real upsert/refresh semantics against
 // stubData — a mutation of upsertProgressByLessonIDSQL's or
@@ -330,6 +368,10 @@ func (c *stubConn) ExecContext(ctx context.Context, query string, args []driver.
 		selectedOption := argOptionalString(args[5])
 		gradedBy := argString(args[6])
 		createdAt := args[7].Value.(time.Time)
+
+		if err := validateRecallAttemptEnums(kind, confidence, outcome, gradedBy); err != nil {
+			return nil, err
+		}
 
 		c.data.mu.Lock()
 		c.data.attempts = append(c.data.attempts, stubRecallAttempt{
@@ -402,10 +444,10 @@ func (c *stubConn) QueryContext(ctx context.Context, query string, args []driver
 		var matches []recallCheckMatch
 		for _, ref := range refs {
 			c.data.mu.Lock()
-			canonicals := append([]string(nil), c.data.recallChecks[ref.id][foldQuestion(question)]...)
+			seeds := append([]seededRecallCheck(nil), c.data.recallChecks[ref.id][foldQuestion(question)]...)
 			c.data.mu.Unlock()
-			for _, canonical := range canonicals {
-				matches = append(matches, recallCheckMatch{lessonID: ref.id, question: canonical})
+			for _, seed := range seeds {
+				matches = append(matches, recallCheckMatch{lessonID: ref.id, question: seed.question, kind: seed.kind})
 			}
 		}
 		return &recallCheckExistsRows{rows: matches}, nil
@@ -473,11 +515,12 @@ func (r *singleIDRows) Next(dest []driver.Value) error {
 }
 
 // recallCheckMatch is one row selectRecallCheckExistsSQL's real JOIN would
-// return: l.id plus the CANONICAL (as-seeded) rc.question — never the
-// caller's casing.
+// return: l.id plus the CANONICAL (as-seeded) rc.question and rc.type —
+// never the caller's casing, and never a client-supplied kind.
 type recallCheckMatch struct {
 	lessonID int64
 	question string
+	kind     string
 }
 
 // recallCheckExistsRows answers selectRecallCheckExistsSQL. It can hold more
@@ -490,8 +533,10 @@ type recallCheckExistsRows struct {
 	pos  int
 }
 
-func (r *recallCheckExistsRows) Columns() []string { return []string{"l.id", "rc.question"} }
-func (r *recallCheckExistsRows) Close() error      { return nil }
+func (r *recallCheckExistsRows) Columns() []string {
+	return []string{"l.id", "rc.question", "rc.type"}
+}
+func (r *recallCheckExistsRows) Close() error { return nil }
 
 func (r *recallCheckExistsRows) Next(dest []driver.Value) error {
 	if r.pos >= len(r.rows) {
@@ -500,6 +545,7 @@ func (r *recallCheckExistsRows) Next(dest []driver.Value) error {
 	m := r.rows[r.pos]
 	dest[0] = m.lessonID
 	dest[1] = []byte(m.question)
+	dest[2] = []byte(m.kind)
 	r.pos++
 	return nil
 }
@@ -580,4 +626,34 @@ func timeDriverValue(t *time.Time) driver.Value {
 		return nil
 	}
 	return *t
+}
+
+// TestStubInsertRecallAttemptRejectsInvalidEnumValue proves the fidelity fix
+// itself: without it, the stub accepted any string for
+// type/confidence/outcome/graded_by, so a Go-side enum array widened without
+// a matching migrations/006_recall.sql change would insert here without
+// error and only fail against real MySQL under STRICT_TRANS_TABLES (error
+// 1265). Exercised directly against db.ExecContext, bypassing the domain
+// layer's own validation entirely — this is testing the STUB's fidelity to
+// the real schema, not RecordAttempt's request-handling path.
+func TestStubInsertRecallAttemptRejectsInvalidEnumValue(t *testing.T) {
+	tests := []struct {
+		name                                string
+		kind, confidence, outcome, gradedBy string
+	}{
+		{name: "invalid type", kind: "essay", confidence: "guessed", outcome: "correct", gradedBy: "self"},
+		{name: "invalid confidence", kind: "mcq", confidence: "maybe", outcome: "correct", gradedBy: "self"},
+		{name: "invalid outcome", kind: "mcq", confidence: "guessed", outcome: "skipped", gradedBy: "self"},
+		{name: "invalid graded_by", kind: "mcq", confidence: "guessed", outcome: "correct", gradedBy: "robot"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := openStubDB(t, newStubData())
+			_, err := db.ExecContext(context.Background(), insertRecallAttemptSQL,
+				int64(1), "checkkey", tt.kind, tt.confidence, tt.outcome, nil, tt.gradedBy, time.Now())
+			if err == nil {
+				t.Fatalf("ExecContext() error = nil, want a simulated MySQL 1265 error for an out-of-ENUM value")
+			}
+		})
+	}
 }
