@@ -1,5 +1,6 @@
 import { Card } from "@/components/Card";
 import { LinkButton } from "@/components/Button";
+import { FocusToggleButton } from "@/components/FocusToggleButton";
 
 export interface TrackStats {
   track: string;
@@ -26,28 +27,12 @@ export function TrackCard({ stats, isFocus, onSetFocus, saving, busy }: TrackCar
     <Card className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className="min-w-0 break-words text-base font-semibold text-heading">{stats.label}</h3>
-        <button
-          type="button"
-          onClick={() => {
-            // aria-disabled, not the disabled attribute: a native disabled
-            // button is forced to blur, which would kick keyboard focus off
-            // this button the instant its own click starts the request.
-            if (busy) return;
-            onSetFocus(isFocus ? null : stats.track);
-          }}
-          aria-disabled={busy}
-          aria-pressed={isFocus}
-          className={`inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 ${
-            busy ? "opacity-50" : ""
-          } ${
-            isFocus
-              ? "bg-accent text-white"
-              : "border border-subtle text-muted hover:bg-accent-tint hover:text-accent-strong"
-          }`}
-        >
-          <span aria-hidden>{isFocus ? "★" : "☆"}</span>
-          {saving ? "Saving…" : isFocus ? "Focus" : "Set focus"}
-        </button>
+        <FocusToggleButton
+          isFocus={isFocus}
+          saving={saving}
+          busy={busy}
+          onToggle={() => onSetFocus(isFocus ? null : stats.track)}
+        />
       </div>
 
       {/* No ProgressBar here yet: reading progress isn't tracked (UX-4), and a

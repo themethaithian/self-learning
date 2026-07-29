@@ -158,6 +158,24 @@ export interface ProgressEntry {
   first_passed_at: string | null;
 }
 
+interface ProgressListResponse {
+  concepts: ProgressEntry[];
+}
+
+// Absence from the returned list means "not started" per the API contract,
+// so a fetch failure degrades to the same shape a genuinely empty history
+// would have — /today can still render Next Up, just without knowing what's
+// in progress, instead of losing the whole page over one non-essential call.
+export async function getProgress(): Promise<ProgressEntry[]> {
+  try {
+    const res = await apiFetch<ProgressListResponse>("/api/v1/progress");
+    return res.concepts;
+  } catch (err) {
+    if (err instanceof UnauthorizedError) throw err;
+    return [];
+  }
+}
+
 // The response reflects the state the server actually stored, which may
 // differ from what was requested — UX-4's forward-only clamp means setting
 // "in_progress" on an already-passed lesson comes back {"state":"passed"}.

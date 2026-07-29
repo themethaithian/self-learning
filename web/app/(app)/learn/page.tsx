@@ -16,7 +16,7 @@ import { TrackCardsSkeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { Button, LinkButton } from "@/components/Button";
 import { BookIcon, WarningIcon } from "@/components/icons";
-import { TRACK_DISPLAY_ORDER, trackLabel } from "@/lib/trackMeta";
+import { sortTracksByDisplayOrder, trackLabel } from "@/lib/trackMeta";
 
 type ViewState =
   | { status: "loading" }
@@ -37,13 +37,6 @@ function computeStats(track: Track): TrackStats {
     }
   }
   return { track: track.track, label: trackLabel(track.track), totalConcepts, lessonsReady, chapterCount };
-}
-
-// Sorts by TRACK_DISPLAY_ORDER; a track the backend sends that isn't in that
-// list yet is appended, not dropped, so it stays visible somewhere.
-function trackSortIndex(track: string): number {
-  const idx = (TRACK_DISPLAY_ORDER as readonly string[]).indexOf(track);
-  return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
 }
 
 function ComingSoonRow({ label }: { label: string }) {
@@ -158,7 +151,7 @@ function LearnView() {
     return <TrackDetail track={matched} />;
   }
 
-  const allStats = [...tracks].sort((a, b) => trackSortIndex(a.track) - trackSortIndex(b.track)).map(computeStats);
+  const allStats = sortTracksByDisplayOrder(tracks).map(computeStats);
   const availableStats = pinFocusFirst(
     allStats.filter((s) => s.lessonsReady > 0),
     focusTrack,

@@ -1,5 +1,5 @@
-import type { Concept, Track } from "./api";
-import type { TrackStats } from "../components/TrackCard";
+import type { Concept, ProgressEntry, ProgressState, Track } from "./api";
+import { sortTracksByDisplayOrder } from "./trackMeta";
 
 export function countAvailableLessons(concepts: Concept[]): { available: number; total: number } {
   return {
@@ -8,12 +8,12 @@ export function countAvailableLessons(concepts: Concept[]): { available: number;
   };
 }
 
-export function pinFocusFirst(stats: TrackStats[], focusTrack: string | null): TrackStats[] {
-  if (!focusTrack) return stats;
-  const focusIndex = stats.findIndex((s) => s.track === focusTrack);
-  if (focusIndex === -1) return stats;
-  const focus = stats[focusIndex];
-  return [focus, ...stats.slice(0, focusIndex), ...stats.slice(focusIndex + 1)];
+export function pinFocusFirst<T extends { track: string }>(items: T[], focusTrack: string | null): T[] {
+  if (!focusTrack) return items;
+  const focusIndex = items.findIndex((s) => s.track === focusTrack);
+  if (focusIndex === -1) return items;
+  const focus = items[focusIndex];
+  return [focus, ...items.slice(0, focusIndex), ...items.slice(focusIndex + 1)];
 }
 
 export interface LessonBreadcrumb {
@@ -34,6 +34,7 @@ interface FlatConcept {
   concept: string;
   title: string;
   hasLesson: boolean;
+  estMinutes: number | null;
 }
 
 // The API already returns topics/chapters/concepts sorted by position, so
@@ -50,6 +51,7 @@ function flattenTrack(track: Track): FlatConcept[] {
           concept: concept.slug,
           title: concept.title,
           hasLesson: concept.has_lesson,
+          estMinutes: concept.est_minutes,
         });
       }
     }
@@ -76,4 +78,79 @@ export function findNextLesson(tracks: Track[], topicSlug: string, conceptSlug: 
       : { kind: "end-of-track" };
   }
   return { kind: "not-found" };
+}
+
+export type ProgressByKey = Record<string, ProgressState>;
+
+export function progressKey(topicSlug: string, conceptSlug: string): string {
+  return `${topicSlug}::${conceptSlug}`;
+}
+
+export function indexProgress(entries: ProgressEntry[]): ProgressByKey {
+  const index: ProgressByKey = {};
+  for (const entry of entries) index[progressKey(entry.topic, entry.concept)] = entry.state;
+  return index;
+}
+
+export interface TrackProgressStats {
+  track: string;
+  done: number;
+  total: number;
+}
+
+export function computeTrackProgress(track: Track, progressByKey: ProgressByKey): TrackProgressStats {
+  let total = 0;
+  let done = 0;
+  for (const item of flattenTrack(track)) {
+    if (!item.hasLesson) continue;
+    total += 1;
+    if ((progressByKey[progressKey(item.topic, item.concept)] ?? "not_started") === "passed") done += 1;
+  }
+  return { track: track.track, total, done };
+}
+
+export type NextUpResult =
+  | {
+      kind: "next";
+      track: string;
+      topic: string;
+      concept: string;
+      chapterTitle: string;
+      title: string;
+      estMinutes: number | null;
+      state: "not_started" | "in_progress";
+    }
+  | { kind: "all-done" }
+  | { kind: "no-lessons" };
+
+// "all-done" (every has_lesson concept anywhere is passed) and "no-lessons"
+// (no track has a lesson at all) are both empty results but mean opposite
+// things to the user — collapsing them into one null/done state would show
+// "nice work, you finished everything" when really nothing has been
+// imported yet (same UX-5 lesson findNextLesson already applies: "next" |
+// "end-of-track" | "not-found" instead of a single null).
+export function pickNextUp(tracks: Track[], progressByKey: ProgressByKey, focusTrack: string | null): NextUpResult {
+  const ordered = pinFocusFirst(sortTracksByDisplayOrder(tracks), focusTrack);
+  let anyLessonExists = false;
+
+  for (const track of ordered) {
+    for (const item of flattenTrack(track)) {
+      if (!item.hasLesson) continue;
+      anyLessonExists = true;
+      const state = progressByKey[progressKey(item.topic, item.concept)] ?? "not_started";
+      if (state === "passed") continue;
+      return {
+        kind: "next",
+        track: item.track,
+        topic: item.topic,
+        concept: item.concept,
+        chapterTitle: item.chapterTitle,
+        title: item.title,
+        estMinutes: item.estMinutes,
+        state: state === "in_progress" ? "in_progress" : "not_started",
+      };
+    }
+  }
+
+  return anyLessonExists ? { kind: "all-done" } : { kind: "no-lessons" };
 }
