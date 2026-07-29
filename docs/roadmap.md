@@ -80,7 +80,7 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   **MCQ 356 ข้อ** เดาด้วย heuristic ความยาวได้ **33.7%** (เดิม 89.6%) เดาด้วยตำแหน่ง 33.4% (เดิม 41.6%)
   \+ กติกาการแก้ distractor ที่ grep ตรวจได้
 
-### Phase 3 — guided learning path 🔄 ([รายละเอียด](tickets/ux-today.md))
+### Phase 3 — guided learning path ✅ ([รายละเอียด](tickets/ux-today.md))
 - [x] UX-1 (#40) `has_lesson`/`est_minutes` บน curriculum API
 - [x] UX-1b (#41) focus track preference API + bounded context `prefs`
 - [x] UX-2 (#42) หน้า `/learn` — track card + focus picker
@@ -115,9 +115,6 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   `recall_attempts`/`review_cards`/`review_logs`, `graded_by='self'` เกิดจริงครั้งแรก)
 - [ ] Q-3 — เพิ่ม `explanation` ให้ MCQ ครบทั้ง 356 ข้อ (ตอนนี้ 0 ข้อมี) — รอบเดียวกับที่ขัดเกลา
   distractor ที่หลุดธีม **3 concept** (`b-trees`, `column-oriented-storage`, `process-pauses`)
-  · **เพิ่ม validation ว่า `expected_answer` ต้องเป็นสมาชิกของ `options` จริงทุกข้อ** (ที่
-  `cmd/import-lessons` หรือ lesson-verifier) — รอบนี้ต้องอ่าน MCQ ทั้ง 356 ข้ออยู่แล้ว จุดนี้
-  ตรวจได้พร้อมกันโดยไม่เพิ่ม pass แยก (ดูหนี้ด้านล่าง — ตอนนี้ 0 violations แต่ไม่มี validation ค้ำ)
 
 ### Phase 5 — visual simulation ⏭
 - [ ] SIM-0 — predict-before-reveal (0 KB, ไม่ใช้ library)
@@ -148,13 +145,6 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   แต่ `wantHeaders`/`wantMaxAge` ยังอ้าง `corsAllowedHeaders`/`corsMaxAge` = mutation ไม่มีทางจับได้
 - rating รายข้อในหน้า reader ไม่ถูก persist (ปลดใน Q-2) · `Button` variant `"danger"` ไม่มีใครใช้
   และจะตก AA (~4.39:1) วันที่มีคนใช้
-- **`expected_answer ∈ options` เป็น invariant ที่ frontend พึ่งจริงแต่ไม่มีอะไร validate** —
-  Q-1 ทำให้ mcq correctness derive จากการเทียบ `option === expected_answer`, ถ้ามีบทเรียนที่
-  distractor ถูก paraphrase จนไม่ตรง `expected_answer` เป๊ะ จะไม่มีตัวเลือกไหนถูก mark ว่าถูกเลย
-  (`isMcqCorrect` เป็น false เสมอ ทั้งที่ผู้ใช้เลือกถูก) — สแกน MCQ ทั้ง 356 ข้อใน `content/lessons/`
-  จริงตอนแก้ ticket นี้: **0 violations วันนี้** แต่ไม่มี validation ค้ำสำหรับบทเรียนใหม่ในอนาคต
-  ต้องเพิ่มที่ `cmd/import-lessons`/lesson-verifier (Go, นอก scope frontend-only ของ Q-1) —
-  วางแผนไว้ใน Q-3 แล้ว (อ่าน MCQ ทั้ง 356 ข้ออยู่แล้วเพื่อเติม `explanation`)
 - **UX-7 (`/learn`): `TrackCard`'s `<h3>` sits under the page `<h1>` with no `<h2>` between**
   — axe's `heading-order` (best-practice, ไม่ใช่ WCAG) เจอทั้งบน `/learn` และหน้าอื่นที่มีอยู่แล้วบน
   `develop` ก่อน ticket นี้ ไม่ได้แก้ในรอบนี้เพราะเป็น pattern ที่ใช้ทั้งแอป ต้องแก้พร้อมกันทีเดียว

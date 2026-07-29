@@ -18,8 +18,16 @@
   ของการ์ด (`onFinishedChange` แทน `rating`/`onRate`), `web/components/icons.tsx`
   เพิ่ม `XIcon` (สัญลักษณ์ผิด คู่กับ `CheckIcon` เดิม), และ (round 2)
   `web/components/Button.tsx` เพิ่ม `type="button"` default (ดูรอบ
-  code-reviewer). **Frontend ล้วน** — `git diff --name-only develop... --
-  '*.go'` ว่างเปล่าจริง, `go vet`/`go test` รันผ่านเพราะไม่มีอะไรให้กระทบ
+  code-reviewer). **round 2 ยังมีสองจุดที่ไม่ได้อยู่ใน REQ table ของ reviewer**
+  (เป็น cleanup ที่ทำไปพร้อมกัน): stage-1 label เปลี่ยนจากเช็ค `check.type ===
+  "mcq"` มาเป็นเช็ค `hasOptions` แทน (**เป็นการเปลี่ยนพฤติกรรมจริง**: mcq ที่
+  `options` ว่าง/ไม่มีจะขึ้น "I've answered" แทน "Show options" ตอนนี้ — **ไม่มี
+  เทสต์ pin จุดนี้เลย ยังเป็น unpinned survivor อยู่**, ยืนยันด้วยการ revert
+  กลับเป็น `check.type` แล้ว `npm test` ยังเขียว 124/124); และตัด `export`
+  ออกจาก `RecallRating`/`Confidence`/`RecallStage` (ไม่มีที่ไหนใช้จากนอกไฟล์แล้ว
+  หลัง `page.tsx` เลิก import `RecallRating`). **Frontend ล้วน** — `git diff
+  --name-only develop... -- '*.go'` ว่างเปล่าจริง, `go vet`/`go test` รันผ่าน
+  เพราะไม่มีอะไรให้กระทบ
 
 ### การตัดสินใจหลัก
 
@@ -130,27 +138,37 @@ edge case ทุกแบบ (options ว่าง/ไม่มี/1 ตัว/�
 ซ้ำได้, และ loading-state unmount ที่รอบแรกอ้างว่าเป็นกลไก reset จริง
 ถูกยืนยันอิสระผ่าน real client-side navigation + browser Back ด้วย.
 
-แต่เจอ **6 survivor**: 4 จุดเป็น coverage gap จริง (REQ-1, REQ-2, REQ-5,
-REQ-7 — แก้แล้วด้วยเทสต์ใหม่ด้านล่าง) และ 2 จุดเป็น equivalent mutant
-(พฤติกรรมเหมือนเดิมจริง ไม่ต้อง kill — REQ-6 คือหนึ่งในนั้น, อธิบายในแถวของมัน):
+ในจำนวนนั้นมี **6 มูเทชันที่เป็นการมูเทตจริง** (REQ-1, REQ-2, REQ-5, REQ-6,
+REQ-7a, REQ-7b) กับ **2 จุดที่เป็น defect จริงที่พบนอกกระบวนการมูเทต ไม่ใช่
+mutant เลย** (REQ-3, REQ-4 — พบจากการอ่านโค้ด/ทดสอบ browser ตรง ๆ):
+
+จาก 6 มูเทชัน: **5 เป็น survivor ที่เป็น coverage gap จริง** (REQ-1, REQ-2,
+REQ-5, REQ-7a, REQ-7b — แก้แล้วด้วยเทสต์ใหม่ด้านล่าง, ตายหมดหลังแก้) และ
+**1 เป็น equivalent mutant ที่ยอมรับได้** (REQ-6 — พฤติกรรมเหมือนเดิมจริง
+ไม่ต้อง kill, อธิบายในแถวของมัน). ส่วน REQ-3/REQ-4 แก้ตรงที่โค้ดโดยตรง
+(ไม่ใช่แก้ด้วยเทสต์ที่ kill มูเทชัน เพราะไม่มีมูเทชันให้ kill ตั้งแต่แรก):
 
 | # | Mutation | ผลลัพธ์ | แก้อย่างไร |
 |---|---|---|---|
 | REQ-1 | Production path (ไม่ pass `rng` prop) ไม่เคยถูกเทสต์ตรง ๆ — เปลี่ยน `shuffleOptions(check.options, rng)` เป็น `shuffleOptions(check.options, rng ?? (() => 0))` | **survived** — 117/117 เขียวเดิม, 40 mount ได้ order เดียว (`BCA`) ทุกครั้ง | เพิ่มเทสต์ mount 40 ครั้งแบบไม่ pass `rng` เลย เก็บ order ทั้งหมดใส่ `Set`, assert `size > 1` — kill แล้ว |
 | REQ-2 | `onChange={() => setConfidence(opt.value)}` → `setConfidence("guessed")` แข็ง | **survived** — ไม่มีเทสต์ไหน assert `.checked` ของ confidence radio เลย, คลิก "Confident" จริงได้ "Guessed" ติ๊กแทน | เพิ่ม `it.each` 3 ค่า (Guessed/Unsure/Confident) คลิกแล้ว assert เหลือแค่ตัวที่คลิก `.checked` — kill แล้ว |
-| REQ-3 | `role="status"` ห่อทั้ง reveal panel รวม Pass/Not yet buttons ของ short_answer | **ไม่ใช่ mutation ที่ทดสอบ — เป็น defect ที่มีอยู่จริงในโค้ด** live region ห่อ interactive control จะ re-announce ทุกครั้งที่ `aria-pressed` เปลี่ยน | ย้าย `role="status"` มาห่อเฉพาะบรรทัด Correct/Not quite (mcq เท่านั้น); short_answer stage 3 ไม่มี live region เลย (focus ที่ container ทำงานพอ) — เพิ่มเทสต์ "does not wrap the short_answer Pass/Not yet buttons in a live region" (ยืนยันด้วยการมูเทต `role="status"` กลับไปห่อทั้ง panel → เทสต์ตาย 3 ตัว) |
+| REQ-3 | `role="status"` ห่อทั้ง reveal panel รวม Pass/Not yet buttons ของ short_answer | **ไม่ใช่ mutation ที่ทดสอบ — เป็น defect ที่มีอยู่จริงในโค้ด** live region ห่อ interactive control จะ re-announce ทุกครั้งที่ `aria-pressed` เปลี่ยน | ย้าย `role="status"` มาห่อเฉพาะบรรทัด Correct/Not quite (mcq เท่านั้น); short_answer stage 3 ไม่มี live region เลย (focus ที่ container ทำงานพอ) — เพิ่มเทสต์ "does not wrap the short_answer Pass/Not yet buttons in a live region" (ยืนยันด้วยการ revert `role="status"` กลับไปห่อทั้ง panel เหมือนรอบแรกเป๊ะ ๆ → **เทสต์ตายพอดี 1 ตัว** คือเทสต์ตัวนี้เอง, `Tests 1 failed | 123 passed`) |
 | REQ-4 | `Button.tsx` ไม่ตั้ง `type` default → `<button>` ในการ์ดกลายเป็น `type="submit"` โดยไม่ตั้งใจ | **ไม่ใช่ mutation — เป็น defect จริง** ตรวจแล้ว: repo มี `<form>` เดียว (`app/token/page.tsx`) ซึ่งตั้ง `type="submit"` ชัดเจนอยู่แล้ว จึงไม่มีที่ไหนพึ่งพฤติกรรม submit โดยปริยาย | เพิ่ม `type="button"` เป็น default ใน `Button.tsx` (วางก่อน `{...props}` เพื่อให้ caller override ได้) |
 | REQ-5 | `isYourAnswer = i === selectedIndex` → `option === selectedOptionText` (เทียบข้อความแทน index) | **survived ครึ่งเดียว** — เทสต์ duplicate เดิมเช็คแค่ stage 2 (`.checked`), ไม่ได้เช็ค stage 3 ("your answer" tag) | ขยายเทสต์เดียวกันให้ทำต่อถึง stage 3: fixture `["Same","Same","Different"]`, เลือกตัวที่ 2 ("Same" ตัวหลัง), assert แถวแรก (ข้อความเหมือนกันแต่คนละ index) **ไม่มี** tag "Your answer" — kill แล้ว |
 | REQ-6 | `key={i}` → `key={option}` บน label ของตัวเลือก mcq | **survived แต่เป็น equivalent mutant ที่ยอมรับได้** — DOM เหมือนกันทุก byte, ไม่มี React key-warning เพราะเทสต์ duplicate ไม่มี string ซ้ำแบบที่ key จะชนกันจริงในทางที่สังเกตได้จาก DOM/behavior | **ไม่แก้โค้ด** (เก็บ `key={i}` ไว้ตามเดิม — ยังถูกกว่าในหลักการ) แค่เปลี่ยนชื่อเทสต์จาก "keys options by shuffled position, not text" (อ้างว่าเทส key ทั้งที่เทสแค่ selection independence) เป็นชื่อที่ตรงกับสิ่งที่วัดจริง |
 | REQ-7a | ลบ `setFinishedChecks({})` ออกจาก effect เปลี่ยน lesson | **survived** — RecallCheckCard จริงเรียก `onFinishedChange(position, false)` เองตอน mount (stage เริ่มที่ "recall" เสมอ) ซึ่ง self-correct ค่าเก่าทันทีอยู่แล้ว ทำให้การลบบรรทัดนี้ไม่มีผลสังเกตได้ผ่าน component จริง | เพิ่มไฟล์ `page.finishedReset.test.tsx` ที่ mock `RecallCheckCard` เป็น fake ที่**ไม่** self-report ตอน mount (มีแค่ปุ่มกด "Mark finished" ตรง ๆ) — แยก concern การ reset ของ parent ออกจาก self-correction ของ child จริง แล้ว assert ว่า Finish gate กลับมา disabled ตอนเปลี่ยน lesson — kill แล้ว |
 | REQ-7b | ลบ `if (!stillCurrent()) return;` ออกจาก `finish()` (guard ของ UX-5, **มีอยู่ก่อน ticket นี้ ไม่ใช่ regression จาก Q-1**) | **survived** — ไม่เคยมีเทสต์ pin guard นี้เลยตั้งแต่ UX-5 | เพิ่มเทสต์ใน `page.test.tsx`: deferred promise ควบคุมการ resolve ของ Finish PUT, กด Finish lesson A แล้วสลับไป lesson B ก่อน PUT resolve, resolve ทีหลัง (stale response) → assert lesson B ไม่ถูก mark finished — kill แล้ว |
 
-**สรุป: 6 survivor จากรอบ reviewer, 4 เป็น gap จริงที่แก้แล้ว (REQ-1/2/5/7a/7b
-นับเป็น 5 จุดจริง แต่ REQ-7a/7b มาจาก root cause เดียวกันคือ "ไม่มีเทสต์ pin
-ที่เคยมี" เลยนับรวมเป็นชุดเดียวในสรุปนี้), 2 เป็น equivalent mutant/defect
-ที่แก้โค้ดแทนเทสต์ (REQ-3 ห่อ live region ผิดที่, REQ-4 ปุ่มไม่ตั้ง type)**
-— รายละเอียดการแก้แต่ละจุดอยู่ในตารางด้านบน ทุกจุด re-run แล้วตายจริงหลังแก้
-(ดูหัวข้อ "Re-verify เต็มชุด" ด้านล่างสำหรับตัวเลขรวม)
+**สรุป: 6 มูเทชันจากรอบ reviewer (REQ-1/2/5/6/7a/7b) — 5 survivor เป็น gap
+จริงที่แก้แล้วด้วยเทสต์ใหม่และตายหมด (REQ-1/2/5/7a/7b), 1 เป็น equivalent
+mutant ที่ตั้งใจไม่ kill (REQ-6). แยกต่างหาก: 2 defect จริงที่พบนอก
+มูเทชัน (REQ-3, REQ-4) แก้ที่โค้ดโดยตรง — REQ-3 มีเทสต์ใหม่ pin ไว้ด้วย
+(kill ได้จริงเมื่อ revert กลับไปเป็นรูปแบบรอบแรก, ดูแถว REQ-3 ด้านบน) แต่
+**REQ-4 ไม่มีเทสต์ pin เลย** — ไม่มี test ไหนใน repo assert `type` ของปุ่มเลย
+สักตัว, การแก้ยืนยันได้แค่จาก browser จริง (ดูหัวข้อ Playwright evidence)
+ไม่ใช่จาก `npm test`
+— รายละเอียดการแก้แต่ละจุดอยู่ในตารางด้านบน (ดูหัวข้อ "Re-verify เต็มชุด"
+ด้านล่างสำหรับตัวเลขรวม)
 
 ### Re-verify เต็มชุด (หลังแก้ครบ round 2)
 
@@ -252,12 +270,6 @@ volume), ปิดท้ายด้วย `docker compose down` เปล่า
   pre-existing, ไม่เกี่ยวกับไฟล์ที่ ticket นี้แตะ
 - ไม่ตัด `expected_answer` ออกจาก payload — ตัดสินใจแล้วว่าไม่ทำใน v1 (ดู
   หัวข้อการตัดสินใจด้านบน)
-- ไม่เพิ่ม validation ว่า `expected_answer` ต้องเป็นสมาชิกของ `options` จริง —
-  ตอนนี้ correctness derivation "load-bearing" กับ invariant นี้แล้ว แต่การ
-  enforce ต้องทำที่ `cmd/import-lessons`/lesson-verifier (Go, นอก scope
-  frontend-only ของ ticket นี้) — บันทึกเป็นหนี้ใน `docs/roadmap.md` และใส่ใน
-  scope ของ Q-3 แล้ว (Q-3 ต้องอ่าน MCQ ทั้ง 356 ข้ออยู่แล้วเพื่อเติม
-  `explanation`)
 
 Status: implemented, round 2 fixes applied post code-review, PR pending
 
