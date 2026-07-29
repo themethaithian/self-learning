@@ -5,16 +5,19 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   getCurriculum,
   getLesson,
+  postAttempt,
   setProgress,
   NotFoundError,
   UnauthorizedError,
+  type AttemptConfidence,
+  type AttemptOutcome,
   type Lesson,
   type Track,
 } from "@/lib/api";
 import { findNextLesson, locateLessonBreadcrumb, type NextLessonResult } from "@/lib/curriculum";
 import { trackLabel } from "@/lib/trackMeta";
 import { LessonBody } from "@/components/LessonBody";
-import { RecallCheckCard } from "@/components/RecallCheckCard";
+import { RecallCheckCard, type AttemptSaveStatus } from "@/components/RecallCheckCard";
 import { EmptyState } from "@/components/EmptyState";
 import { Button, LinkButton } from "@/components/Button";
 import { Card } from "@/components/Card";
@@ -37,6 +40,13 @@ type FinishState =
 interface NavInfo {
   location: { track: string; chapterTitle: string };
   next: NextLessonResult;
+}
+
+interface AttemptPayload {
+  question: string;
+  confidence: AttemptConfidence;
+  outcome: AttemptOutcome;
+  selectedOption: string | null;
 }
 
 const LEARN_CRUMB: Crumb = { label: "Learn", href: "/learn" };
@@ -108,7 +118,13 @@ function LessonView() {
   const [finishState, setFinishState] = useState<FinishState>({ status: "idle" });
   const [alreadyPassed, setAlreadyPassed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  const [attemptStatus, setAttemptStatus] = useState<Record<number, AttemptSaveStatus>>({});
   const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  // Retry re-sends the exact payload already computed for this position —
+  // RecallCheckCard only reports a completed attempt once (or once per
+  // short_answer correction), so a retry must not require the user to redo
+  // the check to reconstruct it.
+  const pendingAttemptsRef = useRef<Record<number, AttemptPayload>>({});
   const finishedBannerRef = useRef<HTMLDivElement>(null);
   // The single source of truth for "which lesson is actually on screen right
   // now" — finish() is owned by a click handler, not the effect below, so it
@@ -134,6 +150,8 @@ function LessonView() {
     setFinishedChecks({});
     setFinishState({ status: "idle" });
     setAlreadyPassed(false);
+    setAttemptStatus({});
+    pendingAttemptsRef.current = {};
 
     async function run() {
       let lesson: Lesson;
@@ -196,6 +214,60 @@ function LessonView() {
   }, []);
 
   const currentLesson = state.status === "success" ? state.lesson : null;
+
+  // Mirrors finish()'s stillCurrent() guard below: the POST for a check can
+  // resolve after the user has already navigated to a different lesson (Next
+  // is clickable before this settles, same as Finish), and a stale response
+  // must never mark a different lesson's same-position check as saved/failed.
+  const submitAttempt = useCallback(
+    async (position: number, payload: AttemptPayload) => {
+      const identity = currentIdentityRef.current;
+      if (!identity) return;
+      const stillCurrent = () =>
+        currentIdentityRef.current?.topic === identity.topic && currentIdentityRef.current?.concept === identity.concept;
+
+      pendingAttemptsRef.current[position] = payload;
+      setAttemptStatus((prev) => ({ ...prev, [position]: "saving" }));
+
+      try {
+        const result = await postAttempt(identity.topic, identity.concept, {
+          question: payload.question,
+          confidence: payload.confidence,
+          outcome: payload.outcome,
+          selected_option: payload.selectedOption,
+        });
+        if (!stillCurrent()) return;
+        setAttemptStatus((prev) => ({ ...prev, [position]: result.kind === "ok" ? "saved" : "error" }));
+      } catch (err) {
+        if (err instanceof UnauthorizedError) {
+          router.replace("/token");
+          return;
+        }
+        if (!stillCurrent()) return;
+        setAttemptStatus((prev) => ({ ...prev, [position]: "error" }));
+      }
+    },
+    [router],
+  );
+
+  const handleAttemptReady = useCallback(
+    (position: number, attempt: { confidence: AttemptConfidence; outcome: AttemptOutcome; selectedOption: string | null }) => {
+      const check = currentLesson?.recall_checks.find((c) => c.position === position);
+      if (!check) return;
+      void submitAttempt(position, { question: check.question, ...attempt });
+    },
+    [currentLesson, submitAttempt],
+  );
+
+  const handleRetrySave = useCallback(
+    (position: number) => {
+      if (attemptStatus[position] === "saving") return;
+      const stored = pendingAttemptsRef.current[position];
+      if (!stored) return;
+      void submitAttempt(position, stored);
+    },
+    [attemptStatus, submitAttempt],
+  );
 
   const navInfo = useMemo<NavInfo | null>(() => {
     if (!tracks || !currentLesson) return null;
@@ -346,6 +418,9 @@ function LessonView() {
                 check={check}
                 index={index}
                 onFinishedChange={handleCheckFinishedChange}
+                onAttemptReady={handleAttemptReady}
+                saveStatus={attemptStatus[check.position] ?? "idle"}
+                onRetrySave={() => handleRetrySave(check.position)}
               />
             ))}
           </div>
@@ -354,6 +429,15 @@ function LessonView() {
 
       <section className="max-w-[68ch] space-y-4">
         <div className="space-y-2">
+          {Object.values(attemptStatus).includes("error") && (
+            <div
+              role="alert"
+              className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger-strong"
+            >
+              Some recall attempts didn&apos;t save — retry them above, or your recall history for this lesson will be
+              incomplete.
+            </div>
+          )}
           {finished ? (
             <div
               ref={finishedBannerRef}

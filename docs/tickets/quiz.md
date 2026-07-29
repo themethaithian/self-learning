@@ -736,12 +736,205 @@ source กลางอากาศระหว่างมูเทตพอด�
 
 Status: implemented, round 2 fixes applied post code-review, PR pending
 
-## Q-2b — frontend wiring (not started)
+## Q-2b — wire the quiz to the attempts API
 
-เรียก `POST /api/v1/progress/{topic}/{concept}/attempts` (Q-2a) จาก
-`RecallCheckCard`/`lesson/page.tsx` จริง — **นี่คือ ticket ที่ทำให้ confidence/
-selected option/outcome ของ Q-1 ที่อยู่ใน memory เฉย ๆ persist จริงในที่สุด
-แทนที่จะหายตอน refresh** (หนี้ที่ Q-1 บันทึกไว้ตรง ๆ ว่ายังไม่ทำ)
+- **Scope**: **Frontend ล้วน** — `git diff --name-only develop... -- '*.go' 'migrations/*'`
+  ว่างเปล่าจริง. `web/lib/api.ts` เพิ่ม `postAttempt` + types (`AttemptConfidence`,
+  `AttemptOutcome`, `AttemptInput`, `AttemptRecord`, `PostAttemptResult`).
+  `web/components/RecallCheckCard.tsx` เพิ่ม prop `onAttemptReady` (ยิงเมื่อ attempt
+  ครบจริง), `saveStatus`/`onRetrySave` (แสดง "Not saved" + Retry ต่อการ์ด), export
+  `AttemptSaveStatus` ใหม่, ย้าย `selectedOptionText`/`isMcqCorrect` มาก่อน effect
+  เดิม (ต้องใช้ในทั้งสอง effect), `Confidence` type เปลี่ยนมา alias จาก
+  `AttemptConfidence` ของ api.ts แทนที่จะ derive เองจาก `CONFIDENCE_OPTIONS`.
+  `web/app/(app)/lesson/page.tsx` เพิ่ม `attemptStatus`/`pendingAttemptsRef` state,
+  `submitAttempt`/`handleAttemptReady`/`handleRetrySave`, banner รวม "Some recall
+  attempts didn't save" เหนือปุ่ม Finish. เทสต์ใหม่ใน `api.test.ts` (+4),
+  `RecallCheckCard.test.tsx` (+12), `page.test.tsx` (+9, ไฟล์เดียวกับที่ UX-5 ปักไว้
+  ไม่ใช่ไฟล์แยก) — รวม `npm test` **124 → 152**
+
+### การตัดสินใจหลัก
+
+- **`postAttempt` คืน `{kind:"ok"|"error"}` ไม่ throw สำหรับ non-auth failure — ตาม
+  precedent ของ `getProgress` ไม่ใช่ `setProgress`/`getLesson`**: caller (`lesson/
+  page.tsx`) ต้องแยก "saved" กับ "not saved" ต่อ check เพื่อโชว์ indicator/retry ต่อ
+  การ์ด — throw exception จะบังคับให้ต้อง try/catch กระจายอยู่ที่ทุกจุดเรียก และ
+  ยากที่จะเก็บ "ยังไม่ได้ save" เป็น first-class state แบบที่ discriminated result
+  ให้ได้ฟรี. `UnauthorizedError` ยัง throw เหมือนเดิม (ไม่ยุบรวมเข้า `{kind:
+  "error"}`) เพราะเป็นเงื่อนไขระดับ session (bearer token ทั้งก้อนใช้ไม่ได้) ไม่ใช่
+  เรื่องต่อ attempt — caller ทุกจุดใน api.ts จัดการ 401 แบบเดียวกันหมด (throw แล้ว
+  redirect)
+- **Submit ครั้งเดียวต่อ attempt ที่สมบูรณ์ — dedup ด้วย ref เก็บ "signature" ของ
+  attempt ไม่ใช่ boolean "เคย submit หรือยัง"**: `lastReportedAttemptRef` เก็บ
+  `` `${confidence}|${outcome}|${selectedOption}` `` — mcq freeze ค่าทั้งหมดตอน
+  reveal จึง signature เดียวตลอด (submit ครั้งเดียวโดยธรรมชาติ), short_answer
+  เปลี่ยน rating ได้หลัง reveal (Pass/Not yet ไม่ได้ล็อก) ทำให้ signature เปลี่ยน
+  จริง — ถ้าใช้ boolean เดิมจะบล็อกการ resubmit ที่ตั้งใจให้เกิดขึ้น (ดูข้อถัดไป).
+  Guard นี้กัน 3 เหตุการณ์พร้อมกัน: React StrictMode double-invoke effect ตอน dev,
+  re-render ที่ parent ส่ง `onAttemptReady` reference ใหม่มา (dependency ของ effect
+  เปลี่ยนแต่ค่า attempt ไม่เปลี่ยน), และคลิก Pass/Not yet ซ้ำค่าเดิม (React bail
+  out การ set state ค่า primitive เดิม เอง — effect ไม่รันซ้ำด้วยซ้ำ)
+- **short_answer rating เปลี่ยน (Pass → Not yet) = resubmit ไม่ใช่ ignore หรือ
+  "ค่าแรกชนะ"**: ตัดสินใจแล้วว่าการแก้ไข self-rating คือข้อมูลใหม่ที่ SRS (Q-2c)
+  ต้องการจริง ไม่ใช่ noise ที่ควรกรองทิ้ง — endpoint เป็น append-only อยู่แล้วตาม
+  design ของ Q-2a (ไม่มี idempotency key) จึงรองรับ pattern นี้ได้โดยไม่ต้องแก้
+  backend เลย แต่ละแถวคือสิ่งที่ user เชื่อ ณ ขณะนั้นจริง ๆ (Pass ตอนแรกอาจเป็นการ
+  ประเมินที่มั่นใจเกินจริง, แก้เป็น Not yet ทีหลังคือสัญญาณที่มีค่ากว่าการทิ้งไป)
+- **Retry ไม่ dedupe กับ request ที่ "จริง ๆ สำเร็จแต่ client เห็นเป็น fail" (เช่น
+  timeout) — ยอมรับแถวซ้ำที่อาจเกิดขึ้น ไม่ปิดกั้น**: endpoint ไม่มี idempotency
+  key (ตัดสินใจแล้วใน Q-2a) การจะกัน duplicate ที่มาจาก retry-after-phantom-success
+  ต้องแก้ backend (ออก idempotency key ต่อ attempt) ซึ่งอยู่นอก scope ของ ticket นี้
+  — ทางเลือกที่เหลือคือ "ไม่เสนอ retry เลยถ้าไม่ชัวร์ว่า fail จริง" ซึ่งขัดกับกฎข้อ 4
+  ของ ticket นี้ตรง ๆ (ห้าม suppress ตัวบอกว่า fail) และจะทำให้ fail จริงกู้คืนไม่ได้
+  เลือกยอมรับความเสี่ยง duplicate (เหมือนกับ double-submit โดยตั้งใจ, เป็น data
+  problem ที่ Q-2c อ่าน `created_at DESC` ล่าสุดอยู่แล้วไม่กระทบ) ดีกว่าทิ้ง retry
+  affordance ไป
+- **Identity guard: `submitAttempt` reuse `currentIdentityRef`/`stillCurrent()`
+  เดิมของ `finish()`, ไม่สร้างกลไกใหม่**: attempt state (`attemptStatus`,
+  `pendingAttemptsRef`) เป็นของ `LessonView` (parent) ไม่ใช่ของ `RecallCheckCard`
+  โดยตั้งใจ — ถ้าให้ `RecallCheckCard` เก็บ save-status เองในเครื่อง (local state)
+  ความปลอดภัยจาก lesson A รั่วเข้า lesson B จะได้มาฟรีจากการที่การ์ดทั้งก้อน unmount
+  ตอนเปลี่ยน lesson (ข้อสรุปเดิมจาก Q-1's M11) แต่ banner รวม "some attempts
+  didn't save" เหนือปุ่ม Finish (requirement ข้อ 4 ของ ticket) ต้องอ่าน state ข้าม
+  ทุกการ์ดพร้อมกัน — บังคับให้ state ต้องอยู่ที่ parent ซึ่ง **ไม่** unmount ข้าม
+  query-param navigation (ต่างจาก child cards) จึงต้องมี `stillCurrent()` guard
+  จริงเหมือน `finish()` ไม่ใช่ได้มาฟรีจาก unmount — พิสูจน์เป็นมูเทชันจริงด้านล่าง
+  (M10) ว่าไม่มี guard นี้ = ข้อมูลรั่วจริงผ่าน aggregate banner
+- **Error handling ไม่แยกตาม HTTP status (400/404/413/500 ทั้งหมด =
+  `{kind:"error"}` เดียวกัน)**: ตั้งใจไม่ทำ granular error taxonomy ต่อ ticket
+  scope ("Not saved" + Retry พอสำหรับ v1) — ต่างจาก `finishState.error` เดิมที่โชว์
+  `err.message` เพราะที่นั่น error มาจาก `ApiError`/network โดยตรงไม่ผ่าน
+  discriminated result ที่ตั้งใจซ่อนรายละเอียดไว้แล้ว
+- **Aggregate banner (Finish section) ใช้ `role="alert"` เหมือน `finishState.error`
+  เดิม ไม่ใช่ `role="status"`**: สอดคล้องกับ error banner ที่มีอยู่แล้วในไฟล์
+  เดียวกัน ต่างจากที่ Q-1's REQ-3 เลี่ยง `role="status"` ห่อปุ่ม Pass/Not yet
+  (ปัญหานั้นคือ live region ห่อ control ที่ toggle `aria-pressed` ถี่ ๆ) — banner นี้
+  ไม่มี control ข้างในเลย เป็น one-shot mount เหมือน `finishState.error` เป๊ะ
+
+### Mutation table (11/11 required mutations killed — 0 survivor)
+
+รัน `npx vitest run components/RecallCheckCard.test.tsx "app/(app)/lesson/page.test.tsx"`
+หลังแก้แต่ละจุด แล้ว revert ทุกครั้ง:
+
+| # | Mutation | ผลลัพธ์ |
+|---|---|---|
+| M1 | ลบ `lastReportedAttemptRef` dedup check ออกจาก effect ใน `RecallCheckCard` | killed — **StrictMode test ไม่จับ** (effect ที่ report จริงไม่ได้รันตอน mount, รันตอน state เปลี่ยนทีหลัง ซึ่ง StrictMode double-invoke เฉพาะตอน mount) แต่ "does not re-fire on a re-render that leaves the completed attempt unchanged, even if onAttemptReady's own identity changes" (บังคับ re-render ด้วย `onAttemptReady` inline function ใหม่ทุกครั้ง) จับได้จริง (1 failed/43) — บันทึกไว้ตรง ๆ ว่า StrictMode test คนละแบบให้ coverage คนละมุม ไม่ใช่ redundant |
+| M2 | สลับ `isMcqCorrect ? "correct" : "incorrect"` กลับด้าน | killed — 4 เทสต์ (2 ใน RecallCheckCard, 2 ใน page.test.tsx ที่เช็ค outcome ตรง ๆ) |
+| M3 | hardcode `outcome` เป็น `"correct"` เสมอ | killed — 4 เทสต์ (mcq-incorrect ทั้งสองระดับ + short_answer resubmit ทั้งสองระดับ เพราะ hardcode ทำให้ signature ไม่เปลี่ยนตอน Pass→Not yet ด้วย เจอ dedup ผิดที่พ่วงมา) |
+| M4 | hardcode `confidence` เป็น `"guessed"` ใน `onAttemptReady` call | killed — 8 เทสต์ (correct/incorrect x2, confidence table x2 x2 ระดับ, resubmit test) — จุดที่ Q-1's review เจอ bug class เดียวกันตรง ๆ |
+| M5 | `selectedOption` ใช้ `shortAnswerRating` แทน `null` สำหรับ short_answer | killed — 3 เทสต์ |
+| M6 | `handleAttemptReady` ส่ง `check.expected_answer` แทน `check.question` | killed — 2 เทสต์ (page-level เท่านั้น เพราะ bug อยู่ที่ page.tsx ไม่ใช่ RecallCheckCard) |
+| M7 | ปิด error indicator (`{false && saveStatus === "error" && (...)}`) | killed — 2 เทสต์ |
+| M8 | โชว์ retry affordance ตอน `saveStatus === "saved"` ด้วย | killed — 1 เทสต์ที่ RecallCheckCard level; **เทสต์ page-level เดิมของฉันเองมี race condition ที่ปิดบัง mutation นี้ได้ (ดูหัวข้อถัดไป) แก้แล้วก่อนสรุปตาราง** |
+| M9 | ตัด `router.replace("/token")` ออกจาก catch ของ `submitAttempt` | killed — 1 เทสต์ |
+| M10 | ลบ `stillCurrent()` guard ทั้งสองจุดใน `submitAttempt` | killed — **เทสต์แรกที่เขียนไว้ไม่จับ (false pass) แก้แล้วก่อนสรุปตาราง (ดูหัวข้อถัดไป)** |
+| M11 | เปลี่ยนเงื่อนไข effect จาก `isRecallCheckFinished(...)` เป็น `stage === "recall"` (ยอมให้ยิงตั้งแต่ stage "commit") | killed — 4 เทสต์ |
+
+**สรุป: 11/11 mutation ที่ ticket บังคับตายหมดจริง ไม่มี survivor** — แต่ระหว่างทำ
+เจอว่าเทสต์ของตัวเอง 2 ตัว (สำหรับ M8, M10) เขียนพลาดจนปล่อยให้ mutation รอดในรอบ
+แรก รายละเอียดสองจุดนี้อยู่หัวข้อถัดไป (ตรงตามที่ CLAUDE.md เรียกร้อง — "ต้องพัง
+invariant ของจริงแล้วบอกให้ได้ว่า test ตัวไหนจับ" รวมถึงตอนที่เทสต์ตัวเองพลาดด้วย)
+
+### สองจุดที่เทสต์ของตัวเองปล่อยให้มูเทชันรอดในรอบแรก (พบระหว่าง mutation testing เอง)
+
+- **M8 (retry โชว์ตอน saved) — page-level test เดิมมี race**: เทสต์แรกเขียนแบบ
+  `postAttempt.mockResolvedValueOnce(...)` (resolve ทันที) แล้ว
+  `await waitFor(() => expect(screen.queryByText("Not saved")).toBeNull())` —
+  ปัญหาคือระหว่าง retry, `saveStatus` เปลี่ยนผ่าน `"saving"` ก่อน (ซึ่งซ่อน "Not
+  saved" อยู่แล้วโดยไม่เกี่ยวกับ mutation) ทำให้ `waitFor` เจอสภาวะที่ assertion
+  ผ่าน**ชั่วคราว**ระหว่าง "saving" แล้วหยุดรอทันที ก่อนที่ resolve จริงเป็น "saved"
+  (ซึ่งด้วย mutation จะทำให้ "Not saved" โผล่กลับมา) จะเกิดขึ้นด้วยซ้ำ — คลาสเดียว
+  กับ false-green ที่ project นี้เจอมาก่อน (`docs/roadmap.md`'s "Review discipline"
+  memory). แก้ด้วย deferred promise ควบคุมเองแทน `mockResolvedValueOnce` แล้ว
+  `await act(async () => { resolveRetry(...); await retryPromise; })` ก่อน assert
+  แบบ synchronous (ไม่ผ่าน `waitFor`) — ยืนยันว่า assert เกิด**หลัง**settle จริง ไม่ใช่
+  จังหวะไหนก็ได้ที่บังเอิญผ่าน
+- **M10 (ลบ `stillCurrent()` guard) — เทสต์แรก assert ผิดตัวบ่งชี้**: เทสต์แรก
+  assert `screen.queryByText("Not saved")` (per-check indicator) เป็น null แต่
+  per-check indicator อยู่ใน `stage === "reveal"` block เท่านั้น — lesson B's
+  check ที่ยังไม่ถูกแตะยังอยู่ stage "recall" เสมอ ทำให้ text นี้เป็น null **ไม่ว่า
+  guard จะทำงานหรือไม่** (structurally ไม่มีทางโผล่). ตัวบ่งชี้ที่ leak จริงคือ
+  **aggregate banner** ("Some recall attempts didn't save") ที่ผูกกับ
+  `attemptStatus` ระดับ `LessonView` ตรง ๆ ไม่ผ่าน stage ของ child เลย — เจอจาก
+  `screen.debug()` ตอน mutation ยังไม่ถูก revert (เห็น banner โผล่จริงในเทสต์ที่
+  "ผ่าน") แก้โดยเพิ่ม assertion บน aggregate banner text เป็นตัวหลัก
+
+### Playwright + SQL evidence (docker compose up -d --build, ไม่ใช้ -v)
+
+Stack: `docker compose up -d --build` แล้ว `docker compose down` เปล่า ๆ ท้ายสุด
+(ไม่มี `-v`, ไม่มีการลบ volume). ใช้ lesson `domain-driven-design/
+ubiquitous-language` เดิม (มีทั้ง mcq และ short_answer, ใช้ใน Q-1/Q-2a's evidence
+ด้วย) กับ headless Chromium ผ่าน Playwright:
+
+- **หนึ่ง mcq + หนึ่ง short_answer → สองแถวจริงใน MySQL, `check_key` ตรงกับที่คำนวณ
+  อิสระด้วย Node's `crypto` (ไม่ใช่แค่ Go เห็นด้วยกับตัวเอง)**:
+  ```
+  id  type          confidence  outcome  selected_option                              check_key
+  22  mcq           confident   correct  เพราะแต่ละความหมายอยู่คนละ bounded context   321730c1eb55d0131a5fe466611d192a4691eb0a908d008e9771d9da4994883c
+  23  short_answer  guessed     correct  NULL                                          6ce0ab5154b2e30501ddaf0d58934dd0b4579d06adc36b88d5fc2a2c47bba108
+  ```
+  ทั้งสอง `check_key` ตรงกับ `SHA256("domain-driven-design/ubiquitous-language/" +
+  question)` ที่คำนวณแยกด้วย Node เป๊ะทุกตัวอักษร — ยืนยันว่า `question` ที่ส่งไป
+  ตรงกับคำถามจริงของ check นั้น (ไม่งั้น server จะตอบ 400 "question not found" ไป
+  แล้ว ไม่มีแถวให้เห็นด้วยซ้ำ)
+- **Reload หน้าแล้วตอบ mcq เดิมซ้ำ (option เดิม, confidence เปลี่ยนเป็น Unsure) →
+  สองแถวจริงใต้ `check_key` เดียวกัน — นี่คือพฤติกรรมที่ตั้งใจ (append-only, ไม่มี
+  idempotency key ตาม Q-2a)**: `id=22 (confident/correct)` และ `id=24
+  (unsure/correct)` ทั้งคู่ `check_key=321730c1...` เหมือนกัน
+- **Mocked 500 (Playwright route interception) → "Not saved" + Retry โผล่จริง,
+  ไม่มี false "saved" state**: `role="alert"` บนการ์ดมีข้อความ "Not saved\nRetry"
+  พอดี, `pageerror` count = **0** ตลอด (ไม่มี uncaught exception), `console`
+  error ที่เห็นมีแค่ 1 บรรทัดคือ browser's network-level log ของ mocked 500 เอง
+  ("Failed to load resource...") ไม่ใช่ error จาก JS runtime — ไม่มี error storm
+- **Contrast วัดจริงจาก browser (`getComputedStyle` + แปลง Tailwind v4's
+  `oklab()` compound-opacity background กลับเป็น sRGB ด้วยเมทริกซ์ CSS Color 4
+  ก่อนคำนวณ, cross-check กับค่าที่ Q-1 เคยวัดสีชุดเดียวกันไว้)**: banner "Not
+  saved" ใช้สีชุดเดียวกับ Finish's error banner เดิม (`bg-danger/10 text-
+  danger-strong border-danger/30`) — fg `rgb(190,18,60)` บน bg
+  `rgb(252,231,232)` = **5.30:1** (ใกล้เคียงค่า Q-1 เคยวัดไว้ 5.31:1 สำหรับสีชุด
+  เดียวกัน ต่างกันแค่ rounding — ยืนยันว่าการแปลง oklab ในสคริปต์นี้ถูกต้อง) — ผ่าน
+  AA (≥4.5:1)
+- **401 (route interception) → redirect ไป `/token` จริง**: `page.url()` หลังกด
+  Reveal ตรงกับ `http://localhost:3000/token` เป๊ะ
+- **375px**: `document.documentElement.scrollWidth === clientWidth === 375` จริง
+  ไม่มี horizontal scroll
+- **Cleanup**: ลบเฉพาะแถวที่ script นี้สร้างเอง (`id > 18`, ทั้งหมด 6 แถวจาก 2 รอบ
+  รัน — รอบแรก id 19-21 ก่อน crash ตอนแก้ contrast parser, รอบสุดท้าย id 22-24)
+  ยืนยันด้วย `SELECT` ก่อน (`COUNT(*)=19, MAX(id)=24`) และหลังลบ (`COUNT(*)=13,
+  MAX(id)=18` — กลับสู่สภาพเดิมของ Q-2a's dev data เป๊ะ ไม่แตะแถว 1-18 ที่มีอยู่
+  ก่อนเลย)
+- **หมายเหตุ**: ระหว่าง phase mocked-500 เจอว่า `lesson_progress` ของ lesson นี้
+  ถูก mark `passed` ไว้แล้วจากการทดสอบ Q-1/Q-2a รอบก่อน ๆ (`state='passed'`,
+  `first_passed_at='2026-07-29 09:05:49'`) — "Lesson finished" banner ที่เห็นบน
+  หน้าจึงเป็น state เดิมที่ไม่เกี่ยวกับ ticket นี้เลย (ไม่ใช่ regression, ticket
+  นี้ไม่ได้เรียก `finish()` เลยระหว่างทดสอบ) — ไม่ต้อง cleanup เพราะเป็น
+  `lesson_progress` ที่ Q-1/Q-2a's evidence ทิ้งไว้ตั้งแต่ก่อนหน้านี้แล้ว
+
+### Review focus
+
+- ทำไม `attemptStatus`/`pendingAttemptsRef` ต้องอยู่ที่ `LessonView` (parent) แทนที่
+  จะให้ `RecallCheckCard` เก็บ save-status ของตัวเองเหมือนที่ Q-1 เก็บ
+  stage/selection ไว้ในการ์ดเอง? เกี่ยวอะไรกับ aggregate banner เหนือปุ่ม Finish?
+- ทำไมการเปลี่ยน short_answer rating จาก Pass เป็น Not yet ถึงต้อง POST แถวใหม่
+  (resubmit) แทนที่จะ ignore หรือถือว่าแถวแรกเป็นค่าสุดท้าย ทั้งที่ endpoint ไม่มี
+  idempotency key และจะทำให้มี "ประวัติที่ดูเหมือนขัดแย้งกันเอง" ใต้ check_key
+  เดียวกัน?
+- ทำไม dedup guard ของ `onAttemptReady` (`lastReportedAttemptRef`) ต้องเก็บ
+  "signature" ของ attempt แทนที่จะเก็บ boolean "เคย submit แล้วหรือยัง" ตรง ๆ?
+
+### จงใจไม่ทำในรอบนี้
+
+- ไม่แก้ granular error message ต่อ HTTP status ของ attempts POST — `{kind:
+  "error"}` เดียวพอสำหรับ "Not saved" + Retry ตาม scope ที่ ticket กำหนด
+  (`400`/`404`/`413`/`500` แสดงผลเหมือนกันหมดจากมุมผู้ใช้)
+- ไม่ป้องกัน race ระหว่าง correction สองครั้งที่ยิงเร็วมาก (short_answer สลับ
+  Pass/Not yet ก่อนแถวแรก resolve) จน UI status อาจแสดงผลไม่ตรงลำดับชั่วคราว — ทั้ง
+  สอง POST ยัง insert แถวถูกต้องเสมอ (data ไม่เสียหาย) กระทบแค่ transient UI display
+  ซึ่งประเมินว่าความเสี่ยงต่ำ (ต้องคลิกสลับเร็วมากในหน้าต่างสั้น ๆ)
+- ไม่มี "your attempt history" view, ไม่แตะ `review_cards`/`review_logs`/SM-2 —
+  Q-2c
+- ไม่เปลี่ยน 3-stage flow เดิมของ Q-1 เลย
+
+Status: implemented, PR pending
 
 ## Q-2c — review_cards/review_logs + SM-2 scheduling (not started)
 

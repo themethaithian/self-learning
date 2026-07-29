@@ -110,15 +110,20 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   self-graded (คนตอบ = คนให้คะแนนเอง) ทำ endpoint เฉลยแยกไม่ได้อะไรเพิ่ม มีแต่เสีย round trip +
   failure state ใหม่ ค่อยย้าย server-side ตอน Q-2 ที่เริ่ม submit attempt จริงและออกแบบ endpoint
   จาก requirement จริง (design.md §API ที่บอกว่าต้องตัดเป็นข้อความล้าสมัย ไม่ใช่ bug ของโค้ด)
-- [ ] Q-2a (implemented, PR pending) — persist recall attempts: schema `recall_attempts`
+- [x] Q-2a (**PR #52**, merged) — persist recall attempts: schema `recall_attempts`
   (append-only, `check_key = SHA256(topic/concept/trimmed-question)` ไม่มี FK ไป
   `recall_checks.id`), domain VOs (`CheckKey`/`Confidence`/`AttemptOutcome`/`GradedBy`/
   `RecallAttempt`), `POST /api/v1/progress/{topic}/{concept}/attempts` — `graded_by='self'`
   เกิดจริงครั้งแรกที่นี่ · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table อยู่ที่
   [`docs/tickets/quiz.md`](tickets/quiz.md)
-- [ ] Q-2b — frontend wiring: **ticket ที่ทำให้ข้อมูล in-memory ของ Q-1 (confidence ที่เลือก,
-  ตัวเลือกที่กด, ผลถูก/ผิด) persist จริงในที่สุด แทนที่จะหายตอน refresh** — เรียก endpoint ของ
-  Q-2a จาก `RecallCheckCard`/`lesson/page.tsx` · สโคปที่ [`docs/tickets/quiz.md`](tickets/quiz.md)
+- [ ] Q-2b (implemented, PR pending) — wire the quiz to the attempts API: **ticket ที่ทำให้
+  ข้อมูล in-memory ของ Q-1 (confidence ที่เลือก, ตัวเลือกที่กด, ผลถูก/ผิด) persist จริงในที่สุด
+  แทนที่จะหายตอน refresh** — `web/lib/api.ts`'s `postAttempt` เรียก endpoint ของ Q-2a จาก
+  `RecallCheckCard` (ยิงเมื่อ attempt ครบจริง: mcq ที่ stage 3, short_answer ที่ Pass/Not yet —
+  resubmit เมื่อ rating เปลี่ยน) ผ่าน `lesson/page.tsx` (identity guard เดียวกับ `finish()`'s
+  `stillCurrent()`, per-check "Not saved" + Retry indicator, aggregate banner เหนือปุ่ม Finish
+  เมื่อมี attempt ที่ยังไม่ save) · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table +
+  Playwright/SQL evidence อยู่ที่ [`docs/tickets/quiz.md`](tickets/quiz.md)
 - [ ] Q-2c — `review_cards`/`review_logs` + SM-2 scheduling (อ่าน `recall_attempts` ที่ Q-2a
   สร้างไว้ ไม่ใช่ schema ใหม่ที่ไม่เกี่ยวกัน) · สโคปที่ [`docs/tickets/quiz.md`](tickets/quiz.md)
 - [ ] Q-3 — เพิ่ม `explanation` ให้ MCQ ครบทั้ง 356 ข้อ (ตอนนี้ 0 ข้อมี) — รอบเดียวกับที่ขัดเกลา
