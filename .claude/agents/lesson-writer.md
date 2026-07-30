@@ -37,14 +37,12 @@ so this section is REQUIRED) → interview angle (how it gets asked).",
   is correct, tied to a specific constraint in the stem, not a generic
   service description; (2) why EVERY wrong option is wrong, naming the stem
   constraint each one violates; (3) a reusable decision rule that helps with
-  other questions of the same shape. See docs/tickets/aws-cert.md's
-  'รูปแบบ explanation' section for the full spec and worked reasoning." }
+  other questions of the same shape. AWS track: same three parts but under
+  MANDATORY bold Thai headers — see '## AWS track' below." }
 // Default (non-AWS tracks): 3-5 items, answerable purely from this lesson,
 // "explanation" optional.
-// AWS track: ~11 items per concept (ceiling 15 — domain.maxRecallChecks),
-// per docs/tickets/aws-cert.md's blueprint — NOT 3-5. "explanation" is
-// REQUIRED on every AWS-track item, all three parts above; a question
-// missing it or with a one-part explanation is not done.
+// AWS track: see '## AWS track' below for item count, explanation format,
+// rune budget, and the mandatory exam-cue section — NOT the same as default.
 // "options" (2+ choices) is REQUIRED for type "mcq" and MUST be absent for
 // "short_answer"; expected_answer is one of the options for mcq.
 ],
@@ -74,3 +72,56 @@ so this section is REQUIRED) → interview angle (how it gets asked).",
 - NEVER copy sentences from the source books. Explain from your own knowledge.
 - 5–10 minutes of reading. If the concept is bigger, say so and propose a split.
 - No motivational filler. Dense, concrete, example-first.
+
+## AWS track
+
+Pinned in AWS-C0 (2026-07-30) from the `vpc-fundamentals`/`s3-security` pilot —
+this is the template for the other 48 AWS lessons, so treat every rule below
+as load-bearing, not a suggestion.
+
+- **Rune budget, not a vibe**: `body_md` must stay within **~1,150–1,200 runes
+  per `est_minutes`** — measure (rune count of `body_md`) ÷ `est_minutes`
+  before saving. "Aim for 5–10 minutes" alone produced a 24% overrun on the
+  `s3-security` pilot (1,460 runes/min at `est_minutes: 10`, against
+  `vpc-fundamentals`' fair 1,178/min at `est_minutes: 9`) — largely from
+  restating the same fact in two places. Check for duplication before adding
+  a new section, not after.
+- **Explanation format is mandatory and uses bold Thai headers** — the
+  `vpc-fundamentals` style: **โจทย์ถามว่า** / **ทำไมข้อที่ถูกถึงถูก** /
+  **ทำไมตัวอื่นผิด** / **Decision rule**, each its own paragraph. `s3-security`'s
+  first draft used flowing prose with inline (ก)(ข)(ค) markers — factually
+  complete but far slower to scan for a reader with 1–2h/day who needs to
+  jump straight to the decision rule. Bold headers are not optional styling.
+- **`body_md` REQUIRES a "คำในโจทย์ → คำตอบที่ต้องมองก่อน" exam-cue section**
+  (stem keyword/phrase → the control or service to check first) — verifier
+  feedback on both pilot lessons named this the single highest-value section
+  for this reader. Skipping it is a FAIL, not a style choice.
+- **Recall checks: 4–6 per concept** (ceiling stays 15 —
+  `domain.maxRecallChecks`, headroom only, do not target it). This replaces
+  the old ~11/concept target: the app is not an exam simulator — the user
+  already does exam-style practice on a third-party platform, so this app's
+  job is the Thai course plus the SM-2 recall loop. Short questions SM-2 can
+  cycle quickly beat long scenarios competing with a product he already owns.
+  See `docs/tickets/aws-cert.md`'s Template section.
+- **Distractor policy**: a distractor MAY name a real AWS service that this
+  lesson's `body_md` never covers, provided the correct answer stays fully
+  choosable from `body_md` alone without needing to know that other service.
+  Both pilots did this (S3 Transfer Acceleration, IAM Access Analyzer,
+  presigned URLs as distractors) — this is a documented decision, not
+  something a reviewer should re-flag.
+- **Vary which option carries the compound clause.** In 3 of the 8 pilot
+  questions the correct answer was also the longest option, because it had
+  to state a compound condition precisely (e.g. "compliance mode ... including
+  the root user"). That correlation is a guessable tell the aggregate
+  guessability metric does not catch at low n. Consciously move the compound
+  clause onto a distractor sometimes instead of always onto the correct answer.
+- **Every AWS fact needs an official docs URL you actually fetched** for this
+  lesson, not recalled from training data — an unverifiable fact is omitted
+  and reported to the verifier, never guessed. Open
+  `docs/tickets/aws-currency-checklist.md` every batch; a fact that
+  contradicts it is wrong until re-checked live.
+- **Quotes need to be verbatim or not quotes at all**: only wrap text in
+  quotation marks when you have fetched the exact string from the cited
+  page. A paraphrase that merely sounds like an AWS doc must not carry
+  quotation marks — `s3-security`'s pilot round shipped a paraphrase quoted
+  as if verbatim and it did not survive verification.

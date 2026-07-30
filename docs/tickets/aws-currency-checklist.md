@@ -6,6 +6,10 @@
 >
 > ใช้เป็น **context บังคับ** ของทั้ง `lesson-writer` และ Fable adjudicator ทุก batch
 > ค้นเมื่อ 2026-07-30 · แหล่งที่ยอมรับ: `docs.aws.amazon.com` และ `aws.amazon.com` เท่านั้น
+>
+> **อัปเดต AWS-C0 (2026-07-30)**: เขียน pilot แค่ 2 บทเรียน (`vpc-fundamentals`, `s3-security`) เจอ
+> item ใหม่ที่ต้องเพิ่มถึง **7 รายการ** (§1.11, §4, §6, §8, §9 ด้านล่าง) — หลักฐานตรงว่า research
+> pass ครั้งเดียวตอนต้น sprint ไม่พอ ต้อง fetch docs ระหว่างเขียนทุก batch จริง
 
 ---
 
@@ -51,6 +55,7 @@ https://docs.aws.amazon.com/aws-certification/latest/solutions-architect-associa
 | 1.8 | **root MFA บังคับทุกประเภทบัญชี** (ทยอยตั้งแต่ 2024 ครบ 2025-06) + centralized root access management ลบ root credential ของ member account ได้ | 2024–2025 | "เปิด root MFA เป็น best practice" → **บังคับแล้ว** | https://aws.amazon.com/about-aws/whats-new/2025/06/aws-iam-mfa-root-users-across-all-account-types/ |
 | 1.9 | **S3 strongly consistent ทุก operation ทุก Region ฟรี** | 2020-12-01 | "S3 eventually consistent ต้องใช้ DynamoDB ทำ index" → **ห้ามออกข้อสอบแนวนี้เด็ดขาด มันไม่มีอยู่แล้ว** | https://aws.amazon.com/about-aws/whats-new/2020/12/amazon-s3-now-delivers-strong-read-after-write-consistency-automatically-for-all-applications/ |
 | 1.10 | **Aurora Serverless v1 ตายแล้ว** (EOL 2025-03-31) และ **v2 scale ลง 0 ACU ได้แล้ว** | 2024-11 / 2025 | ตัวแยกแยะเดิม "v1 pause ได้ v2 ไม่ได้" **ตายสนิท ห้ามใช้** | https://aws.amazon.com/about-aws/whats-new/2024/11/amazon-aurora-serverless-v2-scaling-zero-capacity/ |
+| 1.11 | **SSE-C ปิดเป็นค่าเริ่มต้นแล้ว** ทั้ง general purpose bucket ใหม่ **และ bucket เดิมที่ไม่เคยแตะ** | 2026-04 | "SSE-C เปิดใช้ได้ทันทีเหมือน SSE-S3/SSE-KMS" → **ต้องไปเปิดเองก่อน** ทั้ง bucket ใหม่และเก่า | https://docs.aws.amazon.com/AmazonS3/latest/userguide/serv-side-encryption.html |
 
 ---
 
@@ -124,6 +129,9 @@ https://docs.aws.amazon.com/aws-certification/latest/solutions-architect-associa
 - **EFS**: class คือ Standard / **IA** / **Archive** (Archive มา 2023-11) ส่วน Regional กับ One Zone เป็น *ชนิดของ file system* ไม่ใช่ class · lifecycle ดีฟอลต์ →IA 30 วัน →Archive 90 วัน
 - **FSx มี 4 ตัวพอดี**: Windows File Server · Lustre · **NetApp ONTAP** · **OpenZFS** — โมเดลที่ตอบแค่สองตัวแรกคือเก่า https://aws.amazon.com/fsx/when-to-choose-fsx/
 - **FSx Intelligent-Tiering** (2025) สำหรับ Lustre และ OpenZFS
+- **S3 Object Lock เปิดบน bucket ที่มีอยู่แล้วได้** (ไม่ใช่แค่ตอนสร้าง bucket ใหม่) ตั้งแต่ พ.ย. 2023 — คำตอบ "ต้องเปิดตอนสร้าง bucket เท่านั้น" เป็นข้อมูลเก่า https://aws.amazon.com/about-aws/whats-new/2023/11/amazon-s3-enabling-object-lock-buckets/
+- **Server access logging ส่งไป CloudWatch Logs ได้** ไม่ใช่แค่ S3 bucket อีกใบ (JSON, query ด้วย Logs Insights) — คำตอบที่บอกว่าปลายทางมีแค่ S3 bucket เป็นข้อมูลเก่า https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerLogs.html
+- **bucket ที่เปิด Object Lock ใช้เป็นปลายทาง (destination) ของ server access logs ไม่ได้** — ต้องส่งไป bucket อื่นหรือ CloudWatch Logs แทน https://docs.aws.amazon.com/AmazonS3/latest/userguide/enable-server-access-logging.html
 
 ---
 
@@ -144,6 +152,7 @@ https://docs.aws.amazon.com/aws-certification/latest/solutions-architect-associa
 - **Origin Access Control (OAC) แทน OAI** (2022-08) — OAC รองรับ **SSE-KMS**, SigV4, POST และทุก Region · **OAI ทำ SSE-KMS origin ไม่ได้** https://aws.amazon.com/about-aws/whats-new/2022/08/amazon-cloudfront-origin-access-control/
 - **NLB รองรับ security group แล้ว** (2023-08-10) → "มีแต่ ALB ที่มี SG ส่วน NLB ต้องกรองที่ instance" **ผิดแล้ว** https://aws.amazon.com/about-aws/whats-new/2023/08/network-load-balancer-supports-security-groups/
 - **NAT gateway คือสิ่งที่เอกสารแนะนำ** · NAT instance AMI EOL 2023-12-31 → ไม่ใช่แค่ trade-off แต่เป็นภาระการดูแล
+- **NAT gateway bandwidth: auto-scale 5 Gbps → 100 Gbps** (และ 1M → 10M packets/sec) — เลข **"45 Gbps"** ที่จำกันมาผิดแล้ว https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-basics.html
 - **gateway endpoint (S3, DynamoDB) ไม่มีค่าใช้จ่ายเพิ่ม** ส่วน interface endpoint คิดรายชั่วโมง + ต่อ GB — ยังเป็นตัวแยกแยะด้านราคาที่ใช้ได้ https://docs.aws.amazon.com/vpc/latest/privatelink/gateway-endpoints.html
 - **PrivateLink เข้าถึง VPC *resource* ได้แล้ว** (2024-12) ผ่าน resource endpoint / service-network endpoint
 - **AWS Cloud WAN** GA 2022-07 — ตัวเลือกที่สามนอกจาก TGW กับ peering สำหรับ global/multi-Region
@@ -172,6 +181,7 @@ https://docs.aws.amazon.com/aws-certification/latest/solutions-architect-associa
 - **Cognito feature plan: Lite / Essentials / Plus** (2024-11) → "advanced security features เป็นสวิตช์เปิดปิด" ไม่ใช่แล้ว
 - **OpenSearch Serverless** GA 2023-01
 - **Free Tier เปลี่ยนโครงสร้าง** (2025-07-15): บัญชีใหม่ได้เครดิต $200 + แผนฟรี 6 เดือน ส่วนโมเดล 12 เดือน/always-free ใช้กับบัญชีเก่าเท่านั้น
+- **Organization-level Block Public Access มีแล้ว** (ไม่ใช่แค่ระดับ bucket/account อีกต่อไป) — เปิด-ปิดได้แบบยกชุดทั้ง 4 setting เท่านั้น เลือกทีละ setting ไม่ได้ที่ระดับ organization — คำตอบ "BPA มีแค่ระดับ bucket/account" ไม่ครบแล้ว https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html
 
 ---
 
@@ -192,6 +202,7 @@ https://docs.aws.amazon.com/aws-certification/latest/solutions-architect-associa
 | **C9 DynamoDB on-demand cost** | "provisioned ถูกกว่ามากสำหรับ traffic คงที่" | on-demand ถูกลง 50% ตั้งแต่ 2024-11 | ให้เหตุผลเชิงคุณภาพเท่านั้น (spiky → on-demand, steady → provisioned) **ห้ามอ้างตัวเลขอัตราส่วน** |
 | **C10 public IPv4 charge** | ข้อเก่าอาจถือว่าฟรี | คิดเงินตั้งแต่ 2024-02-01 | **ตัดไปทางความจริงปัจจุบัน — ออกได้และควรออก** cost คือ 20% ของข้อสอบ |
 | **C11 FSx File Gateway** | คำตอบคลาสสิกของ "SMB cache on-prem หลังบ้านเป็น FSx" | maintenance 2024-10-28 | ใช้ S3 File Gateway / Volume / Tape Gateway แทน |
+| **C12 NAT gateway "หนึ่งตัวต่อ AZ"** | ตัวแยกแยะคลาสสิกของ HA: ต้องมี NAT gateway แยกต่อ AZ ถึงจะทนทาน AZ ล่มได้ | **Regional NAT gateway mode** (auto multi-AZ ในตัว, ไม่ต้องมี public subnet, **ไม่รองรับ** private NAT) ทำให้กฎ "หนึ่งตัวต่อ AZ" อ่อนลงในทางปฏิบัติจริง | **ข้อสอบยังเฉลย "NAT gateway ต่อ AZ" แบบเดิม** — SAA-C03 ยังไม่ทดสอบ regional mode ตรง ๆ ใช้คำตอบคลาสสิกต่อไปได้ แต่ต้องรู้ว่า regional mode มีอยู่จริงเผื่อโจทย์พูดถึงมันตรง ๆ https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateways-regional.html |
 
 ---
 

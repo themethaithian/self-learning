@@ -16,7 +16,12 @@
   all-or-nothing scoring) — ดูหัวข้อ blocker ข้อ 3 ด้านล่าง
 - **AWS-S3** (implemented, PR pending — ดูหัวข้อ "AWS-S3 — guessability measurement tool" ด้านล่าง) —
   guessability measurement tool ที่ parameterize baseline ได้ต่อ corpus, gate คลังข้อสอบจริงใช้งานได้แล้ว
-- **AWS-C1..C4** (ยังไม่เริ่ม, gated บน S1/S2/S3) — คลังข้อสอบจริง ~550 ข้อ ทีละ domain
+- **AWS-C0** (implemented, pending code review) — landed the 2 pilot lessons
+  (`vpc-fundamentals`, `s3-security`) that lock the lesson-writer template and fix the
+  count contradiction below (~11/550 → 4–6/~250) — ดูหัวข้อ "Template" และ "AWS-C0" Status
+  ด้านล่าง
+- **AWS-C1..C4** (ยังไม่เริ่ม, gated บน S1/S2/S3 + AWS-C0's template) — คลังข้อสอบจริง ~250 ข้อ
+  ทีละ domain (4–6 ข้อ/concept)
 
 ## Blueprint ข้อสอบ (verified โดยตรงจาก docs.aws.amazon.com ระหว่าง round 2 ของ ticket นี้)
 
@@ -92,16 +97,26 @@ lesson หนึ่งใบผูกกับ concept เดียว — เ�
 SM-2 scheduling) ทั้งหมดสร้างบน path นี้ ถ้าเปิด store ใหม่ต้องสร้างทั้งสามอย่างใหม่
 
 **รูปทรงใหม่**: **1 concept = 1 lesson (concept note ภาษาไทยสั้น ๆ 5–10 นาที ตาม CLAUDE.md — นี่คือ
-"บทเรียน" ที่ผู้ใช้อยากได้ด้วย) + ~11 recall_checks** (คำถามของ concept นั้น) — 50 × 11 = 550 พอดี
-และยอดต่อ domain ก็ตกลงมาเองจากจำนวน concept ต่อ domain × 11:
+"บทเรียน" ที่ผู้ใช้อยากได้ด้วย) + recall_checks ต่อ concept** (คำถามของ concept นั้น)
 
-| Domain | concepts | × 11 | จำนวนข้อ |
+**อัปเดตเป้า (AWS-C0, 2026-07-30) — 4–6 ข้อ/concept, รวม ~250 ข้อ ไม่ใช่ ~11/550 อีกต่อไป**: ตัวเลข
+เดิม (~11 ข้อ/concept, 550 ข้อรวม) มาจากตอนที่แผนนี้ยังคิดว่าแอปต้อง **จำลองข้อสอบเต็มรูปแบบ** เหมือน
+คลังข้อสอบเชิงพาณิชย์ — ข้อเท็จจริงตอนนี้คือ **แอปนี้ไม่ใช่ exam simulator**: ผู้ใช้ทำข้อสอบแนว SAA จริง
+อยู่แล้วบน third-party platform ที่ซื้อไว้ต่างหาก งานของแอปนี้คือคอร์สภาษาไทย + recall loop แบบ SM-2
+คำถามสั้นแบบ decision-rule ที่ SM-2 หมุนซ้ำได้เร็ว มีค่ามากกว่า scenario ยาวที่แข่งกับ product ที่ผู้ใช้
+มีอยู่แล้ว บันทึกไว้ตรงนี้ **ทำไมเลขถึงย้าย** เพื่อไม่ให้ใครเอา ~11/550 กลับมาใช้ทีหลังโดยไม่รู้ตัวว่าเป็น
+เป้าที่ตกไปแล้ว — รายละเอียดการตัดสินใจอื่นอยู่ที่หัวข้อ "Template" ด้านล่าง
+
+| Domain | concepts | × 4–6 | จำนวนข้อ |
 |---|---|---|---|
-| 1. Secure Architectures | 15 | ×11 | **165** |
-| 2. Resilient Architectures | 13 | ×11 | **143** |
-| 3. High-Performing Architectures | 12 | ×11 | **132** |
-| 4. Cost-Optimized Architectures | 10 | ×11 | **110** |
-| **รวม** | 50 | ×11 | **550** |
+| 1. Secure Architectures | 15 | ×4–6 | **60–90** |
+| 2. Resilient Architectures | 13 | ×4–6 | **52–78** |
+| 3. High-Performing Architectures | 12 | ×4–6 | **48–72** |
+| 4. Cost-Optimized Architectures | 10 | ×4–6 | **40–60** |
+| **รวม** | 50 | ×4–6 | **200–300 (เป้ากลาง ~250 ที่ 5/concept)** |
+
+(ตัวเลข ×11/550 เดิมยังโผล่ในหัวข้อ "AWS-S1"/"AWS-S3" ด้านล่างเป็นบริบทประวัติของการตัดสินใจที่ทำตอนนั้น
+เช่น ทำไม `maxRecallChecks` ถูกยกจาก 5 เป็น 15 — เก็บไว้ตามที่เกิดขึ้นจริง ไม่ใช่เป้าปัจจุบัน)
 
 Mock exam คือ **sampling policy** เหนือคำถามทั้งหมด ถ่วงน้ำหนัก 30/26/24/20 ตอน sample ไม่ใช่
 question store แยก
@@ -243,11 +258,12 @@ lake governance หรือ visualization เลย
 | Requester Pays (S3) | `s3-storage-classes-lifecycle` (ใหม่ round 3 — Task 4.1's Knowledge ระบุตรงตัว) |
 | public IPv4 hourly charge ($0.005/IP/ชม. ตั้งแต่ 2024-02-01) | `data-transfer-costs` (ย้ายจาก `cost-optimized-networking` ใน round 3 เพื่อลด outline bloat — ยังอยู่ task 4.4 เหมือนเดิม) |
 
-## แผนคลังข้อสอบ (~550 ข้อ + 50 lesson)
+## แผนคลังข้อสอบ (~250 ข้อ + 50 lesson)
 
-จำนวนข้อต่อ domain มาจากตาราง "รูปทรงใหม่" ด้านบน (11 ข้อ/concept × concept ต่อ domain) ไม่ใช่การ
-หาร 550 ตามเปอร์เซ็นต์น้ำหนักตรง ๆ อีกต่อไป — ตัวเลขบังเอิญออกมาเท่ากันเพราะ concept count ต่อ
-domain ถูกออกแบบให้ตรงสัดส่วนน้ำหนักอยู่แล้ว (15/13/12/10 = 30/26/24/20%)
+จำนวนข้อต่อ domain มาจากตาราง "รูปทรงใหม่" ด้านบน (4–6 ข้อ/concept × concept ต่อ domain, เป้ากลาง
+~250 — ปรับลดจาก ~11/550 ใน AWS-C0 ดูเหตุผลที่หัวข้อนั้น) ไม่ใช่การหารตามเปอร์เซ็นต์น้ำหนักตรง ๆ —
+ตัวเลขบังเอิญใกล้เคียงสัดส่วนน้ำหนักเพราะ concept count ต่อ domain ถูกออกแบบให้ตรงสัดส่วนอยู่แล้ว
+(15/13/12/10 = 30/26/24/20%)
 
 **หน่วยของการทำงานคือ concept ไม่ใช่ domain** ตาม token-efficiency skill
 (`.claude/skills/token-efficiency/SKILL.md`: "lesson-writer/verifier: one concept per invocation")
@@ -255,7 +271,8 @@ domain ถูกออกแบบให้ตรงสัดส่วนน้�
 ของ explanation ที่ตื้น/restate นิยามซ้ำ (โมเดลล้าเมื่อ context ยาว):
 
 - **1 invocation ต่อ 1 concept**: `lesson-writer` เขียน lesson (concept note) + recall_checks
-  ~11 ข้อของ concept นั้น (เพดานหลัง schema change (1) คือ 15) พร้อมกัน → `lesson-verifier`
+  4–6 ข้อของ concept นั้น (เพดานหลัง schema change (1) คือ 15, เผื่อ headroom เท่านั้น ไม่ใช่เป้า)
+  พร้อมกัน → `lesson-verifier`
   fact-check ทันที ตาม convention เดิมของ track อื่น (DDD/DDIA/AI-systems) — FAIL ต้อง regenerate
   เฉพาะ concept นั้นก่อนไปต่อ ไม่ retry ทั้ง batch
 - รวม **50 invocation-pair** ทั้งหมด (ไม่ใช่ 4 batch ระดับ domain แบบแผนเดิม)
@@ -430,8 +447,10 @@ migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2)
 
 ### การตัดสินใจ (พร้อมเหตุผล)
 
-- **`maxRecallChecks` 5 → 15**: แผน AWS ต้องการ ~11 ข้อ/concept (docs/tickets/aws-cert.md) เพดาน 15
-  เผื่อ headroom เหนือเป้านั้นโดยไม่เปิดให้ quiz ต่อ lesson ยาวไม่จำกัด
+- **`maxRecallChecks` 5 → 15**: แผน AWS ตอนนั้นต้องการ ~11 ข้อ/concept (docs/tickets/aws-cert.md)
+  เพดาน 15 เผื่อ headroom เหนือเป้านั้นโดยไม่เปิดให้ quiz ต่อ lesson ยาวไม่จำกัด — **เป้าย้ายเป็น 4–6
+  ข้อ/concept ใน AWS-C0 ภายหลัง** (ดูหัวข้อ "รูปทรงใหม่" ต้นเอกสาร) แต่เพดาน 15 ยังเผื่อ headroom
+  พอเหมือนเดิม ไม่ต้องแก้
 - **`minRecallChecks` คงที่ 3 ไม่แก้**: blocker เดิมคือเพดานบน (5×50=250 ไม่พอ 550) ไม่ใช่พื้นล่าง —
   **แก้ไขหลัง code review รอบ 2**: ข้อความรอบแรกที่นี่อ้างว่า "118 lesson เดิม บางใบมีพอดี 3 ข้อ"
   ผิด — นับจริงจาก `content/lessons/*/*.json` ทั้ง 118 ไฟล์ ได้ distribution {4 checks: 4, 5 checks:
@@ -1280,3 +1299,89 @@ Round 2 ของ code review เป็น **NO-SHIP สามข้อ** (N1–
 
 </details>
 </details>
+
+## Template — decisions pinned in `.claude/agents/lesson-writer.md` (AWS-C0)
+
+รายละเอียดเต็มอยู่ใน `.claude/agents/lesson-writer.md`'s "## AWS track" section (ปักเป็น agent spec
+โดยตรง ไม่ใช่แค่บันทึกไว้ที่นี่) — สรุป 7 การตัดสินใจที่มาจากการรีวิว pilot 2 บทเรียน
+(`vpc-fundamentals`, `s3-security`, ทั้งคู่ PASS lesson-verifier):
+
+1. **Rune budget ~1,150–1,200 runes ต่อ `est_minutes`** แทน "aim for 5–10 minutes" — pilot วัดจริงว่า
+   `vpc-fundamentals` (10,598 runes, 9 นาที = 1,178/min) fair แต่ `s3-security` ก่อนแก้ (14,601 runes,
+   10 นาที = 1,460/min) เกิน 24% จากเนื้อหาซ้ำ ไม่ใช่แค่ label ผิด
+2. **Explanation format บังคับใช้ bold header ภาษาไทย** — **โจทย์ถามว่า** / **ทำไมข้อที่ถูกถึงถูก** /
+   **ทำไมตัวอื่นผิด** / **Decision rule** ตามสไตล์ `vpc-fundamentals` แทนร้อยแก้วแบบ `s3-security` ที่
+   ถูกต้องครบแต่ scan ยากกว่าสำหรับผู้ใช้ที่มีเวลาอ่านวันละ 1–2 ชม.
+3. **"คำในโจทย์ → คำตอบที่ต้องมองก่อน" เป็น section บังคับ** — lesson-verifier เรียกว่า section ที่
+   มีค่าที่สุดใน 2 บทเรียนนี้
+4. **Distractor policy**: distractor ใช้ real AWS service ที่บทเรียนไม่ได้สอนได้ ถ้าคำตอบถูกยังเลือก
+   ได้ครบจากเนื้อหาบทเรียนอย่างเดียว (pilot ใช้ S3 Transfer Acceleration, IAM Access Analyzer,
+   presigned URL เป็น distractor ทั้งที่ไม่ได้สอนในบท) — ตรงกับกฎ "real service misapplied" ใน
+   `aws-cert.md` เดิม บันทึกไว้ให้ชัดกันคนรีวิวถัดไป flag ซ้ำ
+5. **Vary compound clause**: 3 ใน 8 ข้อของ pilot คำตอบถูกยาวที่สุดเพราะต้องระบุเงื่อนไข compound
+   ("compliance mode ... including the root user") — เป็น soft tell ที่ guessability metric รวม
+   ไม่จับที่ n ต่ำ ให้ตั้งใจย้าย compound clause ไปไว้ที่ distractor บ้าง
+6. **Recall checks: 4–6 ข้อ/concept** ไม่ใช่ ~11 — ดูหัวข้อ "รูปทรงใหม่" ต้นเอกสารสำหรับเหตุผลเต็ม
+7. **ทุก fact ต้องมี URL ที่ fetch จริง** ข้อที่ verify ไม่ได้ = ตัดทิ้งแล้วรายงาน ไม่ใช่เดา และ
+   **quote ต้อง verbatim หรือไม่ใส่เครื่องหมายคำพูดเลย** — ดูหัวข้อ "AWS-C0" ด้านล่างสำหรับตัวอย่างจริง
+   ที่แก้ในรอบนี้
+
+## AWS-C0 — land the pilot lessons and lock the lesson template
+
+**สถานะ**: implemented, pending code review
+
+**สิ่งที่ทำ**:
+
+- Trim `content/lessons/aws-saa-c03/s3-security.json`'s `body_md` จาก **14,601 → 11,800 runes**
+  (`est_minutes` คงที่ 10 → 1,460 runes/min เดิม → **1,180.0 runes/min** พอดีเพดาน 1,180 ที่ตั้งไว้)
+  ตัดเฉพาะเนื้อหาซ้ำ/คำฟุ่มเฟือย — ไม่ตัด recall check, reference, table row, mermaid diagram, หรือ
+  fact ที่ verifier confirm แล้วแม้แต่จุดเดียว: รวม trade-off ของ S3 Bucket Keys/CloudTrail
+  granularity ที่อธิบายซ้ำ 2 ที่ (section 3 กับ fintech example) เหลือที่เดียว, ตัด 2 ใน 7 bullet ของ
+  "ขีดจำกัดและ trade-off" ที่ซ้ำกับ section 3/4 (MFA Delete, SSE-KMS cost) เหลือ 5 ตามที่ ticket ระบุ,
+  แล้ว tighten ประโยคซ้ำซ้อน/คำฟุ่มเฟือยอีกหลายจุดทั่วไฟล์เพื่อให้ถึงเป้า
+- แก้จุด citation-precision ที่ verifier ตีกลับ: cross-account section quote `"both account policy
+  evaluations allow the request"` เป็น paraphrase ที่ verifier หาต้นฉบับไม่เจอ — fetch หน้า
+  `docs.aws.amazon.com/IAM/latest/UserGuide/access_policies-cross-account-resource-access.html` ตรง
+  พบประโยค verbatim จริง ("In cross account access, a principal needs an Allow in the identity policy
+  and the resource-based policy.") แทนที่ทั้งใน `body_md` และใน `recall_checks[3].explanation` ที่ใช้
+  quote เดียวกัน (จุดที่สองไม่ได้อยู่ใน scope ที่ ticket ระบุตรง ๆ แต่เป็น instance เดียวกันของปัญหา
+  เดียวกัน แก้พร้อมกันเพื่อความสอดคล้อง)
+- เพิ่ม 7 currency-checklist item ที่ verifier เจอระหว่างเขียน pilot ใน `aws-currency-checklist.md`
+  พร้อมโน้ตว่า 7 จุดนี้มาจากการเขียนแค่ 2 บทเรียน — หลักฐานว่า research pass ครั้งเดียวไม่พอ ต้อง fetch
+  docs ระหว่างเขียนทุกครั้ง
+- ปักเทมเพลตใน `.claude/agents/lesson-writer.md`'s section ใหม่ "## AWS track" — ดูหัวข้อ "Template"
+  ด้านบน
+- แก้ count contradiction ในเอกสารนี้: ~11 ข้อ/concept, ~550 ข้อรวม → **4–6 ข้อ/concept, ~250 ข้อรวม**
+  (ดูหัวข้อ "รูปทรงใหม่" ต้นเอกสาร) พร้อม per-domain allocation table ใหม่
+
+**Pilot results**: ทั้งสองบทเรียน (`vpc-fundamentals`, `s3-security`) **PASS lesson-verifier** — ทุก
+reference URL fetch แล้วยืนยันจริง, ทุก AWS claim เช็คกับ live docs, ไม่มีคำตอบที่ชื่อ service อยู่ใน
+ban list, explanation ครบ 3 ส่วนทุกข้อ, guessability อยู่ที่ baseline พอดี — **25.0% ทั้ง 7 heuristic
+ที่ n=8** (insufficient sample, gate รายงาน NOT JUDGED ไม่ใช่ PASS ตามที่ `MinSampleSize=100` ออกแบบ
+ไว้ — ดู "Verification" ด้านล่างสำหรับ output เต็มจาก `cmd/mcq-guessability`)
+
+**สิ่งที่ตั้งใจไม่ทำในรอบนี้**:
+
+- ไม่แก้ status ของ AWS-S1/AWS-S3 ในเอกสารนี้ (ทั้งคู่ merge แล้วจริง — PR #58, #59 — แต่ ticket นี้
+  ระบุให้ tick แค่ AWS-S3 ใน `roadmap.md` เท่านั้น ไม่ได้ระบุให้แก้ status ใน `aws-cert.md`)
+- ไม่เขียน AWS-C1..C4 เอง (ยัง gated เหมือนเดิม, ticket นี้แค่ปักเทมเพลตที่ AWS-C1..C4 ต้องตามให้ถูก)
+- ไม่แตะ `vpc-fundamentals.json` (ผ่านเกณฑ์ rune budget อยู่แล้ว ตามที่ ticket ระบุว่าเป็น baseline
+  ที่ fair)
+
+### Verification
+
+- `go vet ./...`: clean. `go test -count=1 ./...`: all packages `ok` (ไม่มีการแก้ไฟล์
+  `.go`/`migrations`/`web` เลยในรอบนี้ — `git diff --name-only develop... -- '*.go' 'web/*'
+  'migrations/*'` ว่างเปล่า)
+- Import evidence (stack แยก `docker compose -p awsc0check`, ไม่แตะ `self-learning_mysql_data`,
+  ปิดท้ายด้วย `docker compose down` เปล่า ๆ ไม่มี `-v`, volume `awsc0check_mysql_data` ยังอยู่หลังทำ):
+  `seed` container log จบด้วย `"msg":"lesson import complete","files":120}` (118 เดิม + 2 pilot ใหม่),
+  ทั้งสองไฟล์ AWS log `"recall_checks":4,"status":"inserted"` ไม่มี error เลย — query ตรงจาก MySQL
+  ยืนยัน: `lessons` รวม **120** แถว, `recall_checks` รวม **594** แถว (586 เดิม + 8 ใหม่), แยกตาม track
+  `aws` = **2 lessons / 8 recall_checks** พอดี
+- `go run ./cmd/mcq-guessability -dir content/lessons`: track `aws-saa-c03` (n=8) ทุก heuristic
+  (longest/shortest/middle/position 0-3) รายงาน **25.0% actual vs 25.0% baseline (excess +0.0%)**
+  พอดีทุกตัว — รันซ้ำด้วย `-dir content/lessons/aws-saa-c03 -max-excess 0.20` (scope เฉพาะ track นี้)
+  ยืนยันว่าเกทพิมพ์ **`Gate: NOT JUDGED`** (ไม่ใช่ `PASS`) พร้อม exit code 1 และรายการ "insufficient n"
+  ครบทั้ง 7 heuristic (`n=8 < minimum 100`) ตรงตามที่ `MinSampleSize=100` ออกแบบไว้ — เกทที่วัดอะไรไม่ได้
+  เลยต้องไม่รายงานว่าผ่าน

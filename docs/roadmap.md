@@ -59,7 +59,7 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
 
 | Phase | เป้าหมาย | สถานะ |
 |---|---|---|
-| **AWS-cert** | รีบาลานซ์ curriculum tree ให้ตรง exam guide + คลังข้อสอบ ~550 ข้อ ก่อนสอบ SAA-C03 | 🔥 **priority ปัจจุบัน** ([aws-cert.md](tickets/aws-cert.md)) |
+| **AWS-cert** | รีบาลานซ์ curriculum tree ให้ตรง exam guide + คลังข้อสอบ ~250 ข้อ (4–6/concept) ก่อนสอบ SAA-C03 | 🔥 **priority ปัจจุบัน** ([aws-cert.md](tickets/aws-cert.md)) |
 | 0. Walking skeleton + reading slice | คลิก concept → อ่านบทเรียนจริง (mermaid + references + recall) | ✅ จบ |
 | 1. Content | เขียนบทเรียน 2 track ที่ตรงกับตำแหน่งที่สุด | ✅ จบ |
 | 2. Quality + รันเองได้ | MCQ ที่เดาไม่ได้ + `make dev` คำสั่งเดียว | ✅ จบ |
@@ -81,7 +81,7 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
   เปลี่ยนชื่อ branch, ดูรายละเอียดที่ aws-cert.md)
 - [ ] AWS-S2 (ยังไม่เริ่ม) — multiple-response support (second correct answer, "Select TWO",
   all-or-nothing scoring)
-- [x] AWS-S3 (implemented, code review round 3 fixes applied, PR pending) —
+- [x] AWS-S3 (merged, PR #59) —
   `cmd/mcq-guessability` + `cmd/mcq-guessability/internal/mcqguess`: guessability measurement tool
   ที่ parameterize baseline ได้ (`1/len(options)` ต่อข้อ, ไม่ hardcode), เกท longest/shortest/middle
   (ครบ 3 length heuristic ที่ mcq-quality.md ระบุ) + position ต่อ track (ไม่ใช่ pooled — กัน dilution),
@@ -90,8 +90,16 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
   คลังข้อสอบจริง (AWS-C1..C4) ใช้งานได้แล้วสำหรับ single-answer mcq** (`-max-excess`, ยังไม่ครอบคลุม
   AWS-S2's multiple-response),
   ยังไม่ได้ wire เข้า CI/Makefile
-- [ ] AWS-C1..C4 (ยังไม่ตัดชื่อ, gated บน AWS-S1/S2) — เขียนคลังข้อสอบทีละ domain ตามแผนใน
-  aws-cert.md
+- [ ] AWS-C0 (implemented, pending code review) — landed 2 pilot lessons (`vpc-fundamentals`,
+  `s3-security`, ทั้งคู่ PASS lesson-verifier, guessability ที่ baseline 25.0%/n=8) + ปักเทมเพลตของ
+  `lesson-writer` (bold-header explanation format, rune budget ~1,150–1,200/`est_minutes`, exam-cue
+  section บังคับ, distractor/compound-clause policy) + แก้ count contradiction เดิม (~11/550 →
+  4–6/~250) + เก็บเกี่ยว 7 currency-checklist item ใหม่จากการเขียน pilot — รายละเอียดที่
+  [aws-cert.md](tickets/aws-cert.md)'s "Template" และ "AWS-C0" section
+- [ ] AWS-C1..C4 (ยังไม่ตัดชื่อ, gated บน AWS-S1/S2 + AWS-C0's template) — เขียนคลังข้อสอบทีละ domain
+  **4–6 recall check/concept, เป้ารวม ~250 ข้อ** (ปรับลดจาก ~11/550 เดิมใน AWS-C0 เพราะแอปนี้ไม่ใช่
+  exam simulator — ผู้ใช้ทำข้อสอบแนว SAA จริงอยู่แล้วบน third-party platform, งานของแอปนี้คือคอร์ส
+  ภาษาไทย + recall loop แบบ SM-2) ตามแผนใน aws-cert.md
 
 ### Phase 0 — walking skeleton + reading slice ✅
 - [x] T1 [x] T2 [x] T3 [x] T4 [x] T35 [x] T5 [x] T6 [x] T7 [x] T7b [x] T8 ([week-1](tickets/week-1.md))
@@ -105,9 +113,11 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
 - **AI & LLM Systems** ([รายละเอียด](tickets/ai-systems.md)): [x] T-ai-track (tree 11 บท / 53 concept) ·
   **53 บทเรียน / 11 บท ครบทั้ง track** — เจาะตำแหน่ง Backend/AI-CRM ([🎯 roadmap](https://claude.ai/code/artifact/a6d332fd-de7b-44bb-91db-37549984c7a7))
 - **DDD**: 4 บทเรียน (บท 1 จาก 5) — ยังไม่ครบ track
-- `distsys` / `aws` / `go` / `dsa`: มี curriculum tree แต่ **0 บทเรียน** (aws รีบาลานซ์เป็น
-  50 concept ใน AWS-0 แล้ว แต่ยังไม่มีบทเรียน — คลังข้อสอบคือ deliverable ถัดไป ไม่ใช่บทเรียนอ่าน)
-- รวม concept ทั้ง 7 tree = **322** (หลัง AWS-0) · recall check ทั้งหมด **586** ข้อ (mcq 356 / short_answer 230)
+- **AWS SAA-C03**: 2 บทเรียน pilot (`vpc-fundamentals`, `s3-security`, ดู AWS-C0) จาก 50 concept —
+  เหลืออีก 48 concept ที่ AWS-C1..C4 ต้องเขียนตามเทมเพลตที่ AWS-C0 ปักไว้
+- `distsys` / `go` / `dsa`: มี curriculum tree แต่ **0 บทเรียน**
+- รวม concept ทั้ง 7 tree = **322** (หลัง AWS-0) · lesson ทั้งหมด **120** ใบ · recall check ทั้งหมด
+  **594** ข้อ (mcq 364 / short_answer 230)
 
 ### Phase 2 — quality + รันเองได้ ✅
 - [x] T-local-docker (#39, [รายละเอียด](tickets/local-docker.md)) — `make dev` = mysql + api + web + seed
