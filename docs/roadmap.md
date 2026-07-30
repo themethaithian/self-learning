@@ -101,10 +101,8 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
   **4–6 recall check/concept, เป้ารวม ~250 ข้อ** (ปรับลดจาก ~11/550 เดิมใน AWS-C0 เพราะแอปนี้ไม่ใช่
   exam simulator — ผู้ใช้ทำข้อสอบแนว SAA จริงอยู่แล้วบน third-party platform, งานของแอปนี้คือคอร์ส
   ภาษาไทย + recall loop แบบ SM-2) ตามแผนใน aws-cert.md
-- [x] AWS-EN1 (merged, PR #60) — ระบบจดเทคนิคจาก practice exam: `content/exam-notes/aws-saa-c03/`
-  + skill `/aws-exam-note` (ดูหัวข้อ "AWS-EN" ใน aws-cert.md)
-- [ ] AWS-EN2 (ยังไม่เริ่ม, additive) — หน้าเว็บ read-only render exam notes
-  (Next.js static export อ่าน markdown ตอน build — ไม่แตะ Go API/MySQL)
+- [x] AWS-EN1 (merged PR #60 → reverted โดย AWS-EN3: ผู้ใช้พบว่าคุยใน chat ตรงกว่า
+  มีระบบ — โน้ตสุดท้าย snapshot ไว้ใน history) · AWS-EN2 ยกเลิกตามกัน
 
 ### Phase 0 — walking skeleton + reading slice ✅
 - [x] T1 [x] T2 [x] T3 [x] T4 [x] T35 [x] T5 [x] T6 [x] T7 [x] T7b [x] T8 ([week-1](tickets/week-1.md))

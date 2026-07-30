@@ -22,11 +22,10 @@
   ด้านล่าง
 - **AWS-C1..C4** (ยังไม่เริ่ม, gated บน S1/S2/S3 + AWS-C0's template) — คลังข้อสอบจริง ~250 ข้อ
   ทีละ domain (4–6 ข้อ/concept)
-- **AWS-EN1** (merged, PR #60) — ระบบจดเทคนิคจาก
-  practice exam: `content/exam-notes/aws-saa-c03/` + skill `/aws-exam-note` — ดูหัวข้อ
-  "AWS-EN" ท้ายไฟล์
-- **AWS-EN2** (ยังไม่เริ่ม, additive ไม่ gate/ไม่ถูก gate) — หน้าเว็บ read-only render
-  exam notes ชุดนี้
+- **AWS-EN1** (merged PR #60 → **reverted โดย AWS-EN3**) — ระบบจดเทคนิคจาก
+  practice exam — ผู้ใช้ลองใช้จริงแล้วสรุปว่า workflow คุยใน chat ตรงกว่า จึงถอดทั้งระบบ
+  ดูหัวข้อ "AWS-EN" ท้ายไฟล์
+- **AWS-EN2** (ยกเลิกพร้อม AWS-EN3 — ไม่มีระบบโน้ตให้ render แล้ว)
 
 ## Blueprint ข้อสอบ (verified โดยตรงจาก docs.aws.amazon.com ระหว่าง round 2 ของ ticket นี้)
 
@@ -1500,7 +1499,9 @@ Round 2 ได้ NO-SHIP แคบ 4 ข้อ (root cause ของ round 2's 
   ทุก heuristic เหมือนเดิม (round 3 ไม่แตะ `options`/`expected_answer` ของ recall_checks เลย มีแค่
   `body_md` กับ `explanation` ที่แก้) — ดูผลจริงในรายงานสรุป PR
 
-## AWS-EN — exam-notes system (จดเทคนิคจาก practice exam)
+## AWS-EN — exam-notes system (จดเทคนิคจาก practice exam) — ⛔ REVERTED (AWS-EN3)
+
+> ทั้ง section นี้เป็นประวัติ — ระบบถูกถอดออกแล้ว ดู "Status (AWS-EN3 — revert)" ท้าย section
 
 **ทำไมมี**: ระหว่างทำ practice exam ผู้ใช้ต้องนั่งจดเทคนิค/ศัพท์จากเฉลยเอง — เปลี่ยนเป็น
 เปิด session ไหนก็ได้ (model ปกติ: opus) วางโจทย์ + Overall explanation แล้ว skill
@@ -1535,7 +1536,14 @@ fable ต้องขอ permission) + follow-up loop / `review-again.md` ตา
 round 3 = **redesign ตาม feedback ผู้ใช้** ("เหมือนไม่ได้อะไร"): ยุบ 6 ไฟล์
 (index/keyword-map/traps/glossary/patterns) เหลือ `notes.md` เอกสารสังเคราะห์
 ไฟล์เดียวตามตัวอย่างจริงที่ผู้ใช้ให้, ตัด quiz ออก, เพิ่มการแปลเฉลยไทยต่อข้อ —
-PR pending review
+merged PR #60
+
+**Status (AWS-EN3 — revert)**: ผู้ใช้ลองใช้จริง 1 รอบ (โจทย์ข้อ 7: EventBridge → ECS)
+แล้วตัดสินว่า **workflow คุยใน chat ตรงกว่าการมี skill + ไฟล์ในระบบ** — ถอดทั้งระบบออก:
+ลบ `.claude/skills/aws-exam-note/` + `content/exam-notes/` + exception bullet ใน
+CLAUDE.md · โน้ตเวอร์ชันสุดท้าย (7 ข้อ) ถูก snapshot ไว้ใน commit ก่อนลบ กู้คืนได้จาก
+git history เสมอ · workflow ใหม่: ผู้ใช้จดใน chat เอง แล้วเอาสรุปจบมาให้ audit เป็นรอบ
+(งาน audit = เข้าเกณฑ์ fable ตามที่ตกลง — ขอ permission ก่อนเสมอ)
 
 **Review focus (AWS-EN1)**:
 
