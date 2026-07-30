@@ -18,13 +18,13 @@
         {
           "slug": "iam-policy-evaluation",
           "title": "IAM Policy Evaluation Logic",
-          "outline": "อธิบายลำดับการประเมิน IAM policy: explicit deny > explicit allow > default deny\nยกตัวอย่างการรวม policy หลายชั้น เช่น identity-based กับ resource-based\nพูดถึง SCP ที่มาจำกัด permission เพิ่มอีกชั้น",
+          "outline": "อธิบายลำดับการประเมิน IAM policy: explicit deny > explicit allow > default deny\nยกตัวอย่างการรวม policy หลายชั้น เช่น identity-based กับ resource-based\nพูดถึง SCP ที่มาจำกัด permission เพิ่มอีกชั้น\nอธิบาย IAM Permissions Boundary ว่าเป็นคนละ feature จาก SCP — จำกัดสิทธิ์สูงสุดของ IAM user/role หนึ่งตัว (ไม่ใช่ทั้ง account/OU แบบ SCP) คำตอบมาตรฐานของโจทย์ \"ให้ developer สร้าง role เองได้โดยห้าม privilege escalation\"",
           "position": 2
         },
         {
           "slug": "organizations-scp",
           "title": "AWS Organizations & Service Control Policies (SCPs)",
-          "outline": "อธิบาย AWS Organizations สำหรับจัดการหลาย account แบบรวมศูนย์\nอธิบาย Service Control Policy (SCP) ว่ากำหนด permission boundary สูงสุดของ account ในกลุ่ม\nยกตัวอย่างการใช้ OU (Organizational Unit) แบ่งกลุ่ม account",
+          "outline": "อธิบาย AWS Organizations สำหรับจัดการหลาย account แบบรวมศูนย์\nอธิบาย Service Control Policy (SCP) ว่ากำหนดขอบเขตสิทธิ์สูงสุดที่ทุก principal ใน account/OU ทำได้\nอธิบาย Resource Control Policies (RCPs) ที่มาใหม่ใน Organizations (2024-11-13) จำกัดสิทธิ์ที่ resource (ครอบ S3, STS, KMS, SQS, Secrets Manager) ต่างจาก SCP ที่จำกัดที่ principal — SCP จึงไม่ใช่ guardrail เชิงป้องกันตัวเดียวขององค์กรอีกต่อไป\nยกตัวอย่างการใช้ OU (Organizational Unit) แบ่งกลุ่ม account",
           "position": 3
         },
         {
@@ -42,7 +42,7 @@
         {
           "slug": "secrets-vs-parameter-store",
           "title": "Secrets Manager vs Systems Manager Parameter Store",
-          "outline": "เปรียบเทียบ Secrets Manager กับ Systems Manager Parameter Store ในการเก็บ credential/config\nเน้นจุดต่าง เช่น automatic rotation และค่าใช้จ่าย\nยกตัวอย่างสถานการณ์ที่ควรเลือกใช้แต่ละบริการ",
+          "outline": "เปรียบเทียบ Secrets Manager กับ Systems Manager Parameter Store ในการเก็บ credential/config\nเน้นจุดต่าง เช่น automatic rotation และค่าใช้จ่าย\nยกตัวอย่างสถานการณ์ที่ควรเลือกใช้แต่ละบริการ\nอธิบาย AWS Systems Manager Session Manager สำหรับเข้าถึง shell ของ EC2 ใน private subnet โดยไม่ต้องมี bastion host หรือเปิด port 22/3389 — ควบคุมสิทธิ์ผ่าน IAM policy ล้วน ๆ และไม่ต้องแจก SSH key",
           "position": 6
         },
         {
@@ -66,8 +66,38 @@
         {
           "slug": "s3-security",
           "title": "Amazon S3 Security",
-          "outline": "อธิบายกลไกความปลอดภัยของ S3: bucket policy, ACL, Block Public Access\nเน้นการเข้ารหัส SSE-S3, SSE-KMS และ access logging\nยกตัวอย่าง misconfiguration ที่ทำให้ bucket เปิด public โดยไม่ตั้งใจ",
+          "outline": "อธิบายกลไกความปลอดภัยของ S3: bucket policy, Block Public Access (เปิดเป็นค่าเริ่มต้นสำหรับ bucket ใหม่ตั้งแต่ 2023-04-27) — ACL ถูกปิดเป็นค่าเริ่มต้นแล้วเช่นกัน คำตอบที่พึ่งพา ACL เป็นกลไกหลักถือว่าล้าสมัย ให้ใช้ bucket policy/IAM แทน\nเน้นการเข้ารหัส SSE-S3 (เข้ารหัส object ใหม่ทุกชิ้นเป็นค่าเริ่มต้นตั้งแต่ 2023-01-05), SSE-KMS และ access logging\nอธิบาย S3 Versioning, MFA Delete และ S3 Object Lock (WORM) สำหรับป้องกันการลบ/เขียนทับโดยไม่ตั้งใจหรือจาก ransomware\nยกตัวอย่าง misconfiguration ที่ทำให้ bucket เปิด public โดยไม่ตั้งใจ",
           "position": 10
+        },
+        {
+          "slug": "vpc-fundamentals",
+          "title": "Amazon VPC Fundamentals",
+          "outline": "อธิบาย Amazon VPC และองค์ประกอบพื้นฐาน: subnet (public/private), route table, Internet Gateway (IGW)\nอธิบาย NAT Gateway สำหรับให้ resource ใน private subnet ออก internet ได้แบบ outbound-only\nเน้นหลัก CIDR planning: เลือกขนาด CIDR block ให้พอสำหรับ subnet ในอนาคตโดยไม่ชนกันเมื่อต้อง peering\nยกตัวอย่างการออกแบบ VPC แบบ public/private subnet เป็นพื้นฐานให้ทุก workload ที่ต้องการความปลอดภัยระดับ network",
+          "position": 11
+        },
+        {
+          "slug": "hybrid-cross-vpc-connectivity",
+          "title": "Hybrid & Cross-VPC Connectivity",
+          "outline": "อธิบาย Direct Connect (private dedicated link) และ Site-to-Site VPN (encrypted tunnel ผ่าน internet) สำหรับเชื่อม on-premises กับ AWS\nอธิบาย Transit Gateway เป็น hub กลางเชื่อมหลาย VPC/on-premises แทนการทำ VPC Peering แบบ full-mesh\nเปรียบเทียบ VPC Peering (point-to-point ไม่ transitive) กับ Transit Gateway (transitive scale ง่ายกว่าเมื่อจำนวน VPC เยอะ)\nอธิบาย Global Accelerator ใช้ Anycast IP ผ่าน AWS global network ลด latency และเพิ่มความทนทานให้ endpoint หลาย region",
+          "position": 12
+        },
+        {
+          "slug": "security-detection-governance",
+          "title": "Security Detection & Governance Services",
+          "outline": "อธิบาย Amazon GuardDuty ตรวจจับภัยคุกคามจาก log (VPC Flow Logs, CloudTrail, DNS) แบบ managed threat detection\nอธิบาย Amazon Macie ค้นหาและจัดประเภทข้อมูลอ่อนไหวใน S3 ด้วย machine learning\nอธิบาย Amazon Inspector สแกนช่องโหว่ (vulnerability) ของ EC2/container/Lambda อัตโนมัติ\nอธิบายฟีเจอร์รวมผล finding จากบริการความปลอดภัยหลายตัวไว้ที่เดียว (ปัจจุบันคือ Security Hub CSPM — ชื่อ \"AWS Security Hub\" เฉย ๆ ตอนนี้หมายถึง product คนละตัว คู่มือสอบยังใช้ชื่อเดิม จึงต้องรู้ทั้งสองชื่อ) เพื่อดู compliance ภาพรวม",
+          "position": 13
+        },
+        {
+          "slug": "multi-account-access-governance",
+          "title": "Multi-Account Access & Governance",
+          "outline": "อธิบาย AWS IAM Identity Center (เดิมชื่อ AWS SSO) สำหรับ single sign-on ข้ามหลาย account และ AWS Directory Service สำหรับเชื่อม/รัน Active Directory เป็นแหล่ง identity ให้ Identity Center\nอธิบาย AWS Control Tower ตั้ง landing zone และบังคับ guardrail มาตรฐานให้ account ใหม่ทุกใบใน Organization\nเน้น STS กับ cross-account role switching สำหรับขอ temporary credential ข้าม account\nอธิบาย AWS Resource Access Manager (RAM) สำหรับแชร์ resource เช่น subnet หรือ Transit Gateway ข้าม account ภายใน Organization โดยไม่ต้อง duplicate\nสรุป Shared Responsibility Model: AWS ดูแลความปลอดภัย \"ของ\" cloud ส่วนลูกค้าดูแลความปลอดภัย \"ใน\" cloud",
+          "position": 14
+        },
+        {
+          "slug": "acm-tls-in-transit-encryption",
+          "title": "ACM & Encryption in Transit",
+          "outline": "อธิบาย AWS Certificate Manager (ACM) ออกและต่ออายุ TLS certificate ให้อัตโนมัติ ไม่ต้องจัดการเองเหมือน certificate แบบเดิม\nยกตัวอย่างการติดตั้ง certificate จาก ACM ที่ ALB หรือ CloudFront เพื่อทำ HTTPS termination\nเน้นความแตกต่างระหว่าง encryption in transit (TLS ระหว่าง client-server) กับ encryption at rest (KMS)\nอธิบาย key rotation ของ KMS ทั้งแบบอัตโนมัติรายปีและแบบ manual rotation เมื่อ compliance ต้องการควบคุมเอง",
+          "position": 15
         }
       ]
     },
@@ -79,7 +109,7 @@
         {
           "slug": "regions-az-edge",
           "title": "Regions, Availability Zones & Edge Locations",
-          "outline": "อธิบายโครงสร้าง Region, Availability Zone (AZ) และ Edge Location ของ AWS\nเน้นว่า AZ หลายแห่งในหนึ่ง Region เชื่อมด้วย low-latency network เพื่อทำ HA\nยกตัวอย่างการออกแบบ workload ให้ทนต่อการล่มของทั้ง AZ",
+          "outline": "อธิบายโครงสร้าง Region, Availability Zone (AZ) และ Edge Location ของ AWS\nเน้นว่า AZ หลายแห่งในหนึ่ง Region เชื่อมด้วย low-latency network เพื่อทำ HA\nยกตัวอย่างการออกแบบ workload ให้ทนต่อการล่มของทั้ง AZ\nอธิบาย AWS Outposts สำหรับขยาย AWS infrastructure และ API มาไว้ในศูนย์ข้อมูลของลูกค้าเองเมื่อมีข้อจำกัดด้าน latency หรือ data residency",
           "position": 1
         },
         {
@@ -91,7 +121,7 @@
         {
           "slug": "auto-scaling-groups",
           "title": "Auto Scaling Groups",
-          "outline": "อธิบาย Auto Scaling Group (ASG) ทำงานร่วมกับ launch template และ scaling policy\nเน้นความแตกต่างของ target tracking, step scaling และ scheduled scaling\nยกตัวอย่างการออกแบบ ASG ร่วมกับ ELB เพื่อความยืดหยุ่น",
+          "outline": "อธิบาย Auto Scaling Group (ASG) ทำงานร่วมกับ launch template และ scaling policy\nเน้นความแตกต่างของ target tracking, step scaling และ scheduled scaling\nยกตัวอย่างการออกแบบ ASG ร่วมกับ ELB เพื่อความยืดหยุ่น\nยกตัวอย่าง immutable infrastructure: ใช้ CloudFormation หรือ Elastic Beanstalk deploy instance ชุดใหม่แทนการ patch instance เดิม ลดความเสี่ยง configuration drift",
           "position": 3
         },
         {
@@ -109,7 +139,7 @@
         {
           "slug": "sqs-sns-decoupling",
           "title": "SQS & SNS for Decoupling",
-          "outline": "อธิบาย SQS ใช้ decouple service แบบ queue point-to-point\nอธิบาย SNS ใช้ทำ pub/sub แบบ fan-out ไปหลาย subscriber\nยกตัวอย่างการรวม SNS+SQS เพื่อ fan-out แบบ reliable",
+          "outline": "อธิบาย SQS ใช้ decouple service แบบ queue point-to-point\nอธิบาย SNS ใช้ทำ pub/sub แบบ fan-out ไปหลาย subscriber\nยกตัวอย่างการรวม SNS+SQS เพื่อ fan-out แบบ reliable\nอธิบาย Amazon MQ เป็นทางเลือกสำหรับย้าย legacy application ที่ผูกกับ protocol มาตรฐานอย่าง JMS/AMQP/MQTT มาใช้ managed message broker โดยไม่ต้องเขียนโค้ดใหม่ทั้งหมด",
           "position": 6
         },
         {
@@ -135,6 +165,24 @@
           "title": "AWS Backup Strategies",
           "outline": "อธิบาย AWS Backup สำหรับจัดการ backup แบบรวมศูนย์ข้ามหลายบริการ\nเน้น backup plan, retention policy และ cross-region copy\nยกตัวอย่างการทำ automated backup สำหรับ RDS, EBS, DynamoDB",
           "position": 10
+        },
+        {
+          "slug": "observability-cloudwatch-cloudtrail",
+          "title": "Observability: CloudWatch, CloudTrail, X-Ray & Config",
+          "outline": "อธิบาย Amazon CloudWatch เก็บ metric, log และตั้ง alarm เพื่อตรวจจับความผิดปกติของระบบแบบ real-time\nอธิบาย AWS CloudTrail บันทึก API call ทุกตัวในบัญชีเพื่อ audit และสืบสวนเหตุการณ์ย้อนหลัง\nอธิบาย AWS X-Ray ทำ distributed tracing ตาม request ข้ามหลาย service เพื่อหา bottleneck\nอธิบาย AWS Config ตรวจสอบว่า resource configuration ตรงกับ compliance rule ที่ตั้งไว้หรือไม่\nเน้น service quotas และการตรวจจับ throttling เป็นสาเหตุทั่วไปที่ทำให้ระบบดู \"ไม่ available\" ทั้งที่ resource ยังทำงานอยู่",
+          "position": 11
+        },
+        {
+          "slug": "api-gateway-step-functions",
+          "title": "API Gateway & Step Functions",
+          "outline": "อธิบาย Amazon API Gateway เป็น managed entry point สำหรับ REST/HTTP API รองรับ throttling, caching และ authorization\nอธิบาย AWS Step Functions ทำ orchestration ของหลาย service เป็น state machine แทนการเขียน glue code เอง\nเปรียบเทียบ Standard Workflow (exactly-once ราคาตาม state transition) กับ Express Workflow (at-least-once ราคาตาม duration เหมาะ high-volume)\nยกตัวอย่างการต่อ API Gateway เรียก Step Functions เพื่อ decouple compute ออกจากกันแบบ loosely coupled",
+          "position": 12
+        },
+        {
+          "slug": "managed-ai-services-overview",
+          "title": "Managed AI/ML Services for Decoupled Workloads",
+          "outline": "อธิบาย AWS Managed Services (AMS) ตาม Task 2.2: ใช้ Amazon Comprehend (NLP) และ Amazon Polly (text-to-speech) แทนการดูแล ML infra เอง — สองตัวนี้ระบุชื่อตรงใน Task 2.2 ของคู่มือ\nยกตัวอย่าง AI service อื่นที่ในสโคปแต่ไม่ได้ระบุชื่อตรงใน task ใด: Transcribe, Translate, Textract, Rekognition, Lex, SageMaker AI — และ Kendra ซึ่งเข้า maintenance ตั้งแต่ 2026-06-30 (ใช้เป็น distractor ได้ แต่ห้ามเป็นคำตอบที่ถูก)\nเน้นว่าในข้อสอบ service กลุ่มนี้เป็นคำตอบเมื่อโจทย์ต้องการ \"ไม่อยากดูแล ML infra เอง\" ไม่ใช่คำถามเชิงลึกเรื่อง ML",
+          "position": 13
         }
       ]
     },
@@ -145,14 +193,14 @@
       "concepts": [
         {
           "slug": "ec2-families-purchasing",
-          "title": "EC2 Instance Families & Purchasing Options",
-          "outline": "อธิบายกลุ่ม EC2 instance family หลัก เช่น general purpose, compute optimized, memory optimized\nอธิบาย purchasing option: On-Demand, Reserved, Savings Plans, Spot\nยกตัวอย่างการเลือก instance type ตาม workload",
+          "title": "EC2 Instance Families",
+          "outline": "อธิบายกลุ่ม EC2 instance family หลัก เช่น general purpose, compute optimized, memory optimized และวิธีเลือก family/size ตาม workload requirement (CPU-bound, memory-bound, network-bound)\nกล่าวถึง purchasing option ที่มีอยู่ (On-Demand, Reserved, Savings Plans, Spot) แบบภาพรวม — รายละเอียด trade-off เชิงลึกอยู่ที่ concept pricing-models-ri-sp-spot\nยกตัวอย่างการเลือก instance type ตาม workload",
           "position": 1
         },
         {
           "slug": "ebs-efs-instance-store",
           "title": "EBS, EFS & Instance Store",
-          "outline": "เปรียบเทียบ EBS (block storage ผูกกับ AZ), EFS (shared file system) และ Instance Store (ephemeral)\nเน้นเรื่อง persistence และ use case ที่เหมาะกับแต่ละแบบ\nยกตัวอย่าง EBS volume type เช่น gp3, io2",
+          "outline": "เปรียบเทียบ EBS (block storage ผูกกับ AZ), EFS (shared file system) และ Instance Store (ephemeral)\nเน้นเรื่อง persistence และ use case ที่เหมาะกับแต่ละแบบ\nยกตัวอย่าง EBS volume type เช่น gp3 (แยก IOPS/throughput จากขนาด ถูกกว่า gp2) และ io2 Block Express (สูงสุด 256,000 IOPS)\nอธิบาย Amazon FSx (Windows File Server, Lustre, NetApp ONTAP, OpenZFS) เป็น managed file system เฉพาะทางเพิ่มเติมนอกเหนือจาก EFS",
           "position": 2
         },
         {
@@ -170,7 +218,7 @@
         {
           "slug": "elasticache",
           "title": "Amazon ElastiCache",
-          "outline": "อธิบาย ElastiCache รองรับ Redis และ Memcached สำหรับ in-memory cache\nเปรียบเทียบ use case ที่ต้องการ persistence/replication (Redis) กับแบบง่าย (Memcached)\nยกตัวอย่างการใช้ cache-aside pattern ลด load บน database",
+          "outline": "อธิบาย ElastiCache รองรับ Redis OSS, Valkey และ Memcached สำหรับ in-memory cache (Valkey คือ fork ที่ AWS แนะนำ เพราะถูกกว่า Redis OSS)\nเปรียบเทียบ use case ที่ต้องการ persistence/replication (Redis OSS/Valkey) กับแบบง่าย (Memcached)\nยกตัวอย่างการใช้ cache-aside pattern ลด load บน database",
           "position": 5
         },
         {
@@ -182,25 +230,25 @@
         {
           "slug": "dynamodb-advanced",
           "title": "DynamoDB Advanced Patterns",
-          "outline": "อธิบาย Global Secondary Index (GSI) และ Local Secondary Index (LSI)\nเน้น DynamoDB Streams สำหรับ capture การเปลี่ยนแปลงข้อมูล\nยกตัวอย่าง Global Table สำหรับ multi-region replication",
+          "outline": "อธิบาย Global Secondary Index (GSI) และ Local Secondary Index (LSI)\nเน้น DynamoDB Streams สำหรับ capture การเปลี่ยนแปลงข้อมูล\nยกตัวอย่าง Global Table สำหรับ multi-region replication\nอธิบายทางเลือกเมื่อ DynamoDB ไม่เหมาะกับรูปแบบข้อมูล: Amazon DocumentDB (document เข้ากันได้กับ MongoDB), Amazon Neptune (graph), Amazon Keyspaces (wide-column เข้ากันได้กับ Cassandra) — เลือกตามรูปแบบข้อมูลจริง ไม่ใช่ตามความเคยชิน",
           "position": 7
         },
         {
           "slug": "rds-performance",
           "title": "RDS Performance",
-          "outline": "อธิบายเทคนิคเพิ่ม performance ของ RDS เช่น instance class, storage type (io1/gp3)\nเน้น Performance Insights สำหรับวิเคราะห์ bottleneck\nยกตัวอย่างการใช้ Read Replica แบ่งเบา read-heavy workload",
+          "outline": "อธิบายเทคนิคเพิ่ม performance ของ RDS เช่น instance class, storage type (io1/gp3)\nเน้น Performance Insights สำหรับวิเคราะห์ bottleneck\nยกตัวอย่างการใช้ Read Replica แบ่งเบา read-heavy workload\nอธิบาย RDS Proxy ทำ connection pooling ให้ application ที่เปิด-ปิด connection ถี่ เช่น Lambda ลดปัญหา database connection exhaustion",
           "position": 8
         },
         {
           "slug": "kinesis",
           "title": "Amazon Kinesis",
-          "outline": "อธิบาย Kinesis Data Streams สำหรับประมวลผล real-time streaming data\nเปรียบเทียบกับ Kinesis Data Firehose ที่ load ข้อมูลไปยัง destination อัตโนมัติ\nยกตัวอย่างการใช้ shard และ consumer ในการ scale throughput",
+          "outline": "อธิบาย Kinesis Data Streams สำหรับประมวลผล real-time streaming data\nเปรียบเทียบกับ Amazon Data Firehose (ชื่อเดิม Kinesis Data Firehose) ที่ load ข้อมูลไปยัง destination อัตโนมัติ\nยกตัวอย่างการใช้ shard และ consumer ในการ scale throughput",
           "position": 9
         },
         {
           "slug": "athena-glue",
           "title": "Amazon Athena & AWS Glue",
-          "outline": "อธิบาย Athena สำหรับ query ข้อมูลบน S3 ด้วย SQL แบบ serverless\nอธิบาย AWS Glue สำหรับ ETL และสร้าง Glue Data Catalog\nยกตัวอย่างการใช้ Glue Crawler สร้าง schema ให้ Athena query",
+          "outline": "อธิบาย Athena สำหรับ query ข้อมูลบน S3 ด้วย SQL แบบ serverless\nอธิบาย AWS Glue สำหรับ ETL และสร้าง Glue Data Catalog\nยกตัวอย่างการใช้ Glue Crawler สร้าง schema ให้ Athena query\nอธิบาย Amazon EMR สำหรับประมวลผลข้อมูลขนาดใหญ่ด้วย Spark/Hadoop เมื่อ workload ซับซ้อนเกินกว่าที่ Athena query ตรง ๆ จะรองรับ\nอธิบาย AWS Lake Formation สำหรับสร้างและควบคุมสิทธิ์ data lake แบบรวมศูนย์ (ต่างจาก Glue Data Catalog ตรงที่เพิ่มชั้น access control)\nอธิบาย Amazon QuickSuite (เดิมชื่อ QuickSight) สำหรับทำ visualization/BI บนข้อมูลที่ Athena/Glue เตรียมไว้ — คู่มือสอบ Task 3.5 เขียนชื่อนี้ตรง ๆ",
           "position": 10
         },
         {
@@ -212,7 +260,7 @@
         {
           "slug": "ecs-eks-fargate",
           "title": "ECS, EKS & Fargate",
-          "outline": "เปรียบเทียบ ECS (AWS-native orchestration) กับ EKS (managed Kubernetes)\nอธิบาย Fargate เป็น serverless compute engine ที่ไม่ต้องจัดการ EC2 เอง\nยกตัวอย่างการเลือกใช้ launch type ตามความต้องการ control และ ecosystem",
+          "outline": "เปรียบเทียบ ECS (AWS-native orchestration) กับ EKS (managed Kubernetes) และ Fargate เป็น serverless compute engine ที่ใช้ได้กับทั้งคู่โดยไม่ต้องจัดการ EC2 เอง\nยกตัวอย่างการเลือกใช้ launch type ตามความต้องการ control และ ecosystem\nอธิบาย AWS Batch (รัน batch job บน ECS/EKS/Fargate จัดการ job queue ให้อัตโนมัติ) และ Amazon ECR (container registry แบบ managed) เป็นบริการที่ใช้ร่วมกัน",
           "position": 12
         }
       ]
@@ -225,32 +273,62 @@
         {
           "slug": "pricing-models-ri-sp-spot",
           "title": "Pricing Models: Reserved Instances, Savings Plans & Spot",
-          "outline": "เปรียบเทียบ Reserved Instance, Savings Plans และ Spot Instance ในการลดต้นทุน compute\nเน้น trade-off ระหว่าง commitment, ความยืดหยุ่น และความเสี่ยงถูก interrupt\nยกตัวอย่างการผสม pricing model ตาม workload pattern",
+          "outline": "เปรียบเทียบ Reserved Instance, Savings Plans และ Spot Instance ในการลดต้นทุน compute โดยละเอียด — concept นี้คือที่เดียวที่เปรียบเทียบ 3 model นี้เชิงลึก\nเน้น trade-off ระหว่าง commitment, ความยืดหยุ่น และความเสี่ยงถูก interrupt — AWS แนะนำ Savings Plans มากกว่า RI ในปัจจุบัน (RI ยังใช้ได้แต่ Savings Plans ยืดหยุ่นกว่าเพราะไม่ผูก instance family)\nยกตัวอย่างการผสม pricing model ตาม workload pattern",
           "position": 1
         },
         {
           "slug": "s3-storage-classes-lifecycle",
           "title": "S3 Storage Classes & Lifecycle Policies",
-          "outline": "อธิบาย S3 storage class: Standard, IA, One Zone-IA, Glacier tiers\nเน้น lifecycle policy สำหรับย้ายข้อมูลอัตโนมัติตามอายุการใช้งาน\nยกตัวอย่างการเลือก storage class ตาม access pattern",
+          "outline": "อธิบาย S3 storage class: Standard, Intelligent-Tiering, Standard-IA, One Zone-IA, S3 Glacier Instant Retrieval, S3 Glacier Flexible Retrieval, S3 Glacier Deep Archive\nเน้น S3 Intelligent-Tiering เป็นคำตอบมาตรฐานเมื่อโจทย์บอกว่า access pattern \"ไม่รู้แน่ชัดหรือเปลี่ยนไปเรื่อย ๆ\" เพราะ auto-tier ให้โดยไม่มีค่าใช้จ่าย retrieval และไม่มี minimum storage duration\nเน้น lifecycle policy สำหรับย้ายข้อมูลอัตโนมัติตามอายุการใช้งาน\nอธิบาย Requester Pays: ให้ผู้ดาวน์โหลดจ่ายค่า data transfer/request แทนเจ้าของ bucket — เหมาะเมื่อแชร์ dataset ขนาดใหญ่กับบุคคลที่สาม\nยกตัวอย่างการเลือก storage class ตาม access pattern",
           "position": 2
         },
         {
           "slug": "compute-cost-optimization",
           "title": "Compute Cost Optimization",
-          "outline": "อธิบายแนวทางลดต้นทุน compute เช่น right-sizing instance และใช้ Auto Scaling\nเน้นการเลือก purchasing option ให้เหมาะกับ workload ที่ predictable หรือ variable\nยกตัวอย่างการใช้ Compute Optimizer แนะนำขนาด instance",
+          "outline": "อธิบายแนวทางลดต้นทุน compute เช่น right-sizing instance ด้วย Compute Optimizer และใช้ Auto Scaling ให้ capacity ตาม load จริงแทนการจอง fix\nอธิบาย EC2 hibernation เก็บสถานะ RAM ลง EBS ตอน stop เพื่อให้ instance กลับมาทำงานต่อได้เร็วโดยไม่ต้อง boot ใหม่ทั้งหมด ลดเวลาที่ต้องรันทิ้งไว้เฉย ๆ\nเน้นว่า concept นี้ตอบคำถาม \"จะลดต้นทุนยังไง\" เชิงกลยุทธ์ ส่วนการเลือกระหว่าง RI/Savings Plans/Spot อยู่ที่ concept pricing-models-ri-sp-spot",
           "position": 3
         },
         {
           "slug": "data-transfer-costs",
           "title": "Data Transfer Costs",
-          "outline": "อธิบายโครงสร้างค่าใช้จ่าย data transfer: inbound ฟรี, outbound คิดเงิน, cross-AZ/cross-region\nเน้นวิธีลดต้นทุนด้วย CloudFront, VPC Endpoint หรือออกแบบ architecture ให้ traffic อยู่ใน AZ เดียวกัน\nยกตัวอย่างสถานการณ์ transfer cost ที่มักถูกมองข้าม",
+          "outline": "อธิบายโครงสร้างค่าใช้จ่าย data transfer: inbound ฟรี, outbound คิดเงิน, cross-AZ/cross-region\nเน้นวิธีลดต้นทุนด้วย CloudFront, VPC Endpoint หรือออกแบบ architecture ให้ traffic อยู่ใน AZ เดียวกัน\nอธิบายค่าใช้จ่าย public IPv4 address รายชั่วโมง ($0.005/IP/ชม. ตั้งแต่ 2024-02-01) ที่คิดกับทุก public IP ไม่ว่าจะใช้งานอยู่หรือไม่ ครอบคลุม EC2/RDS/EKS/ELB — ลดได้ด้วย IPv6, private subnet หลัง NAT, หรือ BYOIP\nยกตัวอย่างสถานการณ์ transfer cost ที่มักถูกมองข้าม",
           "position": 4
         },
         {
           "slug": "cost-tools-budgets",
           "title": "AWS Cost Tools & Budgets",
-          "outline": "อธิบาย AWS Cost Explorer สำหรับวิเคราะห์และ forecast ค่าใช้จ่าย\nอธิบาย AWS Budgets สำหรับตั้ง alert เมื่อ spending เกินเกณฑ์\nยกตัวอย่างการใช้ Cost Allocation Tags แยกต้นทุนตาม project",
+          "outline": "อธิบาย AWS Cost Explorer สำหรับวิเคราะห์และ forecast ค่าใช้จ่าย\nอธิบาย AWS Budgets สำหรับตั้ง alert เมื่อ spending เกินเกณฑ์\nอธิบาย AWS Cost and Usage Report (CUR) เป็นรายงานละเอียดที่สุด ระบุ usage รายชั่วโมง/รายรีซอร์ส — คู่มือสอบระบุชื่อนี้ในทุก task ของ Domain 4\nยกตัวอย่างการใช้ Cost Allocation Tags และ multi-account billing (consolidated billing ใน Organizations) แยกต้นทุนตาม project/account\nอธิบาย AWS Trusted Advisor ตรวจสอบและแนะนำจุดที่ optimize ต้นทุนได้ทันที เช่น resource ที่ idle หรือ underutilized",
           "position": 5
+        },
+        {
+          "slug": "cost-optimized-databases-capacity",
+          "title": "Cost-Optimized Database Capacity Models",
+          "outline": "อธิบาย DynamoDB on-demand capacity เหมาะ workload ที่ traffic ไม่แน่นอน ส่วน provisioned capacity คุ้มกว่าเมื่อ traffic คาดการณ์ได้และตั้ง Auto Scaling ได้\nอธิบาย Aurora Serverless v2 ปรับ capacity อัตโนมัติตาม load จ่ายตามที่ใช้จริง เหมาะ workload ที่ traffic แกว่งเยอะหรือไม่สม่ำเสมอ\nเปรียบเทียบ RDS On-Demand กับ RDS Reserved Instance ว่า Reserved คุ้มเมื่อ workload รันต่อเนื่องระยะยาวที่คาดการณ์ได้",
+          "position": 6
+        },
+        {
+          "slug": "cost-optimized-databases-storage-lifecycle",
+          "title": "Database Storage & Backup Cost Management",
+          "outline": "อธิบายผลของ snapshot frequency และ retention period ต่อค่าใช้จ่ายเก็บ backup ระยะยาว\nเน้นการตั้ง retention ให้พอดีกับ RPO ที่ต้องการ ไม่เก็บนานเกินความจำเป็นทางธุรกิจ\nอธิบายการเลือก database type ให้เหมาะ workload pattern เพื่อคุมต้นทุน ตามที่คู่มือสอบระบุ \"time series format\" และ \"columnar format\" เป็นตัวอย่าง เช่น Amazon Redshift สำหรับ columnar analytics แทนการฝืนใช้ RDS ทั่วไป (คู่มือสอบไม่มีชื่อ service เฉพาะสำหรับ time-series ในรายการ Database จึงไม่ควรผูกคำตอบไว้กับชื่อ service ใดชื่อหนึ่ง)",
+          "position": 7
+        },
+        {
+          "slug": "cost-optimized-networking",
+          "title": "Cost-Optimized Networking",
+          "outline": "เปรียบเทียบ NAT Gateway ตัวเดียวใช้ร่วมหลาย AZ (ถูกกว่าแต่เสี่ยง single point of failure) กับแยกทุก AZ (แพงกว่าแต่ทนทานกว่า) และกับ NAT instance (AMI หมดอายุ 2023-12-31 ไม่ควรเป็นคำตอบที่ถูก)\nเปรียบเทียบ Transit Gateway (ค่าต่อ attachment เหมาะเชื่อมหลาย VPC) กับ VPC Peering (ไม่มีค่า gateway แต่ scale ยากเมื่อ VPC เยอะ)\nเปรียบเทียบ Direct Connect (ค่าใช้จ่ายคงที่บวกรายเดือน คุ้มเมื่อ traffic เยอะสม่ำเสมอ) กับ Site-to-Site VPN (ถูกกว่าเมื่อ traffic น้อย) กับ public internet (ฟรีแต่ไม่มี SLA)",
+          "position": 8
+        },
+        {
+          "slug": "migration-and-transfer-services",
+          "title": "Migration & Transfer Services",
+          "outline": "เปรียบเทียบย้ายข้อมูลผ่าน network กับแบบออฟไลน์ (AWS Snow Family) โดยคำนวณจากขนาดข้อมูล/bandwidth — Snowball Edge ปิดรับลูกค้าใหม่ 2025-11-07, Snowcone เลิกผลิตแล้ว ห้ามผูกคำตอบกับรุ่นใดรุ่นหนึ่ง\nอธิบาย AWS DataSync ย้าย/sync ข้อมูล on-premises กับ AWS storage อัตโนมัติผ่าน network\nอธิบาย AWS Storage Gateway (File/Volume/Tape) เชื่อม on-premises app กับ S3/EBS/S3 Glacier Flexible หรือ Deep Archive แบบโปร่งใส\nอธิบาย AWS Transfer Family รองรับ SFTP/FTPS/FTP เข้าถึง S3 โดยไม่เปลี่ยน client เดิม\nอธิบาย AWS DMS ย้าย database ข้าม engine แบบ downtime น้อยที่สุด รวมถึงย้าย schema/data ข้าม engine",
+          "position": 9
+        },
+        {
+          "slug": "storage-cost-optimization-beyond-s3",
+          "title": "Storage Cost Optimization Beyond S3",
+          "outline": "อธิบายการเลือกขนาดและชนิด EBS ให้เหมาะ workload เช่น gp3 (ปรับ IOPS/throughput แยกจากขนาดได้ ถูกกว่า gp2) แทนการใช้ io2 เกินความจำเป็น\nอธิบาย EFS Infrequent Access storage class ลดต้นทุนไฟล์ที่เข้าถึงไม่บ่อยแบบอัตโนมัติด้วย lifecycle management\nเน้นการตั้ง snapshot lifecycle ของ EBS ให้ลบ snapshot เก่าที่ไม่จำเป็นแทนการเก็บสะสมไปเรื่อย ๆ\nยกตัวอย่างการเลือก storage คุ้มต้นทุนตาม access pattern แทนใช้ default ตัวเดียวกันทุก workload",
+          "position": 10
         }
       ]
     }
