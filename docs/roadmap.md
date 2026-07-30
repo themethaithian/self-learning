@@ -1,5 +1,8 @@
 # Roadmap — Self-Improve Web
 
+> 📍 **ย้ายเครื่อง / กลับมาทำงานต่อ?** อ่าน [`docs/HANDOFF.md`](HANDOFF.md) ก่อน —
+> priority ปัจจุบันคือสอบ AWS SAA-C03 งานอื่นด้านล่างพักไว้ชั่วคราว
+>
 > **ภาพใหญ่ทั้งหมดอยู่ไฟล์นี้ไฟล์เดียว** — รายละเอียด ticket อยู่ใน [`docs/tickets/`](tickets/)
 > ส่วน design ฉบับเต็ม (DDD, schema, API, VPS) อยู่ที่ [`docs/design.md`](design.md)
 > ⚠️ `design.md` **เก่ากว่าไฟล์นี้** — ดูหัวข้อ "หนี้ที่รู้ตัว" ท้ายไฟล์
