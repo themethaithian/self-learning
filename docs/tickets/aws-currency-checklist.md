@@ -55,7 +55,7 @@ https://docs.aws.amazon.com/aws-certification/latest/solutions-architect-associa
 | 1.8 | **root MFA บังคับทุกประเภทบัญชี** (ทยอยตั้งแต่ 2024 ครบ 2025-06) + centralized root access management ลบ root credential ของ member account ได้ | 2024–2025 | "เปิด root MFA เป็น best practice" → **บังคับแล้ว** | https://aws.amazon.com/about-aws/whats-new/2025/06/aws-iam-mfa-root-users-across-all-account-types/ |
 | 1.9 | **S3 strongly consistent ทุก operation ทุก Region ฟรี** | 2020-12-01 | "S3 eventually consistent ต้องใช้ DynamoDB ทำ index" → **ห้ามออกข้อสอบแนวนี้เด็ดขาด มันไม่มีอยู่แล้ว** | https://aws.amazon.com/about-aws/whats-new/2020/12/amazon-s3-now-delivers-strong-read-after-write-consistency-automatically-for-all-applications/ |
 | 1.10 | **Aurora Serverless v1 ตายแล้ว** (EOL 2025-03-31) และ **v2 scale ลง 0 ACU ได้แล้ว** | 2024-11 / 2025 | ตัวแยกแยะเดิม "v1 pause ได้ v2 ไม่ได้" **ตายสนิท ห้ามใช้** | https://aws.amazon.com/about-aws/whats-new/2024/11/amazon-aurora-serverless-v2-scaling-zero-capacity/ |
-| 1.11 | **SSE-C ปิดเป็นค่าเริ่มต้นแล้ว** ทั้ง general purpose bucket ใหม่ **และ bucket เดิมที่ไม่เคยแตะ** | 2026-04 | "SSE-C เปิดใช้ได้ทันทีเหมือน SSE-S3/SSE-KMS" → **ต้องไปเปิดเองก่อน** ทั้ง bucket ใหม่และเก่า | https://docs.aws.amazon.com/AmazonS3/latest/userguide/serv-side-encryption.html |
+| 1.11 | **SSE-C ปิดเป็นค่าเริ่มต้นแล้ว** ทั้ง general purpose bucket ใหม่ **และ bucket เดิมของ AWS account ที่ไม่มี object เข้ารหัสด้วย SSE-C อยู่เลยสักตัว** (ขอบเขตครึ่งหลังเป็นระดับ **account** ไม่ใช่ราย bucket) | 2026-04 | "SSE-C เปิดใช้ได้ทันทีเหมือน SSE-S3/SSE-KMS" → **ต้องไปเปิดเองก่อน** ทั้ง bucket ใหม่และเก่า | https://docs.aws.amazon.com/AmazonS3/latest/userguide/serv-side-encryption.html |
 
 ---
 

@@ -44,9 +44,13 @@ Check for, in order of severity:
      toward the retired ~11/concept exam-simulator target).
    - Prose-rune rate ≤ 950/min: strip every fenced block (` ```...``` `,
      including mermaid) and every markdown table row (line starting with
-     `|`) from `body_md`, count the runes of what remains, divide by
-     `est_minutes`. Over 950 is an error — recommend which section
-     duplicates another rather than a blind cut.
+     `|`) from `body_md` — **keep blank lines in the count** — then count
+     the runes of what remains and divide by `est_minutes`. Over 950 is an
+     error — recommend which section duplicates another rather than a
+     blind cut. Do not accept a lesson that buys headroom by converting
+     running prose into table rows purely to shrink this count; tables are
+     exempt because they are scanned, not because reformatting is a way to
+     dodge the ceiling.
    - At most one of the lesson's correct answers is the longest option
      among its choices. A second one is an error — the fix is moving that
      answer's compound clause onto a distractor, not deleting the check.

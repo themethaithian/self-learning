@@ -73,7 +73,8 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
 ### AWS-cert — priority ปัจจุบัน 🔥 ([รายละเอียด](tickets/aws-cert.md))
 - [ ] AWS-0 (in review) — รีบาลานซ์ curriculum tree จาก 37 → **50 concept** ให้ตรง 30/26/24/20
   ตาม domain weight จริงของ SAA-C03 exam guide (เดิม 10/10/12/5 เอียงไปทาง Domain 3) +
-  pin blueprint ข้อสอบ, concept → task statement mapping, แผนคลังข้อสอบ ~550 ข้อ ไว้ที่
+  pin blueprint ข้อสอบ, concept → task statement mapping, แผนคลังข้อสอบ ~550 ข้อ (**ตัวเลขประวัติ
+  ณ ตอนที่ ticket นี้ทำ — ปรับเป็น ~250 ข้อ, 4–6/concept ใน AWS-C0 ภายหลัง**) ไว้ที่
   [`docs/tickets/aws-cert.md`](tickets/aws-cert.md)
 - [ ] AWS-S1 (in review, round 2) — `maxRecallChecks` 5→15 + `explanation` end-to-end
   (recall_checks schema, ไม่แตะ multiple-response) — branch `ticket/aws-1-explanation`

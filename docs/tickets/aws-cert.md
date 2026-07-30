@@ -1323,14 +1323,20 @@ Round 2 ของ code review เป็น **NO-SHIP สามข้อ** (N1–
 
 1. **Prose-rune ceiling ≤ 950 runes/min** (ไม่ใช่ band 1,150–1,200/min แบบ round 1) — "prose runes" คือ
    `body_md` หลังตัด fenced block ทุกชนิด (รวม mermaid) และแถวตาราง markdown (บรรทัดที่ขึ้นต้นด้วย `|`)
-   ออก แล้วหารด้วย `est_minutes` **Round 1 วัดผิดตัวชี้วัด**: นับ rune ทั้งไฟล์รวม mermaid/table/JSON
-   ทำให้ตั้ง band ที่ไม่มีบทเรียนไหนในคลัง 120 ใบเดิมเข้าเกณฑ์เลยนอกจาก 2 pilot เอง (ซึ่งทั้งคู่ยังเกิน
-   ค่าสูงสุดของ 118 ใบที่เหลือด้วยซ้ำ) — วัดใหม่แบบ prose-only แล้ว derive ceiling จาก corpus จริง 120
-   ใบ: mean 678 + 3 standard deviation (78) ≈ 909 runes/min, ค่าสูงสุดจริงในคลัง (ไม่นับ AWS) คือ
-   `ai-and-llm-systems/online-eval-and-ab-testing` ที่ 915/min — ปัดขึ้นเป็น 950 ให้มี margin เหนือทั้ง
-   สองค่า ไม่ใช่ตัดคลังเดิมทิ้ง ที่ ceiling นี้ ทั้งสอง pilot วัดได้ **s3-security 813/min,
-   vpc-fundamentals 831/min** อยู่ในช่วงเดียวกับบทเรียนที่หนาแน่นที่สุดของคลังเดิมพอดี (ไม่ใช่ outlier)
+   ออก แล้วหารด้วย `est_minutes` — **บรรทัดว่างนับรวมอยู่ด้วย** (นี่คือจุดเดียวที่กำกวม เลือก convention
+   นี้ทุกครั้งที่ re-derive เพื่อให้ตัวเลขทำซ้ำได้) **Round 1 วัดผิดตัวชี้วัด**: นับ rune ทั้งไฟล์รวม
+   mermaid/table/JSON ทำให้ตั้ง band ที่ไม่มีบทเรียนไหนในคลัง 120 ใบเดิมเข้าเกณฑ์เลยนอกจาก 2 pilot เอง
+   (ซึ่งทั้งคู่ยังเกินค่าสูงสุดของ 118 ใบที่เหลือด้วยซ้ำ) — วัดใหม่แบบ prose-only แล้ว derive ceiling จาก
+   corpus จริงทั้ง **120 ใบ** (ไม่ใช่ 118 ใบที่ไม่รวม AWS — round 2 ผสม population สองชุดผิด): mean **681**
+   + 3 standard deviation (**78**) = **915** ซึ่งอยู่ใกล้ค่าสูงสุดจริงในคลังมาก
+   (`ai-and-llm-systems/online-eval-and-ab-testing` วัดได้ **918** ด้วย convention เดียวกันนี้ — ใกล้กัน
+   ไม่ใช่ตัวเลขเดียวกันเป๊ะ ไม่ได้บังคับให้เท่ากัน) — ปัดขึ้นเป็น 950 ให้มี margin เหนือทั้งสองค่า ไม่ใช่
+   ตัดคลังเดิมทิ้ง ที่ ceiling นี้ ทั้งสอง pilot วัดได้ **s3-security 830/min, vpc-fundamentals 838/min**
+   (หลัง retrofit จุด "." ท้ายประโยคตาม Template ข้อ 10 — ดู round 3) ไม่ใช่เหนือค่าสูงสุดของคลังอีกต่อไป
    — **ทั้งคู่ไม่เคยเกินจริง ไม่ต้องตัด/แยกไฟล์**
+   **เกทนี้ reformat แล้วโกงไม่ได้**: ตาราง (รวม cue section) ยกเว้นจากการนับเพราะเป็นเนื้อหาที่ผู้อ่าน
+   *scan* ไม่ได้อ่านเรียงบรรทัด ไม่ใช่ช่องโหว่ให้แปลงร้อยแก้วเป็น pseudo-table row เพื่อลดตัวเลข — การแปลง
+   เนื้อหาจริงเป็นตารางปลอมเพื่อซื้อ budget ทำลายจุดประสงค์ของเกทนี้ ต่อให้ตัวเลขผ่าน
 2. **Explanation format บังคับใช้ bold header ภาษาไทย** — **โจทย์ถามว่า** / **ทำไมข้อที่ถูกถึงถูก** /
    **ทำไมตัวอื่นผิด** (ตามด้วย bullet `- *ชื่อตัวเลือก* — เหตุผล` ทีละตัว) / **Decision rule** — ตอนนี้
    ใช้ครบทั้ง 4 ข้อของทั้งสอง lesson แล้ว (round 1 ปล่อยให้ `s3-security` ทั้ง 4 ข้อยังเป็นร้อยแก้ว
@@ -1357,14 +1363,16 @@ Round 2 ของ code review เป็น **NO-SHIP สามข้อ** (N1–
    ให้ตรง** — pilot บังเอิญลง 2/2/2/2 ทุก index แต่ไม่ได้ตั้งใจ `cmd/mcq-guessability` เองระบุว่า
    position เป็น "content-quality signal only, not user-facing" เพราะ `web/lib/shuffle.ts` สลับ
    ตำแหน่งใหม่ตอน render อยู่แล้ว
-10. **Thai sentence จบด้วย "." เสมอ** — สุ่มนับจาก `domain-driven-design` และตัวอย่าง
-    `designing-data-intensive-applications`/`ai-and-llm-systems` ได้ 233 บรรทัดที่จบด้วย "." เทียบ 77
-    บรรทัดที่ไม่มี (ราว 3 เท่า) — round 1 ไม่เคยเช็คเรื่องนี้เลย ทำให้ pilot ทั้งสองใบขัดกันเอง
-    (`vpc-fundamentals` ใช้ "." บ้างเป็นบางจุด, `s3-security` ไม่ใช้เลย)
+10. **Thai sentence จบด้วย "." เสมอ** — วัดจริงจาก `designing-data-intensive-applications` และ
+    `ai-and-llm-systems` ทั้งคู่ลง "." ในสัดส่วนข้างมาก (รวมกันกว่า 80%) — นี่คือ track ที่กติกาข้อนี้
+    มาจากจริง ๆ ส่วน `domain-driven-design` **โหวตสวนทาง** (ใช้ "." เป็นส่วนน้อย) ไม่ใช่ที่มาของ
+    convention — round 2 เคยอ้าง `domain-driven-design` เป็นแหล่งด้วยผิด แก้แล้วในรอบนี้ pilot ทั้งสองใบ
+    อยู่ต่ำกว่า majority convention ชัดเจนก่อนรอบนี้ (`s3-security` ไม่มีเลย, `vpc-fundamentals` มีแค่
+    ส่วนน้อย) — **retrofit ใส่ "." ย้อนหลังให้ครบทั้งสองไฟล์แล้วในรอบนี้** (ดูหัวข้อ "AWS-C0" round 3)
 
 ## AWS-C0 — land the pilot lessons and lock the lesson template
 
-**สถานะ**: implemented, code review round 2 fixes applied, pending re-review
+**สถานะ**: implemented, code review round 3 fixes applied, pending re-review
 
 **สิ่งที่ทำ (round 1)**: trim `s3-security.json`'s `body_md` ตัดเนื้อหาซ้ำ (S3 Bucket Keys
 re-explained ใน fintech example, 2 bullet ซ้ำใน trade-off list), แก้ quote ที่ verifier หาต้นฉบับไม่
@@ -1380,10 +1388,18 @@ Round 1 ได้ REQUEST_CHANGES: R2 (rune budget) เป็นต้นเห�
 - **R2 — rune budget วัดผิดตัวชี้วัดและใช้ band ที่ unsatisfiable**: นับ rune ทั้งไฟล์ (รวม mermaid,
   table, JSON fence) ทำให้ band 1,150–1,200/min ตัดคลังเดิมทั้ง 118 ใบทิ้งหมด (มีแค่ 2 pilot เข้าเกณฑ์
   และทั้งคู่ยังเกิน max ของ 118 ใบที่เหลือด้วยซ้ำ) — แก้เป็น prose-only (ตัด fenced block + table row
-  ออกก่อนนับ) และเป็น **ceiling 950/min** ไม่ใช่ band, derive จาก corpus 120 ใบจริง: mean 678 + 3σ
-  (78) ≈ 909, max จริงของคลัง (ไม่นับ AWS) 915 — ที่ ceiling ใหม่นี้ `s3-security` วัดได้ 813/min,
-  `vpc-fundamentals` 831/min ทั้งคู่**ไม่เคยเกินจริง** ไม่ต้องแยกไฟล์ — ดูสูตรเต็มที่หัวข้อ "Template"
-  ข้อ 1 ด้านบน
+  ออกก่อนนับ, **นับบรรทัดว่างรวมด้วย** — เดิมเป็นจุดกำกวมที่ไม่ได้ระบุ) และเป็น **ceiling 950/min** ไม่ใช่
+  band, derive จาก corpus จริงทั้ง **120 ใบ**: mean **681** + 3σ (**78**) = **915** ใกล้ค่าสูงสุดจริงของ
+  คลังมาก (`ai-and-llm-systems/online-eval-and-ab-testing` วัดได้ **918** ด้วย convention เดียวกัน —
+  ใกล้กันไม่ใช่เท่ากันเป๊ะ) — ที่ ceiling ใหม่นี้ `s3-security` วัดได้ 830/min, `vpc-fundamentals` 838/min
+  (หลัง retrofit period ท้ายประโยคใน round 3) ทั้งคู่**ไม่เคยเกินจริง** ไม่ต้องแยกไฟล์ — ดูสูตรเต็มที่
+  หัวข้อ "Template" ข้อ 1 ด้านบน
+  (**round 3 แก้ arithmetic**: round 2 เขียน mean 678 + 3σ(78) ≈ 909 ผสม population สองชุดผิด — 678
+  คือ mean ของ 118 ใบที่ไม่รวม AWS ด้วย convention ตัดบรรทัดว่างทิ้ง, 78 คือ σ ของ 120 ใบ และตัวเลขสองตัว
+  นี้เองก็รวมกันได้ 912 ไม่ใช่ 909 อยู่ดี — เป็นทั้งการผสม population ผิดและ arithmetic ผิดซ้อนกันสองชั้น
+  วิธีที่ทำให้ arithmetic กลับมาถูก (mean 681 + 3σ(78) = 915) คือเปลี่ยนไปนับบรรทัดว่างรวมด้วย ไม่ใช่ตัด
+  ทิ้ง — เพราะเหตุนี้ convention ของบรรทัดว่างจึงต้องระบุชัดและใช้ให้เหมือนกันทั้งตอนวัด lesson เดี่ยว ๆ
+  และตอน derive corpus statistic)
 - **R3 — การตัดตามเป้าที่ผิดทำให้ 3 ประโยคเสียหาย คืนกลับแล้วทั้งหมด**:
   - BPA scope ใน section 2: ประโยคเดิมหลัง trim อ่านกำกวมจนสอนผิดว่า BPA ระดับ account ก็เปิด-ปิดได้
     แค่ยกชุด 4 setting เหมือน organization — **ความจริง: ระดับ account ยังเลือกทีละ setting ได้ปกติ
@@ -1426,7 +1442,7 @@ Also fixed (suggested, cheap): quote ทั้งสองที่ (body_md sec
 ด้วย `...` บอกว่าเป็น fragment และคง **and** ตัวหนาของต้นฉบับไว้; Verification prose แก้ "track aws" เป็น
 "track aws-saa-c03" (ชื่อ track จริงคือ slug เต็ม ไม่ใช่ชื่อไฟล์ curriculum).
 
-**Pilot results (หลัง round 2)**: ทั้งสองบทเรียน (`vpc-fundamentals`, `s3-security`) **PASS
+**Pilot results (หลัง round 3)**: ทั้งสองบทเรียน (`vpc-fundamentals`, `s3-security`) **PASS
 lesson-verifier** — ทุก reference URL fetch แล้วยืนยันจริง, ทุก AWS claim เช็คกับ live docs, ไม่มี
 คำตอบที่ชื่อ service อยู่ใน ban list, explanation ครบ 3 ส่วนทุกข้อภายใต้ bold header ครบทั้ง 4 ทุกข้อ,
 guessability อยู่ที่ baseline พอดี — **25.0% ทั้ง 7 heuristic ที่ n=8** (insufficient sample, gate
@@ -1438,17 +1454,43 @@ output เต็มจาก `cmd/mcq-guessability`)
 - ไม่แก้ status ของ AWS-S1/AWS-S3 ในเอกสารนี้ (ทั้งคู่ merge แล้วจริง — PR #58, #59 — แต่ ticket นี้
   ระบุให้ tick แค่ AWS-S3 ใน `roadmap.md` เท่านั้น ไม่ได้ระบุให้แก้ status ใน `aws-cert.md`)
 - ไม่เขียน AWS-C1..C4 เอง (ยัง gated เหมือนเดิม, ticket นี้แค่ปักเทมเพลตที่ AWS-C1..C4 ต้องตามให้ถูก)
-- ไม่ retrofit ใส่จุด "." ท้ายประโยคย้อนหลังให้ทั้งสอง pilot ตาม Template ข้อ 10 ที่เพิ่งปักในรอบนี้
-  (เป็นงาน mechanical ล้วน ๆ ทั่วทั้งไฟล์ ไม่กระทบความถูกต้องของเนื้อหา — ปล่อยเป็น convention ที่
-  AWS-C1..C4 ต้องตามตั้งแต่ต้น แทนที่จะไล่แก้ 2 ไฟล์ย้อนหลัง)
 
-### Verification
+### Round 3 (code review) — 4 findings, ทุกข้อแก้แล้ว
+
+Round 2 ได้ NO-SHIP แคบ 4 ข้อ (root cause ของ round 2's rune-budget derivation ยังไม่ reproduce +
+เอกสารอีก 2 จุดยังไม่ sync + retrofit ที่ round 2 เลื่อนออกไปกลับกลายเป็นปัญหาจริง):
+
+- **แก้ arithmetic ของ derivation (ดูหัวข้อ "R2" ด้านบนที่แก้ในรอบนี้)**: round 2 เขียน mean 678 +
+  3σ(78) ≈ 909 ผสม population 118/120 ผิดและบวกเลขผิดด้วย (678+3×78 = 912 ไม่ใช่ 909) — round 3 วัดซ้ำ
+  เองด้วย convention "นับบรรทัดว่างรวม" ได้ mean **681**, σ **78**, mean+3σ = **915** ตรงกับที่ควรจะเป็น
+  ระบุ population เป็น all 120 ชัดเจน และระบุ blank-line convention ที่ขาดไปเดิม (ไม่ระบุ = ใครมาวัดซ้ำ
+  จะได้คนละตัวเลข)
+- **`aws-currency-checklist.md` §1.11 ยังไม่ได้แก้**: บทเรียนแก้เป็น scope ระดับ account ถูกแล้ว
+  (R4 ของ round 2) แต่ checklist ที่ `lesson-writer.md` ประกาศว่า authoritative ยังเขียน per-bucket
+  เดิม — คนเขียนบทเรียนถัดไปที่เปิด checklist นี้จะกลับไปเขียนผิดแบบเดียวกับที่ R4 เพิ่งแก้ แก้แล้ว
+  ให้ตรงกับบทเรียน
+- **Retrofit จุด "." ท้ายประโยคจริงในรอบนี้** (ไม่เลื่อนต่อแบบ round 2): `s3-security` 34 บรรทัด,
+  `vpc-fundamentals` 30 บรรทัด ได้รับ "." ท้ายบรรทัดตาม majority convention ของคลัง — ก่อนแก้ทั้งสอง
+  pilot เป็นบทเรียนที่ conform กับ convention นี้น้อยที่สุดในคลังทั้งหมด ขัดกับที่ round 2 อ้างว่า
+  "ทั้งสอง pilot เห็นต่างกันเอง" ราวกับเป็นเรื่องที่ยุติแล้ว ทั้งที่จริงทั้งคู่ต่ำกว่า norm พร้อมกัน —
+  แก้ attribution ของกฎด้วย: ตัวอย่างที่แท้จริงมาจาก `designing-data-intensive-applications`/
+  `ai-and-llm-systems` ไม่ใช่ `domain-driven-design` ซึ่งจริง ๆ โหวตสวนทาง — ปรับประโยค BPA scope ใน
+  section 2 ให้มี "." คั่นหลัง "bucket-level" ด้วย เพื่อตัดการอ่านเป็นวลีเดียวกับ "ระดับ organization"
+  ที่กำกวม (เนื้อหาถูกอยู่แล้ว เป็นแค่การอ่านสะดุด)
+- **คืนเนื้อหาที่หายไปพร้อมกับ bullet ที่ตัดทิ้งจริง**: ตอนตัด `Versioning ทำให้บิลโตเงียบ ๆ` ทิ้ง
+  (duplicate จริงตามที่ round 2 พบ) ประโยคย่อยที่บอกว่า **workload แบบไหน** เสี่ยงสะสมค่าใช้จ่าย
+  (เขียนทับไฟล์เดิมบ่อย) หายไปด้วยทั้งที่ไม่ใช่ duplicate — เพิ่มกลับเข้าไปในย่อหน้า Versioning section 4
+  จุด (ค) แทน
+- **`docs/roadmap.md:76`**: จุดสุดท้ายที่เหลือของ `~550` ที่ไม่ได้ label ว่าเป็นตัวเลขประวัติ — เพิ่ม
+  label แล้ว
+
+### Verification (round 3)
 
 - `go vet ./...`: clean. `go test -count=1 ./...`: all packages `ok` (ไม่มีการแก้ไฟล์
   `.go`/`migrations`/`web` เลยในรอบนี้ — `git diff --name-only develop... -- '*.go' 'web/*'
   'migrations/*'` ว่างเปล่า)
-- Import evidence (stack แยก `docker compose -p awsc0fix`, ไม่แตะ `self-learning_mysql_data`, ปิดท้าย
+- Import evidence (stack แยก `docker compose -p awsc0fix2`, ไม่แตะ `self-learning_mysql_data`, ปิดท้าย
   ด้วย `docker compose down` เปล่า ๆ ไม่มี `-v`): ดูผลจริงในรายงานสรุป PR
-- `go run ./cmd/mcq-guessability -dir content/lessons`: ดูผลจริงในรายงานสรุป PR — track `aws-saa-c03`
-  (n=8) คาดว่ายังรายงาน 25.0%/+0.0% ทุก heuristic เหมือนเดิม (การแก้รอบนี้ไม่แตะ `options`/
-  `expected_answer` ของ recall_checks เลย มีแค่ `explanation` ที่เปลี่ยนรูปแบบ)
+- `go run ./cmd/mcq-guessability -dir content/lessons`: track `aws-saa-c03` (n=8) ยังรายงาน 25.0%/+0.0%
+  ทุก heuristic เหมือนเดิม (round 3 ไม่แตะ `options`/`expected_answer` ของ recall_checks เลย มีแค่
+  `body_md` กับ `explanation` ที่แก้) — ดูผลจริงในรายงานสรุป PR

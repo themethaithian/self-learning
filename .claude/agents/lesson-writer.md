@@ -75,28 +75,43 @@ so this section is REQUIRED) → interview angle (how it gets asked).",
 
 ## AWS track
 
-Pinned in AWS-C0 (2026-07-30, corrected in round 2 code review) from the
-`vpc-fundamentals`/`s3-security` pilot — this is the template for the other
-48 AWS lessons, so treat every rule below as load-bearing, not a suggestion.
+Pinned in AWS-C0 (2026-07-30, corrected in round 2 and round 3 code review)
+from the `vpc-fundamentals`/`s3-security` pilot — this is the template for
+the other 48 AWS lessons, so treat every rule below as load-bearing, not a
+suggestion.
 
 - **Prose-rune ceiling, not a band, and not counting diagrams/tables/code**:
   measure "prose runes" as `body_md` with every fenced block (` ```...``` `,
   including mermaid) and every markdown table row (any line starting with
-  `|`) stripped out, then divide by `est_minutes`. Keep that **≤ 950
+  `|`) stripped out — **blank lines stay in the count** (this is the one
+  ambiguous case; pick this convention every time so the number is
+  reproducible) — then divide by `est_minutes`. Keep that **≤ 950
   runes/min**. This is a **ceiling**, not the earlier 1,150–1,200 **band** —
   a band forbids most natural lesson lengths for no reason, and counting
   fenced/table content taxes exactly what CLAUDE.md wants more of (diagrams).
-  **Derivation** (re-derive this yourself if the corpus changes materially):
-  measured prose-rune rate across all 120 lessons that existed before this
-  round, mean 678 + 3 standard deviations (78) ≈ 909, and the single densest
-  lesson in the whole corpus independent of AWS
-  (`ai-and-llm-systems/online-eval-and-ab-testing`) already runs at 915 —
-  950 sits just above both of those with a little headroom, instead of
-  cutting off the corpus's own existing maximum. Both pilots measure well
-  inside it after correction: `s3-security` 813/min, `vpc-fundamentals`
-  831/min — dense, but the same order as the corpus's other dense lessons
-  (e.g. `designing-data-intensive-applications/latency-percentiles` at 832),
-  not outliers. A lesson within budget is never split just to hit a number.
+  **Derivation** (re-derive this yourself if the corpus changes materially,
+  using the exact convention above): measured over all 120 lessons that
+  existed before this round (population = all 120, not a non-AWS subset),
+  mean **681** + 3 standard deviations (**78**) = **915**, which sits right
+  at the single densest lesson in the whole corpus,
+  `ai-and-llm-systems/online-eval-and-ab-testing` (measured at 918 under
+  this same convention — the two numbers are close, not a forced identity;
+  either way the ceiling needs to clear both). 950 sits just above both,
+  instead of cutting off the corpus's own existing maximum. Both pilots
+  measure well inside it after correction and after retrofitting the
+  trailing-period convention below: `s3-security` 830/min,
+  `vpc-fundamentals` 838/min — dense, but the same order as the corpus's
+  other dense lessons (e.g.
+  `designing-data-intensive-applications/latency-percentiles`), not
+  outliers, and nowhere near the corpus maximum. A lesson within budget is
+  never split just to hit a number.
+  **This ceiling cannot be gamed by reformatting.** Converting flowing prose
+  into a table (or a table into bullets) changes what counts, because
+  tables are exempt on the theory that a table is *scanned*, not read
+  linearly — that exemption is for genuine tabular content (like the
+  exam-cue section), not a loophole. Turning prose into pseudo-table rows
+  to buy budget defeats the measure and is not acceptable just because it
+  passes the number.
 - **Explanation format is mandatory and uses bold Thai headers** — the
   style now used by both pilots: **โจทย์ถามว่า** / **ทำไมข้อที่ถูกถึงถูก** /
   **ทำไมตัวอื่นผิด** / **Decision rule**, each its own paragraph, with wrong
@@ -154,11 +169,13 @@ Pinned in AWS-C0 (2026-07-30, corrected in round 2 code review) from the
   options at render time. Do not write toward a specific position
   distribution; it is checked after the fact, not planned during writing.
 - **End each Thai sentence/paragraph in `body_md` with a trailing period.**
-  Sampled across `domain-driven-design` and a slice of
-  `designing-data-intensive-applications`/`ai-and-llm-systems`, lines ending
-  a Thai sentence carry a period roughly 3 times as often as not (233 vs 77
-  in the sample counted for this round) — that is the corpus's real
-  majority convention, not "no period," which is what an earlier draft of
-  this rule assumed without checking. The two AWS pilots disagreed with
-  each other on this (one used periods rarely, the other not at all) before
-  this round; write toward the period from now on.
+  Measured over sentence-bearing lines: `designing-data-intensive-applications`
+  and `ai-and-llm-systems` both carry a period on the large majority of lines
+  (roughly 80%+ combined) — that is where this rule actually comes from.
+  `domain-driven-design` alone votes the other way (period on a minority of
+  its lines) and is not the source of the convention; an earlier attribution
+  of this rule to `domain-driven-design` was wrong for exactly that reason.
+  Both AWS pilots were well below the majority convention (`s3-security` had
+  none, `vpc-fundamentals` used it on a small minority of lines) and have
+  been retrofitted to close that gap — write toward the period from the
+  start on every lesson from now on, AWS or not.
