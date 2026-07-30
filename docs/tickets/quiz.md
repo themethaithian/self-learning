@@ -1447,11 +1447,488 @@ survivor เพิ่ม 2 จุดที่เป็น regression class เ�
 
 Status: implemented, round 4 fixes applied post code-review, PR pending
 
-## Q-2c — review_cards/review_logs + SM-2 scheduling (not started)
+## Q-2c — SM-2 scheduling: schema + pure domain `[go-implementer]`
 
-- Schema เพิ่ม: `review_cards` / `review_logs` (คนละตารางกับ `recall_attempts`
-  ที่ Q-2a สร้างไว้แล้ว)
-- อ่านข้อมูลจาก `recall_attempts` (Q-2a) เป็น input ของ SM-2 quality score —
-  ไม่ใช่ schema ใหม่ที่ไม่เกี่ยวกับของเดิม
-- Query pattern `WHERE check_key = ? ORDER BY created_at DESC` ที่ index
-  `idx_recall_attempts_check_key_created_at` ใน `006_recall.sql` เตรียมไว้ให้แล้ว
+- **Scope: migration + pure domain เท่านั้น ตั้งใจ** — ตาราง `review_cards`/
+  `review_logs` มีอยู่แล้วและ SM-2 algorithm ทำงานถูกต้อง (พิสูจน์ด้วย
+  table-driven test ที่ anchor กับ spec ตรง ๆ) แต่**ยังไม่มีอะไรเขียนลงตาราง
+  เหล่านี้เลย** — การเดิน attempt path จริง (transactional card update, เขียน
+  review log, due-cards read endpoint) คือ Q-2d แยกต่างหาก ที่ตัดสินใจแบบนี้
+  เพราะสูตร SM-2 สมควรได้ review pass ของตัวเองแยกจาก wiring/transaction
+  concern และ correctness ของมันพิสูจน์ได้เองแบบ isolated
+- **Migration ใหม่ `migrations/007_review.sql`** (106 บรรทัด): `review_cards`
+  (surrogate `id` PK + `UNIQUE KEY` บน `check_key` — เหมือน pattern ของ
+  `lesson_progress` ใน `002_learning.sql`, ไม่ใช่ pattern append-only ของ
+  `recall_attempts`) และ `review_logs` (append-only, FK ไป
+  `recall_attempts.id`, `UNIQUE KEY` บน `recall_attempt_id` — เพิ่มใน round 2,
+  ดูหัวข้อรอบ code-reviewer ด้านล่าง)
+- **Domain ใหม่ 3 ไฟล์ + เทส 3 ไฟล์** ใน `internal/learning/domain/`:
+  `reviewquality.go` (76 บรรทัด) — `ReviewQuality` VO + mapping table,
+  `easefactor.go` (63 บรรทัด) — `EaseFactor` VO + recurrence, `reviewcard.go`
+  (121 บรรทัด) — `ReviewCard` aggregate + `Advance` (pure SM-2 transition).
+  แก้ `errors.go` (+4 sentinel error), `doc.go` (+1 ประโยคอธิบาย
+  `ReviewCard`), `helpers_test.go` (+2 test helper: `reviewQualityValue`,
+  `mustReviewCard`) — **backend/domain ล้วน**, `git diff --name-only
+  develop... -- 'web/*'` ว่างเปล่าจริง
+
+### การตัดสินใจหลัก
+
+- **Quality mapping (6 combo ตรงกับ 6 grade ของ SM-2) — เป็นการตัดสินใจของ
+  แอปนี้ ไม่ใช่ส่วนหนึ่งของ SM-2**: SM-2 (Wozniak 1990) บอกแค่ว่าจะทำอะไรกับ
+  `q` เมื่อมีมันแล้ว ไม่เคยบอกว่าจะได้ `q` มาจากไหน — `NewReviewQuality`
+  ใน `reviewquality.go` คือจุดที่แอปนี้เติมเต็มช่องว่างนั้นเอง (คอมเมนต์ใน
+  โค้ดพูดตรงนี้ชัดเจนเหมือนกัน กันคนอ่านในอนาคตเข้าใจผิดว่า Wozniak กำหนดมา
+  แบบนี้):
+
+  | outcome | confidence | quality |
+  |---|---|---|
+  | correct | confident | 5 |
+  | correct | unsure | 4 |
+  | correct | guessed | 3 |
+  | incorrect | guessed | 2 |
+  | incorrect | unsure | 1 |
+  | incorrect | confident | 0 |
+
+  จุดที่ load-bearing จริง ๆ คือ **"มั่นใจแต่ผิด" (0) ต้องต่ำกว่า "เดา
+  แล้วผิด" (2)**: ความเชื่อผิด ๆ ที่ยึดถือแบบมั่นใจ ขัดขวางการเรียนรู้มากกว่า
+  ช่องว่างความรู้ที่รู้ตัวอยู่แล้วว่าไม่รู้ — ต้องกลับมาทบทวนเร็วที่สุด และ
+  SM-2's ease-factor penalty ที่ q=0 (−0.80) ชันกว่า q=2 (−0.32) มาก
+  (ดูตาราง `TestEaseFactorAdjust_AllSixQualities`) คือกลไกที่ทำให้ "เร็วที่สุด"
+  เกิดขึ้นจริงในระยะยาว **ไม่ใช่**ผ่าน interval รอบถัดไปทันที (รอบถัดไปหลัง
+  fail เท่ากันเสมอคือ 1 วัน ไม่ว่า q จะเป็น 0/1/2) แต่ผ่าน ease factor ที่ต่ำกว่า
+  ทำให้ schedule โตช้ากว่าเมื่อการ์ดกลับมาผ่านอีกครั้ง — นี่คือเหตุผลที่ต้อง
+  อัปเดต ease factor ทุกครั้งที่ review **รวมถึงตอน fail ด้วย** (ดูหัวข้อถัดไป)
+  — ทั้งหมดนี้ใช้งานได้จริงเพราะ Q-1's Commit stage เก็บ confidence
+  **ก่อน**เห็นเฉลยเสมอ ถ้าถามหลังเฉลยแล้ว "มั่นใจแค่ไหน" จะไม่ใช่การวัด recall
+  อีกต่อไป แต่เป็นการวัด hindsight (คนละอย่างกันโดยสิ้นเชิง)
+
+- **Ease factor update ทุกครั้งที่ review — รวมถึงตอน fail — คือการ deviate
+  จาก spec โดยตั้งใจ ไม่ใช่การตีความ spec ที่กำกวม** (แก้คำอธิบายในรอบ
+  code-reviewer — เดิมเขียนผิดว่า spec "อ่านได้สองแบบ" ซึ่งไม่จริง): Wozniak's
+  step 6 พูดตรง ๆ ไม่กำกวมเลยว่า "start repetitions for the item from the
+  beginning **without changing the E-Factor**" — เป็นประโยคที่สมบูรณ์และเป็น
+  step แยกต่างหากที่ตั้งใจ override step 5 (การอัปเดต EF) เฉพาะกรณี q<3 —
+  reviewer ยืนยันกับ primary source สองแหล่งอิสระว่าไม่มีการอ่านแบบอื่นที่
+  ถูกต้อง ยิ่งไปกว่านั้น ถ้าทำตาม step 6 ตรง ๆ (ไม่แตะ EF ตอน fail) q∈{0,1,2} จะให้
+  next state **เหมือนกันทุกไบต์** (repetition และ interval reset เป็นค่า
+  เดียวกันหมดอยู่แล้ว) ทำให้ `Confidence` ทั้งแกน (stage ใน Q-1, column ใน
+  Q-2a) กลายเป็น **dead code บน failure path พิสูจน์ได้จริง** ไม่ใช่แค่ทฤษฎี —
+  **เรารู้ว่า spec บอกอะไร แต่เลือกทำตรงข้ามโดยตั้งใจ** เพราะ: อัปเดต EF ทุกครั้ง
+  (รวม fail) คือช่องทางเดียวที่ความแตกต่างระหว่างมั่นใจ-ผิด (q=0, penalty
+  −0.80) กับเดา-ผิด (q=2, penalty −0.32 — ดู `EaseFactor.Adjust`) จะมีผลจริง
+  ต่อ schedule ในระยะยาว (การ์ดที่ EF ต่ำกว่าจะโตช้ากว่าเมื่อกลับมาผ่านอีกครั้ง)
+  — ถ้าไม่ deviate แบบนี้ mapping ทั้งชุดที่ออกแบบไว้ข้างบนจะไม่มีผลอะไรเลยกับ
+  SM-2 จริง ๆ
+- **Ease factor representation: `DECIMAL(4,2)` ใน DB, integer hundredths
+  (`250` = `2.50`) ใน Go — ไม่ใช้ `FLOAT`/`float64`**: ease factor ถูก
+  read-modify-write หลายร้อยครั้งตลอดอายุการ์ดหนึ่งใบ `FLOAT`/`float64` สะสม
+  binary-fraction rounding error ได้ (0.1/0.08/0.02 ไม่มีค่าตรงในเลขฐานสอง)
+  แต่พิสูจน์ได้ว่า**ไม่จำเป็นต้องกังวลเรื่องนี้เลย** เพราะ `q` เป็นจำนวนเต็ม
+  0-5 เสมอ (`d := 5-q` จึงเป็นจำนวนเต็ม 0-5 เสมอ) ทำให้ delta ของสูตร
+  `0.1-(5-q)*(0.08+(5-q)*0.02)` ลงตัวที่ทศนิยม 2 ตำแหน่งพอดีทุกค่า (ดูตาราง
+  `EaseFactor.Adjust`'s doc comment) — แทนค่าเป็น "จำนวนร้อยละ" (hundredths)
+  แล้วคำนวณด้วย integer arithmetic ล้วน (`10 - d*(8+2*d)`) ทำให้ทุก update
+  แม่นยำสมบูรณ์แบบ ไม่มี float ปนอยู่ในสมการเลยสักจุด — `DECIMAL(4,2)` ฝั่ง DB
+  ก็เป็น exact fixed-point เช่นกัน map กับ hundredths ได้ตรงบิตต่อบิต
+- **Interval multiplication ใช้ ease factor "ก่อน" การ adjust ของ review นี้
+  ไม่ใช่ "หลัง"**: pseudocode มาตรฐานของ SM-2 คำนวณ `I(n):=I(n-1)*EF` ก่อน
+  แล้วค่อยอัปเดต `EF` ท้ายสุด — ผลคือ ease factor ที่ใช้คูณ interval ของ
+  review นี้เป็นค่าที่สะสมมาจนถึง**ก่อน**หน้า review นี้ (การเปลี่ยนแปลงของ
+  q ใน review นี้จะไปมีผลกับ interval ของ**รอบถัดไป**แทน) — `nextInterval`
+  ใน `reviewcard.go` รับ `c.easeFactor` (ค่าเก่า) ไม่ใช่ `next.easeFactor`
+  (ค่าใหม่ที่เพิ่ง adjust)
+- **Rounding: `nearest` ไม่ใช่ `ceiling` ของ spec — deviate โดยตั้งใจ อีกจุด
+  หนึ่ง (เพิ่มในรอบ code-reviewer)**: Wozniak's step 3 พูดตรง ๆ ว่า "if
+  interval is a fraction, round it up" (ceiling) — โค้ดนี้ปัดเข้าใกล้ที่สุด
+  แทน (`nextInterval` ใน `reviewcard.go`) เพราะ ceiling เป็น bias
+  ทิศทางเดียวที่ทำให้ทุก interval หลายรอบยาวขึ้นเรื่อย ๆ สะสมกัน — ผิดทิศทาง
+  สำหรับ exam-prep drilling ที่การ์ดโผล่เร็วไปหนึ่งวันไม่มีต้นทุนอะไร แต่โผล่
+  ช้าไปหนึ่งวันเสี่ยงคำตอบเลือนหายไปแล้ว **ตัวอย่างจริงที่ต่างกัน**: review ที่
+  3 ของ streak q=5 ล้วน (`I(2)=6, EF=2.70`) — nearest ให้ 16 วัน, ceiling ของ
+  spec ให้ 17 วัน (ห่างกันแค่ 1 วันตอนนี้ แต่ทบต้นทุก review ถัดไปเพราะ
+  `I(n):=I(n-1)*EF`) — ยืนยันด้วย mutation จริง: เปลี่ยนโค้ดให้ตรงกับ spec
+  (ceiling) แล้วรัน suite → **3 เทสต์แดง**, ดูตาราง mutation แถวใหม่
+- **`nextInterval` เป็น integer arithmetic ล้วน ไม่ใช่ float64 (แก้ในรอบ
+  code-reviewer — เดิมเป็นบั๊กจริง ไม่ใช่แค่ style)**: สูตรเดิม
+  `math.Round(float64(previousDays) * ease.Float64())` ให้ผลผิดที่ exact
+  tie: `95 * 2.30 = 218.5` พอดี แต่ `float64` เก็บ `2.30` ไม่ตรง (จริง ๆ คือ
+  `2.29999999999999982...`) ทำให้ `95 * 2.2999...` ได้ `218.499999999999971...`
+  ซึ่งปัดลงเป็น **218** แทนที่จะเป็น **219** ที่ถูกต้อง — verify ตัวเลขนี้จริง
+  ด้วย `go run` แยกต่างหาก (ดูหลักฐานในคอมมิต) แก้เป็น
+  `(previousDays*ease.Hundredths() + 50) / 100` (exact integer, บวกครึ่งหนึ่ง
+  ของ 100 ก่อนหารเต็มจำนวน = round-half-up โดยไม่แตะ float เลย) — และ**ลบ
+  `EaseFactor.Float64()` ทิ้งทั้ง method** แทนที่จะแก้แค่ doc comment ของมัน:
+  type ที่ตั้งใจเก็บเป็น exact fixed-point ไม่ควรมี escape hatch ที่ lossy ให้
+  หยิบไปใช้ผิดได้ตั้งแต่แรก (นี่คือหลักฐานจริงว่ามันถูกใช้ผิดจริง ไม่ใช่แค่
+  ความเสี่ยงทฤษฎี) — ถ้า Q-2d ต้องการ decimal string จริง ๆ (เช่นแสดงผล) ควร
+  เพิ่ม method ใหม่ที่ชื่อสื่อว่าเป็น string/display เท่านั้น ไม่ใช่ float
+- **Card advance policy (สัญญาที่ Q-2d ต้อง implement): ทุก `recall_attempts`
+  row ที่บันทึกจริง = 1 ครั้ง SM-2 advance เสมอ ไม่มีการ "เลือกอันล่าสุด" หรือ
+  "1 ครั้งต่อวัน"** — ทางเลือกที่พิจารณาแล้วปฏิเสธ:
+  - **"เฉพาะ attempt ล่าสุดของ session/วันนี้ ตัวเดียวมีผล"**: ต้องมี concept
+    ของ "session" ที่ยังไม่มีอยู่ใน domain นี้เลย (ดู `docs/design.md`'s
+    `Session` aggregate ที่ไม่เคยถูกสร้างจริง) และ "1 ครั้งต่อวัน" กำหนด
+    เส้นแบ่งเวลาแบบไหน (ตาม wall-clock เที่ยงคืน? ตาม 24 ชม.นับจากครั้งก่อน?)
+    ก็เป็นกฎที่ต้องคิดเพิ่มโดยไม่มีเหตุผลรองรับจาก requirement จริง
+  - **"เชื่อว่า debounce การันตีความตั้งใจ" — เดิมเขียนไว้แบบนี้ ผิด แก้แล้ว
+    ในรอบ code-reviewer**: ย่อหน้าเดิมอ้างว่า Q-2b's debounce กรอง noise ให้
+    แล้วที่ต้นทาง ทำให้สองแถวที่มาถึง DB จริงต้องเป็นการแก้ไขที่ตั้งใจเสมอ —
+    **ไม่จริง**: `web/app/(app)/lesson/page.tsx`'s `flushPendingAttempt` เรียก
+    `clearPendingTimer(position)` แล้ว submit ทันที **ข้าม** debounce
+    ทั้งหมด และผูกกับ `pagehide`/`visibilitychange:hidden`/Finish/lesson
+    เปลี่ยน — สถานการณ์ปกติทั่วไป: ผู้ใช้กด Pass แล้วสลับแท็บภายใน 300ms
+    (flush → row 1, q=5) กลับมาอีกที รู้ตัวว่าผิดจริง กด Not yet (row 2,
+    q=0) — **สองแถวนี้ไม่ผ่าน debounce เต็ม 1s เลย** debounce จึงไม่ได้
+    การันตีอะไรเรื่องความตั้งใจ
+  - **ผลจริงต่อ EF ที่ต้องรู้ก่อนตัดสินใจ (คำนวณจริง ไม่ใช่ประมาณ)**:
+
+    | | EF | repetition |
+    |---|---|---|
+    | เริ่มต้น | 2.50 | 0 |
+    | หลัง q=5 (Pass) | 2.60 | 1 |
+    | หลัง q=0 (Not yet, แก้ไข) | **1.80** | 0 |
+    | *เทียบกับตอบ q=0 ตรง ๆ ครั้งเดียว* | *1.70* | *0* |
+
+    repetition/interval ที่ reset กลับเป็น 0/1 วัน**ถูกต้องแล้ว** แต่ EF จบที่
+    **1.80 ไม่ใช่ 1.70 ที่ควรเป็น** (สูงกว่า 0.10 เพราะยังพก delta +0.10 จาก
+    q=5 ที่ถูกยกเลิกไปแล้วติดตัวอยู่) — กลับทิศ (Not yet → Pass) ก็เจอปัญหา
+    เดียวกัน: EF จะจบที่ 1.80 แทนที่จะเป็น 2.60 ที่ควรเป็น (โทษหนักไปแปด
+    review คุ้มค่า ทั้งที่เป็นแค่กดพลาดแล้วแก้)
+  - **เหตุผลที่ยังคง "ทุก attempt = 1 advance" อยู่ดี ทั้งที่รู้ผลข้างเคียงแล้ว**:
+    ไม่มี concept "session" ในระบบ (ดู `docs/design.md`'s `Session` aggregate
+    ที่ไม่เคยถูกสร้างจริง) และไม่มีเส้นแบ่งเวลาที่ไม่ arbitrary สำหรับ "นับแค่
+    ครั้งล่าสุดของวันนี้" (เที่ยงคืน wall-clock? 24 ชม.จากครั้งก่อน?) — ทาง
+    เลือกอื่นทุกทางต้องคิดกฎเพิ่มโดยไม่มี requirement จริงรองรับ ในขณะที่
+    "ทุก attempt = advance" ไม่ต้องมี state เพิ่มเลย และตรงกับ mental model
+    ของผู้ใช้ ("ฉันแก้คำตอบเพราะทบทวนแล้วรู้ว่าจำผิด" ควรมีผลจริง ไม่ใช่ถูก
+    เงียบทิ้งไป) — **สัญญานี้ยังเป็นสัญญาที่ถูกต้องที่จะให้ Q-2d implement
+    แต่ตัวเลข EF ข้างบนคือสิ่งที่ Q-2d's author ต้องตัดสินใจด้วยตาเปิด ไม่ใช่
+    เชื่อว่า debounce แก้ปัญหานี้ให้แล้ว** — ทางเลือกที่ Q-2d อาจพิจารณาเพิ่ม
+    (นอกสโคปของ ticket นี้): เก็บ log ทุก advance ไว้ (ตามที่ `review_logs`
+    ออกแบบมาให้ทำได้อยู่แล้ว) แล้วยอมรับ EF ที่คลาดเคลื่อนเล็กน้อยแบบนี้เป็น
+    ต้นทุนของการไม่มี session concept
+  - **สิ่งที่ Q-2d ต้องรับไปทำต่อ**: implement การอ่าน `recall_attempts` ตาม
+    ลำดับ (ดูข้อถัดไป) แล้ววนทุก row (ไม่ข้ามอันไหน) ผ่าน
+    `ReviewCard.Advance` ทีละ row ตามลำดับเวลาจริง (ไม่ใช่แค่ row ล่าสุด)
+- **Read ordering ของ `review_logs` — บันทึกไว้ในคอมเมนต์ schema ตามที่
+  Q-2b กำหนด**: `ORDER BY created_at DESC, id DESC` เสมอ ไม่ใช่แค่
+  `created_at DESC` เพราะ `TIMESTAMP` เป็น second precision และ Q-2b พิสูจน์
+  แล้วว่าสองแถวชนกันได้จริงโดยไม่มี race เลย — คอมเมนต์นี้อยู่ทั้งใน
+  `006_recall.sql` (ของเดิม, Q-2b เพิ่มไว้) และ `007_review.sql` (ใหม่ ของ
+  ticket นี้) เพื่อให้ Q-2d เจอกฎนี้ไม่ว่าจะเปิดไฟล์ไหนก่อน
+- **FK/consistency ของตารางใหม่**:
+  - **`review_cards` ไม่มี FK ไป `recall_checks`** — เหตุผลเดียวกับที่
+    `recall_attempts` (Q-2a) ไม่มี: `check_key` เป็น content-addressed
+    (`internal/learning/domain/checkkey.go`) เพราะ content re-import ลบ+สร้าง
+    `recall_checks` ใหม่ทุกครั้ง id จึงไม่เสถียรข้ามการ import — **ผลที่
+    ตามมาเฉพาะของ `review_cards`** (ต่างจาก `recall_attempts` ที่เป็น
+    append-only log เก่าเก็บไว้เฉย ๆ ไม่กระทบอะไร): การ์ดหนึ่งใบสามารถมีชีวิต
+    อยู่ต่อได้แม้คำถามต้นทางถูกแก้ไข/ลบไปแล้ว (schedule ยังเดินต่อ) และ
+    query "due cards" ของ Q-2d อาจได้ `check_key` ที่ join กลับไปหาคำถามจริง
+    ไม่เจอ (ต้องข้าม ไม่ใช่ error)
+  - **`review_cards` ไม่มี `lesson_id`** (ต่างจาก `recall_attempts` ที่มี) —
+    **ตั้งใจไม่เดา**: การ resolve `check_key` ที่ due กลับไปหา lesson (เพื่อ
+    แสดงผลใน review UI) เป็นเรื่องของ read-path ที่ Q-2d ยังไม่ได้ออกแบบ —
+    เพิ่ม column ตอนนี้โดยไม่รู้ query จริงจะหน้าตาแบบไหนคือการเดามั่ว ๆ ที่
+    ticket นี้ไม่มีทางพิสูจน์ว่าถูกหรือผิด
+  - **`review_logs` มี FK ไป `recall_attempts.id`** (ต่างจาก check_key ที่
+    ไม่มี FK เลย) — `recall_attempts.id` เป็น surrogate `AUTO_INCREMENT` ที่
+    เสถียรจริง content re-import ไม่แตะ (มีแค่ `recall_checks.id` ที่ churn)
+    จึงอ้างอิงตรง ๆ ได้อย่างปลอดภัย ต่างจาก `recall_checks.id`
+  - **`review_logs` ไม่มี FK ไป `review_cards`**: ตารางนี้ต้องเป็น source of
+    truth ที่ recompute การ์ดกลับมาได้แม้ `review_cards` เสียหาย/ถูกลบ — ถ้ามี
+    FK ไป `review_cards.id` แล้วแถวนั้นหาย log ทั้งหมดจะพังตามไปด้วย (หรือ
+    ต้อง cascade อะไรบางอย่างที่ขัดกับ "audit trail ต้องอยู่รอด") การ rebuild
+    การ์ดที่เสียหายคือ insert แถวใหม่ใน `review_cards` จาก log ประวัติ ไม่ใช่
+    การผูก log เก่าเข้ากับ id ใหม่
+- **`due_at`/`due_at_before`/`due_at_after` เป็น `DATETIME` ไม่ใช่ `TIMESTAMP`
+  (แก้ในรอบ code-reviewer — ตอนแรกวิเคราะห์ผิดด้าน)**: `TIMESTAMP` มีเพดานที่
+  2038-01-19 แต่ SM-2 interval ทบต้น (`I(n):=I(n-1)*EF`) ทำให้ streak ที่ผ่าน
+  ต่อเนื่อง 8 ครั้งจากค่าเริ่มต้นให้ `I = 1, 6, 16, 45, 131, 393, 1218, 3898`
+  วัน — review ที่ 8 ตกราวปี 2031 และคำนวณ due date ราวปี **2042** ทะลุเพดาน
+  ไปแล้ว **พิสูจน์จริงบน `mysql:8.4`**: insert `2040-01-01` ลง `TIMESTAMP`
+  column ได้ `ERROR 1292 (22007)` ทันที ส่วน `DATETIME` (ไม่มีเพดานนี้)
+  รับ `2042-06-15` ได้ปกติ — commit เดิม (round 1) มีคอมเมนต์ที่วิเคราะห์
+  ช่วงของ `TIMESTAMP` จริง แต่วิเคราะห์แค่ **ขอบล่าง** (1970) ทั้งที่คอลัมน์นี้
+  ทั้งคอลัมน์มีไว้เก็บ**วันที่ในอนาคต** ล้วน ๆ — ผิดด้านที่ต้องระวังจริง
+- **R10 (รอบ code-reviewer ที่สาม) — คำอธิบายเรื่อง "zero-value เขียนลง
+  `DATETIME` ไม่ได้" เป็นเท็จ**: รอบก่อนเขียนว่าขอบล่างของ `DATETIME` คือปี
+  1000 ทำให้เขียน Go zero-value `time.Time` (ปี 1) ไม่ได้ — **พิสูจน์แล้วว่า
+  ไม่จริง** บน `mysql:8.4` จริง: `INSERT ... VALUES ('0001-01-01 00:00:00')`
+  ลง `DATETIME` column **สำเร็จ** (เอกสาร MySQL บอกช่วงที่ "รองรับ" ไม่ใช่
+  ช่วงที่ "validate" จริง) — คำอธิบายเดิมถูกแค่ตอนคอลัมน์ยังเป็น `TIMESTAMP`
+  (ตอนนั้น `ERROR 1292` จริง) แต่พอเปลี่ยนเป็น `DATETIME` แล้วมีคนแก้ตัวเลข
+  1970→1000 โดยไม่ได้ insert ทดสอบซ้ำ — **เก็บกฎเดิมไว้ แต่เปลี่ยนเหตุผล**:
+  "ไม่เคย review = due ทันที" ต้องเป็นความหมายทางความหมาย (semantic) ไม่ใช่
+  ผลจากขอบเขต validation ที่ MySQL บังเอิญมีให้ — ถ้า Q-2d เขียน zero-value
+  ลงจริง (ปี 1) แล้วไม่ error เลย และ `WHERE due_at <= NOW()` ก็ยัง match
+  ค่านั้นอยู่ดี (ปี 1 น้อยกว่า NOW() เสมอ) จะดูเหมือนไม่มีอะไรพังทั้งที่มีค่า
+  นอกช่วงที่ MySQL รับประกันจริง ๆ (index ordering/timezone/driver
+  round-trip) ค้างอยู่ในตาราง
+- **R11 (รอบ code-reviewer ที่สาม) — ตัด `due_at` DEFAULT ทิ้ง เพราะ
+  `DATETIME` ไม่ normalize timezone เหมือน `TIMESTAMP`**: จุดที่ round 2 พลาด
+  ไม่ได้พูดถึงเลย — `TIMESTAMP` normalize เป็น UTC ตอนเขียนและแปลงกลับตอน
+  อ่านด้วย session timezone ซึ่งเป็นเหตุผลที่ DSN's `loc=UTC`
+  (`internal/platform/mysql/pool.go`) ทำให้ app เขียนตรงกับ column default
+  ได้ "โดยอัตโนมัติ" — `DATETIME` **ไม่แปลงอะไรเลย** เก็บตัวเลข wall-clock
+  ตรง ๆ ทำให้ `DEFAULT CURRENT_TIMESTAMP` กลายเป็น**นักเขียนคนที่สอง**ที่ใช้
+  system timezone ของ MySQL คนละอันกับที่ app ใช้ (UTC) — ที่ตรงกันวันนี้เพราะ
+  container dev ตั้ง UTC โดยบังเอิญ (`docker-compose.yml` ไม่ตั้ง `TZ`/
+  `time_zone` เลย) **สถานการณ์ที่จะพังจริงบน VPS ในอนาคต**: container ตั้ง
+  timezone อื่น (เช่น `Asia/Bangkok`) → การ์ดที่ insert โดยไม่ระบุ `due_at`
+  เอง จะได้ค่าที่เพี้ยนไป 7 ชั่วโมง (เร็วกว่า UTC) ทำให้การ์ดใหม่**มองไม่เห็น
+  ใน query "due now" นานถึง 7 ชั่วโมง** — ขัดกับจุดประสงค์ทั้งหมดของ column
+  นี้ที่ต้องการให้การ์ดใหม่โผล่ทันทีไม่มี special case; ตอน `TIMESTAMP`
+  ปัญหานี้**เกิดไม่ได้เลยในทางโครงสร้าง** — **แก้: ตัด `DEFAULT
+  CURRENT_TIMESTAMP` ออกจาก `due_at` ทิ้ง บังคับให้ Q-2d ต้องส่งค่ามาเองเสมอ**
+  (นักเขียนเดียว, timezone เดียว — ต้นทุนแทบเป็นศูนย์เพราะ repository ของ
+  Q-2d ต้องคำนวณค่าจริงส่งมาอยู่แล้วจาก R10 ข้างบน) — `last_reviewed_at` และ
+  `review_logs.reviewed_at` ยังคงเป็น `TIMESTAMP` ตามเดิม เพราะสองคอลัมน์นี้
+  เก็บเวลาที่**เกิดไปแล้ว**เสมอ (อยู่ในช่วง 1970-2038 ของ `TIMESTAMP` แน่นอน)
+  จึงไม่มีปัญหาเพดานที่ทำให้ต้องเปลี่ยนเป็น `DATETIME` และยังได้ประโยชน์จาก
+  UTC round-trip ที่ `TIMESTAMP` ให้ฟรีต่อไป
+- **ไม่มี mutation ระดับ Go ที่ยืนยัน R11 ได้ — บันทึกไว้ตรง ๆ**: การเติม
+  `DEFAULT CURRENT_TIMESTAMP` กลับเข้าไปใน `due_at` เป็น schema-level change
+  ล้วน ๆ ไม่มี Go code จุดไหนอ่าน/เขียน schema default นี้เลยในรอบนี้ (ไม่มี
+  repository code จนกว่าจะถึง Q-2d) — จึงไม่มี test suite ไหนจะจับ regression
+  แบบนี้ได้ในตอนนี้ การป้องกันตอนนี้มีแค่ระดับ code review + คอมเมนต์ใน
+  migration ที่บันทึกเหตุผลไว้ตรง ๆ ว่าทำไมห้ามเติมกลับ
+- **`review_logs` เพิ่ม `UNIQUE KEY` บน `recall_attempt_id` (เพิ่มในรอบ
+  code-reviewer)**: สัญญาของ card advance policy ข้างบนคือ "1 attempt row = 1
+  advance เป๊ะ" — UNIQUE constraint ทำให้ double-application เป็นไปไม่ได้ใน
+  ระดับ schema แทนที่จะหวังพึ่ง application logic ให้ถูกต้องเสมอ (หลักการ
+  เดียวกับที่ ticket สามรอบล่าสุดใช้ซ้ำ ๆ: "ทำให้ state ที่ผิดเป็นไปไม่ได้
+  แทนที่จะแค่ตั้งใจไม่ทำ") — เป็นประโยชน์ฟรีสำหรับ retry path ของ Q-2d ด้วย
+  (INSERT ซ้ำได้อย่างปลอดภัยโดยไม่ต้อง dedupe เอง)
+- **`qualityMappings` เปลี่ยนเป็น typed `AttemptOutcome`/`Confidence` แทน
+  bare string (แก้ในรอบ code-reviewer)**: เดิม field เป็น `string` เทียบกับ
+  `outcome.String()`/`confidence.String()` — typo แบบ `"corect"` จะ compile
+  ผ่านแล้วตกไปที่ branch "no mapping" อย่างเงียบ ๆ แทนที่จะ compile fail —
+  แก้เป็น index จาก `attemptOutcomes`/`confidences` (array เดียวกับที่
+  constructor ของสอง VO นั้นใช้ validate เอง) ทำให้ typo compile ไม่ผ่านแทน
+- **หมายเหตุ**: `EaseFactor` (Go) ไม่มี upper bound แต่ `DECIMAL(4,2) UNSIGNED`
+  ฝั่ง DB มีเพดานที่ 99.99 (ราว 975 review ที่ผ่านต่อเนื่องจากค่าเริ่มต้น
+  2.50 ถึงจะชน — ไม่มีทางเกิดจริง) — บันทึกไว้ในคอมเมนต์ของ
+  `migrations/007_review.sql` เพราะเป็นจุดเดียวที่ทั้งสองฝั่งไม่ตรงกันและไม่มี
+  ที่ไหนพูดถึงมาก่อน
+
+### รอบ code-reviewer (REQUEST_CHANGES → แก้ครบ)
+
+Reviewer อ่านโค้ดจริง มูเทตจริง (~35 มูเทชัน) และรัน live query ตรวจ
+`EXPLAIN`/`sql_mode` เอง — ยืนยันสิ่งที่ round 1 อ้างว่าถูกทั้งหมด (EF
+recurrence 2.60/2.50/2.36/2.18/1.96/1.70, floor 1.30, `I(1)=1`/`I(2)=6`,
+pre-adjustment EF ordering, `q>=3` boundary, repetition reset, quality
+mapping ทั้งชุด, due-cards index ใช้ `range` scan ไม่มี filesort,
+`explicit_defaults_for_timestamp=1` ยืนยันว่า `due_at` ไม่ได้ pick up
+`ON UPDATE CURRENT_TIMESTAMP` แบบไม่ตั้งใจ) แต่พบ **2 bug จริง (R8, R3), 2
+survivor จริงที่ทดสอบไม่ครอบคลุม (R4, R5), และ 3 จุดที่คำอธิบายผิดจากความ
+จริง (R1, R2, R6)**:
+
+| # | ปัญหา | แก้อย่างไร |
+|---|---|---|
+| R8 | `due_at`/`due_at_before`/`due_at_after` เป็น `TIMESTAMP` — เพดาน 2038 ชนจริงกับ due date ที่ SM-2 คำนวณล่วงหน้าได้ (พิสูจน์: insert 2040 ได้ `ERROR 1292`) | เปลี่ยนเป็น `DATETIME` ทั้งสามคอลัมน์ — พิสูจน์ซ้ำว่า 2042 insert ผ่านได้จริง |
+| R3 | `nextInterval` ใช้ `EaseFactor.Float64()` ที่ตัวเอง doc ห้ามไว้ (ใช้กับ arithmetic ที่ persist) และให้ผลผิดที่ exact tie จริง (`95×2.30`: float ให้ 218, ที่ถูกคือ 219) | เขียนใหม่เป็น integer arithmetic ล้วน `(previousDays*ease.Hundredths()+50)/100`; ลบ `EaseFactor.Float64()` ทิ้งทั้ง method |
+| R2 | Test comment อ้างว่า `round(6*2.70)=16` "hand-derived from the published algorithm" — spec จริงใช้ ceiling ให้ 17 ไม่ใช่ 16 | เก็บพฤติกรรม `round` ไว้ (ceiling เป็น bias ผิดทิศทางสำหรับ exam-prep) แต่แก้คำอธิบายให้บอกตรง ๆ ว่าเป็น deviation ของเรา ไม่ใช่ผลจาก spec; เปลี่ยนชื่อ test case จาก "rounds down" เป็น "nearest, not the spec's ceil" |
+| R1 | บอกว่า Wozniak's step 6 "อ่านได้สองแบบ" — ไม่จริง เป็นประโยคสมบูรณ์ไม่กำกวม | แก้คำอธิบายทั้งสามจุด (`quiz.md`, `reviewcard.go`'s `Advance` doc, Review focus) ให้บอกตรง ๆ ว่า "spec บอกอะไร เราทำตรงข้าม เพราะอะไร" แทนคำว่า "spec กำกวม" — สาระของเหตุผลเดิมถูกต้องอยู่แล้ว แก้แค่ framing |
+| R4 | Mutation "due date จาก `c.dueAt` แทน `reviewedAt`" ใน **failure branch** survive — `TestReviewCard_FailedReviewAfterLongStreak`'s `failedAt` บังเอิญเท่ากับ `streak.DueAt()` เป๊ะ (loop สร้างมันขึ้นมาแบบนั้น) ทำให้สอง base แยกกันไม่ออก | เปลี่ยน `failedAt` เป็น `streak.DueAt().AddDate(0,0,40)` (สาย 40 วัน) — แยกสอง base ออกจากกันได้จริง, มูเทชันตายแล้ว |
+| R5 | `lastReviewedAt: reviewedAt` ใน `Advance` ลบทิ้งได้โดย suite ทั้งชุดยังเขียว — ไม่มี assertion ไหนแตะฟิลด์นี้เลย | เพิ่ม `wantLastReviewedAt` เข้า `assertCardState`, ส่งค่า `reviewedAt` ของแต่ละ review เข้าไปเทียบ |
+| R6 | อ้างว่า debounce การันตีว่า 2 attempt ที่มาถึง DB ต้องเป็นการแก้ไขที่ตั้งใจเสมอ — Q-2b's `flushPendingAttempt` (tab-switch, `pagehide`, Finish) submit ทันทีข้าม debounce ได้จริง ขัดกับที่อ้างไว้ | ตัดคำอ้างเรื่อง debounce ทิ้ง คงสัญญา "ทุก attempt = 1 advance" ไว้ (เหตุผลอื่นยังถูกต้อง) แต่เพิ่มตาราง EF จริง (1.80 vs 1.70 ที่ควรเป็น) ให้ Q-2d's author เห็นตัวเลขจริงก่อนตัดสินใจ |
+| R7 | สรุป "19/19 มูเทชัน ไม่มี survivor ที่เป็น coverage gap จริง" เกินจริงอีกรอบ (ticket ที่สามที่เกิดแบบนี้) — มี R4/R5 ที่เป็น gap จริง | เปลี่ยนคำสรุปเป็น "N มูเทชันที่ลอง ตายหมด" เฉย ๆ ไม่ generalize ว่าไม่มี gap เหลือ |
+| R9 | Comment noise 2 จุด: `Hundredths()`'s comment restate ชื่อ method, `Value()`'s comment เป็น tautology | ลบ comment ของ `Hundredths()`; เปลี่ยนชื่อ `Value()` → `Grade()` แล้วลบ comment (ชื่อสื่อความหมายพอแล้ว) |
+| Also fix | `qualityMappings` ใช้ bare string เทียบ `.String()` — typo compile ผ่านได้ | เปลี่ยนเป็น typed `AttemptOutcome`/`Confidence` indexed จาก array เดียวกับ constructor ของ VO นั้น |
+| Also fix | `review_logs` ไม่มี unique constraint บังคับ "1 attempt = 1 advance" | เพิ่ม `UNIQUE KEY uniq_review_logs_recall_attempt` |
+| Also fix | Migration comment ซ้ำเนื้อหา ticket ที่ Q-2d อาจเปลี่ยนทีหลัง | ตัดส่วนที่เป็น implementation guidance ของ Q-2d ทิ้ง เหลือแค่ FK/no-FK rationale ที่เป็น WHY จริง |
+| Also fix | ไม่มีที่ไหนบอกว่า `EaseFactor` ไม่มี upper bound แต่ DB column มี | เพิ่มโน้ตในคอมเมนต์ migration |
+
+**Re-verify เต็มชุดหลังแก้**: `go build`/`go vet`/`gofmt -l`/`go test -count=1
+./...` สะอาดทั้งหมด; มูเทชันเดิมทั้ง 19 จุด re-run ใหม่บนโค้ดหลังแก้ (รวม
+qualityMappings ที่เปลี่ยนเป็น typed) — ตายครบ 19/19 เหมือนเดิม (ไม่มี
+regression จากการ refactor); มูเทชันใหม่ทั้ง 4 จุดจากรอบ reviewer (ceiling
+ที่ตรง spec, float regression, failure-branch due-date base, `lastReviewedAt`
+ไม่ถูกเซ็ต) — ตายครบ 4/4 หลังแก้ (ดูตาราง mutation ด้านล่าง แถว R2/R3/R4/R5)
+
+### Mutation table
+
+รัน `go test ./internal/learning/domain/...` แบบ quiet หลังแก้แต่ละจุด แล้ว revert ทุกครั้ง:
+
+| # | Mutation | ผลลัพธ์ |
+|---|---|---|
+| 1a | `correct`+`confident` quality 5→4 | killed — `TestNewReviewQuality/correct_confident` + `TestQualityMappingsIsExactly` |
+| 1b | `correct`+`unsure` quality 4→3 | killed — `TestNewReviewQuality/correct_unsure` + `TestQualityMappingsIsExactly` |
+| 1c | `correct`+`guessed` quality 3→2 | killed — `TestNewReviewQuality/correct_guessed` + `TestReviewQualityIsCorrect_Boundary` (q=3 boundary เลยพังไปด้วย) + `TestQualityMappingsIsExactly` |
+| 1d | `incorrect`+`guessed` quality 2→1 | killed — `TestNewReviewQuality/incorrect_guessed` + `TestReviewQualityIsCorrect_Boundary` + `TestQualityMappingsIsExactly` |
+| 1e | `incorrect`+`unsure` quality 1→2 | killed — `TestNewReviewQuality/incorrect_unsure` + `TestQualityMappingsIsExactly` |
+| 2 | `incorrect`+`confident` (load-bearing) quality 0→1 | killed — `TestNewReviewQuality/incorrect_confident` + **`TestNewReviewQuality_ConfidentIncorrectIsLowestGrade`** (เทสต์เฉพาะสำหรับ mutation นี้โดยตรง) + `TestQualityMappingsIsExactly` |
+| 3a | `IsCorrect()` boundary `>= 3` → `> 3` | killed — `TestReviewQualityIsCorrect_Boundary` + `TestReviewQualityIsCorrect_AllSixValues` |
+| 3b | `IsCorrect()` boundary `>= 3` → `>= 2` | killed — `TestReviewQualityIsCorrect_Boundary` + `TestReviewQualityIsCorrect_AllSixValues` |
+| 4a | ease-factor floor (`if next < floor {...}`) ลบทิ้งทั้งบล็อก | killed — `TestEaseFactorAdjust_FloorReachedAndHeld` |
+| 4b | floor constant `130` → `120` | killed — `TestNewEaseFactor/just_below_floor` + `TestEaseFactorAdjust_FloorReachedAndHeld` |
+| 5a | สัมประสิทธิ์ `10` → `11` ใน `delta := 10-d*(8+2*d)` | killed — `TestEaseFactorAdjust_AllSixQualities` + `TestEaseFactorAdjust_FloorReachedAndHeld` + 3 เทสต์ของ `ReviewCard` |
+| 5b | สัมประสิทธิ์ `8` → `9` | killed — เทสต์ชุดเดียวกับ 5a |
+| 5c | สัมประสิทธิ์ `2` → `3` | killed — เทสต์ชุดเดียวกับ 5a |
+| 6 | ลบ `next.repetition = 0` ออกจาก failed-review branch (แทนด้วย `c.repetition` เดิม) | killed — `TestReviewCard_FailedReviewAfterLongStreak` |
+| 7a | สลับ interval คงที่คู่แรก (`case 0: 6` / `case 1: 1`) | killed — `TestReviewCard_FirstThreeReviews` + `TestReviewCard_Advance_DueDateBasedOnReviewedAt` + `TestReviewCard_FailedReviewAfterLongStreak` |
+| 7b | เปลี่ยนค่าคงที่คู่แรกเป็น `2`/`7` | killed — เทสต์ชุดเดียวกับ 7a |
+| 8 | due date คำนวณจาก `c.dueAt` (ของเดิม) แทน `reviewedAt` (ของ review นี้) ใน correct-branch | killed — `TestReviewCard_FirstThreeReviews` + **`TestReviewCard_Advance_DueDateBasedOnReviewedAt`** (เทสต์เฉพาะสำหรับ mutation นี้โดยตรง ใช้ reviewedAt ที่ "สาย" ไปมากกว่า due date เดิมมาก เพื่อแยกสอง base ให้เห็นชัด) |
+| 9a | เติม mapping ปลอม `{incorrect, guessed, quality: 6}` ต่อท้าย array (ซ้ำ combo เดิมที่มี quality:2 อยู่แล้ว) | **killed เฉพาะโดย `TestQualityMappingsIsExactly` เท่านั้น** — `TestNewReviewQuality` **ไม่จับ** เพราะ loop หา match ตัวแรกเจอ (`quality:2`) ก่อนจะถึงตัวปลอมที่เพิ่มท้าย พฤติกรรมจริงไม่เปลี่ยนเลย — นี่คือตัวอย่างจริงของ gap ที่ Q-2a's ticket เตือนไว้ (`TestXAcceptedSetIsExactly` มีไว้จับเคสนี้โดยเฉพาะ ตารางทดสอบทั่วไปจับไม่ได้) |
+| 9b | ลบ mapping `{correct, guessed, quality: 3}` ออกจาก array | killed — `TestNewReviewQuality/correct_guessed` + `TestReviewQualityIsCorrect_Boundary` + `TestQualityMappingsIsExactly` |
+| R2 | `nextInterval` ปัดแบบ ceiling ตรงกับ spec แทน `round` (`(product+99)/100`) | killed (ใหม่ในรอบ code-reviewer — **survive ตอน round 1 เพราะไม่เคยมีเทสต์ไหนแยก round กับ ceiling ออกจากกันได้จริง**) — `TestNextInterval/nearest,_not_the_spec's_ceil` (ค่า 16 vs 17 ที่ ceiling จะให้) + `TestReviewCard_FirstThreeReviews` + `TestReviewCard_FailedReviewAfterLongStreak` |
+| R3 | `nextInterval` กลับไปใช้สูตร float64 เดิม (`math.Round(days * (hundredths/100))`, หาร**ก่อน**คูณ เหมือนโค้ดเดิมที่ผ่าน `EaseFactor.Float64()`) | killed (ใหม่ในรอบ code-reviewer — **survive ตอน round 1 เพราะไม่เคยมี exact-tie case**) — `TestNextInterval/exact_tie_unreachable_by_float64_imprecision` (95×2.30 ต้องได้ 219 ไม่ใช่ 218) — ยืนยันด้วย `go run` แยกว่า float64 ให้ `218.49999999999997` จริง (ปัดลงเป็น 218) |
+| R4 | due date คำนวณจาก `c.dueAt` แทน `reviewedAt` ใน **failure branch** (คนละจุดกับ mutation #8 ที่เป็น correct branch) | killed (ใหม่ในรอบ code-reviewer — **survive ตอน round 1 จริง**, ดูคำอธิบายที่คอมเมนต์ของ `TestReviewCard_FailedReviewAfterLongStreak`) — แก้เทสต์ให้ `failedAt` ห่างจาก `streak.DueAt()` 40 วัน (เดิมเท่ากันเป๊ะ แยกสอง base ไม่ออก) แล้ว re-run มูเทชันเดิม → ตายแล้ว |
+| R5 | ลบ `lastReviewedAt: reviewedAt,` ออกจาก `Advance` | killed (ใหม่ในรอบ code-reviewer — **survive ตอน round 1 จริง**, ไม่มี assertion ไหนแตะฟิลด์นี้เลยตั้งแต่แรก) — เพิ่ม `wantLastReviewedAt` เข้า `assertCardState` แล้ว re-run มูเทชันเดิม → ตายแล้ว |
+
+**สรุป: 23 มูเทชันที่ลอง (19 จากรอบแรก + 4 จากรอบ code-reviewer) — ตายครบทั้ง
+23** (ไม่ generalize ต่อว่า "ไม่มี coverage gap เหลือ" อีกแล้ว — R7 ของรอบ
+code-reviewer ชี้ว่าประโยคแบบนั้นเกินจริงมาแล้วสามรอบติด รวมทั้งรอบนี้เอง ที่
+R4/R5 พิสูจน์ว่ามี gap จริงที่ 19 มูเทชันแรกไม่ครอบคลุม แม้จะ "ตายครบ 19/19"
+ก็ตาม — 9a ยังเป็นตัวอย่างของ mutation ที่ behavioral test เดียวจับไม่ได้แต่
+structural test จับได้ เหมือนเดิม ไม่เปลี่ยน)
+
+**UNIQUE constraint ทั้งสองจุด (`review_cards.check_key`,
+`review_logs.recall_attempt_id`) — ไม่มี Go test ที่ pin จุดนี้ในรอบนี้เลย,
+บันทึกไว้ตรง ๆ ตามที่ ticket เรียกร้อง**: ticket นี้ไม่มี repository/Go code
+เขียน SQL ไปแตะ `review_cards`/`review_logs` เลย (นั่นคือ Q-2d) จึงไม่มี
+literal-pin test แบบ `TestInsertRecallAttemptSQLShape` ของ Q-2a ให้เขียน —
+การพิสูจน์ว่าทั้งสอง constraint บังคับใช้จริงอยู่ในหัวข้อ "หลักฐาน migration"
+ด้านล่างแทน (`ERROR 1062 Duplicate entry` ทั้งสองจุด) — เมื่อ Q-2d เขียน
+INSERT/UPSERT จริงถึงจะมี literal-pin test ของ SQL statement นั้นเกิดขึ้น
+
+### หลักฐาน migration (live check, round 2 — schema เปลี่ยนหลัง code review)
+
+รอบแรกตรวจแล้วว่า `docker compose up -d --build`/`down` (ไม่มี `-v`) ทำงาน
+ถูกต้องและ idempotent บน schema เดิม (`TIMESTAMP` version) — รอบนี้ตรวจซ้ำ
+ทั้งหมดบน schema ใหม่ (`DATETIME` + `UNIQUE(recall_attempt_id)`) เพราะ
+`schema_migrations` บันทึกว่า version 7 apply ไปแล้วตั้งแต่รอบแรก การ auto
+migrate ตอน API boot จึงข้ามไม่รัน DDL ใหม่ให้ — ต้อง `DROP TABLE
+review_logs, review_cards` (ยืนยันว่าทั้งคู่มี 0 แถวก่อน drop จริง ไม่มีข้อมูล
+เสีย) แล้ว pipe `migrations/007_review.sql` ที่แก้แล้วเข้า `mysql` client ตรง
+ๆ เพื่อสร้างใหม่ด้วย schema ที่ถูกต้อง — สถานการณ์นี้เป็นเรื่องปกติของ dev
+iteration ก่อน merge เท่านั้น (ticket ยังไม่เคย merge เข้า `develop` เลย);
+ถ้า schema เปลี่ยนหลัง merge ไปแล้วต้องเป็น migration ใหม่แยกต่างหาก ไม่ใช่
+แก้ไฟล์เดิม:
+
+- **`recall_attempts` count: 13 ก่อน → 13 หลัง** (ไม่เปลี่ยนตลอดทั้งสองรอบ —
+  ticket นี้ไม่มี write path ใด ๆ ไปแตะตารางเดิม)
+- **Idempotency**: pipe `migrations/007_review.sql` ตรง ๆ ผ่าน `mysql`
+  client ซ้ำอีกครั้งหลัง drop+recreate — ผ่านไม่มี error (`CREATE TABLE IF
+  NOT EXISTS` ทำงานตามที่ออกแบบ, ยืนยันเพิ่มด้วย
+  `TestAllMigrationsCreateTableIsIdempotent` ที่มีอยู่แล้วในระดับ Go test)
+- **`SHOW CREATE TABLE review_cards`**: `due_at DATETIME NOT NULL DEFAULT
+  CURRENT_TIMESTAMP` (เดิม `TIMESTAMP`), `check_key CHAR(64) CHARACTER SET
+  ascii COLLATE ascii_bin`, `ease_factor DECIMAL(4,2) UNSIGNED DEFAULT
+  '2.50'`, `UNIQUE KEY uniq_review_cards_check_key`, `CONSTRAINT
+  chk_review_cards_ease_factor_floor CHECK ((ease_factor >= 1.30))`, `KEY
+  idx_review_cards_due_at (due_at)` — ตรงตามที่ออกแบบทุกจุด
+- **`SHOW CREATE TABLE review_logs`**: `due_at_before`/`due_at_after
+  DATETIME NOT NULL` (เดิม `TIMESTAMP`), **`UNIQUE KEY
+  uniq_review_logs_recall_attempt (recall_attempt_id)`** (ใหม่), `CONSTRAINT
+  fk_review_logs_recall_attempt FOREIGN KEY ... REFERENCES recall_attempts
+  (id)`, `CONSTRAINT chk_review_logs_quality_range CHECK ((quality <= 5))`,
+  `KEY idx_review_logs_check_key_created_at (check_key, created_at DESC)` —
+  ตรงตามที่ออกแบบทุกจุด
+- **R8 พิสูจน์ตรง ๆ — `TIMESTAMP` vs `DATETIME` ที่ 2040+**:
+  - `CREATE TEMPORARY TABLE ts_probe (t TIMESTAMP); INSERT ... VALUES
+    ('2040-01-01 00:00:00')` → **`ERROR 1292 (22007) Incorrect datetime
+    value`** ทันที
+  - `INSERT INTO review_cards (check_key, due_at) VALUES (..., '2042-06-15
+    00:00:00')` → **สำเร็จ**, `SELECT` กลับมาได้ `2042-06-15 00:00:00`
+    ตรงเป๊ะ — พิสูจน์ว่า `DATETIME` แก้ปัญหาจริง ไม่ใช่แค่ทฤษฎี
+- **Constraint enforcement พิสูจน์จริงบน `mysql:8.4`** (ไม่ใช่แค่อ่าน DDL,
+  ยืนยันซ้ำทุกจุดจากรอบแรกบนตารางที่ recreate ใหม่ + จุดใหม่จาก R8/Also-fix):
+  - Insert `check_key` ซ้ำใน `review_cards` → `ERROR 1062 Duplicate entry ...
+    for key 'review_cards.uniq_review_cards_check_key'`
+  - Insert `ease_factor = 1.29` → `ERROR 3819 Check constraint
+    'chk_review_cards_ease_factor_floor' is violated`
+  - Insert `quality = 6` ใน `review_logs` → `ERROR 3819 Check constraint
+    'chk_review_logs_quality_range' is violated`
+  - Insert `recall_attempt_id = 999999` (ไม่มีอยู่จริง) → `ERROR 1452 Cannot
+    add or update a child row: a foreign key constraint fails`
+  - **ใหม่**: Insert `review_logs` สองแถวด้วย `recall_attempt_id` เดียวกัน
+    (แถวแรกผ่าน) → **`ERROR 1062 Duplicate entry '1' for key
+    'review_logs.uniq_review_logs_recall_attempt'`** — พิสูจน์ว่า UNIQUE
+    constraint ใหม่บังคับใช้จริง
+  - ลบแถวทดสอบทั้งหมดออกหลังพิสูจน์เสร็จ — `review_cards`/`review_logs`
+    กลับเป็น 0 แถวเหมือนก่อนทดสอบ, volume `self-learning_mysql_data` ยืนยัน
+    ว่ายังอยู่ทั้งก่อนและหลัง `docker compose down` (ไม่มี `-v`)
+
+### รอบ code-reviewer 2 (NO-SHIP → แก้ครบ)
+
+Round 2's DATETIME fix (R8) เปลี่ยน column type จริง แต่คำอธิบายที่ผูกอยู่กับ
+มันไม่ได้ re-test ตาม — reviewer เจอ 2 จุดที่เป็นผลตรงจาก R8 เอง และ 1 จุดที่
+เป็น process issue (schema ที่ hand-apply ไว้ไม่ตรงกับไฟล์ migration แล้ว):
+
+| # | ปัญหา | แก้อย่างไร |
+|---|---|---|
+| R10 | คำอธิบายเดิม (round 2) อ้างว่า Go zero-value `time.Time` เขียนลง `DATETIME` ไม่ได้เพราะขอบล่างคือปี 1000 — **เท็จ**: พิสูจน์จริงว่า `INSERT ... '0001-01-01 00:00:00'` ลง `DATETIME` **สำเร็จ** (MySQL "documents" ช่วงนี้ ไม่ได้ "validate" มัน) — เป็นเลขที่ถูกต้องตอนคอลัมน์ยังเป็น `TIMESTAMP` (ตอนนั้น `ERROR 1292` จริง) แต่พอเปลี่ยนเป็น `DATETIME` มีคนแก้ 1970→1000 โดยไม่ insert ทดสอบซ้ำ | เก็บกฎเดิมไว้ ("ห้าม persist zero-value") แต่เปลี่ยนเหตุผลเป็น semantic ล้วน: "ไม่เคย review ต้องแปลว่า due ทันที ไม่ใช่ due ปี 1" ไม่ใช่ผลจาก validation boundary ที่ MySQL บังเอิญมีให้ — แก้ทั้งใน `migrations/007_review.sql` และ `quiz.md` |
+| R11 | `DATETIME` ไม่ normalize timezone เหมือน `TIMESTAMP` (`TIMESTAMP` เขียน UTC/อ่านแปลงกลับด้วย session timezone ซึ่งเป็นเหตุผลที่ DSN's `loc=UTC` ทำให้ app เขียนตรงกับ column default ได้อัตโนมัติ) — `DEFAULT CURRENT_TIMESTAMP` บน `due_at` ที่เหลืออยู่จาก round 2 จึงกลายเป็นนักเขียนคนที่สองที่ใช้ system timezone ของ MySQL คนละอันกับที่ app ใช้ (UTC) ตรงกันวันนี้แค่เพราะ container dev ตั้ง UTC โดยบังเอิญ — บน VPS จริงที่ timezone อื่น การ์ดที่ insert แบบพึ่ง default จะมองไม่เห็นใน query "due now" นานหลายชั่วโมง | ตัด `DEFAULT CURRENT_TIMESTAMP` ออกจาก `due_at` ทิ้ง บังคับ Q-2d ต้องส่งค่ามาเอง (นักเขียนเดียว, timezone เดียว) — บันทึกเหตุผลไว้ในคอมเมนต์ migration กัน "ปรับให้สะดวก" กลับมาเติม default คืน |
+| Also (process) | Schema ที่ hand-apply ไว้บน `self-learning_mysql_data` (จาก round 2's manual drop+recreate) ไม่ตรงกับไฟล์ migration ที่แก้ล่าสุดแล้ว — reviewer ตรวจสอบ live schema ไม่ได้ (permission denied ตอน bring up project) | ไม่ diff ปัญหานี้ — กำจัดทิ้ง: `DROP TABLE review_logs, review_cards` จริง (ยืนยัน 0 แถวทั้งคู่ก่อน drop), ลบแถว `schema_migrations` version 7, restart API container ให้ auto-migrate สร้างใหม่จาก `007_review.sql` ตรง ๆ (ไม่ใช่ hand-pipe SQL อีกแล้ว) — path เดียวกับที่เครื่องสดจริงจะได้ |
+
+**ไม่มี Go-level mutation สำหรับ R11 — บันทึกไว้ตรง ๆ ตามที่ reviewer เรียกร้อง**:
+การเติม `DEFAULT CURRENT_TIMESTAMP` กลับเข้า `due_at` เป็น schema-only change
+ไม่มี repository/Go code จุดไหนอ่านหรือพึ่งพา schema default นี้เลยในรอบนี้
+(ไม่มี repository code จนกว่าจะถึง Q-2d) จึงไม่มี test suite ระดับ Go ที่จะจับ
+regression แบบนี้ได้ตอนนี้ — การป้องกันเดียวที่มีคือ code review + คอมเมนต์ใน
+migration ที่บันทึกเหตุผลไว้ตรง ๆ
+
+**หลักฐาน live หลังกำจัด drift** (`docker compose -p self-learning up -d
+--build` จาก worktree, ใช้ volume `self-learning_mysql_data` เดิม; drop
+ตาราง + ลบ `schema_migrations` version 7 + `docker compose restart api` ให้
+auto-migrate สร้างใหม่ — ไม่ใช่ hand-pipe SQL):
+
+- **`recall_attempts`: 13 ก่อน DROP → 13 หลัง migrate ใหม่** (ตรวจก่อน DROP
+  ว่า `review_cards`/`review_logs` มี 0 แถวทั้งคู่จริง ไม่มีข้อมูลเสียหาย)
+- **`SHOW CREATE TABLE review_cards`** (จาก auto-migrate ล้วน ๆ): `due_at
+  datetime NOT NULL` — **ไม่มี `DEFAULT` เลย** (ตัดตามที่ R11 กำหนด), `id` PK,
+  `UNIQUE KEY uniq_review_cards_check_key`, `CONSTRAINT
+  chk_review_cards_ease_factor_floor CHECK ((ease_factor >= 1.30))`, `KEY
+  idx_review_cards_due_at (due_at)` — ตรงตามที่ออกแบบทุกจุด
+- **`SHOW CREATE TABLE review_logs`**: `due_at_before`/`due_at_after
+  datetime NOT NULL`, **`UNIQUE KEY uniq_review_logs_recall_attempt
+  (recall_attempt_id)` ปรากฏเดี่ยว ๆ ไม่มี `KEY fk_review_logs_recall_attempt`
+  แยกซ้ำ** (MySQL ใช้ UNIQUE KEY เดียวกันตอบทั้ง uniqueness และ FK's index
+  requirement — ตรงกับ baseline ที่ reviewer คาดไว้เป๊ะ), `CONSTRAINT
+  fk_review_logs_recall_attempt FOREIGN KEY ... REFERENCES recall_attempts
+  (id)`, `CONSTRAINT chk_review_logs_quality_range CHECK ((quality <= 5))`
+- **R10 พิสูจน์ซ้ำบน schema สด**: `INSERT INTO review_cards (check_key,
+  due_at) VALUES (..., '0001-01-01 00:00:00')` → **สำเร็จ** (ยืนยันคำอธิบาย
+  เดิมเท็จจริง, ตอนนี้แก้เป็นเหตุผล semantic แล้ว)
+- **R8 พิสูจน์ซ้ำบน schema สด**: `TIMESTAMP` ยัง reject `2040-01-01` ด้วย
+  `ERROR 1292`; `review_cards.due_at` (`DATETIME`) ยัง accept `2042-06-15`
+  ได้ปกติ
+- **Constraint ทั้ง 5 จุด พิสูจน์ซ้ำครบบน schema สด**: `review_cards.check_key`
+  UNIQUE (`ERROR 1062`), `ease_factor` floor CHECK (`ERROR 3819`),
+  `review_logs.quality` range CHECK (`ERROR 3819`), `review_logs`'s FK
+  (`ERROR 1452`), `review_logs.recall_attempt_id` UNIQUE (`ERROR 1062`)
+- **Idempotency ซ้ำ**: pipe `007_review.sql` ตรง ๆ อีกครั้งหลัง auto-migrate
+  สร้างไปแล้ว — ผ่านไม่มี error
+- ลบแถวทดสอบทั้งหมดออกหลังพิสูจน์เสร็จ — `review_cards`/`review_logs` กลับเป็น
+  0 แถว, `recall_attempts` ยืนยัน **13 แถวเหมือนเดิม**, volume ยืนยันว่ายังอยู่
+  หลัง `docker compose down` (ไม่มี `-v`)
+
+### Review focus
+
+- Wozniak's step 6 บอกตรง ๆ ไม่กำกวมว่าห้ามเปลี่ยน E-Factor ตอน q<3 ("without
+  changing the E-Factor") แต่โค้ดนี้เปลี่ยนทุกครั้งไม่มีข้อยกเว้น — ทำไมถึง
+  deviate จาก spec ตรงนี้โดยตั้งใจ แทนที่จะทำตาม step 6 ตรง ๆ?
+- ทำไม `review_logs` ถึงมี FK ไป `recall_attempts.id` แต่**ไม่มี** FK ไป
+  `review_cards.id` เลย ทั้งที่ log แต่ละแถวก็ผูกกับการ์ดหนึ่งใบเสมอ?
+- ทำไม `nextInterval` ถึงปัดเข้าใกล้ที่สุด (`round`) แทนที่จะปัดขึ้นเสมอ
+  (`ceiling`) ตามที่ Wozniak's step 3 ระบุไว้ตรง ๆ?
+- ทำไม `due_at` ถึงตัด `DEFAULT CURRENT_TIMESTAMP` ทิ้งหลังเปลี่ยนเป็น
+  `DATETIME` ทั้งที่ตอนเป็น `TIMESTAMP` มี default อยู่ได้โดยไม่มีปัญหาอะไร?
+
+### จงใจไม่ทำในรอบนี้
+
+- ไม่มี repository/Go code เขียนหรืออ่าน `review_cards`/`review_logs` เลย —
+  transactional card update, review log write, due-cards read endpoint ทั้ง
+  หมดคือ Q-2d
+- ไม่ implement "card advance policy" จริง (ตัดสินใจแค่**สัญญา**ว่า Q-2d
+  ต้อง implement อะไร — ดูหัวข้อการตัดสินใจด้านบน) เพราะยังไม่มี loop ที่วน
+  `recall_attempts` จริงในรอบนี้
+- ไม่แก้ `docs/design.md`'s §2 schema sketch เดิม (`review_cards` แบบ
+  `source_type`/`source_id`) ที่เขียนไว้ตั้งแต่ Phase 0 ก่อน check_key model
+  จะถูกออกแบบจริงใน Q-2a — เอกสารนั้นเป็น sketch ระดับ design เก่าที่ schema
+  จริงเบี่ยงไปแล้วโดยมีเหตุผลบันทึกอยู่ที่นี่และใน Q-2a/Q-2b, ไม่ใช่ scope
+  ของ ticket นี้ที่จะไปย้อนแก้
+
+Status: implemented, round 3 fixes applied post code-review, PR pending
