@@ -17,7 +17,7 @@
 - **AWS-S3** (implemented, PR pending — ดูหัวข้อ "AWS-S3 — guessability measurement tool" ด้านล่าง) —
   guessability measurement tool ที่ parameterize baseline ได้ต่อ corpus, gate คลังข้อสอบจริงใช้งานได้แล้ว
 - **AWS-C1..C4** (ยังไม่เริ่ม, gated บน S1/S2/S3) — คลังข้อสอบจริง ~550 ข้อ ทีละ domain
-- **AWS-EN1** (implemented + review round 1 แก้แล้ว, PR pending) — ระบบจดเทคนิคจาก
+- **AWS-EN1** (implemented + code review 3 รอบแก้ครบ, PR pending) — ระบบจดเทคนิคจาก
   practice exam: `content/exam-notes/aws-saa-c03/` + skill `/aws-exam-note` — ดูหัวข้อ
   "AWS-EN" ท้ายไฟล์
 - **AWS-EN2** (ยังไม่เริ่ม, additive ไม่ gate/ไม่ถูก gate) — หน้าเว็บ read-only render

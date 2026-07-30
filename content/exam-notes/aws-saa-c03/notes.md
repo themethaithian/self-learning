@@ -99,7 +99,8 @@ and sizes**" — ประโยคนี้ตัด Predictive scaling ทิ�
 | รูป วิดีโอ backup static site | Object | S3 / Glacier | HTTP |
 
 จุดตัดสิน: เห็นคำว่า **block + ข้าม AZ → ONTAP ตัวเดียว** เพราะเป็น FSx เจ้าเดียว
-ที่พูด iSCSI ได้ · EBS = block ก็จริง แต่อยู่ได้แค่ AZ เดียว และต่อเครื่องเดียว
+ที่พูด iSCSI ได้ · EBS = block ก็จริง แต่อยู่ได้แค่ AZ เดียว และปกติต่อเครื่องเดียว
+(ยกเว้น Multi-Attach ของ io1/io2 ต่อได้ถึง 16 เครื่อง — แต่ก็ยังอยู่ใน AZ เดียวอยู่ดี)
 
 ### 2.3 SMB vs NFS
 
@@ -142,6 +143,8 @@ and sizes**" — ประโยคนี้ตัด Predictive scaling ทิ�
 - ต้องมี historical data ≥ 24 ชม. (แนะนำ 14 วัน)
 - scale out อย่างเดียว ไม่ scale in → ต้องใช้คู่กับ dynamic เสมอ
 - สมมติว่า ASG เป็น homogeneous → เจอ "different instance types and sizes" คือตัดทิ้ง
+  (⚠ ข้อนี้เป็นการตีความจากเฉลย TD ไม่ใช่ข้อจำกัดที่ AWS ประกาศ — ใช้เป็น heuristic
+  ประกอบคำชี้ขาดใน 1.2 ไม่ใช่กฎเด็ดขาด)
 
 **Dynamic ตาม memory** — จำไว้ว่า memory utilization ไม่ใช่ metric default ของ
 CloudWatch ต้องติดตั้ง CloudWatch agent เพิ่ม = ops overhead มากขึ้น
@@ -188,7 +191,7 @@ groups, computers, printers, file shares
 | 1 | ผู้ใช้เปิดเบราว์เซอร์เข้าหน้า portal ของ IdP |
 | 2 | IdP ตรวจตัวตนกับ LDAP identity store (= AD) |
 | 3 | IdP ส่ง SAML assertion กลับมาให้เบราว์เซอร์ |
-| 4 | เบราว์เซอร์ POST assertion ไปที่ AWS SSO endpoint |
+| 4 | เบราว์เซอร์ POST assertion ไปที่ SAML endpoint ของ AWS (`signin.aws.amazon.com/saml`) |
 | 5 | AWS ตรวจลายเซ็น → เรียก STS ด้วย `AssumeRoleWithSAML` |
 | 6 | endpoint ส่ง redirect กลับมา |
 | 7 | เข้า AWS Management Console |
