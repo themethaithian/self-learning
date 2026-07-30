@@ -65,16 +65,28 @@ wiring พร้อม debounced submit, unload flush, visit-based identity guar
 **Branch ที่กำลังทำค้างอยู่ — เช็คสถานะจริงด้วย
 `git log --oneline develop..<branch>` และ `gh pr list` ก่อนทำอะไรต่อ:**
 
-- `ticket/q-2c-sm2-domain` — SM-2 schema (`migrations/007_review.sql`) +
-  pure domain มี commit `e08abb4` อยู่ ตอน handoff กำลังแก้รอบ review อยู่
-  **ห้าม merge จนกว่ารอบแก้จะเสร็จ** ประเด็นที่ review เจอ: `due_at TIMESTAMP`
-  เก็บวันที่ไกลๆ ของ SM-2 ไม่ได้ (MySQL TIMESTAMP สูงสุดปี 2038-01-19 แต่ q=5
-  ติดกัน 8 ครั้งคำนวณ due date ไปถึงราวปี 2042 → `ERROR 1292`), มี float path
-  ที่คำนวณ interval เพี้ยนไปหนึ่งวัน, และมีจุดที่เบี่ยงจาก published SM-2 สอง
-  จุดที่ยังไม่ได้บอกไว้ตรงๆ รายละเอียดอยู่ที่ `docs/tickets/quiz.md`
-- `ticket/aws-0-saa-tree` — rebalance `content/curriculum/aws.json` จาก 37
-  เป็นราว 50 concepts และเขียน `docs/tickets/aws-cert.md` กำลังทำอยู่ตอน
-  handoff
+- **`docs/aws-currency-checklist`** (push แล้ว, 1 commit) — `docs/tickets/aws-currency-checklist.md`
+  รายการ AWS ที่เปลี่ยนไปจนคำตอบเก่ากลายเป็นผิด ทุก item มี URL ทางการ
+  **นี่คือไฟล์ที่มีค่าที่สุดของ track นี้** ต้องเป็น context บังคับของทั้ง
+  `lesson-writer` และ Fable ทุก batch · merge ก่อนเริ่มเขียนข้อสอบ
+- **`docs/session-handoff`** (push แล้ว, 1 commit) — ไฟล์ที่คุณกำลังอ่านอยู่นี้
+- **`ticket/q-2c-sm2-domain`** (push แล้ว, **2 commits**: `e08abb4` แล้ว
+  `4d4c416` "Q-2c round 2: DATETIME due dates, exact-integer interval, honest
+  deviations") — รอบแก้ลงแล้วแต่ **ยังไม่ได้ผ่าน re-review** ประเด็นที่รอบแรก
+  เจอและรอบสองอ้างว่าแก้แล้ว: `due_at TIMESTAMP` เก็บวันที่ไกล ๆ ของ SM-2 ไม่ได้
+  (MySQL สูงสุด 2038-01-19 แต่ q=5 ติดกัน 8 ครั้งได้ due date ราวปี 2042 →
+  `ERROR 1292`) · float path ทำ interval เพี้ยนไปหนึ่งวัน (`95 × 2.30 = 218.5`
+  ได้ 218 แทน 219, กวาดทั้งช่วงเจอ 77 คู่) · เบี่ยงจาก published SM-2 สองจุด
+  ที่เอกสารเดิมอ้างผิดว่าเป็น "การแก้ความกำกวม" ทั้งที่ step 6 เขียนชัด
+  **ต้อง re-review ก่อน merge** — รายละเอียดครบใน `docs/tickets/quiz.md`
+  · หมายเหตุ: branch นี้มี `git stash` ค้างอยู่หนึ่งอัน ที่ระบุว่าเป็น artifact
+  ของ autocrlf ไม่ใช่งานจริง — `git stash list` แล้วทิ้งได้ถ้าไม่มี diff จริง
+- **`ticket/aws-0-saa-tree`** — rebalance `content/curriculum/aws.json` จาก 37
+  เป็นราว 50 concept + เขียน `docs/tickets/aws-cert.md`
+  **ตอน handoff branch นี้มี 0 commit** และถูกสั่งให้ commit แบบ WIP ทันที
+  → เช็ก `git log --oneline develop..ticket/aws-0-saa-tree` ก่อน ถ้ายังว่าง
+  แปลว่างานหายไปกับ session ต้องเริ่มใหม่ ซึ่งไม่แพงเพราะ spec ทั้งหมด
+  (blueprint + gap analysis) อยู่ในหัวข้อ 5 ของไฟล์นี้แล้ว
 - ถ้า branch ไหนไม่มี commit เลย (เท่ากับ `develop` เป๊ะ) แปลว่างานหายไปพร้อม
   session ต้องเริ่มใหม่จาก ticket doc ที่เกี่ยวข้อง
 
