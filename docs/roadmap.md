@@ -92,6 +92,10 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
   ยังไม่ได้ wire เข้า CI/Makefile
 - [ ] AWS-C1..C4 (ยังไม่ตัดชื่อ, gated บน AWS-S1/S2) — เขียนคลังข้อสอบทีละ domain ตามแผนใน
   aws-cert.md
+- [ ] AWS-EN1 (in review) — ระบบจดเทคนิคจาก practice exam: `content/exam-notes/aws-saa-c03/`
+  + skill `/aws-exam-note` (ดูหัวข้อ "AWS-EN" ใน aws-cert.md)
+- [ ] AWS-EN2 (ยังไม่เริ่ม, additive) — หน้าเว็บ read-only render exam notes
+  (Next.js static export อ่าน markdown ตอน build — ไม่แตะ Go API/MySQL)
 
 ### Phase 0 — walking skeleton + reading slice ✅
 - [x] T1 [x] T2 [x] T3 [x] T4 [x] T35 [x] T5 [x] T6 [x] T7 [x] T7b [x] T8 ([week-1](tickets/week-1.md))

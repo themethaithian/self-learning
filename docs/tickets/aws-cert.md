@@ -17,6 +17,11 @@
 - **AWS-S3** (implemented, PR pending — ดูหัวข้อ "AWS-S3 — guessability measurement tool" ด้านล่าง) —
   guessability measurement tool ที่ parameterize baseline ได้ต่อ corpus, gate คลังข้อสอบจริงใช้งานได้แล้ว
 - **AWS-C1..C4** (ยังไม่เริ่ม, gated บน S1/S2/S3) — คลังข้อสอบจริง ~550 ข้อ ทีละ domain
+- **AWS-EN1** (implemented + code review 3 รอบแก้ครบ, PR pending) — ระบบจดเทคนิคจาก
+  practice exam: `content/exam-notes/aws-saa-c03/` + skill `/aws-exam-note` — ดูหัวข้อ
+  "AWS-EN" ท้ายไฟล์
+- **AWS-EN2** (ยังไม่เริ่ม, additive ไม่ gate/ไม่ถูก gate) — หน้าเว็บ read-only render
+  exam notes ชุดนี้
 
 ## Blueprint ข้อสอบ (verified โดยตรงจาก docs.aws.amazon.com ระหว่าง round 2 ของ ticket นี้)
 
@@ -1280,3 +1285,48 @@ Round 2 ของ code review เป็น **NO-SHIP สามข้อ** (N1–
 
 </details>
 </details>
+
+## AWS-EN — exam-notes system (จดเทคนิคจาก practice exam)
+
+**ทำไมมี**: ระหว่างทำ practice exam ผู้ใช้ต้องนั่งจดเทคนิค/ศัพท์จากเฉลยเอง — เปลี่ยนเป็น
+เปิด session ไหนก็ได้ (model ปกติ: opus) วางโจทย์ + Overall explanation แล้ว skill
+`/aws-exam-note` แปลเฉลยเป็นไทยง่าย ๆ แล้ว**ผสาน**บทเรียนเข้า
+`content/exam-notes/aws-saa-c03/notes.md` — เอกสารสรุปไฟล์เดียว (เทคนิคอ่านโจทย์ /
+เนื้อหารายหมวดพร้อมตาราง+analogy / ศัพท์ / checklist) **ไม่มี quiz** (ผู้ใช้ระบุ —
+practice exam คือตัวทดสอบอยู่แล้ว) · หลังสรุปผู้ใช้ถามต่อได้ — คำถามเชิงเนื้อหาถูกจดลง
+`review-again.md` อัตโนมัติเป็นจุดอ่านซ้ำก่อนสอบ · workflow เต็มอยู่ใน
+`.claude/skills/aws-exam-note/SKILL.md` (single source of truth — ตั้งใจไม่เขียนซ้ำที่นี่)
+
+**ข้อยกเว้น orchestrator-only (ตกลงใน ticket นี้)**: งาน ingest โน้ตทำใน main session
+โดยตรง — เป็นงานเลขานุการจัดเก็บ ไม่ใช่ lesson/code · CLAUDE.md มี exception bullet
+ชี้มาที่ skill แล้ว · escalation ไป fable ยังต้องขอ permission ทุกครั้งตามเดิม
+
+- **AWS-EN1** — `notes.md` (เอกสารสรุปสังเคราะห์ข้ามโจทย์) + `review-again.md` +
+  SKILL.md · seed จากสรุป 6 ข้อจริงของผู้ใช้ (Kinesis anonymization, Auto Scaling,
+  S3 hotlinking, FSx SharePoint, FSx ONTAP, SAML federation)
+- **AWS-EN2** (ยังไม่เริ่ม) — หน้าเว็บ read-only: Next.js static export อ่าน markdown
+  ชุดนี้ตอน build (ไม่แตะ Go API / MySQL — additive ล้วน ๆ) ทำเมื่อไหร่ก็ได้
+  ไม่ gate กับ AWS-C* และไม่ block อะไร
+- โน้ตที่จดเพิ่มหลังจากนี้เข้า develop ผ่าน PR 🟢 batch ต่อรอบอ่าน (branch
+  `notes/aws-exam-YYYYMMDD`) ตามที่ skill กำหนด — ไม่ต้องเปิด ticket ใหม่ต่อรอบ
+
+**Status (AWS-EN1)**: implemented · code-reviewer round 1 = FIX → แก้ครบทั้ง 9 required
+(read-strategy ขัด merge invariant, template ครบทุกไฟล์, idempotent stats + question id,
+currency check, KDS retention fact, refs rule ขัดกันเอง, exception warrant,
+ticket record ครบ, rebase ฐานจาก aws-c0-pilot → develop) + suggested หลัก ๆ
+(Firehose destinations เปิดปลาย, traps เรียงตามตัวนับ, category tie-break, quiz 2–4,
+fable ต้องขอ permission) + follow-up loop / `review-again.md` ตาม requirement
+เพิ่มของผู้ใช้ระหว่าง ticket · round 2 = FIX เฉพาะ feature ใหม่ 3 จุด (ตัวนับ `เจอซ้ำ`
++ ordering, scope filter follow-up, id scheme + ตัวคั่น) + 4 minor → แก้ครบ ·
+round 3 = **redesign ตาม feedback ผู้ใช้** ("เหมือนไม่ได้อะไร"): ยุบ 6 ไฟล์
+(index/keyword-map/traps/glossary/patterns) เหลือ `notes.md` เอกสารสังเคราะห์
+ไฟล์เดียวตามตัวอย่างจริงที่ผู้ใช้ให้, ตัด quiz ออก, เพิ่มการแปลเฉลยไทยต่อข้อ —
+PR pending review
+
+**Review focus (AWS-EN1)**:
+
+1. ทำไม skill ต้อง**ผสาน**บทเรียนเข้า section เดิมของ `notes.md` แทนการ append
+   entry รายข้อต่อท้ายไฟล์?
+2. ทำไมจำนวนโจทย์ในหัวไฟล์ต้อง recompute จาก comment `<!-- ids: -->` แทนการ +1?
+3. ทำไมยังต้องมี currency check เทียบ `aws-currency-checklist.md` ทุกรอบ ทั้งที่
+   เฉลยของ practice exam ก็เขียนโดยคนที่รู้ AWS อยู่แล้ว?
