@@ -47,7 +47,7 @@ func TestMeasure_CorrectAnswerAlwaysLongest_LengthHeuristicIsHundredPercent(t *t
 }
 
 func TestMeasure_AllOptionsEqualLength_LengthHeuristicNearBaseline(t *testing.T) {
-	// All three options tie for longest, so LongestOptionIndex always picks
+	// All three options tie for longest, so longestOptionIndex always picks
 	// index 0 (documented tie-break). The correct answer cycles evenly
 	// through indices 0/1/2 (100 of each across 300 questions), so a
 	// heuristic that always guesses index 0 hits exactly 100/300 = 1/3 of
@@ -142,6 +142,28 @@ func TestMeasure_BaselineForFourOptionCorpusIsOneQuarter(t *testing.T) {
 	}
 	if got, want := overall.Length.AvgBaseline(), 0.25; !almostEqual(got, want, floatEps) {
 		t.Errorf("baseline = %v, want %v (1/len(options), not a hardcoded 33%%)", got, want)
+	}
+}
+
+func TestMeasure_TooFewOptionsAborts(t *testing.T) {
+	// A single-option question would otherwise pass ExpectedIndex trivially
+	// (there is only one option to match) and then silently contribute a
+	// Baseline() of 1.0 to AvgBaseline, understating the whole corpus's
+	// computed excess without anyone noticing — the same "quietly wrong"
+	// failure mode Measure already refuses for a missing expected answer.
+	questions := []Question{
+		{Track: "t", Source: "one-option.json", Options: []string{"only-choice"}, ExpectedAnswer: "only-choice"},
+	}
+
+	_, _, err := Measure(questions)
+	if err == nil {
+		t.Fatal("Measure() error = nil, want an error naming the too-few-options question")
+	}
+	if !strings.Contains(err.Error(), "one-option.json") {
+		t.Errorf("Measure() error = %q, want it to name the offending source file", err.Error())
+	}
+	if !strings.Contains(err.Error(), "1 option") {
+		t.Errorf("Measure() error = %q, want it to name the actual option count", err.Error())
 	}
 }
 

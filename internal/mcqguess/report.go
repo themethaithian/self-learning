@@ -2,6 +2,17 @@ package mcqguess
 
 import "fmt"
 
+// minMeasurableOptions mirrors the curriculum domain's minMCQOptions
+// (internal/curriculum/domain/recallcheck.go): an mcq with fewer than 2
+// options is not a guessing problem at all. This package bypasses that
+// domain check on purpose (see Measure's doc comment), so it must enforce
+// the same floor itself — a 1-option question would otherwise pass the
+// "expected answer is among the options" check trivially (there is only one
+// option to match) and then silently drag AvgBaseline up (Baseline() = 1.0
+// for a single option), making the whole corpus's computed excess look
+// smaller than it really is.
+const minMeasurableOptions = 2
+
 // Report aggregates heuristic results over a group of mcq questions: either
 // one track (Track != "") or the whole corpus (Track == ""). Position is
 // keyed by 0-based guessed index; a HeuristicResult for index p is only
@@ -35,6 +46,11 @@ func Measure(questions []Question) (overall Report, byTrack map[string]Report, e
 	byTrack = map[string]Report{}
 
 	for i, q := range questions {
+		if len(q.Options) < minMeasurableOptions {
+			return Report{}, nil, fmt.Errorf(
+				"mcqguess: question %d (source %q): mcq has %d option(s), need at least %d to measure guessability",
+				i, q.Source, len(q.Options), minMeasurableOptions)
+		}
 		expectedIdx, ok := q.ExpectedIndex()
 		if !ok {
 			return Report{}, nil, fmt.Errorf(
@@ -58,7 +74,7 @@ func accumulate(r *Report, q Question, expectedIdx int) {
 	r.NumMCQs++
 	baseline := q.Baseline()
 
-	longest := LongestOptionIndex(q.Options)
+	longest := longestOptionIndex(q.Options)
 	r.Length.add(longest == expectedIdx, baseline)
 
 	if last := len(q.Options) - 1; last > r.MaxIndex {

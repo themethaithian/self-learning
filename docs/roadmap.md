@@ -81,10 +81,13 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
   เปลี่ยนชื่อ branch, ดูรายละเอียดที่ aws-cert.md)
 - [ ] AWS-S2 (ยังไม่เริ่ม) — multiple-response support (second correct answer, "Select TWO",
   all-or-nothing scoring)
-- [x] AWS-S3 (implemented, PR pending) — `cmd/mcq-guessability` + `internal/mcqguess`:
-  guessability measurement tool ที่ parameterize baseline ได้ (`1/len(options)` ต่อข้อ, ไม่ hardcode)
-  รายละเอียดเต็ม + ตัวเลขที่วัดได้จริงอยู่ที่ [aws-cert.md](tickets/aws-cert.md)'s "AWS-S3" section —
-  **เกท 25% ของคลังข้อสอบจริง (AWS-C1..C4) ใช้งานได้แล้ว** (`-max-excess`), ยังไม่ได้ wire เข้า CI/Makefile
+- [x] AWS-S3 (implemented, code review round 2 fixes applied, PR pending) —
+  `cmd/mcq-guessability` + `internal/mcqguess`: guessability measurement tool ที่ parameterize
+  baseline ได้ (`1/len(options)` ต่อข้อ, ไม่ hardcode), gate ต่อ track (ไม่ใช่ pooled — กัน dilution),
+  ขั้นต่ำจำนวนตัวอย่างก่อนเกทตัดสิน (`MinSampleSize`) รายละเอียดเต็ม + ตัวเลขที่วัดได้จริงอยู่ที่
+  [aws-cert.md](tickets/aws-cert.md)'s "AWS-S3" section — **เกท 25% ของคลังข้อสอบจริง (AWS-C1..C4)
+  ใช้งานได้แล้วสำหรับ single-answer mcq** (`-max-excess`, ยังไม่ครอบคลุม AWS-S2's multiple-response),
+  ยังไม่ได้ wire เข้า CI/Makefile
 - [ ] AWS-C1..C4 (ยังไม่ตัดชื่อ, gated บน AWS-S1/S2) — เขียนคลังข้อสอบทีละ domain ตามแผนใน
   aws-cert.md
 
@@ -115,11 +118,16 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
   +0.3% / +0.3% / −0.6%) ทั้งสองอย่างอยู่ใกล้ baseline มาก ไม่ใช่ tell ที่มีนัยสำคัญ — เลขเดิมที่บันทึกไว้
   ในเอกสารรุ่นก่อน (length 33.7%, position 33.4%) **ใกล้เคียงแต่ไม่ตรงเป๊ะ**: ยืนยันแล้วว่า**ไม่ใช่**
   เพราะ corpus เปลี่ยน (AWS-S1's import-parity MD5 check ยืนยันว่า 356 recall_checks ไบต์เดิมทุกตัวตั้งแต่
-  PR #43) ที่น่าจะเป็นไปได้มากที่สุดคือ tie-break rule ของ ad hoc script เดิม (สูญหายแล้ว ไม่มีใน version
-  control ให้ตรวจสอบจริง) ต่างจาก tool ใหม่ (เลือก index ต่ำสุดเมื่อความยาวเสมอกัน) — รายงานความต่างนี้
-  ไว้ตรง ๆ แทนที่จะเลือกใช้เลขใดเลขหนึ่งอย่างเงียบ ๆ ตัวเลข **89.6%** (ก่อนแก้ #38) เป็นค่าย้อนหลังที่
-  วัดซ้ำไม่ได้แล้วเพราะ corpus ถูก rewrite ไปใน PR #43 — รายละเอียดเต็ม + mutation table อยู่ที่
-  [aws-cert.md](tickets/aws-cert.md)'s "AWS-S3" section
+  PR #43) — **แก้ในรอบ code review**: ข้อความรุ่นแรกที่นี่อ้างว่า tie-break rule "น่าจะเป็นไปได้มากที่สุด"
+  โดยไม่เคยคำนวณจริง ผิด — นับ tie จริงจาก corpus (13 ข้อเสมอ, 12 ชนะได้) แล้วคำนวณขอบเขตของทุก
+  tie-break rule ได้ **30.90%–34.27%** ตัวเลข 33.7% (120/356 hits) แม้อยู่ในช่วงนั้นเชิงตัวเลขก็ต้องการ
+  ถูก 10/12 tie พอดี (โอกาสสุ่ม p≈0.85% เท่านั้น) — **ช่องว่างนี้จึงยัง unexplained ไม่ใช่ tie-break**
+  ตัวเลข **89.6%** (ก่อนแก้ #38) ก็แก้เช่นกัน: ข้อความรุ่นแรกอ้างว่า "วัดซ้ำไม่ได้โดยหลักการเพราะ corpus
+  ถูก rewrite" ซึ่งเป็นการอนุมานที่ผิด — กู้คืน corpus ก่อน PR #43 ด้วย `git archive 6b1a765
+  content/lessons` แล้ววัดจริงได้ length heuristic **36.8%** (ไม่ใช่ 89.6%) ไม่มี heuristic ง่าย ๆ ตัว
+  ไหนเข้าใกล้ 89.6% เลย — **89.6% วัดซ้ำได้จริง ผลคือไม่ reproduce ใต้ heuristic ใด ๆ ที่ลองมา ที่มาของ
+  เลขนี้ยังไม่ทราบแน่ชัด** รายละเอียดเต็ม (ตาราง tie-break bound, การ derive ความน่าจะเป็น, คำสั่งกู้คืน
+  corpus) อยู่ที่ [aws-cert.md](tickets/aws-cert.md)'s "AWS-S3" section
 
 ### Phase 3 — guided learning path ✅ ([รายละเอียด](tickets/ux-today.md))
 - [x] UX-1 (#40) `has_lesson`/`est_minutes` บน curriculum API

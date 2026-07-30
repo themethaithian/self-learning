@@ -12,20 +12,26 @@ type Question struct {
 	ExpectedAnswer string
 }
 
-// Baseline is the random-guess hit rate for this question alone. It is
-// always 1/len(Options), never a fixed 33% or 25%: a corpus that mixes
+// Baseline is 1/len(Options), never a fixed 33% or 25%: a corpus that mixes
 // 3-option and 4-option questions has a different correct baseline per
 // question, and collapsing that into one shared number is the exact
-// measurement bug this package exists to avoid.
+// measurement bug this package exists to avoid. Callers must not invoke
+// this on a Question with fewer than 2 options (Measure enforces that
+// floor before calling it) — 0 options divides by zero and 1 option
+// silently reports a baseline of 1.0, both meaningless as a guessing
+// problem, so this returns 0 rather than +Inf or NaN for that unreachable
+// case.
 func (q Question) Baseline() float64 {
+	if len(q.Options) == 0 {
+		return 0
+	}
 	return 1 / float64(len(q.Options))
 }
 
-// ExpectedIndex returns the 0-based index of ExpectedAnswer within Options.
-// ok is false when the expected answer is not among the options at all —
-// callers must treat that as a corpus error, not a silently-skipped row,
-// since a missing index makes every heuristic's hit/miss undefined for that
-// question.
+// ExpectedIndex reports whether ExpectedAnswer is among Options and, if so,
+// at what index. Callers must treat ok == false as a corpus error, not a
+// silently-skipped row, since a missing index makes every heuristic's
+// hit/miss undefined for that question.
 func (q Question) ExpectedIndex() (index int, ok bool) {
 	for i, opt := range q.Options {
 		if opt == q.ExpectedAnswer {

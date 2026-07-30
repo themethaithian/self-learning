@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -83,6 +84,29 @@ func TestLoadQuestions_IgnoresNonJSONFiles(t *testing.T) {
 	}
 	if len(questions) != 1 {
 		t.Errorf("LoadQuestions() returned %d questions, want 1 (non-.json file must be ignored)", len(questions))
+	}
+}
+
+func TestLoadQuestions_MalformedJSONErrors(t *testing.T) {
+	// "Skip files we can't parse" is the most natural-looking robustness
+	// refactor anyone will propose for a directory walk like this — it
+	// would silently drop a whole file from the denominator and print a
+	// perfectly plausible number for the files that remain, which is
+	// exactly the failure mode this package exists to prevent. This locks
+	// in that a decode error surfaces as an error, naming the file, rather
+	// than as a quietly shorter question list.
+	dir := t.TempDir()
+	writeFixture(t, filepath.Join(dir, "broken-topic", "concept.json"), `{
+		"topic": "broken-topic",
+		"recall_checks": [
+	`)
+
+	_, err := LoadQuestions(dir)
+	if err == nil {
+		t.Fatal("LoadQuestions() error = nil, want an error naming the malformed file")
+	}
+	if !strings.Contains(err.Error(), "concept.json") {
+		t.Errorf("LoadQuestions() error = %q, want it to name the malformed file", err.Error())
 	}
 }
 

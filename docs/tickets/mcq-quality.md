@@ -18,15 +18,22 @@
   `go run ./cmd/mcq-guessability -dir content/lessons`: corpus 356 MCQ ทุกข้อมี 3 ตัวเลือก
   (baseline 33.3%) → length heuristic **32.6%** (excess −2.2% เทียบ baseline) · position heuristic
   index 0/1/2 = **33.4% / 33.4% / 33.1%** (excess +0.3% / +0.3% / −0.6%) ทั้งคู่ใกล้ baseline มาก
-  ไม่ใช่ tell — ก่อนแก้ (#38): **89.6%** (ค่าย้อนหลัง วัดซ้ำไม่ได้แล้วเพราะ corpus ถูก rewrite ไปใน
-  PR #43)
-- **หมายเหตุ**: ตัวเลขชุดก่อน (length 33.7% / position 33.4%, บันทึกไว้ตอน C-mcq-balance #43) **ใกล้
-  เคียงแต่ไม่ตรงเป๊ะ**กับตัวเลขข้างบนที่วัดซ้ำด้วย tool จริงตอนนี้ — ยืนยันแล้วว่า**ไม่ใช่**เพราะ corpus
-  เปลี่ยน (AWS-S1's import-parity MD5 check ยืนยันว่า 356 recall_checks ไบต์เดิมทุกตัวตั้งแต่ PR #43)
-  ที่เป็นไปได้มากที่สุดคือ tie-break rule ของ ad hoc script เดิม (สูญหายแล้ว ไม่มีใน version control
-  ให้ตรวจสอบจริง) ต่างจาก tool ใหม่ (เลือก index ต่ำสุดเมื่อความยาวเสมอกัน, deterministic) — รายงานความ
-  ต่างนี้ไว้ตรง ๆ แทนที่จะเลือกใช้เลขใดเลขหนึ่งอย่างเงียบ ๆ รายละเอียดเต็มของ tool + mutation table อยู่ที่
-  [aws-cert.md](aws-cert.md)'s "AWS-S3" section
+  ไม่ใช่ tell
+- **89.6% (ก่อนแก้ #38) วัดซ้ำได้จริง** — กู้คืน corpus ก่อน PR #43 ด้วย `git archive 6b1a765
+  content/lessons | tar -x -C <tmp>` แล้วรัน tool จริงได้ length heuristic **36.8%** (ไม่ใช่ 89.6%)
+  heuristic กว้างกว่าที่ลองเพิ่ม (correct-is-longest 38.2%, correct-is-shortest 33.1%,
+  correct-is-either-extreme 70.5%, correct-longer-than-mean 53.4%) ก็ไม่มีตัวไหนเข้าใกล้ 89.6% เลย —
+  **89.6% วัดซ้ำได้จริง ผลคือไม่ reproduce ใต้ heuristic ง่าย ๆ ตัวไหนที่ลองมา ที่มาของเลขนี้ยังไม่ทราบ
+  แน่ชัด** (แก้จากข้อความรุ่นแรกที่อ้างผิดว่า "วัดซ้ำไม่ได้โดยหลักการ" — corpus ก่อน rewrite ยังอยู่ใน
+  git history เต็ม ๆ ไม่มีอะไร "วัดไม่ได้" จริง)
+- **ตัวเลขชุดก่อน (length 33.7% / position 33.4%, บันทึกไว้ตอน C-mcq-balance #43) ใกล้เคียงแต่ไม่ตรงเป๊ะ**
+  กับตัวเลขข้างบนที่วัดซ้ำด้วย tool จริงตอนนี้ — ยืนยันแล้วว่า**ไม่ใช่**เพราะ corpus เปลี่ยน (AWS-S1's
+  import-parity MD5 check ยืนยันว่า 356 recall_checks ไบต์เดิมทุกตัวตั้งแต่ PR #43) **ไม่ใช่ tie-break
+  rule เช่นกัน** (แก้จากข้อความรุ่นแรกที่อ้างแบบไม่คำนวณ) — นับ tie จริง (13 ข้อเสมอ, 12 ชนะได้) แล้ว
+  คำนวณขอบเขตของทุก correctness-blind tie-break rule ได้ **30.90%–34.27%** ส่วน 33.7% (120/356 hits)
+  ต้องการถูก 10/12 tie พอดี (p≈0.85% ถ้าสุ่ม) — **ช่องว่างนี้จึงยัง unexplained** ไม่ใช่ tie-break
+  รายงานไว้ตรง ๆ แทนที่จะเลือกใช้เลขใดเลขหนึ่งอย่างเงียบ ๆ รายละเอียดเต็มของ tool + mutation table +
+  ตารางขอบเขต tie-break อยู่ที่ [aws-cert.md](aws-cert.md)'s "AWS-S3" section
 
 ## บทเรียนที่ 1 — วัดให้ตรงโจทย์
 

@@ -11,6 +11,7 @@ func TestQuestionBaseline(t *testing.T) {
 		{name: "three options", options: []string{"a", "b", "c"}, want: 1.0 / 3.0},
 		{name: "four options", options: []string{"a", "b", "c", "d"}, want: 0.25},
 		{name: "two options", options: []string{"a", "b"}, want: 0.5},
+		{name: "zero options guards against divide-by-zero", options: nil, want: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

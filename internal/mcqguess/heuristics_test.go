@@ -40,8 +40,8 @@ func TestLongestOptionIndex(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := LongestOptionIndex(tt.options); got != tt.want {
-				t.Errorf("LongestOptionIndex(%v) = %d, want %d", tt.options, got, tt.want)
+			if got := longestOptionIndex(tt.options); got != tt.want {
+				t.Errorf("longestOptionIndex(%v) = %d, want %d", tt.options, got, tt.want)
 			}
 		})
 	}

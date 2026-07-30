@@ -2,7 +2,7 @@ package mcqguess
 
 import "unicode/utf8"
 
-// LongestOptionIndex returns the index of the option with the most Unicode
+// longestOptionIndex returns the index of the option with the most Unicode
 // code points (runes), not bytes: Thai text runs about 3 bytes per
 // character, so a byte-based length would rank a short Thai option as
 // "longer" than a longer English one, which is a different and wrong
@@ -10,8 +10,11 @@ import "unicode/utf8"
 // "always pick the longest-looking one" test-taker scans top to bottom and
 // commits to the first option that looks longest, and a deterministic rule
 // keeps this tool's output reproducible run to run — a random tie-break
-// would make the gate flaky for no reason.
-func LongestOptionIndex(options []string) int {
+// would make the gate flaky for no reason. Unexported (rather than guarded
+// against an empty slice) because Measure is its only caller and Measure
+// already rejects fewer than 2 options before this ever runs — there is no
+// legitimate external caller for this to protect against.
+func longestOptionIndex(options []string) int {
 	best := 0
 	bestLen := utf8.RuneCountInString(options[0])
 	for i := 1; i < len(options); i++ {
@@ -41,8 +44,6 @@ func (h *HeuristicResult) add(hit bool, baseline float64) {
 	}
 }
 
-// HitRate is the fraction of considered questions the heuristic guessed
-// correctly.
 func (h HeuristicResult) HitRate() float64 {
 	if h.Total == 0 {
 		return 0

@@ -60,8 +60,11 @@ func writeGateStraddlingFixture(t *testing.T, dir string) {
 
 // This fixture's length-heuristic excess is exactly 0.20 (30% hit rate vs
 // 25% baseline) — see internal/mcqguess's gate_test.go for the identical
-// construction and the arithmetic behind it. Running it through the full
-// CLI pipeline (not just EvaluateGate directly) proves main.go's own exit
+// construction and the exact arithmetic (including why the position-3
+// heuristic moves together with the length heuristic here, not
+// independently — they are the same guess on this fixture by construction,
+// so both cross the threshold at once). Running it through the full CLI
+// pipeline (not just EvaluateTrackGates directly) proves main.go's own exit
 // code wiring, not just the internal package's gate logic in isolation.
 func TestRun_GateStraddlingCorpus_ExitCodeFlips(t *testing.T) {
 	dir := t.TempDir()
@@ -79,8 +82,72 @@ func TestRun_GateStraddlingCorpus_ExitCodeFlips(t *testing.T) {
 	if code := run(dir, 0.19, &failBuf); code != 1 {
 		t.Errorf("run() at max-excess=0.19 = %d, want 1", code)
 	}
-	if !strings.Contains(failBuf.String(), "Gate: FAIL") {
-		t.Errorf("output missing \"Gate: FAIL\":\n%s", failBuf.String())
+	out := failBuf.String()
+	if !strings.Contains(out, "Gate: FAIL") {
+		t.Errorf("output missing \"Gate: FAIL\":\n%s", out)
+	}
+	if !strings.Contains(out, "length heuristic") || !strings.Contains(out, "index 3") {
+		t.Errorf("output missing both expected violations (length heuristic AND position index 3):\n%s", out)
+	}
+}
+
+func TestRun_PerTrackGateCatchesWhatPooledWouldMiss(t *testing.T) {
+	// End-to-end version of the internal package's dilution test: a large
+	// fair track (0% excess) plus a small bad track (60% excess) pools to
+	// 15% overall — comfortably under a 20% threshold the bad track alone
+	// fails badly. If run() gated on the pooled figure instead of per
+	// track, this would exit 0.
+	dir := t.TempDir()
+
+	fairOptions := []string{"opt-A", "opt-B", "opt-C", "opt-D"}
+	var fairChecks []fixtureCheck
+	for i := 0; i < 300; i++ {
+		fairChecks = append(fairChecks, fixtureCheck{Q: "q", ExpectedAnswer: fairOptions[i%4], Type: "mcq", Options: fairOptions})
+	}
+	writeLessonFixture(t, dir, "fair-track", fairChecks)
+
+	badOptions := []string{"short-a", "short-b", "short-c", "the much longer fourth option here"}
+	var badChecks []fixtureCheck
+	pick := func(idx int) fixtureCheck {
+		return fixtureCheck{Q: "q", ExpectedAnswer: badOptions[idx], Type: "mcq", Options: badOptions}
+	}
+	for i := 0; i < 40; i++ {
+		badChecks = append(badChecks, pick(3))
+	}
+	for i := 0; i < 20; i++ {
+		badChecks = append(badChecks, pick(0))
+	}
+	for i := 0; i < 20; i++ {
+		badChecks = append(badChecks, pick(1))
+	}
+	for i := 0; i < 20; i++ {
+		badChecks = append(badChecks, pick(2))
+	}
+	writeLessonFixture(t, dir, "bad-track", badChecks)
+
+	var buf bytes.Buffer
+	code := run(dir, 0.20, &buf)
+	if code != 1 {
+		t.Errorf("run() at max-excess=0.20 = %d, want 1 (bad-track's 60%% excess must fail even though pooling would hide it)\noutput:\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "[bad-track]") {
+		t.Errorf("output missing a violation naming bad-track:\n%s", buf.String())
+	}
+}
+
+func writeLessonFixture(t *testing.T, dir, topic string, checks []fixtureCheck) {
+	t.Helper()
+	lesson := fixtureLesson{Topic: topic, RecallChecks: checks}
+	raw, err := json.Marshal(lesson)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	topicDir := filepath.Join(dir, topic)
+	if err := os.MkdirAll(topicDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(topicDir, "concept.json"), raw, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
 	}
 }
 
