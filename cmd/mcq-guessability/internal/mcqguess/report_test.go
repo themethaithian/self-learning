@@ -29,7 +29,7 @@ func questionsWithExpectedIndices(track string, options []string, expectedIdxs [
 	return qs
 }
 
-func TestMeasure_CorrectAnswerAlwaysLongest_LengthHeuristicIsHundredPercent(t *testing.T) {
+func TestMeasure_CorrectAnswerAlwaysLongest_LongestHeuristicIsHundredPercent(t *testing.T) {
 	options := []string{"short", "a bit longer", "the very longest option here"}
 	idxs := make([]int, 10)
 	for i := range idxs {
@@ -41,12 +41,12 @@ func TestMeasure_CorrectAnswerAlwaysLongest_LengthHeuristicIsHundredPercent(t *t
 	if err != nil {
 		t.Fatalf("Measure() error = %v", err)
 	}
-	if got := overall.Length.HitRate(); got != 1.0 {
-		t.Errorf("Length.HitRate() = %v, want 1.0 (100%%)", got)
+	if got := overall.Longest.HitRate(); got != 1.0 {
+		t.Errorf("Longest.HitRate() = %v, want 1.0 (100%%)", got)
 	}
 }
 
-func TestMeasure_AllOptionsEqualLength_LengthHeuristicNearBaseline(t *testing.T) {
+func TestMeasure_AllOptionsEqualLength_LongestHeuristicNearBaseline(t *testing.T) {
 	// All three options tie for longest, so longestOptionIndex always picks
 	// index 0 (documented tie-break). The correct answer cycles evenly
 	// through indices 0/1/2 (100 of each across 300 questions), so a
@@ -63,11 +63,82 @@ func TestMeasure_AllOptionsEqualLength_LengthHeuristicNearBaseline(t *testing.T)
 	if err != nil {
 		t.Fatalf("Measure() error = %v", err)
 	}
-	if got, want := overall.Length.HitRate(), overall.Length.AvgBaseline(); !almostEqual(got, want, floatEps) {
-		t.Errorf("Length.HitRate() = %v, want == AvgBaseline() %v (within %v)", got, want, floatEps)
+	if got, want := overall.Longest.HitRate(), overall.Longest.AvgBaseline(); !almostEqual(got, want, floatEps) {
+		t.Errorf("Longest.HitRate() = %v, want == AvgBaseline() %v (within %v)", got, want, floatEps)
 	}
-	if got, want := overall.Length.ExcessRatio(), 0.0; !almostEqual(got, want, floatEps) {
-		t.Errorf("Length.ExcessRatio() = %v, want %v", got, want)
+	if got, want := overall.Longest.ExcessRatio(), 0.0; !almostEqual(got, want, floatEps) {
+		t.Errorf("Longest.ExcessRatio() = %v, want %v", got, want)
+	}
+}
+
+func TestMeasure_CorrectAnswerAlwaysShortest_ShortestHeuristicIsHundredPercent(t *testing.T) {
+	options := []string{"the very shortest one", "a bit longer than that", "long"}
+	idxs := make([]int, 10)
+	for i := range idxs {
+		idxs[i] = 2 // "long" — the shortest option, unambiguously
+	}
+	questions := questionsWithExpectedIndices("t", options, idxs)
+
+	overall, _, err := Measure(questions)
+	if err != nil {
+		t.Fatalf("Measure() error = %v", err)
+	}
+	if got := overall.Shortest.HitRate(); got != 1.0 {
+		t.Errorf("Shortest.HitRate() = %v, want 1.0 (100%%)", got)
+	}
+}
+
+func TestMeasure_CorrectAnswerAlwaysMiddle_MiddleHeuristicIsHundredPercent(t *testing.T) {
+	// "สั้น" (4 runes) < "กลางกลาง" (8 runes) < "ยาวมากมากมากมากมาก" (19 runes)
+	// — three distinct lengths, so index 1 is the sole middle option: not
+	// the longest, not the shortest. This is the exact shape of rule
+	// mcq-quality.md's "บทเรียนที่ 1" names as the one that made an earlier
+	// corpus 89.6% guessable (see docs/tickets/aws-cert.md's AWS-S3 "N3"
+	// finding): forcing the answer to be non-extreme in a 3-option question
+	// pins it to a single option.
+	options := []string{"สั้น", "กลางกลาง", "ยาวมากมากมากมากมาก"}
+	idxs := make([]int, 10)
+	for i := range idxs {
+		idxs[i] = 1 // the middle-length option, unambiguously
+	}
+	questions := questionsWithExpectedIndices("t", options, idxs)
+
+	overall, _, err := Measure(questions)
+	if err != nil {
+		t.Fatalf("Measure() error = %v", err)
+	}
+	if got := overall.Middle.HitRate(); got != 1.0 {
+		t.Errorf("Middle.HitRate() = %v, want 1.0 (100%%)", got)
+	}
+	if got := overall.Longest.HitRate(); got != 0.0 {
+		t.Errorf("Longest.HitRate() = %v, want 0.0: the always-correct answer here is never the longest option", got)
+	}
+	if got := overall.Shortest.HitRate(); got != 0.0 {
+		t.Errorf("Shortest.HitRate() = %v, want 0.0: the always-correct answer here is never the shortest option", got)
+	}
+}
+
+func TestMeasure_MiddleOptionIndex_BoundaryCases(t *testing.T) {
+	// Mirrors middleOptionIndex's own unit tests in heuristics_test.go, but
+	// through the full Measure pipeline: a question with no middle option
+	// still counts toward Middle's sample (Total == NumMCQs, same as
+	// Longest/Shortest) — it is an automatic miss, not an exclusion. See
+	// Report's doc comment for why this differs from Position.
+	twoOption := questionsWithExpectedIndices("two-opt", []string{"a", "bb"}, []int{0, 1, 0, 1})
+	threeOptionTwoLengths := questionsWithExpectedIndices("tied-extremes", []string{"aa", "bb", "cccc"}, []int{0, 1, 2})
+
+	overall, _, err := Measure(append(twoOption, threeOptionTwoLengths...))
+	if err != nil {
+		t.Fatalf("Measure() error = %v", err)
+	}
+	if got := overall.Middle.Total; got != 7 {
+		t.Errorf("Middle.Total = %d, want 7 (== NumMCQs): a question with no valid middle is a miss, not an exclusion", got)
+	}
+	if got := overall.Middle.Hits; got != 0 {
+		t.Errorf("Middle.Hits = %d, want 0: none of these fixtures has a question with 3 distinct lengths, so none can hit", got)
+	}
+	if got := overall.Longest.Total; got != 7 {
+		t.Errorf("Longest.Total = %d, want 7", got)
 	}
 }
 
@@ -102,21 +173,21 @@ func TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither(
 		t.Fatalf("Measure() error = %v", err)
 	}
 
-	if got, want := byTrack["three-opt"].Length.AvgBaseline(), 1.0/3.0; !almostEqual(got, want, floatEps) {
+	if got, want := byTrack["three-opt"].Longest.AvgBaseline(), 1.0/3.0; !almostEqual(got, want, floatEps) {
 		t.Errorf("three-opt track baseline = %v, want %v", got, want)
 	}
-	if got, want := byTrack["four-opt"].Length.AvgBaseline(), 0.25; !almostEqual(got, want, floatEps) {
+	if got, want := byTrack["four-opt"].Longest.AvgBaseline(), 0.25; !almostEqual(got, want, floatEps) {
 		t.Errorf("four-opt track baseline = %v, want %v", got, want)
 	}
 
 	wantOverall := (3.0*(1.0/3.0) + 3.0*0.25) / 6.0 // 0.291666...
-	if got := overall.Length.AvgBaseline(); !almostEqual(got, wantOverall, floatEps) {
+	if got := overall.Longest.AvgBaseline(); !almostEqual(got, wantOverall, floatEps) {
 		t.Errorf("overall baseline = %v, want %v (weighted mean, not either track's own baseline)", got, wantOverall)
 	}
-	if almostEqual(overall.Length.AvgBaseline(), 1.0/3.0, floatEps) {
+	if almostEqual(overall.Longest.AvgBaseline(), 1.0/3.0, floatEps) {
 		t.Errorf("overall baseline equals the three-opt track's baseline verbatim — per-track aggregation looks collapsed into one shared value")
 	}
-	if almostEqual(overall.Length.AvgBaseline(), 0.25, floatEps) {
+	if almostEqual(overall.Longest.AvgBaseline(), 0.25, floatEps) {
 		t.Errorf("overall baseline equals the four-opt track's baseline verbatim — per-track aggregation looks collapsed into one shared value")
 	}
 }
@@ -128,7 +199,7 @@ func TestMeasure_BaselineForThreeOptionCorpusIsOneThird(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Measure() error = %v", err)
 	}
-	if got, want := overall.Length.AvgBaseline(), 1.0/3.0; !almostEqual(got, want, floatEps) {
+	if got, want := overall.Longest.AvgBaseline(), 1.0/3.0; !almostEqual(got, want, floatEps) {
 		t.Errorf("baseline = %v, want %v (1/len(options), not a hardcoded 25%%)", got, want)
 	}
 }
@@ -140,7 +211,7 @@ func TestMeasure_BaselineForFourOptionCorpusIsOneQuarter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Measure() error = %v", err)
 	}
-	if got, want := overall.Length.AvgBaseline(), 0.25; !almostEqual(got, want, floatEps) {
+	if got, want := overall.Longest.AvgBaseline(), 0.25; !almostEqual(got, want, floatEps) {
 		t.Errorf("baseline = %v, want %v (1/len(options), not a hardcoded 33%%)", got, want)
 	}
 }

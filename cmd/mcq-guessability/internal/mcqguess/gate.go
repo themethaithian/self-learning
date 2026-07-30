@@ -5,12 +5,22 @@ import (
 	"sort"
 )
 
-// GateResult is the pass/fail verdict of comparing a Report's heuristics
-// against a maximum tolerated relative excess over baseline. Insufficient
-// lists heuristics that were skipped rather than judged because their
-// sample was below MinSampleSize — those never contribute to Failed.
+// GateResult is the verdict of comparing a Report's heuristics against a
+// maximum tolerated relative excess over baseline. It has three terminal
+// states, not two: Requested is false when the gate was never asked to run
+// (maxExcessRatio < 0 — report-only mode); when Requested is true, Judged
+// counts how many heuristics actually had enough samples to compare against
+// maxExcessRatio (see MinSampleSize) — Failed is only meaningful once
+// Judged > 0. A Requested gate with Judged == 0 measured nothing at all
+// (every heuristic's sample was too small), and ExitCode treats that the
+// same as failure: a gate that could not measure anything must not report
+// success, the same principle run() already applies when a directory has
+// zero mcq questions in it. Insufficient lists the heuristics that were
+// skipped rather than judged; those never contribute to Failed or Judged.
 type GateResult struct {
+	Requested    bool
 	Failed       bool
+	Judged       int
 	Violations   []string
 	Insufficient []string
 }
@@ -23,38 +33,45 @@ type GateResult struct {
 // (1 + max-excess), at max-excess = 0.25): a heuristic that is truly fair
 // (hit rate == baseline) still false-FAILs about 19.7% of the time at
 // n=30, 6.9% at n=100, and 0.05% at n=550. n=550 would be the safe choice,
-// but it would permanently exclude the domain-driven-design track (11
-// mcqs today) — and any future small track, plus AWS-S2's 5th
-// (multiple-response) option position, which will start small too — from
-// ever being gated at all. 100 is a deliberate middle ground between "too
-// noisy to trust" and "too strict to ever fire on this repo's real
-// tracks", not the statistically safest option.
+// but it would exclude tracks sized 100-549 from ever being gated at all —
+// this repo's own ai-and-llm-systems (158 mcqs) and
+// designing-data-intensive-applications (187 mcqs) tracks both clear 100
+// today and would both lose gate coverage permanently at 550, and AWS-S2's
+// 5th (multiple-response) option position will start small too. (A track
+// as small as domain-driven-design, 11 mcqs today, is excluded by both 100
+// and 550 — it is not the deciding example between them.) 100 is a
+// deliberate middle ground between "too noisy to trust" and "too strict to
+// ever fire on this repo's real tracks", not the statistically safest
+// option.
 const MinSampleSize = 100
 
-// EvaluateGate checks report's length heuristic and every position
-// heuristic with Total >= MinSampleSize against maxExcessRatio (e.g. 0.20
-// means "no heuristic may beat its own baseline by more than 20%,
-// relatively"). A negative maxExcessRatio disables the gate — report-only
-// mode, the default until a future ticket wires this into CI or a
-// Makefile target.
+// EvaluateGate checks report's longest-option, shortest-option, and
+// middle-option heuristics, plus every position heuristic, each with
+// Total >= MinSampleSize, against maxExcessRatio (e.g. 0.20 means "no
+// heuristic may beat its own baseline by more than 20%, relatively"). A
+// negative maxExcessRatio disables the gate — report-only mode, the
+// default until a future ticket wires this into CI or a Makefile target.
 //
-// Both the length and every position heuristic are checked, even though
-// Q-1 (web/lib/shuffle.ts) shuffles mcq options at render time so a stored
-// position bias never reaches the user: a position bias still signals
-// something wrong in how distractors were authored, and shuffling only
-// hides the symptom for this app's UI, not the underlying corpus defect.
+// All three length heuristics and every position heuristic are checked,
+// even though Q-1 (web/lib/shuffle.ts) shuffles mcq options at render time
+// so a stored position bias never reaches the user: a position bias still
+// signals something wrong in how distractors were authored, and shuffling
+// only hides the symptom for this app's UI, not the underlying corpus
+// defect. The longest/shortest/middle heuristics, unlike position, survive
+// the shuffle and reach the user directly.
 func EvaluateGate(report Report, maxExcessRatio float64) GateResult {
 	if maxExcessRatio < 0 {
 		return GateResult{}
 	}
 
-	var g GateResult
+	g := GateResult{Requested: true}
 	check := func(name string, h HeuristicResult) {
 		if h.Total < MinSampleSize {
 			g.Insufficient = append(g.Insufficient, fmt.Sprintf(
 				"%s: n=%d < minimum %d, not gated", name, h.Total, MinSampleSize))
 			return
 		}
+		g.Judged++
 		excess := h.ExcessRatio()
 		if excess > maxExcessRatio {
 			g.Failed = true
@@ -64,7 +81,9 @@ func EvaluateGate(report Report, maxExcessRatio float64) GateResult {
 		}
 	}
 
-	check("length heuristic", report.Length)
+	check("longest-option heuristic", report.Longest)
+	check("shortest-option heuristic", report.Shortest)
+	check("middle-option heuristic", report.Middle)
 	for pos := 0; pos <= report.MaxIndex; pos++ {
 		if hr, ok := report.Position[pos]; ok {
 			check(fmt.Sprintf("position heuristic (index %d)", pos), hr)
@@ -92,12 +111,13 @@ func EvaluateTrackGates(byTrack map[string]Report, maxExcessRatio float64) GateR
 	}
 	sort.Strings(tracks)
 
-	var g GateResult
+	g := GateResult{Requested: true}
 	for _, t := range tracks {
 		tg := EvaluateGate(byTrack[t], maxExcessRatio)
 		if tg.Failed {
 			g.Failed = true
 		}
+		g.Judged += tg.Judged
 		for _, v := range tg.Violations {
 			g.Violations = append(g.Violations, fmt.Sprintf("[%s] %s", t, v))
 		}
@@ -108,10 +128,11 @@ func EvaluateTrackGates(byTrack map[string]Report, maxExcessRatio float64) GateR
 	return g
 }
 
-// ExitCode maps a gate verdict to a process exit code, 1 on failure and 0
-// otherwise.
 func ExitCode(g GateResult) int {
-	if g.Failed {
+	if !g.Requested {
+		return 0
+	}
+	if g.Failed || g.Judged == 0 {
 		return 1
 	}
 	return 0

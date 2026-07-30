@@ -1,11 +1,15 @@
 // Command mcq-guessability measures how easily mcq recall_checks under a
 // content tree can be guessed without reading the lesson, using simple
-// test-taking heuristics (longest option, fixed position) compared against
-// each question's own 1/len(options) baseline — never one hardcoded
-// percentage, since content/lessons mixes a 3-option track today and will
-// mix a 4-option AWS track soon. See docs/tickets/aws-cert.md's "AWS-S3"
-// section for why this exists and docs/tickets/mcq-quality.md for the rules
-// it measures.
+// test-taking heuristics (longest option, shortest option, middle option,
+// fixed position) compared against each question's own 1/len(options)
+// baseline — never one hardcoded percentage, since content/lessons mixes a
+// 3-option track today and will mix a 4-option AWS track soon. See
+// docs/tickets/aws-cert.md's "AWS-S3" section for why this exists and
+// docs/tickets/mcq-quality.md for the rules it measures (ยาว/สั้น/กลาง —
+// longest, shortest, and middle all need their own heuristic; a tool that
+// checks only longest is blind to a corpus whose defect is "never the
+// longest or shortest", the exact rule that once made an earlier version
+// of this repo's own corpus 89.6% guessable).
 //
 // Usage:
 //
@@ -15,10 +19,13 @@
 // A negative -max-excess (the default) reports only, exit code 0. A
 // non-negative -max-excess turns this into a gate, evaluated per track (not
 // on the pooled "Overall" figure, which pooling can dilute — see
-// mcqguess.EvaluateTrackGates): exit code 1 if any track's length heuristic
-// or any position heuristic beats its own baseline by more than that
-// relative amount, skipping (not judging) any heuristic below
-// mcqguess.MinSampleSize samples.
+// mcqguess.EvaluateTrackGates): exit code 1 if any track's longest/shortest
+// /middle-option heuristic or any position heuristic beats its own
+// baseline by more than that relative amount, skipping (not judging) any
+// heuristic below mcqguess.MinSampleSize samples. If a gate is requested
+// but every heuristic in every track was skipped for too few samples, that
+// is reported as "NOT JUDGED", not "PASS" — a gate that could not measure
+// anything must not report success — and the exit code is 1.
 //
 // Scope: Question.ExpectedAnswer is a single string, matched against one
 // correct option — this measures single-answer mcq only. AWS-S2's
@@ -36,7 +43,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/themethaithian/self-learning/internal/mcqguess"
+	"github.com/themethaithian/self-learning/cmd/mcq-guessability/internal/mcqguess"
 )
 
 func main() {
@@ -91,8 +98,9 @@ func printByTrack(out io.Writer, byTrack map[string]mcqguess.Report) {
 
 func printReport(out io.Writer, r mcqguess.Report) {
 	fmt.Fprintf(out, "MCQs: %d\n", r.NumMCQs)
-	fmt.Fprintf(out, "Length heuristic   (survives shuffle — reaches the user): %.1f%% actual vs %.1f%% baseline avg (excess %+.1f%% relative)\n",
-		r.Length.HitRate()*100, r.Length.AvgBaseline()*100, r.Length.ExcessRatio()*100)
+	printHeuristic(out, "Longest option", "survives shuffle — reaches the user", r.Longest)
+	printHeuristic(out, "Shortest option", "survives shuffle — reaches the user", r.Shortest)
+	printHeuristic(out, "Middle option  ", "survives shuffle — reaches the user", r.Middle)
 	fmt.Fprintln(out, "Position heuristic (shuffled at render, web/lib/shuffle.ts — content-quality signal only, not user-facing):")
 	for pos := 0; pos <= r.MaxIndex; pos++ {
 		hr, ok := r.Position[pos]
@@ -102,6 +110,15 @@ func printReport(out io.Writer, r mcqguess.Report) {
 		fmt.Fprintf(out, "  index %d: %.1f%% actual vs %.1f%% baseline avg (excess %+.1f%% relative, n=%d)\n",
 			pos, hr.HitRate()*100, hr.AvgBaseline()*100, hr.ExcessRatio()*100, hr.Total)
 	}
+}
+
+func printHeuristic(out io.Writer, label, note string, h mcqguess.HeuristicResult) {
+	if h.Total == 0 {
+		fmt.Fprintf(out, "%s heuristic (%s): no applicable questions in this group\n", label, note)
+		return
+	}
+	fmt.Fprintf(out, "%s heuristic (%s): %.1f%% actual vs %.1f%% baseline avg (excess %+.1f%% relative, n=%d)\n",
+		label, note, h.HitRate()*100, h.AvgBaseline()*100, h.ExcessRatio()*100, h.Total)
 }
 
 func printGate(out io.Writer, gate mcqguess.GateResult, maxExcess float64) {
@@ -114,13 +131,16 @@ func printGate(out io.Writer, gate mcqguess.GateResult, maxExcess float64) {
 	fmt.Fprintf(out, "      figure above is not gated: pooling a large fair track with a small bad\n")
 	fmt.Fprintf(out, "      one can dilute the bad track's excess under threshold (see AWS-S3 in\n")
 	fmt.Fprintf(out, "      docs/tickets/aws-cert.md).\n")
-	if !gate.Failed {
-		fmt.Fprintln(out, "Gate: PASS")
-	} else {
+	switch {
+	case gate.Failed:
 		fmt.Fprintln(out, "Gate: FAIL")
 		for _, v := range gate.Violations {
 			fmt.Fprintln(out, " -", v)
 		}
+	case gate.Judged == 0:
+		fmt.Fprintln(out, "Gate: NOT JUDGED (every heuristic had fewer than MinSampleSize samples — a gate that could not measure anything must not report success)")
+	default:
+		fmt.Fprintln(out, "Gate: PASS")
 	}
 	for _, v := range gate.Insufficient {
 		fmt.Fprintln(out, " ~ insufficient n, not judged:", v)

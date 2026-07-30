@@ -25,6 +25,63 @@ func longestOptionIndex(options []string) int {
 	return best
 }
 
+// shortestOptionIndex is longestOptionIndex's mirror: same rune-based
+// length, same lowest-index tie-break, same reasons. "The correct answer
+// is always the shortest option" is exactly as guessable a defect as
+// "always the longest" — nothing about the length-tell is specific to one
+// direction.
+func shortestOptionIndex(options []string) int {
+	best := 0
+	bestLen := utf8.RuneCountInString(options[0])
+	for i := 1; i < len(options); i++ {
+		if l := utf8.RuneCountInString(options[i]); l < bestLen {
+			best, bestLen = i, l
+		}
+	}
+	return best
+}
+
+// middleOptionIndex returns the index of an option whose rune length is
+// strictly between the shortest and longest option's length in the same
+// question — neither extreme. This is the guess a test-taker makes under
+// the rule "the correct answer is never the longest or shortest option",
+// which docs/tickets/mcq-quality.md's "บทเรียนที่ 1" names as the exact
+// rule that made an earlier version of this repo's own MCQ corpus 89.6%
+// guessable: forcing the answer to be non-extreme in a 3-option question
+// leaves exactly one option it can be.
+//
+// ok is false when no option qualifies: with exactly 2 options, every
+// option is simultaneously the longest and the shortest, so there is no
+// middle to guess; with 3+ options whose lengths collapse to only two
+// distinct values (e.g. two short options and one long, or the reverse),
+// every option is again an extreme and none is strictly between. Callers
+// must exclude such questions from this heuristic's sample rather than
+// counting them as a guaranteed miss — the guess is undefined, not wrong.
+//
+// With 4+ options there can be more than one qualifying "middle" option
+// (e.g. lengths 3, 6, 7, 9 has two: 6 and 7). Ties there resolve to the
+// lowest index, the same deterministic rule as longestOptionIndex and
+// shortestOptionIndex, for the same reason: no RNG, reproducible output.
+func middleOptionIndex(options []string) (index int, ok bool) {
+	lens := make([]int, len(options))
+	minLen, maxLen := 0, 0
+	for i, o := range options {
+		lens[i] = utf8.RuneCountInString(o)
+		if i == 0 || lens[i] < minLen {
+			minLen = lens[i]
+		}
+		if i == 0 || lens[i] > maxLen {
+			maxLen = lens[i]
+		}
+	}
+	for i, l := range lens {
+		if l > minLen && l < maxLen {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
 // HeuristicResult is one heuristic's hit count against a set of questions,
 // plus the sum of those same questions' own baselines. Summing per-question
 // baselines (rather than storing one shared value) is what lets a mixed

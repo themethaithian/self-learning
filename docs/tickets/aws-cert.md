@@ -740,8 +740,8 @@ migration อื่นแบบเงียบ ๆ — เขียนกฎน�
 
 ## AWS-S3 — guessability measurement tool
 
-**สิ่งที่ทำ**: สร้าง `internal/mcqguess` (pure logic, ไม่แตะ DB/HTTP, unit-tested หนัก) +
-`cmd/mcq-guessability` (thin CLI wrapper ตาม convention เดียวกับ `cmd/import-lessons`/
+**สิ่งที่ทำ**: สร้าง `cmd/mcq-guessability/internal/mcqguess` (pure logic, ไม่แตะ DB/HTTP, unit-tested
+หนัก) + `cmd/mcq-guessability` (thin CLI wrapper ตาม convention เดียวกับ `cmd/import-lessons`/
 `cmd/import-curriculum`) ที่วัด guessability ของ `recall_checks` ประเภท mcq จาก
 `content/lessons/*/*.json` โดยตรง (ไม่ผ่าน curriculum domain) — baseline คำนวณต่อข้อจาก
 `1/len(options)` เสมอ ไม่ hardcode ทั้งเก่า (kept) ไม่แตะ Docker/DB (ตาม ticket ระบุ ไม่ต้องมี DB)
@@ -750,26 +750,34 @@ migration อื่นแบบเงียบ ๆ — เขียนกฎน�
 ก่อน gate ตัดสิน (`MinSampleSize`), ขั้นต่ำ 2 ตัวเลือกต่อคำถาม (`minMeasurableOptions`) — รายละเอียด
 เหตุผลทั้งหมดอยู่ที่หัวข้อ "Round 2 (code review)" ท้ายเอกสารนี้
 
+**Round 3 (code review) เพิ่ม**: shortest/middle-option heuristic (`Report.Shortest`/`Middle`,
+`shortestOptionIndex`/`middleOptionIndex`), `GateResult.Requested`/`Judged` (แยก "ตัดสินแล้วผ่าน" กับ
+"ไม่ได้ตัดสินอะไรเลย"), ย้าย package ไป `cmd/mcq-guessability/internal/mcqguess` จริง — รายละเอียด
+เหตุผลทั้งหมดอยู่ที่หัวข้อ "Round 3 (code review)" ท้ายเอกสารนี้
+
 ### สิ่งที่ deliver
 
-- `internal/mcqguess/question.go` — `Question` (Track/Source/Options/ExpectedAnswer),
+- `.../internal/mcqguess/question.go` — `Question` (Track/Source/Options/ExpectedAnswer),
   `Baseline()` (`1/len(options)`, guard คืน 0 แทน +Inf ถ้า options ว่าง), `ExpectedIndex()`
-- `internal/mcqguess/heuristics.go` — `longestOptionIndex` (unexported, rune-based, deterministic
-  tie-break), `HeuristicResult` (Hits/Total/baselineSum → `HitRate()`/`AvgBaseline()`/`ExcessRatio()`)
-- `internal/mcqguess/report.go` — `Report` (per-track หรือ overall), `Measure(questions)` คืน
-  overall + `map[string]Report` ต่อ track, abort ทันทีถ้า mcq มี options น้อยกว่า 2
-  (`minMeasurableOptions`) หรือ `expected_answer` ไม่อยู่ใน options ของตัวเอง
-- `internal/mcqguess/gate.go` — `EvaluateGate(report, maxExcessRatio)` (per-report, ข้าม heuristic
-  ที่ n < `MinSampleSize` ไปเป็น `Insufficient` แทนที่จะตัดสิน), `EvaluateTrackGates(byTrack,
-  maxExcessRatio)` (fail ถ้า track ใด track หนึ่ง fail), `ExitCode(gate)`
-- `internal/mcqguess/load.go` — `LoadQuestions(root)` เดิน `filepath.WalkDir` หา `*.json` ทุกไฟล์
+- `.../internal/mcqguess/heuristics.go` — `longestOptionIndex`/`shortestOptionIndex`/
+  `middleOptionIndex` (unexported, rune-based, deterministic tie-break), `HeuristicResult`
+  (Hits/Total/baselineSum → `HitRate()`/`AvgBaseline()`/`ExcessRatio()`)
+- `.../internal/mcqguess/report.go` — `Report` (per-track หรือ overall, มี `Longest`/`Shortest`/
+  `Middle`/`Position`), `Measure(questions)` คืน overall + `map[string]Report` ต่อ track, abort
+  ทันทีถ้า mcq มี options น้อยกว่า 2 (`minMeasurableOptions`) หรือ `expected_answer` ไม่อยู่ใน options
+  ของตัวเอง
+- `.../internal/mcqguess/gate.go` — `EvaluateGate(report, maxExcessRatio)` (per-report, ข้าม
+  heuristic ที่ n < `MinSampleSize` ไปเป็น `Insufficient` แทนที่จะตัดสิน, นับ `Judged`),
+  `EvaluateTrackGates(byTrack, maxExcessRatio)` (fail ถ้า track ใด track หนึ่ง fail), `ExitCode(gate)`
+  (คืน 1 ถ้า requested แล้ว `Failed` หรือ `Judged==0`)
+- `.../internal/mcqguess/load.go` — `LoadQuestions(root)` เดิน `filepath.WalkDir` หา `*.json` ทุกไฟล์
   ใต้ root แบบ recursive, decode DTO ของตัวเอง (ไม่ใช้ `curriculuminfra.LoadLesson`), filter เฉพาะ
   `type == "mcq"`
 - `cmd/mcq-guessability/main.go` — flag `-dir` (default `content/lessons`), `-max-excess` (default
   `-1` = ปิด gate), พิมพ์รายงานต่อ track + overall (context only, ไม่ถูก gate) แล้วจบด้วยผล gate
-  ต่อ track + รายการ heuristic ที่ n ไม่พอ
-- เทสต์: `internal/mcqguess/{question,heuristics,report,gate,load}_test.go` (31 top-level test) +
-  `cmd/mcq-guessability/main_test.go` (5 top-level test, end-to-end ผ่าน `run()` จริง)
+  ต่อ track (`PASS`/`FAIL`/`NOT JUDGED`) + รายการ heuristic ที่ n ไม่พอ
+- เทสต์: `.../internal/mcqguess/{question,heuristics,report,gate,load}_test.go` (31 top-level
+  test) + `cmd/mcq-guessability/main_test.go` (5 top-level test, end-to-end ผ่าน `run()` จริง)
 
 ### การตัดสินใจ (พร้อมเหตุผล)
 
@@ -818,15 +826,18 @@ migration อื่นแบบเงียบ ๆ — เขียนกฎน�
   เป็น track ใหม่ (4-option) ที่ต้อง gate แยกจาก track เดิม (3-option) อยู่แล้ว รายงาน "Overall" ยัง
   พิมพ์ไว้เพื่อดูภาพรวม แต่ label ชัดว่า "context only" ไม่ใช่ตัวตัดสิน pass/fail
 - **`MinSampleSize = 100`**: heuristic ที่ n ต่ำเกินไปมี false-positive rate สูงจาก sampling noise
-  ล้วน ๆ ไม่ใช่ signal จริง — derive เอง (exact one-sided binomial tail, p=baseline=0.25,
-  threshold=baseline×(1+max-excess), ที่ max-excess=0.25): heuristic ที่ fair จริง (hit rate ==
-  baseline) ยัง false-FAIL **~19.7% ที่ n=30**, **~6.9% ที่ n=100**, **~0.05% ที่ n=550** (ตัวเลขนี้คำนวณ
-  เองสองวิธี — log-gamma กับ iterative pmf recurrence — ได้ค่าตรงกันเป๊ะทั้งคู่ ไม่ได้ก็อปจากที่ reviewer
-  อ้างตรง ๆ เพราะเลข n=30 ที่ reviewer อ้างไว้ 23.9% ตรวจสอบซ้ำแล้วไม่ตรงกับโมเดล one-sided ธรรมดาที่ตรง
-  กับความหมายของ gate นี้เป๊ะที่สุด ค่าอื่นตรงกันหมด — ดูหัวข้อ "Round 2" ด้านล่างสำหรับรายละเอียดที่ทดลอง
-  หลายโมเดล) เลือก 100 เป็นจุดกึ่งกลางที่จงใจ ไม่ใช่ค่าที่ปลอดภัยที่สุด (n=550 ปลอดภัยกว่ามากแต่จะกัน
-  track `domain-driven-design` ปัจจุบัน (11 ข้อ) และ track เล็กในอนาคตไม่ให้ถูก gate ได้เลยตลอดไป รวมถึง
-  option ตำแหน่งที่ 5 ของ AWS-S2's multiple-response ที่ n จะเริ่มน้อยเช่นกัน)
+  ล้วน ๆ ไม่ใช่ signal จริง — derive เอง (exact one-sided binomial tail, threshold=baseline×
+  (1+max-excess), ที่ max-excess=0.25) ที่ **p=baseline=0.25 (corpus 4 ตัวเลือก) ตลอดทั้งตาราง**:
+  heuristic ที่ fair จริง (hit rate == baseline) ยัง false-FAIL **~19.7% ที่ n=30**, **~6.9% ที่
+  n=100**, **~0.05% ที่ n=550** (คำนวณเองสองวิธี — log-gamma กับ iterative pmf recurrence — ตรงกันเป๊ะ)
+  — **แก้ round 3**: เลข n=30 ที่ reviewer อ้างไว้ตอน round 2 (23.9%) ตอนแรกดูเหมือนตรวจสอบซ้ำไม่ได้
+  round 3 หาสาเหตุเจอ: 23.9% คำนวณที่ **p=0.20 (1/5)** ไม่ใช่ p=0.25 (1/4) — ตั้งใจแสดงตัวอย่างของ
+  `Position[4]` บน corpus 5 ตัวเลือก (multi-response) ไม่ใช่ baseline ของตารางหลัก และตารางของ reviewer
+  เอง**ผสม baseline ข้ามแถวโดยไม่ระบุ** (p=0.20 ที่ n=5/n=30, p=0.25 ที่แถวอื่น) จึงไม่ใช่โมเดลเดียวที่
+  self-consistent แบบที่ค่าคงที่ตัวเดียว (`MinSampleSize`) ต้องมี — ตารางในเอกสารนี้ยังเป็น p=0.25
+  ตลอดทั้งตาราง (self-consistent) ตามเดิม เลือก 100 เป็นจุดกึ่งกลางที่จงใจ ไม่ใช่ค่าที่ปลอดภัยที่สุด
+  (n=550 ปลอดภัยกว่ามากแต่จะกันบางช่วง n ไม่ให้ถูก gate ได้เลยตลอดไป — ดู `MinSampleSize`'s doc comment
+  ใน `gate.go` สำหรับตัวอย่าง track จริงที่ n=100 ยังกันได้แต่ n=550 จะกันไม่ได้)
 - **ขั้นต่ำ 2 ตัวเลือกต่อ mcq (`minMeasurableOptions`)**: mirror `internal/curriculum/domain
   /recallcheck.go`'s `minMCQOptions = 2` — คำถามที่มีแค่ 1 ตัวเลือกจะผ่านเช็ค "expected_answer อยู่ใน
   options" แบบไม่มีความหมาย (มีตัวเดียวให้ match พอดี) แล้ว `Baseline()` จะได้ 1.0 ซึ่งดึง `AvgBaseline`
@@ -842,20 +853,26 @@ migration อื่นแบบเงียบ ๆ — เขียนกฎน�
 
 | # | Corpus | Assertion | Test |
 |---|---|---|---|
-| 1 | ทุกข้อคำตอบถูกคือตัวเลือกที่ยาวที่สุด (ไม่มีเสมอ) | length heuristic = 100% | `TestMeasure_CorrectAnswerAlwaysLongest_LengthHeuristicIsHundredPercent` |
-| 2 | ตัวเลือกทุกตัวยาวเท่ากัน (เสมอทั้งหมด), คำตอบถูกวนสม่ำเสมอ index 0/1/2 (100 ข้อ/index จาก 300 ข้อ) | length heuristic = baseline พอดี (ภายใน 1e-9) | `TestMeasure_AllOptionsEqualLength_LengthHeuristicNearBaseline` |
+| 1 | ทุกข้อคำตอบถูกคือตัวเลือกที่ยาวที่สุด (ไม่มีเสมอ) | longest heuristic = 100% | `TestMeasure_CorrectAnswerAlwaysLongest_LongestHeuristicIsHundredPercent` |
+| 2 | ตัวเลือกทุกตัวยาวเท่ากัน (เสมอทั้งหมด), คำตอบถูกวนสม่ำเสมอ index 0/1/2 (100 ข้อ/index จาก 300 ข้อ) | longest heuristic = baseline พอดี (ภายใน 1e-9) | `TestMeasure_AllOptionsEqualLength_LongestHeuristicNearBaseline` |
 | 3 | คำตอบถูกอยู่ index 1 เสมอ (40 ข้อ, 4 ตัวเลือก) | position[1] = 100%, position[0,2,3] = 0% พอดี | `TestMeasure_CorrectAnswerAlwaysIndex1_PositionHeuristic` |
 | 4 | ผสม track 3 ตัวเลือก (3 ข้อ) กับ track 4 ตัวเลือก (3 ข้อ) | baseline ต่อ track ต่างกัน (1/3 vs 1/4), overall baseline = ค่าเฉลี่ยถ่วงน้ำหนัก 0.29166... ไม่ตรงกับ track ใด track หนึ่งเป๊ะ | `TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither` |
-| 5 | corpus สร้างให้ length heuristic excess = 0.20 พอดี (30/100 hit, baseline 0.25) — options สร้างให้ index 3 เป็นตัวยาวที่สุดของทุกข้อ ดังนั้น "guess longest" กับ "guess index 3" คือกลยุทธ์เดียวกันในคอร์ปัสนี้ ทั้งสอง heuristic จึงข้าม threshold พร้อมกันเสมอ (**ไม่ใช่**แค่ length ตัวเดียวอย่างที่ comment เวอร์ชันแรกเข้าใจผิด — แก้แล้วใน round 2) | gate ผ่านที่ max=0.21, gate ไม่ผ่านที่ max=0.19 พร้อม violation **2 รายการ** (length + position index 3) | `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` (internal, assert จำนวน violation ด้วย), `TestRun_GateStraddlingCorpus_ExitCodeFlips` (end-to-end ผ่าน CLI `run()` จริง) |
+| 5 | corpus สร้างให้ longest heuristic excess = 0.20 พอดี (30/100 hit, baseline 0.25) — options สร้างให้ index 3 เป็นตัวยาวที่สุดของทุกข้อ ดังนั้น "guess longest" กับ "guess index 3" คือกลยุทธ์เดียวกันในคอร์ปัสนี้ ทั้งสอง heuristic จึงข้าม threshold พร้อมกันเสมอ | gate ผ่านที่ max=0.21, gate ไม่ผ่านที่ max=0.19 พร้อม violation **2 รายการ** (longest-option + position index 3) | `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` (internal, assert จำนวน violation ด้วย), `TestRun_GateStraddlingCorpus_ExitCodeFlips` (end-to-end ผ่าน CLI `run()` จริง) |
 | — | corpus 3-ตัวเลือกล้วน / 4-ตัวเลือกล้วน (แยกกัน) | baseline = 1/3 พอดี / baseline = 1/4 พอดี (ฆ่า hardcode ทั้งสองทิศทางแยกกัน) | `TestMeasure_BaselineForThreeOptionCorpusIsOneThird`, `TestMeasure_BaselineForFourOptionCorpusIsOneQuarter` |
 | — | Thai option (4 runes/12 bytes) vs English option (8 runes/8 bytes) | `longestOptionIndex` เลือกตาม rune count ไม่ใช่ byte count | `TestLongestOptionIndex/rune_count,_not_byte_count` |
 | — | ไฟล์จริงผสม mcq + short_answer | `LoadQuestions` คืนเฉพาะ mcq | `TestLoadQuestions_FiltersShortAnswer` |
 | — | คำถามที่ `expected_answer` ไม่อยู่ใน options | `Measure` abort พร้อม error ระบุ source file + answer | `TestMeasure_ExpectedAnswerNotInOptionsAborts` |
 | — (round 2) | คำถามมีแค่ 1 ตัวเลือก (`expected_answer` ตรงกับตัวเดียวนั้นพอดี) | `Measure` abort พร้อม error ระบุ source file + จำนวน option จริง — ไม่ใช่ผ่านแบบเงียบ ๆ | `TestMeasure_TooFewOptionsAborts` |
 | — (round 2) | ไฟล์ JSON พังจริง (truncated, ไม่ปิด bracket) | `LoadQuestions` คืน error ระบุชื่อไฟล์ — ไม่ใช่ตัดไฟล์ทิ้งเงียบ ๆ แล้วนับ N น้อยลงโดยไม่บอกใคร | `TestLoadQuestions_MalformedJSONErrors` |
-| — (round 2) | Report ที่ length heuristic สะอาด (excess 0) แต่ position[2] แย่ (excess 28% เทียบ threshold 20%) | `EvaluateGate` ต้อง fail จาก position เพียงอย่างเดียว | `TestEvaluateGate_PositionAloneCanFailWithLengthClean` |
-| — (round 2) | heuristic ที่ n=99 (ต่ำกว่า `MinSampleSize`=100) hit rate 100% | `EvaluateGate` ต้อง**ไม่** fail แค่รายงาน insufficient | `TestEvaluateGate_BelowMinSampleSizeIsInsufficientNotFailed` |
+| — (round 2) | Report ที่ longest heuristic สะอาด (excess 0) แต่ position[2] แย่ (excess 28% เทียบ threshold 20%) | `EvaluateGate` ต้อง fail จาก position เพียงอย่างเดียว | `TestEvaluateGate_PositionAloneCanFailWithLongestClean` |
+| — (round 2) | heuristic ที่ n=99 (ต่ำกว่า `MinSampleSize`=100) hit rate 100% | `EvaluateGate` ต้อง**ไม่** fail แค่รายงาน insufficient | `TestEvaluateGate_BelowMinSampleSizeIsInsufficientNotFailedNorJudgedPass` (round 3: เพิ่ม assert `Judged==0` + `ExitCode==1`) |
 | — (round 2) | track ใหญ่ fair (300 ข้อ, excess 0%) pool กับ track เล็กแย่ (100 ข้อ, excess 60%) → pooled 15% | `EvaluateTrackGates` fail (จาก track แย่) ทั้งที่ `EvaluateGate` บน pooled report จะผ่าน | `TestEvaluateTrackGates_DilutionExample_PerTrackCatchesWhatPooledWouldMiss` (internal), `TestRun_PerTrackGateCatchesWhatPooledWouldMiss` (end-to-end ผ่าน CLI จริง) |
+| — (round 3, N2) | ทุกข้อคำตอบถูกคือตัวเลือกที่สั้นที่สุด (ไม่มีเสมอ) | shortest heuristic = 100% | `TestMeasure_CorrectAnswerAlwaysShortest_ShortestHeuristicIsHundredPercent` |
+| — (round 3, N2) | 3 ตัวเลือกความยาวต่างกัน 3 ค่า (สั้น/กลาง/ยาว ภาษาไทย), คำตอบถูกคือตัวกลางเสมอ | middle heuristic = 100%, longest/shortest = 0% พอดี (คำตอบไม่เคยเป็นตัวสุดขั้วเลย) | `TestMeasure_CorrectAnswerAlwaysMiddle_MiddleHeuristicIsHundredPercent` |
+| — (round 3, N2) | boundary: 2 ตัวเลือก (ไม่มีตัวกลางเชิงโครงสร้าง) + 3 ตัวเลือกที่ยาวชนกันเหลือ 2 ค่า (ไม่มีตัวกลางเพราะเสมอ) | `Middle.Total == NumMCQs` เสมอ (**นับเป็น miss ไม่ exclude** — จุดตัดสินใจที่ทำให้ 89.6%/33.7% reproduce ได้พอดี ดูหัวข้อ "Finding") | `TestMeasure_MiddleOptionIndex_BoundaryCases` |
+| — (round 3, N2) | หน่วย `middleOptionIndex` เอง: 3 ตัวเลือก (1 ตัวกลาง), 4 ตัวเลือก (2 ตัวกลาง เสมอเลือก index ต่ำสุด), 2 ตัวเลือก, 3 ตัวเลือกยาวชนกัน 2 ค่า, ทุกตัวยาวเท่ากัน, 5 ตัวเลือก (3 ตัวกลางเสมอกัน) | ok/index ตรงตามนิยามทุกกรณี | `TestMiddleOptionIndex` (table-driven 6 เคส) |
+| — (round 3, N1) | Report ที่ทุก heuristic มี n ต่ำกว่า `MinSampleSize` (ไม่มีอันไหนถูกตัดสินเลย) | `Judged == 0`, `ExitCode == 1` (ไม่ใช่ 0) แม้ `Failed == false` | `TestEvaluateGate_BelowMinSampleSizeIsInsufficientNotFailedNorJudgedPass`, `TestExitCode` (เคส "requested, nothing judged") |
+| — (round 3, N1) | corpus จริง 50 ข้อ track เดียว คำตอบถูกเป็นตัวยาวสุด 100% (guessable ที่สุดเท่าที่สร้างได้) แต่ n=50<100 | `run()` พิมพ์ `Gate: NOT JUDGED` (ไม่ใช่ `PASS`) และ exit 1 | `TestRun_NotJudgedWhenEveryHeuristicIsBelowMinSampleSize` (end-to-end ผ่าน CLI จริง) |
 
 **Tolerance ที่ใช้ (`floatEps = 1e-9`) และทำไมไม่ flaky**: ทุก fixture ในไฟล์เทสต์เหล่านี้สร้างด้วยมือ
 แบบ deterministic ล้วน ๆ ไม่มีการสุ่มเลยสักจุดเดียว (เช่น กรณี #2 ข้างบน คำตอบถูกถูก "วน" index
@@ -866,24 +883,31 @@ error (เช่น `100.0/300.0` อาจต่างจาก `1.0/3.0` ไ�
 จาก 300 ≈ 0.33 percentage point) อยู่ประมาณ 6 อันดับ (order of magnitude) จึงแคบพอที่จะจับบั๊กจริงแต่ไม่
 แคบจนจับ float rounding ผิดเป็นบั๊ก
 
-### Mutation table (11 mutation — 9 เดิม + 2 ที่ code review round 1 พบว่ารอด — ทุกตัวตายจริงหลัง round 2 ไม่มี survivor)
+### Mutation table (17 mutation — 9 เดิม + 2 ที่ code review round 1 พบว่ารอด + 6 ใหม่จาก N1/N2 round 3 — ทุกตัวตายจริง ไม่มี survivor)
 
 | # | Mutation | Killed by |
 |---|---|---|
 | 1 | baseline hardcode เป็น 1/3 (`Question.Baseline()` คืน `1.0/3.0` เสมอ) | `TestQuestionBaseline`, `TestMeasure_BaselineForFourOptionCorpusIsOneQuarter`, `TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither`, `TestMeasure_CorpusStraddlingGate_ExitCodeFlips`, `TestRun_GateStraddlingCorpus_ExitCodeFlips` |
-| 2 | baseline hardcode เป็น 1/4 (`Question.Baseline()` คืน `0.25` เสมอ) | `TestQuestionBaseline`, `TestMeasure_AllOptionsEqualLength_LengthHeuristicNearBaseline`, `TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither`, `TestMeasure_BaselineForThreeOptionCorpusIsOneThird` |
+| 2 | baseline hardcode เป็น 1/4 (`Question.Baseline()` คืน `0.25` เสมอ) | `TestQuestionBaseline`, `TestMeasure_AllOptionsEqualLength_LongestHeuristicNearBaseline`, `TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither`, `TestMeasure_BaselineForThreeOptionCorpusIsOneThird` |
 | 3 | วัดความยาวเป็น byte แทน rune (`longestOptionIndex` ใช้ `len()` แทน `utf8.RuneCountInString`) | `TestLongestOptionIndex` (เคส Thai vs English) |
-| 4 | `longestOptionIndex` เลือกตัวสั้นที่สุดแทนยาวที่สุด (`l < bestLen` แทน `l > bestLen`) | `TestLongestOptionIndex`, `TestMeasure_CorrectAnswerAlwaysLongest_LengthHeuristicIsHundredPercent` |
+| 4 | `longestOptionIndex` เลือกตัวสั้นที่สุดแทนยาวที่สุด (`l < bestLen` แทน `l > bestLen`) | `TestLongestOptionIndex`, `TestMeasure_CorrectAnswerAlwaysLongest_LongestHeuristicIsHundredPercent` |
 | 5 | position heuristic off-by-one (`pos == expectedIdx+1` แทน `pos == expectedIdx`) | `TestMeasure_CorrectAnswerAlwaysIndex1_PositionHeuristic` |
 | 6 | `short_answer` หลุดเข้ามาในตัวหาร (ลบ `if rc.Type != "mcq" { continue }` ใน `loadFile`) | `TestLoadQuestions_FiltersShortAnswer` |
-| 7 | per-track aggregation ยุบเป็น global baseline เดียว (`byTrack[q.Track] = overall` แทน `= track`) | `TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither`, `TestEvaluateTrackGates_DilutionExample_PerTrackCatchesWhatPooledWouldMiss` (ตัวหลังเป็นของใหม่ round 2) |
-| 8 | gate comparison กลับด้าน (`excess < maxExcessRatio` แทน `excess > maxExcessRatio`) | `TestEvaluateGate_PassesBelowThreshold`, `TestEvaluateGate_FailsAboveThreshold`, `TestEvaluateGate_ExactlyAtThresholdPasses`, `TestEvaluateGate_PositionAloneCanFailWithLengthClean`, `TestEvaluateTrackGates_PassesWhenAllTracksPass`, `TestEvaluateTrackGates_FailsWhenAnyTrackFails`, `TestEvaluateTrackGates_DilutionExample_PerTrackCatchesWhatPooledWouldMiss`, `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` |
+| 7 | per-track aggregation ยุบเป็น global baseline เดียว (`byTrack[q.Track] = overall` แทน `= track`) | `TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither`, `TestEvaluateTrackGates_DilutionExample_PerTrackCatchesWhatPooledWouldMiss` |
+| 8 | gate comparison กลับด้าน (`excess < maxExcessRatio` แทน `excess > maxExcessRatio`) | `TestEvaluateGate_PassesBelowThreshold`, `TestEvaluateGate_FailsAboveThreshold`, `TestEvaluateGate_ExactlyAtThresholdPasses`, `TestEvaluateGate_PositionAloneCanFailWithLongestClean`, `TestEvaluateTrackGates_PassesWhenAllTracksPass`, `TestEvaluateTrackGates_FailsWhenAnyTrackFails`, `TestEvaluateTrackGates_DilutionExample_PerTrackCatchesWhatPooledWouldMiss`, `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` |
 | 9 | exit code เป็น 0 เสมอ (`ExitCode` คืน `0` ไม่เช็ค `g.Failed`) | `TestExitCode`, `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` (internal), `TestRun_GateStraddlingCorpus_ExitCodeFlips`, `TestRun_PerTrackGateCatchesWhatPooledWouldMiss` (ผ่าน CLI `run()` จริงทั้งคู่ — ปิดช่องที่ mutation อาจรอดถ้าทดสอบแค่ internal function) |
-| 10 (round 2, code review พบว่ารอด) | ลบ loop เช็ค position heuristic ทั้งก้อนออกจาก `EvaluateGate` (เหลือเช็คแค่ length) — เดิม**รอด**เพราะทุกเทสต์ pass/fail ก่อนหน้าใช้ `reportWithLengthResult` ที่ปล่อย `Position` ว่างเปล่า จึงไม่มีทางเห็นความแตกต่าง | `TestEvaluateGate_PositionAloneCanFailWithLengthClean` (เทสต์ใหม่ — Report ที่ length สะอาดแต่ position[2] แย่, ต้อง fail ได้จาก position อย่างเดียว) |
-| 11 (round 2, code review พบว่ารอด) | `loadFile`'s decode-error path เปลี่ยนเป็น `return nil, nil` (กลืน error, ทำเหมือนไฟล์ไม่มี mcq เลย) — เดิม**รอด**เพราะไม่มีเทสต์ไหนป้อนไฟล์ JSON ที่พังจริง (`TestRun_MalformedCorpusAborts` ทดสอบไฟล์ที่ decode ผ่านแต่ผิด**เชิงความหมาย**คนละจุดกับ decode error) | `TestLoadQuestions_MalformedJSONErrors` (เทสต์ใหม่ — ไฟล์ JSON truncated จริง ต้องได้ error ระบุชื่อไฟล์) |
+| 10 (round 2, code review พบว่ารอด) | ลบ loop เช็ค position heuristic ทั้งก้อนออกจาก `EvaluateGate` (เหลือเช็คแค่ longest/shortest/middle) — เดิม**รอด**เพราะทุกเทสต์ pass/fail ก่อนหน้าใช้ `reportWithLongestResult` ที่ปล่อย `Position` ว่างเปล่า จึงไม่มีทางเห็นความแตกต่าง | `TestEvaluateGate_PositionAloneCanFailWithLongestClean` (Report ที่ longest สะอาดแต่ position[2] แย่, ต้อง fail ได้จาก position อย่างเดียว) |
+| 11 (round 2, code review พบว่ารอด) | `loadFile`'s decode-error path เปลี่ยนเป็น `return nil, nil` (กลืน error, ทำเหมือนไฟล์ไม่มี mcq เลย) — เดิม**รอด**เพราะไม่มีเทสต์ไหนป้อนไฟล์ JSON ที่พังจริง | `TestLoadQuestions_MalformedJSONErrors` |
+| 12 (round 3, N2) | `shortestOptionIndex` เลือกตัวยาวที่สุดแทนสั้นที่สุด (`l > bestLen` แทน `l < bestLen`) | `TestShortestOptionIndex`, `TestMeasure_CorrectAnswerAlwaysShortest_ShortestHeuristicIsHundredPercent`, `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` (ผลข้างเคียง: shortest กลายเป็นเหมือน longest บนฟิกซ์เจอร์นั้น ทำให้จำนวน violation ผิดไปด้วย) |
+| 13 (round 3, N2) | `middleOptionIndex`'s classification ผิด (`l >= minLen && l <= maxLen` แทน `l > minLen && l < maxLen`, ทำให้ทุกตัวเลือก "ผ่าน" เงื่อนไข) | `TestMiddleOptionIndex`, `TestMeasure_CorrectAnswerAlwaysMiddle_MiddleHeuristicIsHundredPercent`, `TestMeasure_MiddleOptionIndex_BoundaryCases` |
+| 14 (round 3, N2/N3) | `Middle`'s "count as miss" ถูก revert กลับเป็น "exclude" (`if middleOK { r.Middle.add(...) }` แทน `r.Middle.add(middleOK && ..., baseline)`) — **นี่คือ mutation ที่สำคัญที่สุดของรอบนี้**: ถ้ารอด ตัวเลข 89.6%/33.7% จะ reproduce ไม่ได้อีก (จะได้ 36.6%/29.5% ที่ denominator 328 แทน) | `TestMeasure_MiddleOptionIndex_BoundaryCases` (assert `Middle.Total == NumMCQs` ตรง ๆ) |
+| 15 (round 3, N1) | `ExitCode`'s `g.Judged == 0` เงื่อนไขถูกลบ (เหลือเช็คแค่ `g.Failed`) | `TestExitCode` (เคส "requested, nothing judged"), `TestEvaluateGate_BelowMinSampleSizeIsInsufficientNotFailedNorJudgedPass`, `TestRun_NotJudgedWhenEveryHeuristicIsBelowMinSampleSize` (ผ่าน CLI จริง) |
+| 16 (round 3, N1) | `EvaluateGate`'s `check()` ลืม `g.Judged++` (heuristic ที่ถูกตัดสินจริงไม่ถูกนับ) | `TestEvaluateGate_PassesBelowThreshold` (assert `Judged == 1` ตรง ๆ — เพิ่ม assertion นี้ใน round 3 เพื่อปิดช่องนี้โดยเฉพาะ), `TestRun_GateStraddlingCorpus_ExitCodeFlips`, `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` |
+| 17 | mcq มี 1 ตัวเลือก (`minMeasurableOptions` ลดจาก 2 เหลือ 1) | `TestMeasure_TooFewOptionsAborts` |
 
-**Survivor**: ไม่มี — ทั้ง 11 mutation (9 เดิม + 2 ที่ round 1 ของ code review พบว่ารอด) ตายจริงทุกตัวหลัง
-round 2 (revert กลับหลัง confirm แล้วทุกจุด, `git status` สะอาดหลังทำเสร็จ)
+**Survivor**: ไม่มี — ทั้ง 17 mutation ตายจริงทุกตัว (revert กลับหลัง confirm แล้วทุกจุด, `git status`
+สะอาดหลังทำเสร็จ — ยืนยันซ้ำทั้ง 11 mutation เดิมจาก round 1-2 ด้วยว่ายังตายอยู่หลังการรีแฟกเตอร์ของ round 3
+ทั้งการย้าย package และการเพิ่ม shortest/middle/tri-state gate)
 
 **หมายเหตุ scope**: mutation "exit code always zero" ทดสอบทั้งที่ `internal/mcqguess.ExitCode`
 (unit test ตรง ๆ) และที่ `cmd/mcq-guessability`'s `run()` (end-to-end ผ่าน CLI จริง) — ปิดช่องว่างที่
@@ -901,72 +925,109 @@ corpus ปัจจุบันมี **356 MCQ ทุกข้อมี 3 ต�
 
 | Heuristic | Actual | Baseline avg | Excess (relative) |
 |---|---|---|---|
-| Length (guess longest option) | **32.6%** | 33.3% | **−2.2%** |
+| Longest option | 32.6% | 33.3% | −2.2% |
+| Shortest option | 31.5% | 33.3% | −5.6% |
+| Middle option | **33.7%** | 33.3% | +1.1% |
 | Position index 0 (guess "A" เสมอ) | 33.4% | 33.3% | +0.3% |
 | Position index 1 (guess "B" เสมอ) | 33.4% | 33.3% | +0.3% |
 | Position index 2 (guess "C" เสมอ) | 33.1% | 33.3% | −0.6% |
 
-ทั้งสี่ตัวเลขอยู่ใกล้ baseline มาก (excess ทุกตัว < 3% แบบ relative) — ไม่มี tell ที่มีนัยสำคัญใน
-corpus ปัจจุบัน สอดคล้องกับที่ C-mcq-balance (#43) บันทึกไว้ว่าแก้ปัญหาเดิม (89.6%) แล้ว
+ทุกตัวเลขอยู่ใกล้ baseline มาก (excess ทุกตัว < 6% แบบ relative) — ไม่มี tell ที่มีนัยสำคัญใน corpus
+ปัจจุบัน ทั้ง longest/shortest/middle สอดคล้องกับที่ C-mcq-balance (#43) บันทึกไว้ว่าแก้ปัญหาเดิม (89.6%)
+แล้วจริง ไม่ใช่แค่บาง heuristic
 
 รันด้วย `-max-excess 0.15` (ตัวอย่างการใช้เป็นเกท): `Gate: PASS` (ทุกตัวเลขข้างบนอยู่ใต้ 15% หมด)
 
-### Finding — เลข 33.7%/33.4% เดิมกับเลขที่วัดซ้ำได้จริงต่างกัน และ 89.6% วัดซ้ำได้จริง (round 2 แก้ทั้งคู่)
+### Finding — 89.6% และ 33.7% (เดิม) คือค่า middle-length heuristic วัดผิดชื่อว่า "length" (round 3 คลี่ปม)
 
 **Round 1 ของ code review จับได้ว่าข้อความเดิมของหัวข้อนี้ผิดสองจุด**: (R1) อ้างว่า 89.6% "วัดซ้ำไม่ได้
-โดยหลักการเพราะ corpus ถูก rewrite" ซึ่งเป็น**ข้อสรุปที่ประดิษฐ์ขึ้นเอง** — corpus ก่อน rewrite (PR #43)
-ยังอยู่ใน git history เต็ม ๆ ไม่มีอะไรที่ "measure ไม่ได้อีกต่อไป" จริง ๆ; (R2) อ้างว่า tie-break rule
-"เป็นไปได้มากที่สุด" ที่อธิบายช่องว่าง 33.7% vs 32.6% ทั้งที่ไม่เคยคำนวณตัวเลขจริงมารองรับคำว่า
-"เป็นไปได้มากที่สุด" เลย ทั้งสองจุดคือ**การเชื่อคำกล่าวอ้างโดยไม่ re-derive** ซึ่งเป็นบั๊กแบบเดียวกับ
-rule 9 ของ roadmap.md (ดู "บทเรียนที่ 1" ใน mcq-quality.md) เพียงแค่เกิดที่ระดับเอกสารแทนที่ระดับโค้ด
-แก้ทั้งคู่ด้วยการวัดจริงแทนการเดา:
+โดยหลักการเพราะ corpus ถูก rewrite" ซึ่งเป็น**ข้อสรุปที่ประดิษฐ์ขึ้นเอง**; (R2) อ้างว่า tie-break rule
+"เป็นไปได้มากที่สุด" ที่อธิบายช่องว่าง 33.7% vs 32.6% ทั้งที่ไม่เคยคำนวณตัวเลขจริงมารองรับ ทั้งสองจุดคือ
+**การเชื่อคำกล่าวอ้างโดยไม่ re-derive** แก้ด้วยการนับ tie จริง (13 ข้อเสมอ, 12 ชนะได้) แล้วคำนวณขอบเขต
+ของทุก correctness-blind tie-break rule ได้ **30.90%–34.27%** สรุปว่า 33.7% (120 hits, ต้องถูก 10/12
+tie, p≈0.85% ถ้าสุ่ม) อยู่นอกช่วงที่ tie-break อธิบายได้ — ถูกต้องแล้วที่ปฏิเสธ tie-break เป็นคำตอบ แต่
+round 2 หยุดที่ "unexplained" ทั้งที่คำตอบจริงอยู่ในเอกสารของโปรเจกต์เองมาตลอด
 
-**R1 — 89.6% วัดซ้ำได้จริง**: กู้คืน corpus ก่อน PR #43 ด้วย `git archive 6b1a765 content/lessons |
-tar -x -C <tmp>` (commit `6b1a765` คือ commit สุดท้ายก่อนเชนของ `C-mcq-sweep`/`C-mcq-balance` เริ่ม)
-แล้วรัน `go run ./cmd/mcq-guessability -dir <tmp>/content/lessons` จริง — ได้ **length heuristic
-36.8%** (ไม่ใช่ 89.6%) position index 0 = **41.6%** (ตรงกับตัวเลข "เดิม 41.6%" ที่ roadmap.md บันทึกไว้
-เป๊ะ ยืนยันว่า tool วัดถูกจุดเดียวกับที่ค่าเดิมเคยวัด) เช็คเพิ่มด้วย heuristic กว้างกว่าที่ tool นี้ไม่ได้
-implement (คำนวณเองนอก tool ด้วย script แยก, ไม่ผูกกับ mcqguess package): correct-is-longest **38.2%**,
-correct-is-shortest **33.1%**, correct-is-either-extreme **70.5%**, correct-longer-than-mean **53.4%**
-— **ไม่มีตัวไหนเข้าใกล้ 89.6% เลย** (89.6% = 319/356 ข้อ) สรุปคือ **89.6% วัดซ้ำได้จริง ผลคือไม่ reproduce
-under ฮิวริสติกง่าย ๆ ตัวไหนเลย ที่มาของเลขนี้ (script เดิม, นิยาม heuristic เดิม) ไม่ทราบแน่ชัด** — เขียน
-ไว้ตรง ๆ แบบนี้แทนการอ้างว่า "วัดไม่ได้" (เท็จ) หรือแต่งคำอธิบายใหม่ให้เลขนี้ (ก็เท็จเหมือนกัน)
+**Round 3 พบคำตอบ**: `docs/tickets/mcq-quality.md`'s "บทเรียนที่ 1" บันทึกไว้ตรง ๆ อยู่แล้วว่า
+"รอบแรกตั้งกฎว่า 'คำตอบที่ถูกห้ามยาวที่สุดและห้ามสั้นที่สุด' ... เมื่อมี 3 ตัวเลือก กฎนี้บังคับให้คำตอบเป็น
+'ตัวกลาง' เสมอ → เดาถูก 89.6%" — ประโยคนี้บอกตรง ๆ ว่า heuristic ที่แท้จริงคือ **middle-length** (เดาว่า
+คำตอบคือตัวเลือกที่ไม่ยาวสุดไม่สั้นสุด) ไม่ใช่ longest ที่ tool นี้วัดมาตลอดจนถึง round 2 — เพิ่ม
+`Report.Middle`/`middleOptionIndex` (ดูหัวข้อ "N2" ด้านล่าง) แล้ววัดซ้ำ **ทั้งสองตัวเลขที่บันทึกไว้
+reproduce แม่นเป๊ะ**:
 
-**R2 — ช่องว่าง 33.7% (เดิม) vs 32.6% (วัดใหม่) ไม่ใช่เพราะ tie-break — มีขอบเขตชัดเจนที่คำนวณได้**:
-นับ tie ตรง ๆ จาก corpus ปัจจุบัน (356 ข้อ 3-option ทั้งหมด) ด้วย script แยกที่ import `mcqguess.
-LoadQuestions` แล้ววนดู tie เอง (ไม่ผูกกับโค้ดที่กำลังตรวจสอบ กัน confirmation bias): **มี tie ยาวสุด
-เท่ากันทั้งหมด 13 ข้อ, 12 ใน 13 ข้อคำตอบถูกอยู่ในกลุ่มที่เสมอกัน (ข้อที่ 13 คำตอบไม่ได้อยู่ในกลุ่มเสมอเลย
-จึงชนะไม่ได้ไม่ว่า tie-break rule แบบไหน)** จากตรงนี้คำนวณ hits ที่เป็นไปได้ของทุก tie-break rule ที่
-"ไม่ดูคำตอบก่อนตัดสิน" (correctness-blind) ได้แม่นยำ (base hits จากข้อที่ไม่มี tie = 110/356 = 30.90%
-เท่ากันทุก rule):
+| corpus (commit) | middle-length rate | บันทึกไว้เดิม | longest-length rate (ที่ tool วัดมาตลอด round 1-2) |
+|---|---|---|---|
+| `7dfb0ba` (หลัง #38 "C-mcq-sweep") | **319/356 = 89.6%** | 89.6% | 2.0% |
+| `057ec9a` / ปัจจุบัน (หลัง #43 "C-mcq-balance") | **120/356 = 33.7%** | 33.7% | 32.6% |
 
-| Rule | Hits | Rate |
-|---|---|---|
-| ties นับเป็น miss เสมอ (floor) | 110 | 30.90% |
-| index สูงสุดในกลุ่มเสมอ | 115 | 32.30% |
-| สุ่มเท่ากันในกลุ่มเสมอ (expected value, คำนวณจาก K จริงของแต่ละ tie ไม่ใช่สมมติ K=2 ทุกข้อ) | 115.5 | 32.44% |
-| **index ต่ำสุดในกลุ่มเสมอ (tool นี้)** | **116** | **32.58%** |
-| tie ที่มีคำตอบอยู่ในกลุ่มนับเป็น hit เสมอ (ceiling) | 122 | 34.27% |
+ที่ `7dfb0ba` โดยเฉพาะ: ในกลุ่มคำถามที่มี "ตัวกลาง" จริง (319 จาก 356 ข้อ, อีก 37 ข้อความยาวชนกันเหลือแค่
+2 ค่าจึงไม่มีตัวกลาง) **compliance กับกฎ "ห้ามยาวสุด/สั้นสุด" คือ 100% พอดี** (319/319) — ตรงกับที่
+mcq-quality.md's "บทเรียนที่ 1" อธิบายไว้ว่า "รอบแรกวัดว่ากฎถูกละเมิดไหม (ผ่าน 100%)" เป๊ะ ทุกตัวเลขต่อกัน
+สนิท ไม่มีจุดไหนต้องเดาอีกต่อไป
 
-33.7% ต้องการ **120 hits พอดี** (120/356 = 33.71%) — เกินขอบบนของทุก correctness-blind rule (122 คือ
-ceiling จริง แต่ 120 อยู่ในช่วง [floor, ceiling] พอดี ไม่ได้เกินขอบ แต่เป็นค่าที่ "ไม่มี systematic rule
-ไหนตกตรงนั้นพอดี") ต้องถูก 10 ใน 12 tie ที่ชนะได้ (ไม่ใช่ 13 — ข้อที่ 13 ชนะไม่ได้เชิงโครงสร้างไม่ว่า
-rule ไหน) ถ้าจำลองด้วยการสุ่มเลือกในกลุ่มเสมอแบบ uniform ต่อข้อ (K=2 สำหรับ 9 ข้อ, K=3 สำหรับ 3 ข้อ ตาม
-K จริงที่นับได้) ความน่าจะเป็นที่จะถูกพอดี 10 ใน 12 ข้อนั้นคือ **p ≈ 0.85%** (Poisson-binomial คำนวณตรง
-จาก mixture ของ Binomial(9, 0.5) และ Binomial(3, 1/3) ไม่ใช่ประมาณด้วย normal approximation)
+**นี่คือคำอธิบายว่าทำไม 41.6% (position) ตรงเป๊ะตั้งแต่ round 1 แต่ 89.6% (length) ไม่ตรงจนกระทั่งตอนนี้**:
+position heuristic ของทั้งสอง tool (เดิมกับใหม่) วัดสิ่งเดียวกันมาตลอด (เดาตำแหน่งเดิมเสมอ) จึงตรงกันตั้งแต่
+ต้น — แต่ "length heuristic" ของ tool เดิมกับของ tool นี้ (round 1-2) **วัดคนละอย่าง**: tool นี้วัด
+longest-length, tool เดิมวัด middle-length เครื่องมือวัดถูกต้องทั้งคู่ (calibrated ถูก) แค่ชี้วัดคนละ
+เป้าหมาย — ห้ามเทียบตัวเลข "length" ข้ามสอง tool กันอีกต่อไปโดยไม่ระบุว่าเป็น longest หรือ middle
 
-**สรุป**: ช่วงที่ tie-break rule ใด ๆ ทำได้จริงคือ **30.90%–34.27%** ตัวเลขของ tool นี้ (32.58%) อยู่ใน
-ช่วงนั้นพอดีตามคาด แต่ 33.7% (120 hits) แม้จะอยู่ในช่วงเดียวกันเชิงตัวเลข ก็เป็นค่าที่ไม่มี systematic
-tie-break rule ไหนให้ได้ตรง ๆ (ต้องถูก 10/12 ซึ่งมีโอกาสสุ่มแค่ ~0.85%) **ช่องว่างนี้จึงยังไม่มีคำอธิบาย
-(unexplained)** — ไม่ใช่ tie-break อย่างที่ข้อความรุ่นก่อนอ้าง ความเป็นไปได้ที่เหลือคือ script เดิมนิยาม
-"ยาวที่สุด" หรือ denominator ต่างจาก tool นี้ (เช่น วัดหน่วยต่างกัน, หรือใช้ metric อื่นที่ใกล้เคียงกัน
-โดยบังเอิญ) แต่ script เดิมไม่มีให้ตรวจสอบจริง (ไม่มีทั้งใน working tree และ `git log --all
---diff-filter=A`) จึงยืนยันสาเหตุที่แท้จริงไม่ได้ — รายงานไว้ตรง ๆ แบบนี้แทนการเดาสาเหตุแล้วเขียนเป็น
-ข้อสรุปที่ฟังดูมั่นใจเกินหลักฐานที่มี
+**ทำไม 6b1a765 (คอมมิตก่อนหน้า 7dfb0ba) ไม่ reproduce ตัวเลขไหนเลย**: `6b1a765` คือคอมมิตก่อน `7dfb0ba`
+(#38) หนึ่งขั้น — วัดได้ longest **36.8%**, shortest **28.4%**, middle **29.5%** (position index 0
+**41.6%** เท่ากับที่ `7dfb0ba` เป๊ะ เพราะ #38 แก้แค่**เนื้อหา**ตัวเลือกผิด ไม่ได้ย้ายตำแหน่งคำตอบ) —
+ไม่มีตัวไหนใกล้ 89.6% เลย ยืนยันว่า defect 89.6% (compliance กับกฎ "ห้ามยาวสุด/สั้นสุด") **เพิ่งเกิดขึ้น
+จากการแก้ของ #38 เอง** ไม่ใช่มีอยู่ก่อนแล้ว — #38 แก้ปัญหาเดิม (อะไรก็ตามที่ทำให้ longest สูงที่ 6b1a765)
+แต่สร้างปัญหาใหม่ (middle-length compliance 100% ในข้อที่ตัดสินได้) ซึ่งเป็นเหตุผลที่ C-mcq-balance (#43,
+4 commit ถัดไป) ต้องตามมาแก้อีกที
 
-**Reproduce ทั้งหมดด้วยคำสั่งเดียวกัน**: `go run ./cmd/mcq-guessability -dir content/lessons` สำหรับ
-corpus ปัจจุบัน, `git archive 6b1a765 content/lessons | tar -x -C <tmp> && go run
-./cmd/mcq-guessability -dir <tmp>/content/lessons` สำหรับ corpus ก่อน PR #43
+**สิ่งที่ยังไม่รู้ (ตรงไปตรงมา)**: อัลกอริทึมที่แท้จริงของ script เดิม (เช่น นิยาม tie-break ของมันสำหรับ
+"ตัวกลาง" ตอน 37 ข้อความยาวชนกัน) ไม่มีให้ตรวจสอบ เพราะไม่เคย commit ไว้ในโปรเจกต์ — แต่คำถามหลักที่ round
+1-2 ค้างไว้ ("length" เดิมวัดอะไรกันแน่) ได้คำตอบแล้ว: มันวัด middle ไม่ใช่ longest
+
+### N2 — ทำไมต้องมี middle-length heuristic (ไม่ใช่แค่ longest)
+
+`docs/tickets/mcq-quality.md`'s ตัวชี้วัดกำหนดไว้ตั้งแต่ต้นว่าเดาด้วยกฎ "ยาว/สั้น/กลาง" ต้องได้ ≈baseline
+ทั้งสามแบบ — tool นี้จนถึง round 2 implement แค่ longest ตัวเดียว ซึ่ง**ตาบอด**ต่อ corpus ที่มีข้อบกพร่อง
+แบบ "ห้ามคำตอบยาวสุด/สั้นสุด" (กฎที่ **ฟังดูเป็น best practice** และมีโอกาสสูงที่คนเขียนคำถาม AWS ในอนาคต
+จะเผลอใช้ตรง ๆ) — บน corpus `7dfb0ba` ที่ middle-length อ่านได้ 89.6%, longest heuristic (ที่ tool วัดมา
+ตลอด) อ่านได้แค่ **2.0%** เกทที่เช็คแค่ longest จะรายงานว่า corpus นี้ "สะอาดผิดปกติ" ทั้งที่จริงเดาถูก
+เกือบทุกข้อ — เป็นการพลาดแบบเดียวกับที่ #38 เคยพลาดมาก่อน เพียงแค่คนละเครื่องมือ
+
+**สิ่งที่ทำ**: เพิ่ม `Report.Longest`/`Shortest`/`Middle` (จากเดิมมีแค่ `Length`), `shortestOptionIndex`
+(mirror ของ `longestOptionIndex` เป๊ะ ๆ), `middleOptionIndex` (ใหม่) — เกทเช็คทั้งสามตัวพร้อม position
+ทุกตัวรายงานด้วย framing เดียวกับ longest เดิม ("survives shuffle — reaches the user")
+
+**การตัดสินใจเรื่อง middle สำหรับ 3 ตัวเลือก vs 4+ ตัวเลือก (ตามที่ ticket ขอให้ตัดสินใจ + ทดสอบ boundary)**:
+
+- **นิยาม**: ตัวเลือกที่ความยาว (rune count) อยู่**ระหว่าง**ค่าต่ำสุดกับสูงสุดของคำถามนั้นอย่างเคร่งครัด
+  (`l > minLen && l < maxLen`) — ไม่ใช่ตัวสุดขั้วทั้งสองด้าน สำหรับ 3 ตัวเลือกไม่มีเสมอกัน มีตัวกลางแบบนี้
+  พอดี 1 ตัวเสมอ; สำหรับ 4+ ตัวเลือกอาจมีมากกว่า 1 ตัว (เช่น ความยาว 3,6,7,9 → 6 กับ 7 ทั้งคู่เข้าเงื่อนไข)
+  — เสมอกันแก้ด้วย index ต่ำสุด กติกาเดียวกับ longest/shortest (deterministic, ไม่มี RNG)
+- **คำถามที่ไม่มีตัวกลางเลย (2 ตัวเลือก, หรือ 3+ ตัวเลือกที่ความยาวชนเหลือแค่ 2 ค่า)**: `middleOptionIndex`
+  คืน `ok=false` — **แต่ `Measure` ยังนับเป็น miss ใน `Middle.Total` ไม่ใช่ exclude ออกจากตัวหาร** นี่คือ
+  จุดตัดสินใจที่สำคัญที่สุด: ลองแบบ exclude ก่อน (เหมือนที่ `Position[k]` ทำกับคำถามที่มีตัวเลือกน้อยกว่า
+  k+1) แล้วพบว่า**ไม่ reproduce ตัวเลขที่บันทึกไว้** (`120/328=36.6%` ไม่ใช่ `120/356=33.7%`) — เปลี่ยนเป็น
+  "count as miss" แล้ว reproduce ตรงเป๊ะทั้ง 89.6% และ 33.7% ดูหัวข้อ "Finding" ด้านบน เหตุผลที่ต่างจาก
+  `Position`: "guess index 3" ไม่มีความหมายเลยสำหรับคำถาม 2 ตัวเลือก (ไม่มี index 3 ให้ถูกหรือผิด) แต่
+  "เดาตัวเลือกที่ไม่สุดขั้ว" มีความหมายชัดเจนเสมอ แค่บังเอิญเดาไม่ถูกแน่นอนเมื่อทุกตัวเลือกเป็นตัวสุดขั้วหมด
+  — การ exclude แทนที่จะนับ miss จะเปิดช่องให้ corpus ซ่อน tell จริงไว้หลังตัวหารที่หดตัวได้ ซึ่งเป็นกลไก
+  เดียวกับที่ทำให้เหตุการณ์ 89.6% เดิมหลุดรอดมาได้ตั้งแต่ต้น
+
+### N1 — Gate ที่ไม่ได้ตัดสินอะไรเลยต้องไม่รายงาน PASS
+
+**พบโดย code review round 2**: corpus 50 ข้อ track เดียว คำตอบถูกเป็นตัวยาวสุด 100% ของทุกข้อ (guessable
+ที่สุดเท่าที่สร้างได้) แต่ n=50 < `MinSampleSize`=100 → ทุก heuristic ถูกข้าม (insufficient) → เดิมพิมพ์
+`Gate: PASS` และ exit code **0** — เพราะ `GateResult{Failed: false}` เป็นค่าเดียวกันทั้งกรณี "ตัดสินแล้ว
+ผ่าน" และ "ไม่ได้ตัดสินอะไรเลย" ทั้งที่สองสถานะนี้ควรต่างกัน
+
+บล็อกเพราะ `aws-cert.md` เขียนแผนไว้ว่าคลังข้อสอบเขียนทีละ domain — เมื่อ `MinSampleSize=100` batch แรก
+ของทุก domain (ก่อนมีคำถามสะสมถึง 100 ข้อ) จะเข้าเงื่อนไข exempt นี้พอดี ซึ่งเป็นจังหวะที่ถูกที่สุดและ
+มีค่าที่สุดที่จะจับ bias เชิงระบบตั้งแต่ต้น — เกทที่เงียบตอนนั้นพอดีคือเกทที่ใช้ป้องกันอะไรไม่ได้เลย
+
+**สิ่งที่ทำ**: `GateResult` เพิ่ม `Requested bool` (true เมื่อ maxExcessRatio>=0) และ `Judged int`
+(จำนวน heuristic ที่ผ่านเกณฑ์ MinSampleSize จนถูกตัดสินจริง) — `ExitCode` คืน 1 เมื่อ `Requested &&
+(Failed || Judged==0)`, คืน 0 เมื่อไม่ได้ requested เลย (`maxExcessRatio<0`) `run()` พิมพ์
+`Gate: NOT JUDGED` แยกจาก `Gate: PASS`/`Gate: FAIL` เมื่อ `Judged==0` — หลักการเดียวกับที่ `run()` คืน
+exit 1 อยู่แล้วเมื่อไม่พบ mcq เลยในไดเรกทอรี ("เกทที่วัดอะไรไม่ได้เลยต้องไม่รายงานว่าผ่าน")
 
 ### สิ่งที่ตั้งใจไม่ทำในรอบนี้
 
@@ -975,15 +1036,17 @@ corpus ปัจจุบัน, `git archive 6b1a765 content/lessons | tar -x -
 - ไม่เลือกค่า `-max-excess` threshold ที่แน่นอนสำหรับ AWS-C1..C4 (ticket นี้ทำแค่เครื่องมือวัด ไม่ใช่
   ตรึงเกณฑ์ผ่าน/ไม่ผ่านของคลังข้อสอบที่ยังไม่มีเนื้อหาจริง)
 - ไม่แก้ distractor ใด ๆ ในคลังเดิม (ไม่ใช่ scope ของ AWS-S3 ตามที่ spec ระบุไว้ตั้งแต่ต้น)
-- ไม่แตะ Docker/DB เลย (ticket ระบุไม่ต้องมี DB — ยืนยันด้วยว่า `go test ./internal/mcqguess/...`
-  รันได้โดยไม่มี `docker compose up` ใด ๆ)
-- ไม่ตามหาสาเหตุจริงของช่องว่าง 33.7% vs 32.6% ต่อ (เกินขอบเขตที่พิสูจน์ได้ — script เดิมไม่มีให้ตรวจสอบ
-  จริง เขียนไว้เป็น "unexplained" พร้อมขอบเขตที่คำนวณได้แทนการเดาต่อ)
+- ไม่แตะ Docker/DB เลย (ticket ระบุไม่ต้องมี DB — ยืนยันด้วยว่า
+  `go test ./cmd/mcq-guessability/...` รันได้โดยไม่มี `docker compose up` ใด ๆ)
 - ไม่เพิ่ม multiple-answer support ใน `Question`/`ExpectedIndex` (AWS-S2's scope) — tool นี้จึงวัด
   guessability ได้แค่ single-answer mcq เท่านั้นตอนนี้ ดู decision bullet เรื่อง scope ด้านบนและ
   `cmd/mcq-guessability/main.go`'s package doc
+- (round 3) ไม่ตามหานิยาม tie-break ที่แท้จริงของ script เดิมสำหรับ 37 ข้อที่ความยาวชนกันเหลือ 2 ค่า
+  (ที่ commit `7dfb0ba`) — คำถามหลักที่ค้างจาก round 1-2 ("length เดิมวัดอะไรกันแน่") มีคำตอบแล้ว (วัด
+  middle ไม่ใช่ longest) ส่วนรายละเอียด tie-break ของ script ที่ไม่มีให้ตรวจสอบยังคงเป็นเช่นนั้นต่อไป
+  ไม่ใช่สิ่งที่บล็อกอะไรอีกแล้ว
 
-### Status: implemented, code review round 2 fixes applied, PR pending
+### Status: implemented, code review round 3 fixes applied, PR pending
 
 ### Review focus (round 1)
 
@@ -1031,16 +1094,16 @@ Round 1 ของ code review เป็น REQUEST_CHANGES กว้าง (R1�
 (หลายจุดในโค้ด) แก้ครบทุกข้อ:
 
 - **R1**: 89.6% เป็นค่าวัดซ้ำได้จริง (ไม่ใช่ "วัดไม่ได้โดยหลักการ" อย่างที่เขียนไว้เดิม) — กู้คืน corpus
-  ก่อน PR #43 ด้วย `git archive 6b1a765`, วัดจริงได้ 36.8% (length) ไม่ใช่ 89.6% ดูหัวข้อ "Finding"
-  ด้านบนสำหรับตัวเลขเต็ม
+  ก่อน PR #43 ด้วย `git archive 6b1a765`, วัดจริงได้ 36.8% (longest) ไม่ใช่ 89.6% **(round 3 พบว่า
+  89.6% คือค่า middle-length ไม่ใช่ longest — ดูหัวข้อ "Finding" ด้านบนสำหรับคำตอบเต็ม)**
 - **R2**: เหตุผล "tie-break rule เป็นไปได้มากที่สุด" สำหรับช่องว่าง 33.7%→32.6% ถูกแทนที่ด้วยขอบเขต
-  ที่คำนวณจริง (30.90%–34.27%) และ derive ว่า 33.7% ต้องการ 10/12 tie ชนะ (p≈0.85%) — สรุปว่า
-  unexplained ไม่ใช่ tie-break ดูหัวข้อ "Finding" ด้านบน
+  ที่คำนวณจริง (30.90%–34.27%) และ derive ว่า 33.7% ต้องการ 10/12 tie ชนะ (p≈0.85%) — สรุปว่า tie-break
+  ไม่ใช่คำตอบ **(round 3 พบคำตอบจริง: 33.7% คือค่า middle-length เช่นกัน ดูหัวข้อ "Finding" ด้านบน)**
 - **R3**: `EvaluateGate`'s position-heuristic loop ไม่มีเทสต์ที่พิสูจน์ว่ามันทำงานจริง (ลบทั้ง loop
-  ออกแล้ว `go test` ยังเขียว) — เพิ่ม `TestEvaluateGate_PositionAloneCanFailWithLengthClean`
+  ออกแล้ว `go test` ยังเขียว) — เพิ่ม `TestEvaluateGate_PositionAloneCanFailWithLongestClean`
 - **R4**: comment ของ `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` (และที่ echo ใน
   `cmd/mcq-guessability/main_test.go` กับตาราง synthetic-corpus ด้านบน) อ้างผิดว่า position heuristic
-  "อยู่ใต้ threshold สบาย ๆ" ทั้งที่ position index 3 ข้าม threshold พร้อม length heuristic พอดี
+  "อยู่ใต้ threshold สบาย ๆ" ทั้งที่ position index 3 ข้าม threshold พร้อม longest heuristic พอดี
   (เพราะ options ถูกสร้างให้ index 3 ยาวที่สุดเสมอ — "guess longest" กับ "guess index 3" จึงเป็นกลยุทธ์
   เดียวกันในฟิกซ์เจอร์นี้) แก้ comment ให้ตรงความจริง + เพิ่ม assertion นับจำนวน violation (ต้องได้ 2
   ไม่ใช่ 1) ทั้งสามจุด
@@ -1056,11 +1119,11 @@ Round 1 ของ code review เป็น REQUEST_CHANGES กว้าง (R1�
   fail ยืนยันด้วยตัวเลขที่ derive เอง (ไม่ใช่แค่ก็อปของ reviewer): fair 300 ข้อ excess 0% + bad 100 ข้อ
   excess 60% → pooled 15% (ผ่าน threshold 20% ทั้งที่ track แย่ควร fail)
 - **`MinSampleSize = 100`**: เพิ่มขั้นต่ำจำนวนตัวอย่างก่อน gate ตัดสิน (ต่ำกว่านี้รายงานเป็น
-  "insufficient" แทนที่จะ fail/pass) — derive false-positive rate เอง (19.7%/6.9%/0.05% ที่ n=30/100/550,
-  สองวิธีคำนวณตรงกัน) **ต่างจากตัวเลขที่ reviewer อ้างไว้ที่ n=30 (23.9%)** — ตรวจสอบซ้ำหลายโมเดล
-  (one-sided/two-sided, `>`/`>=`) ไม่มีโมเดลไหนให้ 23.9% ที่ตรงกับความหมายของเกทนี้ จึงใช้ตัวเลขที่
-  derive เอง (19.7%) แทนการก็อปเลขที่ยืนยันไม่ได้ — เป็นการนำกฎของ R1/R2 (verify ไม่ใช่เชื่อ) มาใช้กับ
-  ตัวเลขของ reviewer เองด้วย ไม่ใช่แค่ตัวเลขเดิมของ ticket
+  "insufficient" แทนที่จะ fail/pass) — derive false-positive rate เอง ที่ p=0.25 ตลอดตาราง
+  (19.7%/6.9%/0.05% ที่ n=30/100/550, สองวิธีคำนวณตรงกัน) **ต่างจากตัวเลขที่ reviewer อ้างไว้ที่ n=30
+  (23.9%)** ตอนแรกดูเหมือนตรวจสอบซ้ำไม่ได้ **(round 3 หาสาเหตุเจอ: 23.9% คือ p=0.20/1/5 ไม่ใช่ p=0.25 —
+  ดู "Round 3" ด้านล่าง — เก็บตารางของเอกสารนี้ไว้ที่ p=0.25 ตลอดตามเดิม เพราะเป็นโมเดลเดียวที่
+  self-consistent สำหรับค่าคงที่ตัวเดียว)**
 - **Scope ของเกท 25% แคบลงเหลือ single-answer mcq**: `Question.ExpectedAnswer` เป็น string เดี่ยว —
   AWS-S2's "Select TWO" ยังวัดไม่ได้ด้วย tool นี้ (ไม่ error แต่ก็ไม่ถูกต้อง) บันทึกไว้ใน package doc
   ของ `cmd/mcq-guessability/main.go` ว่าต้องขยาย `Question`/`ExpectedIndex` ก่อนเกทจะครอบคลุม
@@ -1077,41 +1140,143 @@ Round 1 ของ code review เป็น REQUEST_CHANGES กว้าง (R1�
 - Mutation: 11 mutation (9 เดิม + 2 ที่ round 1 ของ review พบว่ารอด) ตายจริงทุกตัวหลัง round 2 — ตาราง
   เต็มอยู่ด้านบน
 
-### Status: implemented, code review round 2 fixes applied, PR pending
-
 ### Review focus (round 2 — เน้นจุดที่แก้ตาม code review)
 
 <details>
 <summary>คำถามสำหรับรีวิว diff รอบนี้ (เฉลยพับไว้ด้านล่าง)</summary>
 
-1. ทำไม `TestEvaluateGate_PositionAloneCanFailWithLengthClean` ถึงจำเป็น ทั้งที่มี
+1. ทำไม `TestEvaluateGate_PositionAloneCanFailWithLongestClean` ถึงจำเป็น ทั้งที่มี
    `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` ที่ทำให้ position heuristic fail อยู่แล้ว?
 2. ทำไม `EvaluateTrackGates` ถึงไม่รับ overall `Report` (ตัว pooled) เป็น input เลย แทนที่จะรับแล้ว
    เลือกไม่ใช้มันตัดสิน?
 3. ทำไมตัวเลข false-positive rate ของ `MinSampleSize` ที่บันทึกในเอกสารนี้ (19.7% ที่ n=30) ถึงต่างจาก
-   ตัวเลขที่ reviewer อ้างตอน request changes (23.9%)?
+   ตัวเลขที่ reviewer อ้างตอน request changes (23.9%) — และทำไมเอกสารนี้ถึงยังไม่เปลี่ยนไปใช้ 23.9%?
 
 <details>
 <summary>เฉลย</summary>
 
 1. เพราะฟิกซ์เจอร์ของ `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` สร้าง options ให้ index 3 ยาว
-   ที่สุดเสมอ ทำให้ "guess longest" (length heuristic) กับ "guess index 3" (position heuristic) เป็น
-   **กลยุทธ์เดียวกันเป๊ะ** ในฟิกซ์เจอร์นั้น — length heuristic กับ position[3] จึงข้าม threshold
-   พร้อมกันเสมอโดยไม่มีทางแยกว่า mutation ที่ลบ position-loop ทั้งก้อนออกจะถูกจับได้จาก length heuristic
-   เพียงอย่างเดียวหรือเปล่า (คือถ้าลบ position loop ออกจริง เทสต์นี้ก็ยัง fail ได้จาก length heuristic
-   ตามปกติ ซึ่งพิสูจน์ไม่ได้ว่า position loop มีส่วนจริง) ต้องมีฟิกซ์เจอร์ที่ length "สะอาด" (excess 0)
-   แต่ position ตัวเดียว "แย่" โดยเฉพาะ ถึงจะพิสูจน์ได้ว่า position loop ทำงานเป็นอิสระจาก length จริง ๆ
+   ที่สุดเสมอ ทำให้ "guess longest" (longest-option heuristic) กับ "guess index 3" (position
+   heuristic) เป็น**กลยุทธ์เดียวกันเป๊ะ** ในฟิกซ์เจอร์นั้น — longest-option heuristic กับ position[3]
+   จึงข้าม threshold พร้อมกันเสมอโดยไม่มีทางแยกว่า mutation ที่ลบ position-loop ทั้งก้อนออกจะถูกจับได้
+   จาก longest-option heuristic เพียงอย่างเดียวหรือเปล่า (คือถ้าลบ position loop ออกจริง เทสต์นี้ก็ยัง
+   fail ได้จาก longest ตามปกติ ซึ่งพิสูจน์ไม่ได้ว่า position loop มีส่วนจริง) ต้องมีฟิกซ์เจอร์ที่ longest
+   "สะอาด" (excess 0) แต่ position ตัวเดียว "แย่" โดยเฉพาะ ถึงจะพิสูจน์ได้ว่า position loop ทำงานเป็น
+   อิสระจาก longest จริง ๆ
 2. เพราะการมี parameter ให้เลือก "จะ gate ด้วย pooled หรือไม่" จะเปิดช่องให้ future caller เลือกกลับไปใช้
    pooled ได้ ซึ่งเป็นบั๊กเดิมที่ round นี้กำลังแก้ (dilution) — การไม่รับ `Report` ตัว pooled เข้ามาเลย
    (รับแค่ `map[string]Report`) ทำให้การ gate บน pooled figure เป็นไปไม่ได้เชิงโครงสร้างที่ signature
    ระดับ type ไม่ใช่แค่ระดับ convention/comment ที่ลืมทำตามได้
-3. เพราะตัวเลข 23.9% ของ reviewer ตรวจสอบซ้ำแล้วไม่ตรงกับโมเดล exact one-sided binomial tail
-   (threshold = baseline×(1+max-excess), fail เมื่อ hit rate > threshold) ที่ตรงกับความหมายของเกทนี้
-   เป๊ะที่สุด — ลองโมเดลอื่นแล้วด้วย (two-sided, `>=` แทน `>`, normal approximation) ไม่มีโมเดลไหนให้
-   23.9% เหมือนกัน ในขณะที่ n=1 (25.0%), n=100 (6.9%), n=550 (0.05–0.1%) ตรงกับตัวเลขที่ reviewer อ้าง
-   ทุกจุด บ่งชี้ว่า 23.9% อาจเป็นค่าที่คำนวณผิดพลาดจุดเดียวที่ n=30 ไม่ใช่ทั้งชุด — เอกสารนี้จึงใช้ตัวเลข
-   ที่ derive เองแทนการก็อป เพราะ R1/R2 ก็สอนบทเรียนเดียวกันนี้: ตัวเลขที่ยังไม่ได้ verify คือคำกล่าวอ้าง
-   ไม่ใช่ข้อเท็จจริง ไม่ว่าจะมาจากที่ไหน
+3. **(แก้ตอน round 3)** เพราะ 19.7% กับ 23.9% เป็นคำตอบที่ถูกทั้งคู่ของ**คนละคำถาม**: 19.7% คือ n=30
+   ที่ p=baseline=0.25 (corpus 4 ตัวเลือก, ตรงกับตารางหลักของเอกสารนี้ตลอด) ส่วน 23.9% คือ n=30 ที่
+   p=0.20 (1/5) ซึ่ง reviewer ตั้งใจใช้แสดงตัวอย่างของ `Position[4]` บน corpus 5 ตัวเลือก
+   (multi-response) — ตารางต้นฉบับของ reviewer เองผสม baseline ข้ามแถวโดยไม่ระบุ (p=0.20 ที่ n=5/n=30,
+   p=0.25 ที่แถวอื่น) จึงดูเหมือนขัดกันจนกว่าจะสืบจนเจอว่าเป็นคนละ p เอกสารนี้ยังคงใช้ p=0.25 ตลอดทั้ง
+   ตาราง เพราะ `MinSampleSize` เป็นค่าคงที่ตัวเดียวที่ใช้กับทุก heuristic (longest/shortest/middle/
+   position ทุก index) จึงต้องมีโมเดลเดียวที่ self-consistent ไม่ใช่ผสม p หลายค่าตามบริบทของแต่ละแถว —
+   บทเรียนคือตัวเลขสองตัวที่ดูขัดกันไม่ได้แปลว่าตัวใดตัวหนึ่งผิดเสมอไป บางครั้งทั้งคู่ถูกแต่ตอบคนละคำถาม
+   ต้อง re-derive จนเจอว่าต่างกันตรงไหนจริง ๆ ก่อนสรุปว่า "ไม่มีคำอธิบาย"
+
+</details>
+</details>
+
+### Round 3 (code review) — คลี่ปม 89.6%/33.7% + เพิ่ม shortest/middle heuristic + ปิดช่อง gate ที่ไม่ได้ตัดสิน
+
+Round 2 ของ code review เป็น **NO-SHIP สามข้อ** (N1–N3): N3 คือตัวที่คลี่ปมทั้งสองข้อที่ round 1-2 เขียน
+ไว้ว่า "unexplained"/"provenance unknown" — คำตอบอยู่ใน `docs/tickets/mcq-quality.md`'s "บทเรียนที่ 1"
+มาตั้งแต่ต้น เพียงแค่ไม่เคยเอามาทดสอบกับ tool จริง แก้ครบทุกข้อ:
+
+- **N3**: 89.6% และ 33.7% (เดิม) คือค่า **middle-length** heuristic ไม่ใช่ longest ที่ tool วัดมาตลอด
+  round 1-2 — เพิ่ม `Report.Middle`/`middleOptionIndex` แล้ววัดซ้ำ reproduce ตรงเป๊ะทั้งคู่ (319/356 ที่
+  `7dfb0ba`, 120/356 ที่ปัจจุบัน) รายละเอียดเต็มอยู่ที่หัวข้อ "Finding" ด้านบน (แทนที่ข้อความเดิมทั้งหมด
+  ไม่ใช่แค่เพิ่มเติม)
+- **N2**: เพิ่ม `shortestOptionIndex` (mirror ของ `longestOptionIndex`) และ `middleOptionIndex` (ใหม่)
+  พร้อม synthetic test ครบ (100%, boundary 2 ตัวเลือก, ตัวเลือกยาวชนกันเหลือ 2 ค่า, 4+ ตัวเลือกมีตัวกลาง
+  หลายตัว) — เกทเช็คทั้งสามตัวพร้อม position รายละเอียดการตัดสินใจเรื่อง "นับ miss vs exclude" อยู่ที่
+  หัวข้อ "N2" ด้านบน (จุดตัดสินใจนี้คือสิ่งที่ทำให้ reproduce เลข 89.6%/33.7% ได้ตรงเป๊ะ ลองแบบ exclude
+  ก่อนแล้วไม่ reproduce)
+- **N1**: `GateResult` เพิ่ม `Requested`/`Judged` ทำให้แยก "ตัดสินแล้วผ่าน" กับ "ไม่ได้ตัดสินอะไรเลย" ได้
+  — `ExitCode` คืน 1 เมื่อ requested แต่ `Judged==0`, `run()` พิมพ์ `Gate: NOT JUDGED` แยกจาก `PASS`/
+  `FAIL` รายละเอียดอยู่ที่หัวข้อ "N1" ด้านบน
+- **Also fix — `MinSampleSize`'s doc comment ตัวอย่างผิด**: comment เดิมอ้างว่า n=550 "จะกัน
+  domain-driven-design (11 mcqs) ไม่ให้ถูก gate" แต่ n=100 ก็กัน DDD เหมือนกัน (11 < ทั้งคู่) — ไม่ใช่
+  ตัวอย่างที่แยกความต่างระหว่าง 100 กับ 550 ได้จริง แก้เป็นตัวอย่างที่ถูกต้อง: `ai-and-llm-systems`
+  (158 mcqs) และ `designing-data-intensive-applications` (187 mcqs) ผ่าน 100 วันนี้แต่จะไม่ผ่าน 550 —
+  นี่คือคู่ที่แสดงความต่างจริงระหว่างสองค่า
+- **Also fix — ประโยคที่ขัดกันเองในวงเล็บ**: ข้อความเดิม ("เกินขอบบนของทุก correctness-blind rule (122
+  คือ ceiling จริง แต่ 120 อยู่ในช่วง [floor, ceiling] พอดี ไม่ได้เกินขอบ...")` เปิดด้วยข้อความหนึ่งแล้ว
+  ถอนคำพูดในวงเล็บถัดไปทันที — เขียนใหม่เป็นประโยคเดียวที่สอดคล้องกันในหัวข้อ "Finding" ด้านบน (ไม่มีการ
+  ขัดแย้งกันเองอีกแล้ว)
+- **Also fix — `ExitCode`'s comment**: comment เดิม ("maps a gate verdict to a process exit code, 1 on
+  failure and 0 otherwise") restate ตัว function 5 บรรทัดตรง ๆ ไม่มี WHY เลย (WHY จริงถูกย้ายไปที่
+  `-max-excess`'s flag help ตั้งแต่ round 2 แล้ว) — ลบทิ้ง เหตุผลของ tri-state (`Requested`/`Judged`)
+  ย้ายไปอยู่ที่ `GateResult`'s doc comment แทน ซึ่งเป็นที่ที่เหมาะสมกว่า (อธิบาย field ที่ตัดสินใจ ไม่ใช่
+  ฟังก์ชันที่แค่ map ผลไปเป็นตัวเลข)
+- **Also fix — package ย้ายจริง**: round 2 ระบุใน "Also required" ว่าต้องย้าย `internal/mcqguess` ไป
+  `cmd/mcq-guessability/internal/mcqguess` แต่รายงานสรุปตอนนั้นไม่ได้ระบุชัดว่าทำหรือไม่ทำ (บอกแค่ "all
+  implemented" แบบรวม ๆ) — round 3 ตรวจสอบแล้วพบว่า**ยังไม่ได้ทำจริง** ย้ายด้วย `git mv` (คง history) จริง
+  ในรอบนี้ อัปเดต import path ใน `cmd/mcq-guessability/main.go` และ reference ในเอกสารทุกจุด
+
+### Test count (round 3)
+
+- Go: **301 (develop) → 328 (round 1) → 337 (round 2) → 343 (round 3)** (นับจาก `go test -v` ผ่าน
+  `grep -c "^--- PASS"` — round 3 เพิ่ม 6 เทสต์ใหม่: `TestShortestOptionIndex`, `TestMiddleOptionIndex`,
+  `TestMeasure_CorrectAnswerAlwaysShortest_ShortestHeuristicIsHundredPercent`,
+  `TestMeasure_CorrectAnswerAlwaysMiddle_MiddleHeuristicIsHundredPercent`,
+  `TestMeasure_MiddleOptionIndex_BoundaryCases`,
+  `TestRun_NotJudgedWhenEveryHeuristicIsBelowMinSampleSize`)
+- `go vet ./...`, `gofmt -l .` clean ทั้งคู่
+- Mutation: 17 mutation (11 เดิม + 6 ใหม่จาก N1/N2) ตายจริงทุกตัวหลัง round 3 — ตารางเต็มอยู่ด้านบน,
+  ยืนยันซ้ำทั้ง 11 เดิมด้วยว่ายังตายอยู่หลังการรีแฟกเตอร์ของรอบนี้
+
+### สี่คอร์ปัส สามเฮอริสติก (สำหรับ reviewer ตรวจตรง)
+
+คำสั่ง reproduce: current = `go run ./cmd/mcq-guessability -dir content/lessons`; historical =
+`git archive <commit> content/lessons | tar -x -C <tmp> && go run ./cmd/mcq-guessability -dir
+<tmp>/content/lessons`
+
+| Commit | Longest | Shortest | Middle | Position (0/1/2) |
+|---|---|---|---|---|
+| `6b1a765` (ก่อน #38 หนึ่งขั้น) | 36.8% | 28.4% | 29.5% | 41.6% / 30.3% / 28.1% |
+| `7dfb0ba` (หลัง #38 "C-mcq-sweep") | 2.0% | 3.7% | **89.6%** | 41.6% / 30.3% / 28.1% |
+| ปัจจุบัน / `057ec9a` (หลัง #43 "C-mcq-balance") | 32.6% | 31.5% | **33.7%** | 33.4% / 33.4% / 33.1% |
+
+(baseline 33.3% ทุก cell, corpus 3-option ทั้งหมด ทั้งสามคอมมิต — position ที่ `6b1a765` กับ `7dfb0ba`
+เท่ากันเป๊ะเพราะ #38 แก้แค่เนื้อหาตัวเลือก ไม่ได้ย้ายตำแหน่งคำตอบ)
+
+### Review focus (round 3)
+
+<details>
+<summary>คำถามสำหรับรีวิว diff รอบนี้ (เฉลยพับไว้ด้านล่าง)</summary>
+
+1. ทำไมการเปลี่ยน `Middle` จาก "exclude คำถามที่ไม่มีตัวกลาง" เป็น "นับเป็น miss" ถึงเป็นจุดตัดสินใจที่
+   สำคัญที่สุดของรอบนี้ ทั้งที่ดูเหมือนรายละเอียดเล็ก ๆ?
+2. ทำไม 41.6% (position) ตรงกับตัวเลขเดิมตั้งแต่ round 1 แต่ 89.6% (length) ต้องรอถึง round 3 ถึงจะ
+   reproduce ได้?
+3. ทำไม `ExitCode` ต้องคืน 1 เมื่อ `Judged == 0` ทั้งที่ `Failed` ยังเป็น `false` อยู่?
+
+<details>
+<summary>เฉลย</summary>
+
+1. เพราะมันคือความต่างระหว่าง "89.6%/33.7% reproduce ได้" กับ "ยังเป็นปริศนาต่อไป" ล้วน ๆ — ลองวัดแบบ
+   exclude ก่อน (เหมือน `Position[k]` ทำกับคำถามที่มีตัวเลือกไม่พอ) ได้ 120/328=36.6% ไม่ตรงกับ 33.7%
+   ที่บันทึกไว้เลย เปลี่ยนเป็นนับ miss (Total เท่ากับ NumMCQs เสมอ เหมือน Longest/Shortest) ได้
+   120/356=33.7% ตรงเป๊ะทันที เหตุผลเชิงแนวคิดก็สอดคล้อง: "guess index 3" ไม่มีความหมายสำหรับคำถาม
+   2 ตัวเลือก (ไม่มี index 3 อยู่จริง) แต่ "เดาตัวเลือกที่ไม่สุดขั้ว" มีความหมายเสมอ แค่บังเอิญเดาไม่ถูก
+   แน่นอนเมื่อทุกตัวเลือกเป็นสุดขั้วหมด — การ exclude แทนที่จะนับ miss จะซ่อน tell จริงไว้หลังตัวหารที่
+   หดตัวได้ ซึ่งเป็นกลไกเดียวกับที่ทำให้เหตุการณ์ 89.6% เดิมหลุดรอดมาได้ตั้งแต่ต้น (วัดผิดจุด ไม่ใช่วัดผิด
+   วิธี)
+2. เพราะ position heuristic ของ tool เดิมกับ tool นี้วัดสิ่งเดียวกันมาตลอด (เดาตำแหน่งเดิมเสมอ ไม่มี
+   ทางตีความสองแบบ) จึงตรงกันตั้งแต่ round 1 แต่ "length heuristic" ของ tool เดิม (script ที่สูญหายไป
+   แล้ว) จริง ๆ วัด **middle**-length ไม่ใช่ **longest**-length ที่ tool นี้ implement มาตลอดจนถึง
+   round 2 — เครื่องมือทั้งสองวัดถูกต้องในสิ่งที่แต่ละตัวถูกออกแบบมาให้วัด (ไม่มีบั๊กในทั้งคู่) แค่ตั้งชื่อ
+   heuristic เดียวกัน ("length") ให้กับสองสิ่งที่ต่างกัน — ปมนี้แก้ได้ก็ต่อเมื่อมี middle heuristic ให้
+   เทียบเท่านั้น ซึ่งเป็นสิ่งที่ N2 เพิ่มเข้ามาในรอบเดียวกันพอดี
+3. เพราะ `Judged == 0` แปลว่าทุก heuristic ถูกข้ามเพราะ n ต่ำกว่า `MinSampleSize` — ไม่มีการเปรียบเทียบ
+   กับ threshold เกิดขึ้นเลยสักครั้ง `Failed == false` ในสถานะนี้ไม่ได้แปลว่า "ตรวจแล้วผ่าน" แต่แปลว่า
+   "ยังไม่ได้ตรวจ" ถ้า `ExitCode` คืน 0 ในสถานะนี้ CI จะอ่านเป็น PASS ทั้งที่ไม่มีการวัดอะไรเกิดขึ้นจริง —
+   อันตรายที่สุดคือ batch แรกของทุก domain ในแผนเขียนคำถามทีละ domain จะตกอยู่ในสถานะนี้พอดี (ยังไม่ถึง
+   100 ข้อ) ซึ่งเป็นจังหวะที่ควรจับ bias เชิงระบบให้ได้มากที่สุด ไม่ใช่จังหวะที่เกทเงียบไปเฉย ๆ
 
 </details>
 </details>

@@ -14,15 +14,34 @@ import "fmt"
 const minMeasurableOptions = 2
 
 // Report aggregates heuristic results over a group of mcq questions: either
-// one track (Track != "") or the whole corpus (Track == ""). Position is
-// keyed by 0-based guessed index; a HeuristicResult for index p is only
-// built from questions that actually have more than p options, so a corpus
-// mixing option counts never inflates or deflates a position's own
-// baseline with questions the guess "index p" could not even apply to.
+// one track (Track != "") or the whole corpus (Track == ""). Longest,
+// Shortest, and Middle are the three length-based heuristics
+// docs/tickets/mcq-quality.md's ตัวชี้วัด requires (ยาว/สั้น/กลาง) — all
+// three survive Q-1's render-time option shuffle and reach the user, unlike
+// Position, and all three have Total == NumMCQs always, including Middle: a
+// question whose options collapse to only two distinct lengths has no
+// middleOptionIndex answer (see its doc comment), and that counts as a miss
+// for Middle rather than an exclusion. This is deliberately unlike Position,
+// where a question with too few options is excluded rather than counted as
+// a miss — "guess index 3" is undefined for a 2-option question (there is no
+// index 3 to be right or wrong about), but "guess the non-extreme option"
+// is well-defined and simply unwinnable when every option ties into an
+// extreme; excluding it instead of counting the miss would let a corpus
+// hide a real middle-length tell behind a shrinking denominator, which is
+// exactly how the docs/tickets/mcq-quality.md incident this heuristic
+// exists to catch was missed the first time (see docs/tickets/aws-cert.md's
+// AWS-S3 "N3" finding: verified against real history, this choice is what
+// makes 120/356 and 319/356 reproduce exactly). Position is keyed by
+// 0-based guessed index; a HeuristicResult for index p is only built from
+// questions that actually have more than p options, so a corpus mixing
+// option counts never inflates or deflates a position's own baseline with
+// questions the guess "index p" could not even apply to.
 type Report struct {
 	Track    string
 	NumMCQs  int
-	Length   HeuristicResult
+	Longest  HeuristicResult
+	Shortest HeuristicResult
+	Middle   HeuristicResult
 	Position map[int]HeuristicResult
 	MaxIndex int
 }
@@ -75,7 +94,13 @@ func accumulate(r *Report, q Question, expectedIdx int) {
 	baseline := q.Baseline()
 
 	longest := longestOptionIndex(q.Options)
-	r.Length.add(longest == expectedIdx, baseline)
+	r.Longest.add(longest == expectedIdx, baseline)
+
+	shortest := shortestOptionIndex(q.Options)
+	r.Shortest.add(shortest == expectedIdx, baseline)
+
+	middle, middleOK := middleOptionIndex(q.Options)
+	r.Middle.add(middleOK && middle == expectedIdx, baseline)
 
 	if last := len(q.Options) - 1; last > r.MaxIndex {
 		r.MaxIndex = last

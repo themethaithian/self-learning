@@ -58,14 +58,15 @@ func writeGateStraddlingFixture(t *testing.T, dir string) {
 	}
 }
 
-// This fixture's length-heuristic excess is exactly 0.20 (30% hit rate vs
-// 25% baseline) — see internal/mcqguess's gate_test.go for the identical
-// construction and the exact arithmetic (including why the position-3
-// heuristic moves together with the length heuristic here, not
-// independently — they are the same guess on this fixture by construction,
-// so both cross the threshold at once). Running it through the full CLI
-// pipeline (not just EvaluateTrackGates directly) proves main.go's own exit
-// code wiring, not just the internal package's gate logic in isolation.
+// This fixture's longest-option-heuristic excess is exactly 0.20 (30% hit
+// rate vs 25% baseline) — see this package's internal/mcqguess/gate_test.go
+// for the identical construction and the exact arithmetic (including why
+// the position-3 heuristic moves together with the longest-option
+// heuristic here, not independently — they are the same guess on this
+// fixture by construction, so both cross the threshold at once). Running it
+// through the full CLI pipeline (not just EvaluateTrackGates directly)
+// proves main.go's own exit code wiring, not just the internal package's
+// gate logic in isolation.
 func TestRun_GateStraddlingCorpus_ExitCodeFlips(t *testing.T) {
 	dir := t.TempDir()
 	writeGateStraddlingFixture(t, dir)
@@ -86,8 +87,8 @@ func TestRun_GateStraddlingCorpus_ExitCodeFlips(t *testing.T) {
 	if !strings.Contains(out, "Gate: FAIL") {
 		t.Errorf("output missing \"Gate: FAIL\":\n%s", out)
 	}
-	if !strings.Contains(out, "length heuristic") || !strings.Contains(out, "index 3") {
-		t.Errorf("output missing both expected violations (length heuristic AND position index 3):\n%s", out)
+	if !strings.Contains(out, "longest-option heuristic") || !strings.Contains(out, "index 3") {
+		t.Errorf("output missing both expected violations (longest-option heuristic AND position index 3):\n%s", out)
 	}
 }
 
@@ -148,6 +149,36 @@ func writeLessonFixture(t *testing.T, dir, topic string, checks []fixtureCheck) 
 	}
 	if err := os.WriteFile(filepath.Join(topicDir, "concept.json"), raw, 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
+	}
+}
+
+func TestRun_NotJudgedWhenEveryHeuristicIsBelowMinSampleSize(t *testing.T) {
+	// N1 regression: a 50-question single-track corpus where the correct
+	// answer is the longest option in 100% of questions is the most
+	// guessable corpus constructible, yet every heuristic here has n=50,
+	// below mcqguess.MinSampleSize=100 — none of them get judged. run()
+	// must not print "Gate: PASS" or exit 0 for this: a gate that measured
+	// nothing must say so and fail closed, the same way it already does
+	// for a directory with zero mcq questions in it.
+	dir := t.TempDir()
+	options := []string{"short-a", "short-b", "short-c", "the much longer fourth option here"}
+	var checks []fixtureCheck
+	for i := 0; i < 50; i++ {
+		checks = append(checks, fixtureCheck{Q: "q", ExpectedAnswer: options[3], Type: "mcq", Options: options})
+	}
+	writeLessonFixture(t, dir, "tiny-track", checks)
+
+	var buf bytes.Buffer
+	code := run(dir, 0.20, &buf)
+	out := buf.String()
+	if code != 1 {
+		t.Errorf("run() = %d, want 1: a gate that judged nothing must not exit 0\noutput:\n%s", code, out)
+	}
+	if strings.Contains(out, "Gate: PASS") {
+		t.Errorf("output says \"Gate: PASS\" for a corpus where nothing met MinSampleSize:\n%s", out)
+	}
+	if !strings.Contains(out, "Gate: NOT JUDGED") {
+		t.Errorf("output missing \"Gate: NOT JUDGED\":\n%s", out)
 	}
 }
 
