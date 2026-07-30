@@ -81,14 +81,24 @@ wiring พร้อม debounced submit, unload flush, visit-based identity guar
   **ต้อง re-review ก่อน merge** — รายละเอียดครบใน `docs/tickets/quiz.md`
   · หมายเหตุ: branch นี้มี `git stash` ค้างอยู่หนึ่งอัน ที่ระบุว่าเป็น artifact
   ของ autocrlf ไม่ใช่งานจริง — `git stash list` แล้วทิ้งได้ถ้าไม่มี diff จริง
-- **`ticket/aws-0-saa-tree`** — rebalance `content/curriculum/aws.json` จาก 37
-  เป็นราว 50 concept + เขียน `docs/tickets/aws-cert.md`
-  **ตอน handoff branch นี้มี 0 commit** และถูกสั่งให้ commit แบบ WIP ทันที
-  → เช็ก `git log --oneline develop..ticket/aws-0-saa-tree` ก่อน ถ้ายังว่าง
-  แปลว่างานหายไปกับ session ต้องเริ่มใหม่ ซึ่งไม่แพงเพราะ spec ทั้งหมด
-  (blueprint + gap analysis) อยู่ในหัวข้อ 5 ของไฟล์นี้แล้ว
+- **`ticket/aws-0-saa-tree`** (push แล้ว, `aea387d`) — tree ปรับเสร็จแล้วจริง
+  ยืนยันเองแล้ว: **37 → 50 concept** แบ่งเป็น 15/13/12/10 = **30/26/24/20 พอดี**
+  ตรงกับน้ำหนักโดเมนจริง · มี `docs/tickets/aws-cert.md` (227 บรรทัด) และ
+  roadmap อัปเดตแล้ว · `go vet` + `go test ./internal/curriculum/...` ผ่าน
+  · commit message ขึ้นต้น `WIP:` เพราะถูกสั่งให้ commit ทันทีตอนจะหมด session
+  **แต่เนื้องานครบ** — เหลือแค่ code-review แล้วเปิด PR
+  · แตะไฟล์ Go หนึ่งไฟล์นอกขอบเขต docs: `internal/curriculum/infra/contentfile_aws_test.go`
+  เป็น golden test ที่ hardcode รายชื่อ slug ของ `aws.json` ไว้ ถ้าไม่แก้ตาม
+  `go test ./...` จะแดงถาวร — เป็นข้อยกเว้นที่สมเหตุสมผล แต่ reviewer ควรดู
+
 - ถ้า branch ไหนไม่มี commit เลย (เท่ากับ `develop` เป๊ะ) แปลว่างานหายไปพร้อม
   session ต้องเริ่มใหม่จาก ticket doc ที่เกี่ยวข้อง
+
+**หมายเหตุเฉพาะเครื่อง PC (ไม่เกี่ยวกับ Mac)**: subagent สร้าง git worktree แยก
+สองอันเพื่อเลี่ยงการแก้ไฟล์ทับกัน — `../self-learning-aws-0` และ
+`../self-learning-q2c` · ทุก commit push ขึ้น origin หมดแล้ว บน Mac ให้
+`git checkout <branch>` ตามปกติ ไม่ต้องสนใจ worktree เหล่านี้ · กลับมาที่ PC
+เมื่อไหร่ ถ้าไม่ใช้แล้วเก็บกวาดด้วย `git worktree remove <path>`
 
 ## 5. แผน AWS — blueprint ที่ยืนยันแล้ว
 
