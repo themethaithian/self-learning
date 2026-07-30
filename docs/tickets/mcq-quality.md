@@ -14,14 +14,19 @@
   parameterize baseline ตามจำนวนตัวเลือกของ corpus นั้น ไม่ hardcode 33%
 - เดาด้วยกฎ "เลือกตัวเลือกที่ยาว/สั้น/กลาง" ต้องได้ ≈baseline (เท่าการเดาสุ่ม)
 - เดาด้วยกฎ "เลือกตำแหน่งเดิมเสมอ" ต้องได้ ≈baseline
-- ตัวเลขปัจจุบันหลัง ticket นี้ (corpus 3 ตัวเลือก, baseline 33%): ความยาว 33.7% · ตำแหน่ง 33.4% ·
-  (ก่อนแก้: 89.6% และ 41.6%)
-- **หมายเหตุ (AWS-S1, verified โดยตรงจาก git history)**: ตัวเลขข้างต้นมาจาก script ที่รันแบบ ad hoc
-  นอก version control — ไม่มี script วัดใด ๆ commit ไว้ในโปรเจกต์นี้ (เช็คแล้ว: ไม่มี `.py`/`.go`
-  ใต้ `cmd/`/`scripts/` ใด ๆ ที่ทำหน้าที่นี้ ทั้ง `content/mcq-length-sweep`/`content/mcq-balance`
-  commits ทั้งหมดแก้แค่ไฟล์ JSON เนื้อหา ไม่มี tooling ติดมาด้วย) ticket ในอนาคตที่ต้องการรันวัดซ้ำ
-  อัตโนมัติ (เช่นก่อนเปิด batch เขียนคำถาม AWS) ต้องสร้างเครื่องมือนี้ขึ้นใหม่ โดยรับ baseline
-  (`1/len(options)`) เป็น parameter ต่อ corpus ตั้งแต่ต้น ไม่ hardcode 33%
+- **ตัวเลขที่ reproduce ได้จริงตอนนี้ (AWS-S3, `cmd/mcq-guessability`)** — คำสั่ง
+  `go run ./cmd/mcq-guessability -dir content/lessons`: corpus 356 MCQ ทุกข้อมี 3 ตัวเลือก
+  (baseline 33.3%) → length heuristic **32.6%** (excess −2.2% เทียบ baseline) · position heuristic
+  index 0/1/2 = **33.4% / 33.4% / 33.1%** (excess +0.3% / +0.3% / −0.6%) ทั้งคู่ใกล้ baseline มาก
+  ไม่ใช่ tell — ก่อนแก้ (#38): **89.6%** (ค่าย้อนหลัง วัดซ้ำไม่ได้แล้วเพราะ corpus ถูก rewrite ไปใน
+  PR #43)
+- **หมายเหตุ**: ตัวเลขชุดก่อน (length 33.7% / position 33.4%, บันทึกไว้ตอน C-mcq-balance #43) **ใกล้
+  เคียงแต่ไม่ตรงเป๊ะ**กับตัวเลขข้างบนที่วัดซ้ำด้วย tool จริงตอนนี้ — ยืนยันแล้วว่า**ไม่ใช่**เพราะ corpus
+  เปลี่ยน (AWS-S1's import-parity MD5 check ยืนยันว่า 356 recall_checks ไบต์เดิมทุกตัวตั้งแต่ PR #43)
+  ที่เป็นไปได้มากที่สุดคือ tie-break rule ของ ad hoc script เดิม (สูญหายแล้ว ไม่มีใน version control
+  ให้ตรวจสอบจริง) ต่างจาก tool ใหม่ (เลือก index ต่ำสุดเมื่อความยาวเสมอกัน, deterministic) — รายงานความ
+  ต่างนี้ไว้ตรง ๆ แทนที่จะเลือกใช้เลขใดเลขหนึ่งอย่างเงียบ ๆ รายละเอียดเต็มของ tool + mutation table อยู่ที่
+  [aws-cert.md](aws-cert.md)'s "AWS-S3" section
 
 ## บทเรียนที่ 1 — วัดให้ตรงโจทย์
 

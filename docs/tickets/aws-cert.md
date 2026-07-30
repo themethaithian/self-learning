@@ -14,8 +14,8 @@
   AWS-0 เพราะแตะ `internal/` ซึ่ง AWS-0 ไม่แตะ
 - **AWS-S2** (ยังไม่เริ่ม) — multiple-response support (second correct answer, "Select TWO",
   all-or-nothing scoring) — ดูหัวข้อ blocker ข้อ 3 ด้านล่าง
-- **AWS-S3** (ยังไม่เริ่ม, spec ปักไว้แล้ว) — guessability measurement tool ที่ parameterize baseline
-  ได้ต่อ corpus — ดูหัวข้อ "AWS-S3" ด้านล่าง gate คลังข้อสอบจริง
+- **AWS-S3** (implemented, PR pending — ดูหัวข้อ "AWS-S3 — guessability measurement tool" ด้านล่าง) —
+  guessability measurement tool ที่ parameterize baseline ได้ต่อ corpus, gate คลังข้อสอบจริงใช้งานได้แล้ว
 - **AWS-C1..C4** (ยังไม่เริ่ม, gated บน S1/S2/S3) — คลังข้อสอบจริง ~550 ข้อ ทีละ domain
 
 ## Blueprint ข้อสอบ (verified โดยตรงจาก docs.aws.amazon.com ระหว่าง round 2 ของ ticket นี้)
@@ -281,17 +281,17 @@ domain ถูกออกแบบให้ตรงสัดส่วนน้�
   นั้นเท่านั้น เอาไปใช้ตรง ๆ กับ corpus 4-option ของ AWS จะเป็น false-green แบบเดียวกับที่ #38 เคย
   รายงาน `VIOLATIONS: NONE` ทั้งที่เดาถูก 89.6% — วัดผิด baseline คือ วัดผิดโจทย์แบบเดียวกัน (ดู
   mcq-quality.md's "บทเรียนที่ 1") กติกา distractor length/position เดิมยังใช้ต่อ แค่เทียบกับ 25%
-  แทน 33% — **แต่เกทนี้ unenforceable จนกว่า AWS-S3 จะสร้างเครื่องมือวัดจริง** (ดู "AWS-S3 —
-  guessability measurement tool" ด้านล่างสำหรับ spec) เพราะไม่มี script วัดใด ๆ commit ไว้ใน
-  โปรเจกต์นี้เลย (verified: ไม่มีทั้งใน working tree และ `git log --all --diff-filter=A`) — **ห้าม
-  เริ่มเขียนคำถามชุดจริง (AWS-C1..C4) ก่อน AWS-S3 เสร็จ** เพราะไม่มีทางวัดว่าชุดที่เขียนผ่านเกท 25%
-  จริงหรือไม่จนกว่าเครื่องมือจะมี
+  แทน 33% — **เกทนี้ enforceable แล้ว** (AWS-S3 เสร็จแล้ว — `go run ./cmd/mcq-guessability -dir
+  content/lessons/aws -max-excess <threshold>` ดู "AWS-S3 — guessability measurement tool"
+  ด้านล่างสำหรับรายละเอียด tool + ตัวเลขที่วัดได้จากคลังเดิม) — ยังต้องเลือกค่า `<threshold>` ที่แน่นอน
+  ก่อนเริ่ม AWS-C1 จริง (spec นี้กำหนดแค่ baseline 25%, ไม่ได้ตรึงตัวเลข excess ที่ยอมรับได้)
 
 ## AWS-S3 — guessability measurement tool (spec ที่นี่เท่านั้น — ticket แยกต่างหาก ไม่ทำใน AWS-S1)
 
-**สถานะ**: ยังไม่เริ่ม — เอกสารนี้กำหนด spec ขั้นต่ำไว้ล่วงหน้าเพื่อให้ ticket ถัดไปสร้างได้เลย
-ไม่ต้องออกแบบใหม่ gate ทั้งเก่า (33% บน corpus 3 ตัวเลือก) และใหม่ (25% บน corpus AWS 4 ตัวเลือก)
-**unenforceable จนกว่า tool นี้จะมี** เพราะไม่มี measurement script ใด commit ไว้ในโปรเจกต์
+**สถานะ**: **implemented, PR pending** — ดูหัวข้อ "AWS-S3 — guessability measurement tool" ท้ายเอกสาร
+นี้สำหรับสิ่งที่ deliver จริง (`cmd/mcq-guessability` + `internal/mcqguess`), การตัดสินใจ, mutation
+table, และตัวเลขที่วัดได้จากคลังเดิม — สเปกด้านล่างนี้คือของเดิมที่ปักไว้ล่วงหน้า (เก็บไว้อ้างอิง
+ไม่ได้แก้ตามการ implement จริง)
 
 **สิ่งที่ AWS-C1..C4 (คลังข้อสอบ) ต้องรอ**: AWS-S3 ต้องเสร็จก่อน batch เขียนคำถามจริงชุดแรกเริ่ม —
 ไม่ใช่แค่ก่อนตรวจ ไม่งั้นจะเขียนคำถามเป็นร้อยข้อโดยไม่มีทางรู้ว่าเดาได้ง่ายไปหรือเปล่าจนสายเกินแก้
@@ -734,6 +734,196 @@ migration อื่นแบบเงียบ ๆ — เขียนกฎน�
    on re-run" ไม่ได้จำกัดแค่ `ADD COLUMN` — `DROP COLUMN` และ `CREATE INDEX` มีข้อจำกัดเดียวกันเป๊ะ ๆ
    ใน MySQL 8 (ไม่มี `IF EXISTS`/`IF NOT EXISTS` form) เขียนเทสต์ให้ครอบคลุมกฎที่ตั้งไว้เองทั้งหมด
    ตั้งแต่ตอนนี้ถูกกว่าการรอให้มี migration จริงมาเจอปัญหาเดียวกันซ้ำแล้วค่อยแก้เทสต์เพิ่มทีหลัง
+
+</details>
+</details>
+
+## AWS-S3 — guessability measurement tool
+
+**สิ่งที่ทำ**: สร้าง `internal/mcqguess` (pure logic, ไม่แตะ DB/HTTP, unit-tested หนัก) +
+`cmd/mcq-guessability` (thin CLI wrapper ตาม convention เดียวกับ `cmd/import-lessons`/
+`cmd/import-curriculum`) ที่วัด guessability ของ `recall_checks` ประเภท mcq จาก
+`content/lessons/*/*.json` โดยตรง (ไม่ผ่าน curriculum domain) — baseline คำนวณต่อข้อจาก
+`1/len(options)` เสมอ ไม่ hardcode ทั้งเก่า (kept) ไม่แตะ Docker/DB (ตาม ticket ระบุ ไม่ต้องมี DB)
+
+### สิ่งที่ deliver
+
+- `internal/mcqguess/question.go` — `Question` (Track/Source/Options/ExpectedAnswer),
+  `Baseline()` (`1/len(options)`), `ExpectedIndex()`
+- `internal/mcqguess/heuristics.go` — `LongestOptionIndex` (rune-based, deterministic tie-break),
+  `HeuristicResult` (Hits/Total/baselineSum → `HitRate()`/`AvgBaseline()`/`ExcessRatio()`)
+- `internal/mcqguess/report.go` — `Report` (per-track หรือ overall), `Measure(questions)` คืน
+  overall + `map[string]Report` ต่อ track, abort ทันทีถ้า `expected_answer` ไม่อยู่ใน options ของ
+  ตัวเอง
+- `internal/mcqguess/gate.go` — `EvaluateGate(report, maxExcessRatio)`, `ExitCode(gate)`
+- `internal/mcqguess/load.go` — `LoadQuestions(root)` เดิน `filepath.WalkDir` หา `*.json` ทุกไฟล์
+  ใต้ root แบบ recursive, decode DTO ของตัวเอง (ไม่ใช้ `curriculuminfra.LoadLesson`), filter เฉพาะ
+  `type == "mcq"`
+- `cmd/mcq-guessability/main.go` — flag `-dir` (default `content/lessons`), `-max-excess` (default
+  `-1` = ปิด gate), พิมพ์รายงานต่อ track + overall แล้วจบด้วยผล gate
+- เทสต์: `internal/mcqguess/{question,heuristics,report,gate,load}_test.go` (23 top-level test) +
+  `cmd/mcq-guessability/main_test.go` (4 top-level test, end-to-end ผ่าน `run()` จริง)
+
+### การตัดสินใจ (พร้อมเหตุผล)
+
+- **Tie-break ของ longest-option heuristic**: เลือก index **ต่ำสุด**ในกลุ่มที่ยาวเท่ากัน
+  (`l > bestLen` ไม่ใช่ `>=`, ดังนั้นค่าที่เจอก่อนชนะเสมอ) เหตุผลสองข้อ: (1) จำลอง test-taker จริงที่
+  กวาดสายตาบนลงล่างแล้วหยุดที่ตัวแรกที่ "ดูยาวที่สุด" ไม่ใช่สุ่มเลือกในกลุ่มที่เสมอกัน (2) deterministic
+  — ไม่มี RNG เลยทั้ง tool นี้ ผลลัพธ์จึงรันซ้ำได้ byte-ต่อ-byte ทุกครั้ง ซึ่งจำเป็นถ้าจะใช้เป็น gate ใน
+  CI ในอนาคต (RNG ในเกทจะทำให้ build เขียว/แดงสลับกันได้โดยไม่มีอะไรเปลี่ยนจริง)
+- **Excess metric = ratio `(actual-baseline)/baseline` ไม่ใช่ percentage points สัมบูรณ์**:
+  percentage points ไม่ portable ข้าม corpus ที่ baseline ต่างกัน — 5pp เหนือ baseline 25% คือ
+  relative jump 20%, แต่ 5pp เดียวกันเหนือ baseline 33.3% คือแค่ 15% — ใช้ pp ตรง ๆ จะสร้างบั๊กแบบ
+  เดียวกับที่ ticket นี้มีไว้แก้ (raw hit rate ที่เทียบข้าม corpus กันไม่ได้) ขึ้นมาใหม่อีกชั้นหนึ่งที่ตัว
+  metric ของ excess เอง แทนที่จะแก้ที่ตัว baseline
+- **Gate เช็คทั้ง length heuristic และทุก position-index heuristic** ไม่ใช่แค่ length: แม้ Q-1
+  (`web/lib/shuffle.ts`) จะ shuffle ตัวเลือกตอน render ทำให้ position bias ที่เก็บใน JSON ไม่ถึงผู้ใช้
+  จริง (เป็นแค่ content-quality signal) แต่ position bias ยังบอกว่ากระบวนการเขียน distractor มีรูรั่ว
+  เชิงระบบ — เกทควรจับไว้ตั้งแต่ต้น ไม่ใช่รอจน length heuristic แสดงอาการก่อน (การรายงานแยกสองป้ายกำกับ
+  ชัดเจน "reaches the user" vs "content-quality signal only" ใน output แทน เพื่อไม่ให้ตกใจกับตัวเลข
+  position ที่จริง ๆ ไม่กระทบผู้ใช้ และไม่ชะล่าใจกับตัวเลข length ที่กระทบจริง)
+- **`expected_answer` ไม่อยู่ใน options ของตัวเอง → abort (error) ไม่ silent-skip**: การข้ามคำถามที่
+  เสียหายไปเงียบ ๆ จะลดขนาด N โดยไม่มีใครรู้ตัว — เป็นความผิดพลาดแบบเดียวกับที่ ticket นี้มีไว้ป้องกัน
+  (วัดผิดโจทย์แบบไม่รู้ตัว) เพียงแค่คนละจุดในไปป์ไลน์ tool นี้อ่านไฟล์ตรง ไม่ผ่าน domain
+  (`RecallCheck`'s `slices.Contains(options, answer)` check ไม่ได้อยู่ในเส้นทางนี้เลย) จึงต้องเช็คเอง
+  แล้ว abort พร้อม path + expected_answer ที่ error message เพื่อ debug ได้ทันที
+- **ไม่ reuse `curriculuminfra.LoadLesson`**: loader นั้น decode ด้วย `DisallowUnknownFields()` และ
+  สร้าง domain `Lesson` เต็มรูปแบบ ซึ่งจะ reject ไฟล์ที่เสียหายก่อนที่ tool นี้จะเห็นด้วยซ้ำ (ขัดกับ
+  เหตุผลข้อก่อนหน้า) แถมต้อง resolve topic/concept_id กับ concept row จริงใน MySQL — tool นี้ไม่ต้องมี
+  DB เลยตามที่ ticket ระบุ จึง decode เฉพาะฟิลด์ที่ต้องใช้ (`topic`, `recall_checks[].{type,
+  expected_answer, options}`) ด้วย DTO ของตัวเอง
+- **`-max-excess` default = `-1` (ปิด gate)**: รัน tool เฉยๆ (ไม่ใส่ flag) ต้องไม่ fail อะไรเลย เป็น
+  ค่าเริ่มต้นที่ปลอดภัยสำหรับตอนนี้ (ยังไม่ wire เข้า CI) — ticket ในอนาคตที่ wire เข้า CI/Makefile
+  ต้องเลือกค่า threshold เองตอนนั้น
+- **Track = ค่า `"topic"` field ในไฟล์ JSON โดยตรง** ไม่ใช่ชื่อโฟลเดอร์: ทำให้ synthetic corpus ใน
+  เทสต์สร้าง `Question` struct ตรง ๆ ได้โดยไม่ต้องพึ่ง filesystem เลย (`Measure`/`Report` ไม่รู้จัก
+  concept "โฟลเดอร์" เลย) — ของจริงสอง field นี้ตรงกันเสมอเพราะ `curriculuminfra.LoadLesson` บังคับไว้
+  ตอน import แต่ tool นี้ไม่ได้พึ่งการบังคับนั้น (อ่านไฟล์ตรง)
+
+### Synthetic-corpus test table (ทุกกรณีที่ ticket ระบุไว้ขั้นต่ำ)
+
+| # | Corpus | Assertion | Test |
+|---|---|---|---|
+| 1 | ทุกข้อคำตอบถูกคือตัวเลือกที่ยาวที่สุด (ไม่มีเสมอ) | length heuristic = 100% | `TestMeasure_CorrectAnswerAlwaysLongest_LengthHeuristicIsHundredPercent` |
+| 2 | ตัวเลือกทุกตัวยาวเท่ากัน (เสมอทั้งหมด), คำตอบถูกวนสม่ำเสมอ index 0/1/2 (100 ข้อ/index จาก 300 ข้อ) | length heuristic = baseline พอดี (ภายใน 1e-9) | `TestMeasure_AllOptionsEqualLength_LengthHeuristicNearBaseline` |
+| 3 | คำตอบถูกอยู่ index 1 เสมอ (40 ข้อ, 4 ตัวเลือก) | position[1] = 100%, position[0,2,3] = 0% พอดี | `TestMeasure_CorrectAnswerAlwaysIndex1_PositionHeuristic` |
+| 4 | ผสม track 3 ตัวเลือก (3 ข้อ) กับ track 4 ตัวเลือก (3 ข้อ) | baseline ต่อ track ต่างกัน (1/3 vs 1/4), overall baseline = ค่าเฉลี่ยถ่วงน้ำหนัก 0.29166... ไม่ตรงกับ track ใด track หนึ่งเป๊ะ | `TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither` |
+| 5 | corpus สร้างให้ length heuristic excess = 0.20 พอดี (30/100 hit, baseline 0.25) | gate ผ่านที่ max=0.21, gate ไม่ผ่านที่ max=0.19 (exit code 0 vs 1) | `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` (internal), `TestRun_GateStraddlingCorpus_ExitCodeFlips` (end-to-end ผ่าน CLI `run()` จริง) |
+| — | corpus 3-ตัวเลือกล้วน / 4-ตัวเลือกล้วน (แยกกัน) | baseline = 1/3 พอดี / baseline = 1/4 พอดี (ฆ่า hardcode ทั้งสองทิศทางแยกกัน) | `TestMeasure_BaselineForThreeOptionCorpusIsOneThird`, `TestMeasure_BaselineForFourOptionCorpusIsOneQuarter` |
+| — | Thai option (4 runes/12 bytes) vs English option (8 runes/8 bytes) | `LongestOptionIndex` เลือกตาม rune count ไม่ใช่ byte count | `TestLongestOptionIndex/rune_count,_not_byte_count` |
+| — | ไฟล์จริงผสม mcq + short_answer | `LoadQuestions` คืนเฉพาะ mcq | `TestLoadQuestions_FiltersShortAnswer` |
+| — | คำถามที่ `expected_answer` ไม่อยู่ใน options | `Measure` abort พร้อม error ระบุ source file + answer | `TestMeasure_ExpectedAnswerNotInOptionsAborts` |
+
+**Tolerance ที่ใช้ (`floatEps = 1e-9`) และทำไมไม่ flaky**: ทุก fixture ในไฟล์เทสต์เหล่านี้สร้างด้วยมือ
+แบบ deterministic ล้วน ๆ ไม่มีการสุ่มเลยสักจุดเดียว (เช่น กรณี #2 ข้างบน คำตอบถูกถูก "วน" index
+0/1/2/0/1/2/... ด้วย `i % 3` ไม่ใช่สุ่ม) ดังนั้น "tolerance" ในที่นี้ทำหน้าที่ดูดซับแค่ float64 rounding
+error (เช่น `100.0/300.0` อาจต่างจาก `1.0/3.0` ไปสัก 1 ULP แม้ค่าเท่ากันทางคณิตศาสตร์) ไม่ใช่ดูดซับความ
+แปรปรวนทางสถิติ — เพราะไม่มี sampling ในเทสต์เหล่านี้เลย จึงไม่มีทางที่ tolerance ตัวนี้จะ flake ไม่ว่า
+จะรันกี่รอบ ค่า `1e-9` ยังห่างจากบั๊กจริงที่ต้องจับได้ (เช่น off-by-one ที่ทำให้ hit นับผิดไปแค่ 1 ข้อ
+จาก 300 ≈ 0.33 percentage point) อยู่ประมาณ 6 อันดับ (order of magnitude) จึงแคบพอที่จะจับบั๊กจริงแต่ไม่
+แคบจนจับ float rounding ผิดเป็นบั๊ก
+
+### Mutation table (9 mutation ที่ ticket กำหนดไว้ขั้นต่ำ — ทุกตัวตายจริง ไม่มี survivor)
+
+| # | Mutation | Killed by |
+|---|---|---|
+| 1 | baseline hardcode เป็น 1/3 (`Question.Baseline()` คืน `1.0/3.0` เสมอ) | `TestQuestionBaseline`, `TestMeasure_BaselineForFourOptionCorpusIsOneQuarter`, `TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither`, `TestMeasure_CorpusStraddlingGate_ExitCodeFlips`, `TestRun_GateStraddlingCorpus_ExitCodeFlips` |
+| 2 | baseline hardcode เป็น 1/4 (`Question.Baseline()` คืน `0.25` เสมอ) | `TestQuestionBaseline`, `TestMeasure_AllOptionsEqualLength_LengthHeuristicNearBaseline`, `TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither`, `TestMeasure_BaselineForThreeOptionCorpusIsOneThird` |
+| 3 | วัดความยาวเป็น byte แทน rune (`LongestOptionIndex` ใช้ `len()` แทน `utf8.RuneCountInString`) | `TestLongestOptionIndex` (เคส Thai vs English) |
+| 4 | `LongestOptionIndex` เลือกตัวสั้นที่สุดแทนยาวที่สุด (`l < bestLen` แทน `l > bestLen`) | `TestLongestOptionIndex`, `TestMeasure_CorrectAnswerAlwaysLongest_LengthHeuristicIsHundredPercent` |
+| 5 | position heuristic off-by-one (`pos == expectedIdx+1` แทน `pos == expectedIdx`) | `TestMeasure_CorrectAnswerAlwaysIndex1_PositionHeuristic` |
+| 6 | `short_answer` หลุดเข้ามาในตัวหาร (ลบ `if rc.Type != "mcq" { continue }` ใน `loadFile`) | `TestLoadQuestions_FiltersShortAnswer` |
+| 7 | per-track aggregation ยุบเป็น global baseline เดียว (`byTrack[q.Track] = overall` แทน `= track`) | `TestMeasure_MixedOptionCounts_PerTrackBaselinesDifferAndOverallIsNotEither` |
+| 8 | gate comparison กลับด้าน (`excess < maxExcessRatio` แทน `excess > maxExcessRatio`) | `TestEvaluateGate_PassesBelowThreshold`, `TestEvaluateGate_FailsAboveThreshold`, `TestEvaluateGate_ExactlyAtThresholdPasses`, `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` |
+| 9 | exit code เป็น 0 เสมอ (`ExitCode` คืน `0` ไม่เช็ค `g.Failed`) | `TestExitCode`, `TestMeasure_CorpusStraddlingGate_ExitCodeFlips` (internal), `TestRun_GateStraddlingCorpus_ExitCodeFlips` (ผ่าน CLI `run()` จริง — ปิดช่องที่ mutation อาจรอดถ้าทดสอบแค่ internal function) |
+
+**Survivor**: ไม่มี — ทั้ง 9 mutation ตายจริงทุกตัว (revert กลับหลัง confirm แล้วทุกจุด, `git status`
+สะอาดหลังทำเสร็จ)
+
+**หมายเหตุ scope**: mutation "exit code always zero" ทดสอบทั้งที่ `internal/mcqguess.ExitCode`
+(unit test ตรง ๆ) และที่ `cmd/mcq-guessability`'s `run()` (end-to-end ผ่าน CLI จริง) — ปิดช่องว่างที่
+เคยมีในโปรเจกต์นี้ (ไม่มี `cmd/*/main.go` ไหนมี `_test.go` มาก่อนเลยทั้ง `import-lessons`,
+`import-curriculum`, `api`) เพราะ mutation table เรียกร้องตรง ๆ ว่าต้องมีเทสต์ฆ่า ไม่ใช่แค่ verify มือ
+ส่วน `main()` เองที่แค่เรียก `os.Exit(run(...))` (3 บรรทัด) ยังไม่มี test ตรง (ตาม convention เดิมของ
+repo ที่ `main()` ไม่ถูกเทสต์ตรง ๆ) — แต่ `run()` ที่ `main()` เรียกครอบคลุมด้วย `main_test.go` เต็มแล้ว
+
+### ตัวเลขที่วัดได้จาก corpus จริง
+
+คำสั่ง: `go run ./cmd/mcq-guessability -dir content/lessons`
+
+corpus ปัจจุบันมี **356 MCQ ทุกข้อมี 3 ตัวเลือก** (baseline 33.3% เท่ากันทุกข้อ, ยืนยันตรงกับตัวเลข
+586 recall_checks รวม = mcq 356 + short_answer 230 ที่บันทึกไว้ใน roadmap.md):
+
+| Heuristic | Actual | Baseline avg | Excess (relative) |
+|---|---|---|---|
+| Length (guess longest option) | **32.6%** | 33.3% | **−2.2%** |
+| Position index 0 (guess "A" เสมอ) | 33.4% | 33.3% | +0.3% |
+| Position index 1 (guess "B" เสมอ) | 33.4% | 33.3% | +0.3% |
+| Position index 2 (guess "C" เสมอ) | 33.1% | 33.3% | −0.6% |
+
+ทั้งสี่ตัวเลขอยู่ใกล้ baseline มาก (excess ทุกตัว < 3% แบบ relative) — ไม่มี tell ที่มีนัยสำคัญใน
+corpus ปัจจุบัน สอดคล้องกับที่ C-mcq-balance (#43) บันทึกไว้ว่าแก้ปัญหาเดิม (89.6%) แล้ว
+
+รันด้วย `-max-excess 0.15` (ตัวอย่างการใช้เป็นเกท): `Gate: PASS` (ทุกตัวเลขข้างบนอยู่ใต้ 15% หมด)
+
+**Finding — ตัวเลขที่วัดได้ต่างจากที่บันทึกไว้เดิมเล็กน้อย**: roadmap.md รุ่นก่อนบันทึก length 33.7%
+และ position 33.4% (จาก script ad hoc ที่สูญหายไปแล้ว) เทียบกับตัวเลขที่วัดซ้ำได้จริงตอนนี้ (length
+32.6%, position 33.4%/33.4%/33.1%) — **ใกล้เคียงแต่ไม่ตรงเป๊ะ** ยืนยันแล้วว่า**ไม่ใช่**เพราะ corpus
+เปลี่ยนเนื้อหา (AWS-S1's import-parity check เทียบ MD5 ของทุกแถว `recall_checks` ระหว่าง branch นั้นกับ
+`develop` แล้วตรงกันเป๊ะ ยืนยันว่า 356 mcq ไบต์เดิมทุกตัวตั้งแต่ PR #43) สมมติฐานที่เป็นไปได้มากที่สุด
+คือ tie-break rule ของ script เดิมต่างจาก tool ใหม่ (เลือก index ต่ำสุดเมื่อความยาวเสมอกัน แบบ
+deterministic) — **ไม่สามารถยืนยันได้ 100%** เพราะ script เดิมไม่มีให้ตรวจสอบจริง (ไม่มีทั้งใน working
+tree และ `git log --all --diff-filter=A` ตามที่ ticket นี้ระบุไว้ตั้งแต่ต้น) รายงานความต่างนี้ไว้ตรง ๆ
+แทนที่จะเลือกใช้เลขใดเลขหนึ่งอย่างเงียบ ๆ — **89.6%** (ก่อนแก้ #38) เป็นค่าย้อนหลังที่**วัดซ้ำไม่ได้แล้ว
+โดยหลักการ** เพราะ corpus ถูก rewrite เนื้อหาไปจริงใน PR #43 (ไม่ใช่แค่ script หาย เนื้อหาเองก็เปลี่ยน)
+
+### สิ่งที่ตั้งใจไม่ทำในรอบนี้
+
+- ไม่ wire เกทเข้า CI/Makefile จริง (ticket ระบุแค่ "a future ticket can wire it into CI or a
+  Makefile target" — รอบนี้แค่ทำให้ flag/exit code ใช้งานได้)
+- ไม่เลือกค่า `-max-excess` threshold ที่แน่นอนสำหรับ AWS-C1..C4 (ticket นี้ทำแค่เครื่องมือวัด ไม่ใช่
+  ตรึงเกณฑ์ผ่าน/ไม่ผ่านของคลังข้อสอบที่ยังไม่มีเนื้อหาจริง)
+- ไม่แก้ distractor ใด ๆ ในคลังเดิม (ไม่ใช่ scope ของ AWS-S3 ตามที่ spec ระบุไว้ตั้งแต่ต้น)
+- ไม่แตะ Docker/DB เลย (ticket ระบุไม่ต้องมี DB — ยืนยันด้วยว่า `go test ./internal/mcqguess/...`
+  รันได้โดยไม่มี `docker compose up` ใด ๆ)
+
+### Status: implemented, PR pending
+
+### Review focus
+
+<details>
+<summary>คำถามสำหรับรีวิว diff รอบนี้ (เฉลยพับไว้ด้านล่าง)</summary>
+
+1. ทำไม `EvaluateGate` ต้องเช็คทั้ง length heuristic และทุก position-index heuristic ทั้งที่ Q-1
+   shuffle ตัวเลือกตอน render ทำให้ position bias ไม่ถึงผู้ใช้จริงอยู่แล้ว?
+2. ทำไม `internal/mcqguess` ถึงไม่ใช้ `curriculuminfra.LoadLesson` ทั้งที่มันมีอยู่แล้วและ decode
+   ไฟล์เดียวกันเป๊ะ?
+3. ทำไม excess ที่รายงานถึงเป็น ratio (`(actual-baseline)/baseline`) แทนที่จะเป็น percentage points
+   สัมบูรณ์ (`actual-baseline`) ตรง ๆ?
+
+<details>
+<summary>เฉลย</summary>
+
+1. เพราะ shuffle ที่ Q-1 แก้แค่**อาการ**ที่ผู้ใช้เห็น (ตัวเลือกสลับตำแหน่งก่อน render) ไม่ได้แก้**ต้นตอ**
+   ในกระบวนการเขียนคำถาม — ถ้า distractor ถูกเขียนด้วยรูปแบบที่ทำให้คำตอบถูกกระจุกอยู่ index เดิมซ้ำ ๆ
+   นั่นคือสัญญาณว่าคนเขียน (หรือ batch เขียนคำถามอัตโนมัติ) มีอคติเชิงระบบบางอย่าง ซึ่งอาจไปโผล่เป็นปัญหา
+   อื่นที่ shuffle ช่วยไม่ได้ (เช่น distractor ที่ตำแหน่งเดิมมักจะสั้นกว่า/ยาวกว่าเสมอ ซึ่งกลายเป็น length
+   bias ที่ shuffle ช่วยไม่ได้เลย) เกทจึงเช็คไว้ก่อนแม้ position เองจะไม่กระทบผู้ใช้โดยตรงในแอปนี้ —
+   การรายงานแยกป้ายกำกับ "reaches the user" vs "content-quality signal only" ในเอาต์พุตคือกลไกที่กัน
+   ไม่ให้คนอ่าน over-react กับตัวเลข position (ไม่กระทบผู้ใช้จริง) หรือ under-react กับ length (กระทบจริง)
+2. เพราะ `LoadLesson` decode ด้วย `DisallowUnknownFields()` แล้วสร้าง domain `Lesson` เต็มรูปแบบทันที
+   ซึ่งจะ reject ไฟล์ที่ `expected_answer` ไม่อยู่ใน options ของตัวเองไปตั้งแต่ decode (ผ่าน
+   `NewRecallCheck`'s `slices.Contains` check) — ก่อนที่ `internal/mcqguess` จะได้เห็นคำถามนั้นด้วยซ้ำ
+   ทำให้ tool นี้ไม่มีทางเลือกที่จะ "abort พร้อม error ที่ระบุ path + คำตอบ" ตามที่ตัดสินใจไว้ (จะได้แค่
+   error จาก domain แทน ซึ่งไม่ใช่ scope ของ tool วัด) แถม `LoadLesson` ยังต้องการ topic/concept_id ที่
+   ตรงกับโฟลเดอร์/ชื่อไฟล์ (เช็คสำหรับ import จริงที่ต้อง resolve concept row ใน MySQL) ซึ่ง tool วัดนี้
+   ไม่ต้องมี DB เลยตาม ticket ระบุ
+3. เพราะ percentage points ไม่ portable ข้าม corpus ที่ baseline ต่างกัน — excess 5pp เหนือ baseline
+   25% (corpus AWS 4 ตัวเลือก) คือ relative jump 20% แต่ 5pp เดียวกันเหนือ baseline 33.3% (corpus เดิม
+   3 ตัวเลือก) คือแค่ relative jump 15% เท่านั้น ถ้าใช้ threshold เดียวกันเป็น pp ตรง ๆ ข้ามสอง corpus
+   นี้ เกทจะเข้มกว่าจริงกับ corpus AWS โดยไม่ได้ตั้งใจ (หรือหลวมกว่าจริงกับ corpus เดิม) ซึ่งเป็นบั๊ก
+   ประเภทเดียวกับที่ ticket ทั้งใบนี้มีไว้แก้ (เทียบ raw hit rate ข้าม corpus ที่ baseline ไม่เท่ากัน)
+   เพียงแต่เกิดขึ้นที่ตัว metric ของ excess เอง ไม่ใช่ที่ตัว baseline
 
 </details>
 </details>

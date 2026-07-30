@@ -81,10 +81,11 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
   เปลี่ยนชื่อ branch, ดูรายละเอียดที่ aws-cert.md)
 - [ ] AWS-S2 (ยังไม่เริ่ม) — multiple-response support (second correct answer, "Select TWO",
   all-or-nothing scoring)
-- [ ] AWS-S3 (ยังไม่เริ่ม, spec ปักไว้แล้วใน aws-cert.md) — guessability measurement tool
-  ที่ parameterize ได้ (`1/len(options)` ต่อ corpus) — **gate คลังข้อสอบจริง (AWS-C1..C4) ต้องรอ
-  ticket นี้ก่อน**
-- [ ] AWS-C1..C4 (ยังไม่ตัดชื่อ, gated บน AWS-S1/S2/S3) — เขียนคลังข้อสอบทีละ domain ตามแผนใน
+- [x] AWS-S3 (implemented, PR pending) — `cmd/mcq-guessability` + `internal/mcqguess`:
+  guessability measurement tool ที่ parameterize baseline ได้ (`1/len(options)` ต่อข้อ, ไม่ hardcode)
+  รายละเอียดเต็ม + ตัวเลขที่วัดได้จริงอยู่ที่ [aws-cert.md](tickets/aws-cert.md)'s "AWS-S3" section —
+  **เกท 25% ของคลังข้อสอบจริง (AWS-C1..C4) ใช้งานได้แล้ว** (`-max-excess`), ยังไม่ได้ wire เข้า CI/Makefile
+- [ ] AWS-C1..C4 (ยังไม่ตัดชื่อ, gated บน AWS-S1/S2) — เขียนคลังข้อสอบทีละ domain ตามแผนใน
   aws-cert.md
 
 ### Phase 0 — walking skeleton + reading slice ✅
@@ -106,11 +107,19 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
 ### Phase 2 — quality + รันเองได้ ✅
 - [x] T-local-docker (#39, [รายละเอียด](tickets/local-docker.md)) — `make dev` = mysql + api + web + seed
 - [x] C-mcq-sweep (#38) · [x] C-mcq-balance (#43) ([รายละเอียด](tickets/mcq-quality.md)) —
-  **MCQ 356 ข้อ** เดาด้วย heuristic ความยาวได้ **33.7%** (เดิม 89.6%) เดาด้วยตำแหน่ง 33.4% (เดิม 41.6%)
-  \+ กติกาการแก้ distractor ที่ grep ตรวจได้ — **หมายเหตุ (ยืนยันแล้วตอน AWS-S1)**: ตัวเลขเหล่านี้
-  วัดด้วย script ที่รันแบบ ad hoc นอก version control **ไม่มี script นี้ commit ไว้ในโปรเจกต์เลย**
-  (เช็คแล้วทั้ง working tree และ `git log --all --diff-filter=A`) ตัวเลขจึง **รันซ้ำไม่ได้ตอนนี้** —
-  ต้องรอ AWS-S3 (สร้าง measurement tool ใหม่) ก่อนถึงจะ verify ซ้ำหรือรันกับ corpus อื่นได้
+  \+ กติกาการแก้ distractor ที่ grep ตรวจได้
+- [x] AWS-S3 (measurement tool, `cmd/mcq-guessability`) วัดคลังเดิมซ้ำจริงแล้ว — **ตัวเลขที่
+  reproduce ได้ตอนนี้ (คำสั่ง `go run ./cmd/mcq-guessability -dir content/lessons`)**: **MCQ 356 ข้อ
+  ทุกข้อมี 3 ตัวเลือก (baseline 33.3%)** — length heuristic **32.6%** (excess −2.2% เทียบ baseline,
+  ต่ำกว่า baseline เล็กน้อย) · position heuristic index 0/1/2 = **33.4% / 33.4% / 33.1%** (excess
+  +0.3% / +0.3% / −0.6%) ทั้งสองอย่างอยู่ใกล้ baseline มาก ไม่ใช่ tell ที่มีนัยสำคัญ — เลขเดิมที่บันทึกไว้
+  ในเอกสารรุ่นก่อน (length 33.7%, position 33.4%) **ใกล้เคียงแต่ไม่ตรงเป๊ะ**: ยืนยันแล้วว่า**ไม่ใช่**
+  เพราะ corpus เปลี่ยน (AWS-S1's import-parity MD5 check ยืนยันว่า 356 recall_checks ไบต์เดิมทุกตัวตั้งแต่
+  PR #43) ที่น่าจะเป็นไปได้มากที่สุดคือ tie-break rule ของ ad hoc script เดิม (สูญหายแล้ว ไม่มีใน version
+  control ให้ตรวจสอบจริง) ต่างจาก tool ใหม่ (เลือก index ต่ำสุดเมื่อความยาวเสมอกัน) — รายงานความต่างนี้
+  ไว้ตรง ๆ แทนที่จะเลือกใช้เลขใดเลขหนึ่งอย่างเงียบ ๆ ตัวเลข **89.6%** (ก่อนแก้ #38) เป็นค่าย้อนหลังที่
+  วัดซ้ำไม่ได้แล้วเพราะ corpus ถูก rewrite ไปใน PR #43 — รายละเอียดเต็ม + mutation table อยู่ที่
+  [aws-cert.md](tickets/aws-cert.md)'s "AWS-S3" section
 
 ### Phase 3 — guided learning path ✅ ([รายละเอียด](tickets/ux-today.md))
 - [x] UX-1 (#40) `has_lesson`/`est_minutes` บน curriculum API
