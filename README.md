@@ -1,5 +1,7 @@
 # self-learning
 
+> ย้ายเครื่อง / เปิด session ใหม่? อ่าน [`docs/HANDOFF.md`](docs/HANDOFF.md) ก่อน
+
 ## รันเองบนเครื่อง
 
 ต้องมีแค่ Docker Desktop (Windows/Mac/Linux) — ไม่ต้องลง Go, Node, หรือ MySQL เอง
