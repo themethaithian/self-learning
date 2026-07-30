@@ -37,3 +37,24 @@ func mustLessonProgress(t *testing.T, ref string, state string) LessonProgress {
 	}
 	return p
 }
+
+// reviewQualityValue builds a ReviewQuality directly from a raw 0-5 grade,
+// bypassing NewReviewQuality's (outcome, confidence) mapping so
+// EaseFactor/ReviewCard tests exercise the SM-2 algorithm independently of
+// that mapping's own correctness.
+func reviewQualityValue(t *testing.T, v int) ReviewQuality {
+	t.Helper()
+	if v < 0 || v > 5 {
+		t.Fatalf("reviewQualityValue(%d): out of range 0-5", v)
+	}
+	return ReviewQuality{grade: v + 1}
+}
+
+func mustReviewCard(t *testing.T, question string) ReviewCard {
+	t.Helper()
+	c, err := NewReviewCard(mustCheckKey(t, "ddia", "b-trees", question))
+	if err != nil {
+		t.Fatalf("NewReviewCard failed: %v", err)
+	}
+	return c
+}

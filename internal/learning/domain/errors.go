@@ -18,4 +18,8 @@ var (
 	ErrInvalidCheckKind      = errors.New("invalid check kind")
 	ErrInvalidGradedBy       = errors.New("invalid graded by")
 	ErrSelectedOptionNotMCQ  = errors.New("selected option only valid for mcq checks")
+
+	ErrInvalidReviewQuality = errors.New("invalid review quality")
+	ErrInvalidEaseFactor    = errors.New("invalid ease factor")
+	ErrInvalidReviewCard    = errors.New("invalid review card")
 )

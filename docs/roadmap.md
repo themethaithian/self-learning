@@ -116,7 +116,7 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   `RecallAttempt`), `POST /api/v1/progress/{topic}/{concept}/attempts` — `graded_by='self'`
   เกิดจริงครั้งแรกที่นี่ · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table อยู่ที่
   [`docs/tickets/quiz.md`](tickets/quiz.md)
-- [ ] Q-2b (implemented, round 4 fixes applied post code-review — SHIP, PR pending) — wire the quiz to
+- [x] Q-2b (**PR #53**, merged) — wire the quiz to
   the attempts API: **ticket ที่ทำให้ข้อมูล in-memory ของ Q-1 (confidence ที่เลือก, ตัวเลือกที่กด,
   ผลถูก/ผิด) persist จริงในที่สุด แทนที่จะหายตอน refresh** — `web/lib/api.ts`'s `postAttempt`
   เรียก endpoint ของ Q-2a จาก `RecallCheckCard` (ยิงเมื่อ attempt ครบจริง: mcq ที่ stage 3 ทันที;
@@ -134,10 +134,16 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   `currentIdentityRef`/slug guard ทิ้งไปเลย ไม่ใช่เพราะ `finish()` มีบั๊กจริงตอนนี้ (blast radius
   ของมันเล็กกว่า attempt case มาก — ดูเหตุผลเต็มที่ quiz.md's หัวข้อ "finish()") แต่เพราะมีสอง
   identity mechanism ซ้อนกันอยู่ในไฟล์เดียวเป็นกับดักสำหรับคนอ่านโค้ดครั้งถัดไป
-- [ ] Q-2c — `review_cards`/`review_logs` + SM-2 scheduling (อ่าน `recall_attempts` ที่ Q-2a
-  สร้างไว้ ไม่ใช่ schema ใหม่ที่ไม่เกี่ยวกัน) · สโคปที่ [`docs/tickets/quiz.md`](tickets/quiz.md)
-  · **ข้อกำหนดจาก Q-2b's code review (ยังไม่แก้ในรอบนี้ — ห้ามแก้ migration ในรอบ Q-2b)**: query
-  ที่อ่าน "แถวล่าสุดของ check_key นี้" ต้อง `ORDER BY created_at DESC, id DESC` ไม่ใช่แค่
+- [ ] Q-2c (implemented, PR pending) — SM-2 scheduling: schema + pure domain. Migration
+  `migrations/007_review.sql` (`review_cards` one row per `check_key`, `review_logs`
+  append-only audit trail FK'd to `recall_attempts.id`) + pure domain (`ReviewQuality`,
+  `EaseFactor`, `ReviewCard.Advance`) — **ไม่มี repository/write path เลย ตั้งใจแยกจาก Q-2d**
+  · รายละเอียดเต็ม + เหตุผลการตัดสินใจ + mutation table + migration evidence อยู่ที่
+  [`docs/tickets/quiz.md`](tickets/quiz.md)
+- [ ] Q-2d — wire SM-2 into the attempt path: transactional `review_cards` update + `review_logs`
+  write ต่อ `recall_attempts` row ที่บันทึกจริง (ตามสัญญา "ทุก attempt = 1 advance" ที่ Q-2c
+  ตัดสินใจไว้), due-cards read endpoint · **ข้อกำหนดจาก Q-2b's code review**: query ที่อ่าน
+  "แถวล่าสุดของ check_key นี้" ต้อง `ORDER BY created_at DESC, id DESC` ไม่ใช่แค่
   `created_at DESC` เฉย ๆ — `recall_attempts.created_at` เป็น `TIMESTAMP` (second precision)
   พิสูจน์แล้วว่าสองแถวที่ submit ห่างกันจริงในเวลาปกติ (ไม่ใช่ race condition) ตกอยู่วินาทีเดียวกัน
   ได้จริง ทำให้ `created_at DESC` เดี่ยว ๆ เรียงลำดับ "ล่าสุด" ผิดได้ (Pass→Not yet ในวินาทีเดียวกัน
