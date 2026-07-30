@@ -1,12 +1,13 @@
 # โน้ตเตรียมสอบ AWS SAA-C03 — เทคนิคอ่านโจทย์ + ศัพท์สำคัญ
 
-<!-- ids: TD-20260730-kds-pii, TD-20260730-asg-scaling, TD-20260730-s3-hotlink, TD-20260730-fsx-sharepoint, TD-20260730-fsx-ontap, TD-20260730-saml-federation -->
+<!-- ids: TD-20260730-kds-pii, TD-20260730-asg-scaling, TD-20260730-s3-hotlink, TD-20260730-fsx-sharepoint, TD-20260730-fsx-ontap, TD-20260730-saml-federation, TD-20260730-eventbridge-ecs -->
 
 จัดการโดย skill `/aws-exam-note` — วางโจทย์ + เฉลย แล้ว Claude แปล สรุป
 และผสานเข้าไฟล์นี้ให้ · จุดที่เคยถามซ้ำ/ไม่เข้าใจอยู่ที่ [review-again.md](review-again.md)
 
-**สรุปจากการทำโจทย์ 6 ข้อ:** Kinesis anonymization · Auto Scaling · S3 hotlinking ·
-FSx SharePoint · FSx ONTAP trading app · SAML federation — อัปเดตล่าสุด 2026-07-30
+**สรุปจากการทำโจทย์ 7 ข้อ:** Kinesis anonymization · Auto Scaling · S3 hotlinking ·
+FSx SharePoint · FSx ONTAP trading app · SAML federation · EventBridge → ECS task —
+อัปเดตล่าสุด 2026-07-30
 
 ## ส่วนที่ 1 — เทคนิคอ่านโจทย์
 
@@ -40,6 +41,7 @@ and sizes**" — ประโยคนี้ตัด Predictive scaling ทิ�
 | MOST secure | least privilege, encryption, no public access |
 | LEAST operational overhead | เลือก managed/serverless |
 | MOST effective | แก้ที่ต้นเหตุจริง ไม่ใช่แก้ปลายเหตุ |
+| LEAST amount of effort | นับ "ชิ้นส่วนที่ต้องสร้าง/ดูแลเอง" ของแต่ละตัวเลือก อันที่น้อยที่สุดและยังตอบโจทย์ครบชนะ — ไม่ใช่อันที่ยืดหยุ่นที่สุด |
 
 บทเรียนจากที่พลาด: เห็น "MOST operationally efficient" แล้วรีบตอบ Predictive
 เพราะดูฉลาดกว่า — แต่ถ้าโจทย์ให้เวลามาเป๊ะ ๆ แล้ว การเอา ML มาทายสิ่งที่เรารู้อยู่แล้ว
@@ -53,6 +55,8 @@ and sizes**" — ประโยคนี้ตัด Predictive scaling ทิ�
 | NoSQL | Redshift (data warehouse) |
 | block storage | file storage / object storage |
 | Windows / SMB | NFS file share |
+| event ที่เกิดครั้งเดียว (ไฟล์ถูกอัปโหลด) | CloudWatch Alarm ที่จับ metric ทะลุ threshold |
+| ตัวสั่งให้งานเริ่มทำงาน (trigger) | CloudTrail (เป็นสมุดบันทึก ไม่ใช่ trigger) |
 
 เห็นคำพวกนี้สลับกันเมื่อไหร่ ให้สงสัยไว้ก่อนว่าเป็นตัวลวง
 
@@ -69,6 +73,12 @@ and sizes**" — ประโยคนี้ตัด Predictive scaling ทิ�
   แบบ Full Access ในตัวเลือก = สัญญาณว่าข้อนั้นน่าจะผิด
 - **เปลี่ยน IP ง่าย** — วิธีที่พึ่ง IP (NACL, Security Group) หรือ referrer header
   จะแพ้เสมอ เพราะปลอม/เปลี่ยนได้ง่าย ต้องแก้ที่ระดับ authentication แทน
+- **ต่อตรงชนะ glue code** — ถ้า service A ต่อกับ B ได้เองอยู่แล้ว (native
+  integration) ตัวเลือกที่แทรกตัวกลางเข้ามาเพื่อ "เรียก API ให้" (มักเป็น Lambda)
+  จะแพ้เสมอในข้อที่ถาม LEAST effort / LEAST operational overhead — ถึงจะทำงานได้จริง
+  ก็ตาม เพราะเราต้องเขียนโค้ด + ดูแล + จ่ายเพิ่มโดยไม่ได้อะไรกลับมา
+  ตัวอย่างจริง: EventBridge ตั้ง **ECS task เป็น target ได้โดยตรง** ตัวเลือกที่ให้
+  EventBridge → Lambda → เรียก API สั่งรัน task จึงเป็น "ถูกแต่ไม่ใช่คำตอบ"
 
 ## ส่วนที่ 2 — Storage (เรื่องที่ออกสอบเยอะที่สุด)
 
@@ -262,6 +272,124 @@ Cognito ใช้กับ **customer** (ผู้ใช้ภายนอก) �
 - **Authentication (AuthN)** = คุณคือใคร → หน้าที่ของ IdP
 - **Authorization (AuthZ)** = คุณทำอะไรได้ → หน้าที่ของ IAM Role/Policy
 
+## ส่วนที่ 5 — Event-driven: EventBridge
+
+### 5.1 EventBridge คืออะไร
+
+**Event bus** แบบ serverless — ท่อกลางที่รับ "เหตุการณ์" (event) จากผู้ส่ง
+แล้วส่งต่อให้ผู้รับที่สนใจ
+
+Analogy: เหมือน **ห้องรับจดหมายกลางของตึก** — ทุกฝ่ายเอาซองมากองที่เดียว
+พนักงานคัดตามหน้าซอง (rule) แล้วส่งขึ้นชั้นที่เกี่ยวข้อง (target) · คนส่งไม่ต้องรู้จัก
+คนรับเลย จะเพิ่มหรือลดคนรับทีหลังก็ไม่ต้องแก้ฝั่งคนส่ง = **decoupling**
+(นี่คือเหตุผลที่เฉลยชอบพูดว่า producer กับ consumer scale/deploy แยกกันได้)
+
+โครงสร้างมีแค่ 3 ชิ้น: **Event source → Rule (event pattern) → Target**
+
+จุดที่ข้อสอบชอบวัดคือ **target ต่อตรงได้เลย ไม่ต้องมี Lambda คั่น**
+
+| target ที่ต่อตรงได้ | ใช้ตอนไหน |
+|---|---|
+| Lambda function | รันโค้ดสั้น ๆ |
+| **ECS task (RunTask)** | รัน container job หนึ่งชุดต่อหนึ่ง event |
+| Step Functions state machine | งานหลายขั้นตอน มีเงื่อนไข/retry |
+| SNS topic / SQS queue | แจ้งเตือน / เข้าคิวให้ worker ค่อยดึง |
+| Systems Manager Automation, EC2 actions | สั่งงานปฏิบัติการกับเครื่อง |
+| API destination | ยิง HTTP ไปหาระบบภายนอก |
+
+ต่อ ECS ตรง ๆ ต้องมี **IAM Role ให้ EventBridge สวม** เพื่อสั่งรัน task
+(นี่คือ "งานที่ต้องทำ" ทั้งหมดของคำตอบข้อนี้ — สร้าง rule + ผูก role จบ)
+
+⚠ currency: เฉลยเขียนชื่อคู่กันว่า "Amazon EventBridge (Amazon CloudWatch Events)"
+— ปัจจุบันชื่อทางการคือ **Amazon EventBridge** เฉย ๆ ชื่อ CloudWatch Events คือชื่อเดิม
+ที่ยังหลงเหลืออยู่ใน API namespace (`events:`) เท่านั้น · เจอในข้อสอบให้อ่านว่า
+ตัวเดียวกัน แต่เวลาพูด/เขียนเองใช้ชื่อใหม่
+
+### 5.2 S3 ส่ง event เข้า EventBridge
+
+- ต้อง **เปิดสวิตช์ที่ bucket ก่อน** ("Send notifications to Amazon EventBridge")
+  ไม่งั้น bus ไม่เห็นอะไรเลย · เปิดแล้ว S3 จะส่ง **ทุก** event ของ bucket นั้นเข้า bus
+  แล้วเราค่อยกรองด้วย event pattern ของ rule
+- event ตอนอัปโหลดไฟล์คือ detail-type **`Object Created`** (source `aws.s3`)
+  โดยมี field บอกสาเหตุว่ามาจาก `PutObject` หรือ `CompleteMultipartUpload`
+- ของเดิมชื่อ **S3 Event Notifications** ยังใช้ได้ แต่ส่งได้แค่ 3 ปลายทาง:
+  Lambda, SNS, SQS — สังเกตว่า **ส่งเข้า ECS ตรง ๆ ไม่ได้** จึงต้องผ่าน EventBridge
+- ⚠ currency: สมัยก่อน S3 ยังส่งเข้า EventBridge ตรง ๆ ไม่ได้ ต้องอ้อมผ่าน CloudTrail
+  data event — **นั่นคือที่มาของตัวลวงที่พูดถึง CloudTrail ในข้อนี้** · ของจริงวันนี้
+  (ตั้งแต่ปลายปี 2021) ต่อตรงได้แล้ว ตัวเลือกที่ยังอ้อม CloudTrail จึงเป็นของเก่า
+  ที่ซับซ้อนเกินจำเป็น
+
+### 5.3 EventBridge Rule ≠ CloudWatch Alarm
+
+สองอย่างนี้คนสับสนมากที่สุดในหมวดนี้ และข้อสอบใช้ความสับสนนี้ทำตัวลวงตรง ๆ
+
+| | EventBridge Rule | CloudWatch Alarm |
+|---|---|---|
+| เฝ้าอะไร | **event** ที่เกิดขึ้นเป็นครั้ง ๆ (discrete) | **metric** ที่เป็นตัวเลขตามเวลา ทะลุเกณฑ์ |
+| ตัวอย่าง | "มีไฟล์ใหม่ถูกอัปโหลดเมื่อกี้" | "CPU เกิน 70% ติดกัน 5 นาที" |
+| สั่งอะไรได้ | target ได้หลากหลายมาก รวม RunTask ของ ECS | จำกัด: ส่ง SNS, สั่ง Auto Scaling, stop/terminate/reboot/recover EC2, สร้าง OpsItem |
+| เหมาะกับ | ตอบสนองต่อ "เรื่องที่เกิดขึ้น" | เฝ้าสุขภาพระบบเชิงปริมาณ |
+
+Analogy: alarm = เครื่องวัดอุณหภูมิที่ร้องเมื่อร้อนเกินเกณฑ์ · rule = พนักงานคัดจดหมาย
+ที่ทำงานทุกครั้งที่มีซองตรงแบบเข้ามา — ของอย่างหลังไม่มีคำว่า "เกินเกณฑ์" อยู่ในสมการเลย
+
+**สิ่งที่ CloudWatch Alarm ทำไม่ได้ (ตัวลวงประจำ): ตั้ง alarm action ไปแก้จำนวน task
+ของ ECS โดยตรงไม่ได้** — ถ้าจะสเกล ECS ตาม metric ต้องผ่าน Application Auto Scaling
+ซึ่งเป็นคนละเรื่องกับ "หนึ่งไฟล์เข้ามา = รันงานหนึ่งชุด"
+
+### 5.4 CloudTrail อยู่ตรงไหนของภาพ
+
+- CloudTrail = **สมุดบันทึกว่าใครเรียก API อะไรเมื่อไหร่** ไม่ใช่ตัว trigger
+- ค่าเริ่มต้นบันทึกแค่ management event (สร้าง/ลบ/แก้ resource) · การอ่าน-เขียน
+  **object** ใน S3 นับเป็น **data event** ต้องเปิดเพิ่มเองและเสียเงินต่างหาก
+- เส้นทาง S3 → CloudTrail → CloudWatch Alarm → EventBridge ทำได้จริง แต่มี 3–4 ชิ้นส่วน
+  แทนที่จะเป็น 1 → แพ้ทันทีในข้อที่ถาม LEAST effort
+
+### 5.5 ตารางเลือกวิธี trigger
+
+| โจทย์บอกว่า | ตอบ |
+|---|---|
+| ไฟล์เข้า S3 แล้วต้องรัน **container/batch job** | EventBridge rule → target = ECS task |
+| ไฟล์เข้า S3 แล้วรันโค้ดสั้น ๆ | S3 Event Notification → Lambda (ผ่าน EventBridge ก็ได้) |
+| ต้องรันตามเวลา/ตารางเวลา | EventBridge Scheduler (ตัวใหม่ที่มาแทน rule แบบ cron) |
+| งานหลายขั้นตอน มีเงื่อนไข retry ซับซ้อน | Step Functions |
+| รับ event จาก SaaS ภายนอก (Zendesk, Datadog ฯลฯ) | EventBridge partner event bus |
+| ต้องพักงานไว้ให้ worker ค่อย ๆ ดึงไปทำ | SQS |
+| ต้องรู้ย้อนหลังว่าใครทำอะไร | CloudTrail (audit ไม่ใช่ trigger) |
+
+## ส่วนที่ 6 — Compute: ECS / Fargate
+
+### 6.1 ศัพท์ ECS ที่ต้องแยกให้ออก
+
+| ศัพท์ | คืออะไร | เทียบกับครัว |
+|---|---|---|
+| Cluster | กลุ่มทรัพยากรที่ใช้รัน task | ตัวร้าน |
+| Task definition | พิมพ์เขียว: image, CPU/memory, env, IAM role | สูตรอาหาร |
+| Task | container ที่กำลังรันจริงตาม definition หนึ่งชุด | จานที่ทำอยู่ |
+| Service | ตัวคุมให้มี task รันค้างอยู่ตลอด N ตัว ตายแล้วสร้างใหม่ | พนักงานประจำที่ต้องมีกี่คน |
+
+### 6.2 EC2 launch type vs Fargate
+
+| | EC2 launch type | Fargate |
+|---|---|---|
+| ใครดูแลเครื่อง | เราเอง (patch OS, จัดการ AMI, สเกล instance) | AWS |
+| จ่ายตาม | instance ที่เปิดค้างไว้ | vCPU + RAM ที่ task ใช้ ตามเวลาที่รันจริง |
+| เหมาะกับ | โหลดคงที่ ต้องจูนละเอียด ใช้ GPU/instance พิเศษ | งานเป็นช่วง ๆ, batch, ไม่อยากดูแล OS |
+
+เห็น "container + ไม่ต้องดูแลเซิร์ฟเวอร์" → Fargate
+
+### 6.3 รัน task ครั้งเดียว ≠ สเกล service
+
+- **RunTask** = จ้างคนมาทำงานชิ้นเดียวแล้วกลับบ้าน (งานจบ task ก็จบ) เหมาะกับ batch job
+- **desired count ของ service** = จำนวนพนักงานประจำที่ต้องมีอยู่ตลอดเวลา
+- โจทย์ที่เขียนว่า "ตั้ง min task = 1 แล้วค่อยเพิ่มตามไฟล์ที่อัปโหลด" ฟังดูเหมือนเรื่อง
+  scaling แต่แก่นจริง ๆ คือ **1 ไฟล์ = 1 งาน** → ยิง RunTask ต่อหนึ่ง event ตรงกว่า
+  และไม่ต้องพึ่ง metric หรือ scaling policy ใด ๆ เลย
+- เกร็ด: API ที่สั่งรัน task มีสองตัว — **RunTask** (ให้ ECS หาที่วางเอง ใช้กับ Fargate ได้)
+  กับ **StartTask** (เราระบุ container instance เองได้ ใช้ได้เฉพาะ EC2 launch type)
+  → ตัวเลือกที่บอกให้ Lambda เรียก `StartTask` กับงานบน Fargate จึงผิดซ้อนอีกชั้น
+  นอกเหนือจากที่มันเป็น glue code เกินจำเป็น
+
 ## ศัพท์เบ็ดเตล็ดที่เจอ
 
 | ศัพท์ | ความหมาย |
@@ -274,7 +402,8 @@ Cognito ใช้กับ **customer** (ผู้ใช้ภายนอก) �
 | Kinesis Data Streams | รับ stream แบบเรียลไทม์จากหลาย producer (ในตัว stream ข้อมูลถูก retain ไว้ default 24 ชม. ถึง 365 วัน — เข้ารหัสด้วย SSE/KMS ได้) |
 | Firehose | ส่ง stream เข้าปลายทาง (S3/Redshift/OpenSearch/Splunk + HTTP endpoint) มี buffer → near-real-time · ส่งเข้า DynamoDB ตรง ๆ ไม่ได้ |
 | Redshift | data warehouse ไม่ใช่ NoSQL |
-| CloudTrail | บันทึกว่าใครทำอะไรเมื่อไหร่ ตรวจย้อนหลังได้ |
+| CloudTrail | บันทึกว่าใครทำอะไรเมื่อไหร่ ตรวจย้อนหลังได้ (default บันทึกแค่ management event — การอ่าน/เขียน object เป็น data event ต้องเปิดเพิ่ม + เสียเงิน ดูส่วนที่ 5.4) |
+| Batch job | งานที่ประมวลผลเป็นชุดแล้วจบ ไม่ใช่ service ที่รันค้างรอ request |
 
 ## Checklist ก่อนตอบทุกข้อ
 
@@ -285,3 +414,5 @@ Cognito ใช้กับ **customer** (ผู้ใช้ภายนอก) �
 4. ตัดตัวเลือกที่แปลงข้อมูลหลังเก็บ / reactive / Full Access policy /
    พึ่ง IP-referrer
 5. เลือกอันที่ **พอดี** กับ signal ไม่ใช่อันที่ฉลาดที่สุด
+6. ถ้าคำชี้ขาดคือ LEAST effort/overhead — นับ "ชิ้นส่วนที่ต้องสร้างเอง" ของทุกตัวเลือก
+   แล้วถามว่ามี native integration ที่ตัดตัวกลาง (Lambda, CloudTrail, alarm) ทิ้งได้ไหม
