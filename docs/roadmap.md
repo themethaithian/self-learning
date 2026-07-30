@@ -81,10 +81,16 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
   เปลี่ยนชื่อ branch, ดูรายละเอียดที่ aws-cert.md)
 - [ ] AWS-S2 (ยังไม่เริ่ม) — multiple-response support (second correct answer, "Select TWO",
   all-or-nothing scoring)
-- [ ] AWS-S3 (ยังไม่เริ่ม, spec ปักไว้แล้วใน aws-cert.md) — guessability measurement tool
-  ที่ parameterize ได้ (`1/len(options)` ต่อ corpus) — **gate คลังข้อสอบจริง (AWS-C1..C4) ต้องรอ
-  ticket นี้ก่อน**
-- [ ] AWS-C1..C4 (ยังไม่ตัดชื่อ, gated บน AWS-S1/S2/S3) — เขียนคลังข้อสอบทีละ domain ตามแผนใน
+- [x] AWS-S3 (implemented, code review round 3 fixes applied, PR pending) —
+  `cmd/mcq-guessability` + `cmd/mcq-guessability/internal/mcqguess`: guessability measurement tool
+  ที่ parameterize baseline ได้ (`1/len(options)` ต่อข้อ, ไม่ hardcode), เกท longest/shortest/middle
+  (ครบ 3 length heuristic ที่ mcq-quality.md ระบุ) + position ต่อ track (ไม่ใช่ pooled — กัน dilution),
+  ขั้นต่ำจำนวนตัวอย่างก่อนเกทตัดสิน (`MinSampleSize`, แยกสถานะ "PASS"/"FAIL"/"NOT JUDGED") รายละเอียดเต็ม
+  + ตัวเลขที่วัดได้จริงอยู่ที่ [aws-cert.md](tickets/aws-cert.md)'s "AWS-S3" section — **เกท 25% ของ
+  คลังข้อสอบจริง (AWS-C1..C4) ใช้งานได้แล้วสำหรับ single-answer mcq** (`-max-excess`, ยังไม่ครอบคลุม
+  AWS-S2's multiple-response),
+  ยังไม่ได้ wire เข้า CI/Makefile
+- [ ] AWS-C1..C4 (ยังไม่ตัดชื่อ, gated บน AWS-S1/S2) — เขียนคลังข้อสอบทีละ domain ตามแผนใน
   aws-cert.md
 
 ### Phase 0 — walking skeleton + reading slice ✅
@@ -106,11 +112,21 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
 ### Phase 2 — quality + รันเองได้ ✅
 - [x] T-local-docker (#39, [รายละเอียด](tickets/local-docker.md)) — `make dev` = mysql + api + web + seed
 - [x] C-mcq-sweep (#38) · [x] C-mcq-balance (#43) ([รายละเอียด](tickets/mcq-quality.md)) —
-  **MCQ 356 ข้อ** เดาด้วย heuristic ความยาวได้ **33.7%** (เดิม 89.6%) เดาด้วยตำแหน่ง 33.4% (เดิม 41.6%)
-  \+ กติกาการแก้ distractor ที่ grep ตรวจได้ — **หมายเหตุ (ยืนยันแล้วตอน AWS-S1)**: ตัวเลขเหล่านี้
-  วัดด้วย script ที่รันแบบ ad hoc นอก version control **ไม่มี script นี้ commit ไว้ในโปรเจกต์เลย**
-  (เช็คแล้วทั้ง working tree และ `git log --all --diff-filter=A`) ตัวเลขจึง **รันซ้ำไม่ได้ตอนนี้** —
-  ต้องรอ AWS-S3 (สร้าง measurement tool ใหม่) ก่อนถึงจะ verify ซ้ำหรือรันกับ corpus อื่นได้
+  \+ กติกาการแก้ distractor ที่ grep ตรวจได้
+- [x] AWS-S3 (measurement tool, `cmd/mcq-guessability`, ย้ายไปอยู่ใต้
+  `cmd/mcq-guessability/internal/mcqguess` แล้ว) วัดคลังเดิมซ้ำจริงแล้ว — **ตัวเลขที่ reproduce ได้ตอนนี้
+  (คำสั่ง `go run ./cmd/mcq-guessability -dir content/lessons`)**: **MCQ 356 ข้อ ทุกข้อมี 3 ตัวเลือก
+  (baseline 33.3%)** — longest **32.6%**, shortest **31.5%**, middle **33.7%**, position index 0/1/2
+  = **33.4% / 33.4% / 33.1%** ทุกตัวอยู่ใกล้ baseline มาก ไม่ใช่ tell ที่มีนัยสำคัญ
+- **ปมเลข 33.7%/89.6% เดิมคลี่แล้ว (round 3 ของ code review)**: ทั้งสองเลขที่บันทึกไว้ในเอกสารรุ่นก่อน
+  คือค่า **middle-length heuristic** (เดาว่าคำตอบคือตัวเลือกที่ไม่ยาวสุดไม่สั้นสุด) ไม่ใช่ longest ที่
+  tool วัดมาตลอด — เพิ่ม `Report.Middle` แล้ววัดซ้ำ **reproduce ตรงเป๊ะทั้งคู่**: ที่ commit `7dfb0ba`
+  (หลัง #38 "C-mcq-sweep") middle = **319/356 = 89.6%** ตรงเป๊ะ; ที่ปัจจุบัน middle = **120/356 = 33.7%**
+  ตรงเป๊ะ (120 คือจำนวน hit ที่การวิเคราะห์ tie-break รอบก่อนคำนวณไว้แล้วว่าจำเป็นพอดี) — นี่คือเหตุผลที่
+  position (41.6%) ตรงตั้งแต่รอบแรกแต่ length ไม่ตรงจนกว่าจะถึงตอนนี้: position heuristic วัดสิ่งเดียวกัน
+  มาตลอดทั้งสอง tool แต่ "length heuristic" ของ script เดิมวัด middle ไม่ใช่ longest รายละเอียดเต็ม
+  (ตาราง tie-break bound, four-corpus comparison, คำสั่งกู้คืน corpus ทั้ง `6b1a765`/`7dfb0ba`) อยู่ที่
+  [aws-cert.md](tickets/aws-cert.md)'s "AWS-S3" section
 
 ### Phase 3 — guided learning path ✅ ([รายละเอียด](tickets/ux-today.md))
 - [x] UX-1 (#40) `has_lesson`/`est_minutes` บน curriculum API
