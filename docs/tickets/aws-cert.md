@@ -16,8 +16,13 @@
   all-or-nothing scoring) — ดูหัวข้อ blocker ข้อ 3 ด้านล่าง
 - **AWS-S3** (implemented, PR pending — ดูหัวข้อ "AWS-S3 — guessability measurement tool" ด้านล่าง) —
   guessability measurement tool ที่ parameterize baseline ได้ต่อ corpus, gate คลังข้อสอบจริงใช้งานได้แล้ว
-- **AWS-C1..C4** (ยังไม่เริ่ม, gated บน S1/S2/S3) — คลังข้อสอบจริง ~550 ข้อ ทีละ domain
-- **AWS-EN1** (implemented + code review 3 รอบแก้ครบ, PR pending) — ระบบจดเทคนิคจาก
+- **AWS-C0** (implemented, pending code review) — landed the 2 pilot lessons
+  (`vpc-fundamentals`, `s3-security`) that lock the lesson-writer template and fix the
+  count contradiction below (~11/550 → 4–6/~250) — ดูหัวข้อ "Template" และ "AWS-C0" Status
+  ด้านล่าง
+- **AWS-C1..C4** (ยังไม่เริ่ม, gated บน S1/S2/S3 + AWS-C0's template) — คลังข้อสอบจริง ~250 ข้อ
+  ทีละ domain (4–6 ข้อ/concept)
+- **AWS-EN1** (merged, PR #60) — ระบบจดเทคนิคจาก
   practice exam: `content/exam-notes/aws-saa-c03/` + skill `/aws-exam-note` — ดูหัวข้อ
   "AWS-EN" ท้ายไฟล์
 - **AWS-EN2** (ยังไม่เริ่ม, additive ไม่ gate/ไม่ถูก gate) — หน้าเว็บ read-only render
@@ -97,16 +102,26 @@ lesson หนึ่งใบผูกกับ concept เดียว — เ�
 SM-2 scheduling) ทั้งหมดสร้างบน path นี้ ถ้าเปิด store ใหม่ต้องสร้างทั้งสามอย่างใหม่
 
 **รูปทรงใหม่**: **1 concept = 1 lesson (concept note ภาษาไทยสั้น ๆ 5–10 นาที ตาม CLAUDE.md — นี่คือ
-"บทเรียน" ที่ผู้ใช้อยากได้ด้วย) + ~11 recall_checks** (คำถามของ concept นั้น) — 50 × 11 = 550 พอดี
-และยอดต่อ domain ก็ตกลงมาเองจากจำนวน concept ต่อ domain × 11:
+"บทเรียน" ที่ผู้ใช้อยากได้ด้วย) + recall_checks ต่อ concept** (คำถามของ concept นั้น)
 
-| Domain | concepts | × 11 | จำนวนข้อ |
+**อัปเดตเป้า (AWS-C0, 2026-07-30) — 4–6 ข้อ/concept, รวม ~250 ข้อ ไม่ใช่ ~11/550 อีกต่อไป**: ตัวเลข
+เดิม (~11 ข้อ/concept, 550 ข้อรวม) มาจากตอนที่แผนนี้ยังคิดว่าแอปต้อง **จำลองข้อสอบเต็มรูปแบบ** เหมือน
+คลังข้อสอบเชิงพาณิชย์ — ข้อเท็จจริงตอนนี้คือ **แอปนี้ไม่ใช่ exam simulator**: ผู้ใช้ทำข้อสอบแนว SAA จริง
+อยู่แล้วบน third-party platform ที่ซื้อไว้ต่างหาก งานของแอปนี้คือคอร์สภาษาไทย + recall loop แบบ SM-2
+คำถามสั้นแบบ decision-rule ที่ SM-2 หมุนซ้ำได้เร็ว มีค่ามากกว่า scenario ยาวที่แข่งกับ product ที่ผู้ใช้
+มีอยู่แล้ว บันทึกไว้ตรงนี้ **ทำไมเลขถึงย้าย** เพื่อไม่ให้ใครเอา ~11/550 กลับมาใช้ทีหลังโดยไม่รู้ตัวว่าเป็น
+เป้าที่ตกไปแล้ว — รายละเอียดการตัดสินใจอื่นอยู่ที่หัวข้อ "Template" ด้านล่าง
+
+| Domain | concepts | × 4–6 | จำนวนข้อ |
 |---|---|---|---|
-| 1. Secure Architectures | 15 | ×11 | **165** |
-| 2. Resilient Architectures | 13 | ×11 | **143** |
-| 3. High-Performing Architectures | 12 | ×11 | **132** |
-| 4. Cost-Optimized Architectures | 10 | ×11 | **110** |
-| **รวม** | 50 | ×11 | **550** |
+| 1. Secure Architectures | 15 | ×4–6 | **60–90** |
+| 2. Resilient Architectures | 13 | ×4–6 | **52–78** |
+| 3. High-Performing Architectures | 12 | ×4–6 | **48–72** |
+| 4. Cost-Optimized Architectures | 10 | ×4–6 | **40–60** |
+| **รวม** | 50 | ×4–6 | **200–300 (เป้ากลาง ~250 ที่ 5/concept)** |
+
+(ตัวเลข ×11/550 เดิมยังโผล่ในหัวข้อ "AWS-S1"/"AWS-S3" ด้านล่างเป็นบริบทประวัติของการตัดสินใจที่ทำตอนนั้น
+เช่น ทำไม `maxRecallChecks` ถูกยกจาก 5 เป็น 15 — เก็บไว้ตามที่เกิดขึ้นจริง ไม่ใช่เป้าปัจจุบัน)
 
 Mock exam คือ **sampling policy** เหนือคำถามทั้งหมด ถ่วงน้ำหนัก 30/26/24/20 ตอน sample ไม่ใช่
 question store แยก
@@ -248,11 +263,12 @@ lake governance หรือ visualization เลย
 | Requester Pays (S3) | `s3-storage-classes-lifecycle` (ใหม่ round 3 — Task 4.1's Knowledge ระบุตรงตัว) |
 | public IPv4 hourly charge ($0.005/IP/ชม. ตั้งแต่ 2024-02-01) | `data-transfer-costs` (ย้ายจาก `cost-optimized-networking` ใน round 3 เพื่อลด outline bloat — ยังอยู่ task 4.4 เหมือนเดิม) |
 
-## แผนคลังข้อสอบ (~550 ข้อ + 50 lesson)
+## แผนคลังข้อสอบ (~250 ข้อ + 50 lesson)
 
-จำนวนข้อต่อ domain มาจากตาราง "รูปทรงใหม่" ด้านบน (11 ข้อ/concept × concept ต่อ domain) ไม่ใช่การ
-หาร 550 ตามเปอร์เซ็นต์น้ำหนักตรง ๆ อีกต่อไป — ตัวเลขบังเอิญออกมาเท่ากันเพราะ concept count ต่อ
-domain ถูกออกแบบให้ตรงสัดส่วนน้ำหนักอยู่แล้ว (15/13/12/10 = 30/26/24/20%)
+จำนวนข้อต่อ domain มาจากตาราง "รูปทรงใหม่" ด้านบน (4–6 ข้อ/concept × concept ต่อ domain, เป้ากลาง
+~250 — ปรับลดจาก ~11/550 ใน AWS-C0 ดูเหตุผลที่หัวข้อนั้น) ไม่ใช่การหารตามเปอร์เซ็นต์น้ำหนักตรง ๆ —
+ตัวเลขบังเอิญใกล้เคียงสัดส่วนน้ำหนักเพราะ concept count ต่อ domain ถูกออกแบบให้ตรงสัดส่วนอยู่แล้ว
+(15/13/12/10 = 30/26/24/20%)
 
 **หน่วยของการทำงานคือ concept ไม่ใช่ domain** ตาม token-efficiency skill
 (`.claude/skills/token-efficiency/SKILL.md`: "lesson-writer/verifier: one concept per invocation")
@@ -260,7 +276,8 @@ domain ถูกออกแบบให้ตรงสัดส่วนน้�
 ของ explanation ที่ตื้น/restate นิยามซ้ำ (โมเดลล้าเมื่อ context ยาว):
 
 - **1 invocation ต่อ 1 concept**: `lesson-writer` เขียน lesson (concept note) + recall_checks
-  ~11 ข้อของ concept นั้น (เพดานหลัง schema change (1) คือ 15) พร้อมกัน → `lesson-verifier`
+  4–6 ข้อของ concept นั้น (เพดานหลัง schema change (1) คือ 15, เผื่อ headroom เท่านั้น ไม่ใช่เป้า)
+  พร้อมกัน → `lesson-verifier`
   fact-check ทันที ตาม convention เดิมของ track อื่น (DDD/DDIA/AI-systems) — FAIL ต้อง regenerate
   เฉพาะ concept นั้นก่อนไปต่อ ไม่ retry ทั้ง batch
 - รวม **50 invocation-pair** ทั้งหมด (ไม่ใช่ 4 batch ระดับ domain แบบแผนเดิม)
@@ -338,6 +355,19 @@ table, และตัวเลขที่วัดได้จากคลั�
 คือ **การเลือกระหว่าง service ภายใต้ constraint** ไม่ใช่ความรู้นิยาม ดังนั้น explanation ต้องสอน
 วิธี **เลือก** ไม่ใช่แค่บอกว่า service แต่ละตัว "คืออะไร" ซ้ำกับที่ user รู้อยู่แล้ว — ถ้า explanation
 อ่านแล้วรู้สึกเหมือนอ่าน definition ซ้ำ แปลว่าเขียนผิดจุด
+
+**อัปเดต (AWS-C0 round 2, ปักรูปแบบเป็น bold header บังคับ)**: สามส่วนข้างบนยังเป็นเนื้อหาที่ต้องมี
+ครบเหมือนเดิม แต่ตอนนี้ต้องขึ้นต้นแต่ละส่วนด้วย bold Thai header ตายตัว ไม่ใช่ร้อยแก้วไหลต่อกันแบบ
+`s3-security`'s draft แรกที่ใช้ inline (ก)(ข)(ค) — ตามลำดับนี้เป๊ะ:
+
+**โจทย์ถามว่า** → **ทำไมข้อที่ถูกถึงถูก** → **ทำไมตัวอื่นผิด** (ตามด้วย bullet list `- *ชื่อตัวเลือก* —
+เหตุผล` ทีละตัวเลือกที่ผิด) → **Decision rule**
+
+รายละเอียดเต็ม + ตัวอย่างจริงอยู่ที่ `.claude/agents/lesson-writer.md`'s "## AWS track" — สอง
+เอกสารนี้ต้องพูดตรงกันเสมอ (ก่อนหน้านี้เอกสารนี้ยังเขียนว่า "Thai prose สามส่วน" เฉย ๆ ไม่ระบุชื่อ
+header เลย ในขณะที่ `lesson-writer.md` เขียน header ไว้แล้ว — ทำให้ `lesson-verifier` (ที่อ้างอิง
+หัวข้อนี้) ไม่มีทางเช็ค header ได้เลย `s3-security`'s ทั้ง 4 ข้อผ่าน verifier ทั้งที่ไม่มี header สักข้อ
+เป็นหลักฐานตรงว่าช่องว่างนี้เคยมีจริง)
 
 ## หมายเหตุ round 2 (ความเห็นต่างที่ verify แล้ว — ไม่ได้ตามการแก้ทุกจุดแบบไม่เช็ค)
 
@@ -435,8 +465,10 @@ migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2)
 
 ### การตัดสินใจ (พร้อมเหตุผล)
 
-- **`maxRecallChecks` 5 → 15**: แผน AWS ต้องการ ~11 ข้อ/concept (docs/tickets/aws-cert.md) เพดาน 15
-  เผื่อ headroom เหนือเป้านั้นโดยไม่เปิดให้ quiz ต่อ lesson ยาวไม่จำกัด
+- **`maxRecallChecks` 5 → 15**: แผน AWS ตอนนั้นต้องการ ~11 ข้อ/concept (docs/tickets/aws-cert.md)
+  เพดาน 15 เผื่อ headroom เหนือเป้านั้นโดยไม่เปิดให้ quiz ต่อ lesson ยาวไม่จำกัด — **เป้าย้ายเป็น 4–6
+  ข้อ/concept ใน AWS-C0 ภายหลัง** (ดูหัวข้อ "รูปทรงใหม่" ต้นเอกสาร) แต่เพดาน 15 ยังเผื่อ headroom
+  พอเหมือนเดิม ไม่ต้องแก้
 - **`minRecallChecks` คงที่ 3 ไม่แก้**: blocker เดิมคือเพดานบน (5×50=250 ไม่พอ 550) ไม่ใช่พื้นล่าง —
   **แก้ไขหลัง code review รอบ 2**: ข้อความรอบแรกที่นี่อ้างว่า "118 lesson เดิม บางใบมีพอดี 3 ข้อ"
   ผิด — นับจริงจาก `content/lessons/*/*.json` ทั้ง 118 ไฟล์ ได้ distribution {4 checks: 4, 5 checks:
@@ -1286,6 +1318,188 @@ Round 2 ของ code review เป็น **NO-SHIP สามข้อ** (N1–
 </details>
 </details>
 
+## Template — decisions pinned in `.claude/agents/lesson-writer.md` (AWS-C0)
+
+รายละเอียดเต็มอยู่ใน `.claude/agents/lesson-writer.md`'s "## AWS track" section (ปักเป็น agent spec
+โดยตรง ไม่ใช่แค่บันทึกไว้ที่นี่) — สรุป 9 การตัดสินใจที่มาจากการรีวิว pilot 2 บทเรียน
+(`vpc-fundamentals`, `s3-security`, ทั้งคู่ PASS lesson-verifier) **หลังแก้ไข round 2 ของ code review**
+(ตัวเลขและการอ้างอิงในหัวข้อนี้แก้ตามที่ round 2 ชี้ว่าผิด — ดูหัวข้อ "AWS-C0" ด้านล่างสำหรับรายละเอียด
+ของทุกจุดที่แก้):
+
+1. **Prose-rune ceiling ≤ 950 runes/min** (ไม่ใช่ band 1,150–1,200/min แบบ round 1) — "prose runes" คือ
+   `body_md` หลังตัด fenced block ทุกชนิด (รวม mermaid) และแถวตาราง markdown (บรรทัดที่ขึ้นต้นด้วย `|`)
+   ออก แล้วหารด้วย `est_minutes` — **บรรทัดว่างนับรวมอยู่ด้วย** (นี่คือจุดเดียวที่กำกวม เลือก convention
+   นี้ทุกครั้งที่ re-derive เพื่อให้ตัวเลขทำซ้ำได้) **Round 1 วัดผิดตัวชี้วัด**: นับ rune ทั้งไฟล์รวม
+   mermaid/table/JSON ทำให้ตั้ง band ที่ไม่มีบทเรียนไหนในคลัง 120 ใบเดิมเข้าเกณฑ์เลยนอกจาก 2 pilot เอง
+   (ซึ่งทั้งคู่ยังเกินค่าสูงสุดของ 118 ใบที่เหลือด้วยซ้ำ) — วัดใหม่แบบ prose-only แล้ว derive ceiling จาก
+   corpus จริงทั้ง **120 ใบ** (ไม่ใช่ 118 ใบที่ไม่รวม AWS — round 2 ผสม population สองชุดผิด): mean **681**
+   + 3 standard deviation (**78**) = **915** ซึ่งอยู่ใกล้ค่าสูงสุดจริงในคลังมาก
+   (`ai-and-llm-systems/online-eval-and-ab-testing` วัดได้ **918** ด้วย convention เดียวกันนี้ — ใกล้กัน
+   ไม่ใช่ตัวเลขเดียวกันเป๊ะ ไม่ได้บังคับให้เท่ากัน) — ปัดขึ้นเป็น 950 ให้มี margin เหนือทั้งสองค่า ไม่ใช่
+   ตัดคลังเดิมทิ้ง ที่ ceiling นี้ ทั้งสอง pilot วัดได้ **s3-security 830/min, vpc-fundamentals 838/min**
+   (หลัง retrofit จุด "." ท้ายประโยคตาม Template ข้อ 10 — ดู round 3) ไม่ใช่เหนือค่าสูงสุดของคลังอีกต่อไป
+   — **ทั้งคู่ไม่เคยเกินจริง ไม่ต้องตัด/แยกไฟล์**
+   **เกทนี้ reformat แล้วโกงไม่ได้**: ตาราง (รวม cue section) ยกเว้นจากการนับเพราะเป็นเนื้อหาที่ผู้อ่าน
+   *scan* ไม่ได้อ่านเรียงบรรทัด ไม่ใช่ช่องโหว่ให้แปลงร้อยแก้วเป็น pseudo-table row เพื่อลดตัวเลข — การแปลง
+   เนื้อหาจริงเป็นตารางปลอมเพื่อซื้อ budget ทำลายจุดประสงค์ของเกทนี้ ต่อให้ตัวเลขผ่าน
+2. **Explanation format บังคับใช้ bold header ภาษาไทย** — **โจทย์ถามว่า** / **ทำไมข้อที่ถูกถึงถูก** /
+   **ทำไมตัวอื่นผิด** (ตามด้วย bullet `- *ชื่อตัวเลือก* — เหตุผล` ทีละตัว) / **Decision rule** — ตอนนี้
+   ใช้ครบทั้ง 4 ข้อของทั้งสอง lesson แล้ว (round 1 ปล่อยให้ `s3-security` ทั้ง 4 ข้อยังเป็นร้อยแก้ว
+   inline (ก)(ข)(ค) ทั้งที่กฎนี้ระบุไว้แล้ว — round 2 แปลงให้ครบ)
+3. **"คำในโจทย์ → คำตอบที่ต้องมองก่อน" เป็น section บังคับ และปักรูปแบบเป็นตาราง**
+   (`| คำในโจทย์ | คำตอบที่ต้องมองก่อน |`) ไม่ใช่ bullet list — round 1 ปล่อยให้ `vpc-fundamentals` ใช้
+   bullet list ใต้หัว "## มุมข้อสอบ" คนละชื่อคนละรูปแบบกับ `s3-security` round 2 แปลง
+   `vpc-fundamentals` เป็นตารางหัวเดียวกันแล้ว
+4. **Distractor policy**: distractor ใช้ real AWS service ที่บทเรียนไม่ได้สอนได้ ถ้าคำตอบถูกยังเลือก
+   ได้ครบจากเนื้อหาบทเรียนอย่างเดียว (pilot ใช้ S3 Transfer Acceleration, IAM Access Analyzer,
+   presigned URL เป็น distractor ทั้งที่ไม่ได้สอนในบท) — ตรงกับกฎ "real service misapplied" ใน
+   `aws-cert.md` เดิม บันทึกไว้ให้ชัดกันคนรีวิวถัดไป flag ซ้ำ
+5. **อย่างมากแค่ 1 ใน 4–6 คำตอบถูกของบทเรียนหนึ่งใบเป็นตัวเลือกที่ยาวที่สุด** — วัดจริงจาก pilot คือ
+   **2 ใน 8 ข้อ** (ข้อละ 1 ต่อ lesson) ไม่ใช่ 3 ใน 8 ตามที่ round 1 เขียนผิด ทั้งสองข้อยาวเพราะต้องระบุ
+   เงื่อนไข compound ให้ครบ ("compliance mode ... including the root user") ซึ่งเป็น soft tell ที่
+   guessability metric รวมไม่จับที่ n ต่ำ — กฎนี้เช็คได้ทีละ lesson ตอนเขียน (นับก่อน save) ไม่ใช่แค่
+   "บางครั้ง" แบบ round 1 ที่ไม่มีทางวัด
+6. **Recall checks: 4–6 ข้อ/concept** ไม่ใช่ ~11 — ดูหัวข้อ "รูปทรงใหม่" ต้นเอกสารสำหรับเหตุผลเต็ม
+7. **ทุก fact ต้องมี URL ที่ fetch จริง** ข้อที่ verify ไม่ได้ = ตัดทิ้งแล้วรายงาน ไม่ใช่เดา
+8. **Quote ต้อง verbatim หรือไม่ใส่เครื่องหมายคำพูดเลย** — ถ้า quote เป็นบางส่วนของประโยคยาว ต้องขึ้นต้น
+   ด้วย `...` ให้รู้ว่าเป็น fragment และคงตัวเน้น (bold) ของต้นฉบับไว้ในคำพูด (round 1 ตัดคำว่า **and**
+   ที่ตัวหนาออกทั้งที่เป็นคำที่รับน้ำหนักประโยค — round 2 คืนกลับพร้อมใส่ `...` นำหน้า)
+9. **Position balance (longest/shortest/middle/index) เป็นตัวเลขที่วัดหลังเขียน ไม่ใช่เป้าที่ต้องเขียน
+   ให้ตรง** — pilot บังเอิญลง 2/2/2/2 ทุก index แต่ไม่ได้ตั้งใจ `cmd/mcq-guessability` เองระบุว่า
+   position เป็น "content-quality signal only, not user-facing" เพราะ `web/lib/shuffle.ts` สลับ
+   ตำแหน่งใหม่ตอน render อยู่แล้ว
+10. **Thai sentence จบด้วย "." เสมอ** — วัดจริงจาก `designing-data-intensive-applications` และ
+    `ai-and-llm-systems` ทั้งคู่ลง "." ในสัดส่วนข้างมาก (รวมกันกว่า 80%) — นี่คือ track ที่กติกาข้อนี้
+    มาจากจริง ๆ ส่วน `domain-driven-design` **โหวตสวนทาง** (ใช้ "." เป็นส่วนน้อย) ไม่ใช่ที่มาของ
+    convention — round 2 เคยอ้าง `domain-driven-design` เป็นแหล่งด้วยผิด แก้แล้วในรอบนี้ pilot ทั้งสองใบ
+    อยู่ต่ำกว่า majority convention ชัดเจนก่อนรอบนี้ (`s3-security` ไม่มีเลย, `vpc-fundamentals` มีแค่
+    ส่วนน้อย) — **retrofit ใส่ "." ย้อนหลังให้ครบทั้งสองไฟล์แล้วในรอบนี้** (ดูหัวข้อ "AWS-C0" round 3)
+
+## AWS-C0 — land the pilot lessons and lock the lesson template
+
+**สถานะ**: implemented, code review round 3 fixes applied, pending re-review
+
+**สิ่งที่ทำ (round 1)**: trim `s3-security.json`'s `body_md` ตัดเนื้อหาซ้ำ (S3 Bucket Keys
+re-explained ใน fintech example, 2 bullet ซ้ำใน trade-off list), แก้ quote ที่ verifier หาต้นฉบับไม่
+เจอ, เพิ่ม 7 currency-checklist item, ปักเทมเพลตใน `lesson-writer.md`, แก้ count contradiction
+(~11/550 → 4–6/~250) — รายละเอียดเต็มของ round 1 อยู่ในประวัติ commit (`git log -p` ของ commit แรก
+ของ ticket นี้), ไม่ทวนซ้ำที่นี่เพราะ round 2 แก้ตัวเลขและเนื้อหาหลายจุดที่ round 1 อ้างไว้ผิด
+
+### Round 2 (code review) — 7 findings (R1–R7), ทุกข้อแก้แล้ว
+
+Round 1 ได้ REQUEST_CHANGES: R2 (rune budget) เป็นต้นเหตุของ R3 (การตัดเนื้อหาตามเป้าที่ผิดทำให้
+ประโยคเสียหาย 3 จุด, จุดหนึ่งสอนผิด) — แก้ R2 ก่อนเพราะเป็นราก แล้วค่อยคืนเนื้อหาที่ R3 เสียหาย:
+
+- **R2 — rune budget วัดผิดตัวชี้วัดและใช้ band ที่ unsatisfiable**: นับ rune ทั้งไฟล์ (รวม mermaid,
+  table, JSON fence) ทำให้ band 1,150–1,200/min ตัดคลังเดิมทั้ง 118 ใบทิ้งหมด (มีแค่ 2 pilot เข้าเกณฑ์
+  และทั้งคู่ยังเกิน max ของ 118 ใบที่เหลือด้วยซ้ำ) — แก้เป็น prose-only (ตัด fenced block + table row
+  ออกก่อนนับ, **นับบรรทัดว่างรวมด้วย** — เดิมเป็นจุดกำกวมที่ไม่ได้ระบุ) และเป็น **ceiling 950/min** ไม่ใช่
+  band, derive จาก corpus จริงทั้ง **120 ใบ**: mean **681** + 3σ (**78**) = **915** ใกล้ค่าสูงสุดจริงของ
+  คลังมาก (`ai-and-llm-systems/online-eval-and-ab-testing` วัดได้ **918** ด้วย convention เดียวกัน —
+  ใกล้กันไม่ใช่เท่ากันเป๊ะ) — ที่ ceiling ใหม่นี้ `s3-security` วัดได้ 830/min, `vpc-fundamentals` 838/min
+  (หลัง retrofit period ท้ายประโยคใน round 3) ทั้งคู่**ไม่เคยเกินจริง** ไม่ต้องแยกไฟล์ — ดูสูตรเต็มที่
+  หัวข้อ "Template" ข้อ 1 ด้านบน
+  (**round 3 แก้ arithmetic**: round 2 เขียน mean 678 + 3σ(78) ≈ 909 ผสม population สองชุดผิด — 678
+  คือ mean ของ 118 ใบที่ไม่รวม AWS ด้วย convention ตัดบรรทัดว่างทิ้ง, 78 คือ σ ของ 120 ใบ และตัวเลขสองตัว
+  นี้เองก็รวมกันได้ 912 ไม่ใช่ 909 อยู่ดี — เป็นทั้งการผสม population ผิดและ arithmetic ผิดซ้อนกันสองชั้น
+  วิธีที่ทำให้ arithmetic กลับมาถูก (mean 681 + 3σ(78) = 915) คือเปลี่ยนไปนับบรรทัดว่างรวมด้วย ไม่ใช่ตัด
+  ทิ้ง — เพราะเหตุนี้ convention ของบรรทัดว่างจึงต้องระบุชัดและใช้ให้เหมือนกันทั้งตอนวัด lesson เดี่ยว ๆ
+  และตอน derive corpus statistic)
+- **R3 — การตัดตามเป้าที่ผิดทำให้ 3 ประโยคเสียหาย คืนกลับแล้วทั้งหมด**:
+  - BPA scope ใน section 2: ประโยคเดิมหลัง trim อ่านกำกวมจนสอนผิดว่า BPA ระดับ account ก็เปิด-ปิดได้
+    แค่ยกชุด 4 setting เหมือน organization — **ความจริง: ระดับ account ยังเลือกทีละ setting ได้ปกติ
+    มีแค่ระดับ organization เท่านั้นที่ยกชุดอย่างเดียว** เขียนประโยคใหม่แยกสองระดับให้ชัด
+  - fintech worked example's punchline: ชี้ไปหัวข้อ 3 ที่ไม่เคยพูดถึง Object Lock/retention เลย —
+    เขียน connective chain ใหม่ครบ (retention 7 ปี → object สะสมมาก → SSE-KMS ไม่เปิด Bucket Keys
+    ต้นทุนพุ่ง → เปิด Bucket Keys ลดต้นทุนแต่ CloudTrail เห็น event หยาบขึ้น → ขัดกับข้อ 4 ที่ต้อง audit
+    ละเอียด)
+  - Versioning ใน section 4: "กู้คืนได้" ห้อยลอยไม่มีประธาน แก้เป็น "ของเดิมยังอยู่ครบและกู้คืนได้"
+  - เพิ่มเติม: เจอ duplicate จริงอีกจุดที่ round 1 พลาด (`Versioning ทำให้บิลโตเงียบ ๆ` ซ้ำกับ section 4's
+    "(ค) ทุกเวอร์ชันคิดเงินเต็มใบ") ตัดออก เหลือ 4 bullet ใน trade-off list (จาก 5)
+  - opener ของ "แก่นของเรื่อง": คืน causal connector ที่ trim ตัดทิ้ง ("จำตารางนี้ให้ได้ เพราะ...")
+- **R4 — SSE-C fact ถูกตัดให้แคบกว่าความจริงจนกลายเป็นข้อมูลผิด**: ข้อความเดิมพูดแค่ครึ่งเดียวของ fact
+  ที่ยืนยันแล้ว (general purpose bucket **ใหม่** ปิด SSE-C) ตัดครึ่งที่สองทิ้ง (bucket **เดิม** ของ
+  account ที่ไม่มี object เข้ารหัสด้วย SSE-C อยู่เลยก็ถูกปิดให้ด้วย — ขอบเขตเป็นระดับ **account** ไม่ใช่
+  ราย bucket) ทำให้ผู้อ่านสรุปผิดว่า bucket เดิมยังใช้ SSE-C ได้เสมอ — คืน fact ทั้งสองครึ่งพร้อม scope
+  ที่ถูกต้อง ทั้งใน `body_md` §3's table และใน `recall_checks[1].explanation`
+- **R1 — ทั้งสอง pilot ยังไม่ทำตามเทมเพลตที่ ticket เดียวกันปักไว้**: `s3-security` ทั้ง 4 explanation
+  ยังเป็นร้อยแก้ว inline (ก)(ข)(ค) ไม่มี bold header เลย, `vpc-fundamentals` ไม่มี "คำในโจทย์ →
+  คำตอบที่ต้องมองก่อน" section เลย (มีแค่ "## มุมข้อสอบ" แบบ bullet list) — แปลง `s3-security`'s 4
+  explanation เป็น bold header ครบ, เพิ่ม section ให้ `vpc-fundamentals` เป็นตาราง (ปักรูปแบบตารางไว้
+  เป็นมาตรฐานเดียว ไม่ใช่ bullet — ดู Template ข้อ 3)
+- **R5 — lesson-verifier ไม่มีทางจับข้อบกพร่องข้างบนได้เลยสักข้อ**: `s3-security` ผ่าน verifier ทั้งที่
+  ไม่มี bold header เลยสักข้อ เป็นหลักฐานตรงว่า verifier เช็คได้แค่ "มี 3 ส่วน" ไม่เช็ครูปแบบ — เพิ่ม
+  เกทใน `lesson-verifier.md` (bold header ครบ 4, cue section เป็นตารางและมีจริง, prose-rune ≤ 950,
+  recall check count 4–6, correct-answer-is-longest ไม่เกิน 1 ข้อ, quote verbatim) และแก้
+  `aws-cert.md`'s "## รูปแบบ explanation" ให้ระบุชื่อ header ทั้ง 4 ตรงกับ `lesson-writer.md` (เดิมสอง
+  เอกสารนี้พูดไม่ตรงกัน — เอกสารที่ verifier อ้างอิงไม่เคยรู้จัก header เลย)
+- **R6 — "3 ใน 8" นับผิด ที่ถูกคือ "2 ใน 8"** ขัดกับตัวเลข guessability ในเอกสารเดียวกันเอง (longest
+  heuristic 25.0%/+0.0% ที่ n=8 — ถ้าคำตอบถูกเป็นตัวยาวสุด 3 ใน 8 ข้อ ตัวเลขจะไม่ใช่ baseline พอดี)
+  แก้ทั้งใน `lesson-writer.md` และ Template ข้อ 5 ด้านบน พร้อมเขียนกฎใหม่ให้วัดได้จริงต่อ lesson
+  ("อย่างมากแค่ 1 ใน 4–6")
+- **R7 — เลข ~550/×11 เดิมยังหลงเหลือใน 2 เอกสารที่ใช้งานจริง**: `docs/HANDOFF.md:128` (ตารางเดิม
+  165/143/132/110 แบบคำต่อคำ — เอกสารนี้คือที่ session ใหม่อ่านก่อนเริ่มงาน จึงเป็นจุดเสี่ยงที่สุดที่เลข
+  ตายจะถูกหยิบกลับมาใช้) และ `docs/roadmap.md:16` (ใน priority block ที่ยังใช้งานอยู่) — แก้ทั้งคู่เป็น
+  4–6/~250 คงหมายเหตุประวัติที่ `roadmap.md:76` (ใต้ AWS-0) และ `aws-cert.md`'s AWS-S1/AWS-S3 section
+  ไว้ตามเดิมเพราะเป็นบันทึกประวัติของการตัดสินใจตอนนั้นจริง ไม่ใช่เป้าปัจจุบัน
+
+Also fixed (suggested, cheap): quote ทั้งสองที่ (body_md section 1 และ recall_checks[3]) ตอนนี้ขึ้นต้น
+ด้วย `...` บอกว่าเป็น fragment และคง **and** ตัวหนาของต้นฉบับไว้; Verification prose แก้ "track aws" เป็น
+"track aws-saa-c03" (ชื่อ track จริงคือ slug เต็ม ไม่ใช่ชื่อไฟล์ curriculum).
+
+**Pilot results (หลัง round 3)**: ทั้งสองบทเรียน (`vpc-fundamentals`, `s3-security`) **PASS
+lesson-verifier** — ทุก reference URL fetch แล้วยืนยันจริง, ทุก AWS claim เช็คกับ live docs, ไม่มี
+คำตอบที่ชื่อ service อยู่ใน ban list, explanation ครบ 3 ส่วนทุกข้อภายใต้ bold header ครบทั้ง 4 ทุกข้อ,
+guessability อยู่ที่ baseline พอดี — **25.0% ทั้ง 7 heuristic ที่ n=8** (insufficient sample, gate
+รายงาน NOT JUDGED ไม่ใช่ PASS ตามที่ `MinSampleSize=100` ออกแบบไว้ — ดู "Verification" ด้านล่างสำหรับ
+output เต็มจาก `cmd/mcq-guessability`)
+
+**สิ่งที่ตั้งใจไม่ทำในรอบนี้**:
+
+- ไม่แก้ status ของ AWS-S1/AWS-S3 ในเอกสารนี้ (ทั้งคู่ merge แล้วจริง — PR #58, #59 — แต่ ticket นี้
+  ระบุให้ tick แค่ AWS-S3 ใน `roadmap.md` เท่านั้น ไม่ได้ระบุให้แก้ status ใน `aws-cert.md`)
+- ไม่เขียน AWS-C1..C4 เอง (ยัง gated เหมือนเดิม, ticket นี้แค่ปักเทมเพลตที่ AWS-C1..C4 ต้องตามให้ถูก)
+
+### Round 3 (code review) — 4 findings, ทุกข้อแก้แล้ว
+
+Round 2 ได้ NO-SHIP แคบ 4 ข้อ (root cause ของ round 2's rune-budget derivation ยังไม่ reproduce +
+เอกสารอีก 2 จุดยังไม่ sync + retrofit ที่ round 2 เลื่อนออกไปกลับกลายเป็นปัญหาจริง):
+
+- **แก้ arithmetic ของ derivation (ดูหัวข้อ "R2" ด้านบนที่แก้ในรอบนี้)**: round 2 เขียน mean 678 +
+  3σ(78) ≈ 909 ผสม population 118/120 ผิดและบวกเลขผิดด้วย (678+3×78 = 912 ไม่ใช่ 909) — round 3 วัดซ้ำ
+  เองด้วย convention "นับบรรทัดว่างรวม" ได้ mean **681**, σ **78**, mean+3σ = **915** ตรงกับที่ควรจะเป็น
+  ระบุ population เป็น all 120 ชัดเจน และระบุ blank-line convention ที่ขาดไปเดิม (ไม่ระบุ = ใครมาวัดซ้ำ
+  จะได้คนละตัวเลข)
+- **`aws-currency-checklist.md` §1.11 ยังไม่ได้แก้**: บทเรียนแก้เป็น scope ระดับ account ถูกแล้ว
+  (R4 ของ round 2) แต่ checklist ที่ `lesson-writer.md` ประกาศว่า authoritative ยังเขียน per-bucket
+  เดิม — คนเขียนบทเรียนถัดไปที่เปิด checklist นี้จะกลับไปเขียนผิดแบบเดียวกับที่ R4 เพิ่งแก้ แก้แล้ว
+  ให้ตรงกับบทเรียน
+- **Retrofit จุด "." ท้ายประโยคจริงในรอบนี้** (ไม่เลื่อนต่อแบบ round 2): `s3-security` 34 บรรทัด,
+  `vpc-fundamentals` 30 บรรทัด ได้รับ "." ท้ายบรรทัดตาม majority convention ของคลัง — ก่อนแก้ทั้งสอง
+  pilot เป็นบทเรียนที่ conform กับ convention นี้น้อยที่สุดในคลังทั้งหมด ขัดกับที่ round 2 อ้างว่า
+  "ทั้งสอง pilot เห็นต่างกันเอง" ราวกับเป็นเรื่องที่ยุติแล้ว ทั้งที่จริงทั้งคู่ต่ำกว่า norm พร้อมกัน —
+  แก้ attribution ของกฎด้วย: ตัวอย่างที่แท้จริงมาจาก `designing-data-intensive-applications`/
+  `ai-and-llm-systems` ไม่ใช่ `domain-driven-design` ซึ่งจริง ๆ โหวตสวนทาง — ปรับประโยค BPA scope ใน
+  section 2 ให้มี "." คั่นหลัง "bucket-level" ด้วย เพื่อตัดการอ่านเป็นวลีเดียวกับ "ระดับ organization"
+  ที่กำกวม (เนื้อหาถูกอยู่แล้ว เป็นแค่การอ่านสะดุด)
+- **คืนเนื้อหาที่หายไปพร้อมกับ bullet ที่ตัดทิ้งจริง**: ตอนตัด `Versioning ทำให้บิลโตเงียบ ๆ` ทิ้ง
+  (duplicate จริงตามที่ round 2 พบ) ประโยคย่อยที่บอกว่า **workload แบบไหน** เสี่ยงสะสมค่าใช้จ่าย
+  (เขียนทับไฟล์เดิมบ่อย) หายไปด้วยทั้งที่ไม่ใช่ duplicate — เพิ่มกลับเข้าไปในย่อหน้า Versioning section 4
+  จุด (ค) แทน
+- **`docs/roadmap.md:76`**: จุดสุดท้ายที่เหลือของ `~550` ที่ไม่ได้ label ว่าเป็นตัวเลขประวัติ — เพิ่ม
+  label แล้ว
+
+### Verification (round 3)
+
+- `go vet ./...`: clean. `go test -count=1 ./...`: all packages `ok` (ไม่มีการแก้ไฟล์
+  `.go`/`migrations`/`web` เลยในรอบนี้ — `git diff --name-only develop... -- '*.go' 'web/*'
+  'migrations/*'` ว่างเปล่า)
+- Import evidence (stack แยก `docker compose -p awsc0fix2`, ไม่แตะ `self-learning_mysql_data`, ปิดท้าย
+  ด้วย `docker compose down` เปล่า ๆ ไม่มี `-v`): ดูผลจริงในรายงานสรุป PR
+- `go run ./cmd/mcq-guessability -dir content/lessons`: track `aws-saa-c03` (n=8) ยังรายงาน 25.0%/+0.0%
+  ทุก heuristic เหมือนเดิม (round 3 ไม่แตะ `options`/`expected_answer` ของ recall_checks เลย มีแค่
+  `body_md` กับ `explanation` ที่แก้) — ดูผลจริงในรายงานสรุป PR
+
 ## AWS-EN — exam-notes system (จดเทคนิคจาก practice exam)
 
 **ทำไมมี**: ระหว่างทำ practice exam ผู้ใช้ต้องนั่งจดเทคนิค/ศัพท์จากเฉลยเอง — เปลี่ยนเป็น
@@ -1330,3 +1544,4 @@ PR pending review
 2. ทำไมจำนวนโจทย์ในหัวไฟล์ต้อง recompute จาก comment `<!-- ids: -->` แทนการ +1?
 3. ทำไมยังต้องมี currency check เทียบ `aws-currency-checklist.md` ทุกรอบ ทั้งที่
    เฉลยของ practice exam ก็เขียนโดยคนที่รู้ AWS อยู่แล้ว?
+
