@@ -61,7 +61,7 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
 | 1. Content | เขียนบทเรียน 2 track ที่ตรงกับตำแหน่งที่สุด | ✅ จบ |
 | 2. Quality + รันเองได้ | MCQ ที่เดาไม่ได้ + `make dev` คำสั่งเดียว | ✅ จบ |
 | 3. Guided learning path | รู้ว่า "วันนี้อ่านอะไรต่อ" และอ่านถึงไหนแล้ว | ✅ จบ (UX-8 เป็น optional, ทำเมื่อรู้สึกขาดจริง) |
-| 4. Measurable recall | quiz กดเลือกได้ + เก็บประวัติ + SRS ที่วัดผลได้ | ⏸ พักไว้ระหว่าง AWS-cert (Q-2d, Q-3) |
+| 4. Measurable recall | quiz กดเลือกได้ + เก็บประวัติ + SRS ที่วัดผลได้ | 🟡 บางส่วนเดินต่ออยู่: Q-2b (PR pending) + Q-2c (branch `ticket/q-2c-sm2-domain` มีอยู่แล้วบน origin, ไม่ได้พัก) — เฉพาะ Q-2d/Q-3 พักไว้ระหว่าง AWS-cert |
 | 5. Visual simulation | บทเรียนที่เห็นภาพและโต้ตอบได้ | ⏸ พักไว้ระหว่าง AWS-cert (SIM-0…SIM-3) |
 | — | Deploy ขึ้น VPS + track ที่เหลือ | ⏸ **พักไว้โดยตั้งใจ** |
 
