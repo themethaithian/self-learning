@@ -10,9 +10,7 @@
 -- internal/learning/domain/checkkey.go): a card can outlive the
 -- recall_checks row it was scheduled from (question text edited, or the
 -- whole lesson re-imported) and keeps its schedule rather than being
--- deleted or reattached to a different question. It also means a due-cards
--- query can return a check_key that no longer resolves to a live question
--- — the read path Q-2d builds must treat that as "skip it", not an error.
+-- deleted or reattached to a different question.
 --
 -- No lesson_id either: resolving a due check_key back to a lesson (for
 -- display) is a read-path concern that belongs to whichever endpoint Q-2d
@@ -20,28 +18,33 @@
 -- actual query shape exists, would be a shot in the dark this ticket has no
 -- way to validate.
 --
--- ease_factor is DECIMAL(4,2), not FLOAT/DOUBLE: MySQL's DECIMAL is exact
--- fixed-point storage, so a value read, adjusted by the SM-2 recurrence, and
--- written back hundreds of times over a card's life accumulates no
--- binary-fraction rounding error the way a float column would. 1.30 is
--- SM-2's published hard floor (Wozniak) — the CHECK constraint means even a
--- buggy caller cannot persist a lower value.
+-- ease_factor is DECIMAL(4,2) UNSIGNED, not FLOAT/DOUBLE: MySQL's DECIMAL
+-- is exact fixed-point storage, so a value read, adjusted by the SM-2
+-- recurrence, and written back hundreds of times over a card's life
+-- accumulates no binary-fraction rounding error the way a float column
+-- would. 1.30 is SM-2's published hard floor (Wozniak) — the CHECK
+-- constraint means even a buggy caller cannot persist a lower value.
+-- Note the domain's EaseFactor has no matching UPPER bound, while this
+-- column's UNSIGNED DECIMAL(4,2) caps at 99.99 — unreachable in practice
+-- (roughly 975 consecutive good reviews from the 2.50 starting value) but
+-- the two disagree and this is the only place that says so.
 --
--- due_at defaults to CURRENT_TIMESTAMP ("due immediately") rather than a
--- NULL/never-reviewed sentinel: a brand-new, never-reviewed card should
--- surface in a "due now" query with no special case. Handoff note for
--- Q-2d: internal/learning/domain.ReviewCard represents this same "never
--- reviewed, always due" state as Go's zero-value time.Time, which cannot be
--- written to a TIMESTAMP column as-is (MySQL's TIMESTAMP range starts at
--- 1970-01-01 00:00:01 UTC) — the repository mapping must substitute
--- time.Now() when persisting a fresh card, not serialize the zero value.
+-- due_at is DATETIME, not TIMESTAMP: TIMESTAMP tops out at 2038-01-19, but
+-- SM-2 intervals compound (I(n) := I(n-1)*EF), so a run of good reviews
+-- reaches years-long intervals quickly and due_at is a date computed
+-- FORWARD from today — proven live: inserting a 2040 date into a TIMESTAMP
+-- column under this repo's sql_mode raises ERROR 1292 (22007). DATETIME
+-- has no such ceiling, at the cost of 1 extra byte of storage per row (5
+-- vs 4) — irrelevant next to a column whose entire purpose breaks past
+-- 2038. DEFAULT CURRENT_TIMESTAMP still works on DATETIME (MySQL 5.6.5+),
+-- so a fresh card still defaults to "due immediately".
 CREATE TABLE IF NOT EXISTS review_cards (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     check_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     ease_factor DECIMAL(4,2) UNSIGNED NOT NULL DEFAULT 2.50,
     interval_days INT UNSIGNED NOT NULL DEFAULT 0,
     repetition INT UNSIGNED NOT NULL DEFAULT 0,
-    due_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    due_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_reviewed_at TIMESTAMP NULL,
     UNIQUE KEY uniq_review_cards_check_key (check_key),
     CONSTRAINT chk_review_cards_ease_factor_floor CHECK (ease_factor >= 1.30),
@@ -81,8 +84,10 @@ CREATE TABLE IF NOT EXISTS review_logs (
     interval_days_after INT UNSIGNED NOT NULL,
     repetition_before INT UNSIGNED NOT NULL,
     repetition_after INT UNSIGNED NOT NULL,
-    due_at_before TIMESTAMP NOT NULL,
-    due_at_after TIMESTAMP NOT NULL,
+    -- DATETIME, not TIMESTAMP — same 2038 ceiling as review_cards.due_at
+    -- above, carrying the same forward-computed dates.
+    due_at_before DATETIME NOT NULL,
+    due_at_after DATETIME NOT NULL,
     -- reviewed_at is the domain event time the SM-2 formula was applied
     -- against (Advance's reviewedAt parameter) — created_at is merely when
     -- this audit row was written, which Q-2d's advance policy may not run
@@ -91,5 +96,11 @@ CREATE TABLE IF NOT EXISTS review_logs (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_review_logs_quality_range CHECK (quality <= 5),
     CONSTRAINT fk_review_logs_recall_attempt FOREIGN KEY (recall_attempt_id) REFERENCES recall_attempts (id),
+    -- One log per attempt, not just intent: the advance policy (docs/tickets/
+    -- quiz.md) is exactly one SM-2 advance per recall_attempts row, so a
+    -- second log for the same attempt is a bug, not a valid state — this
+    -- makes double-application structurally impossible instead of merely
+    -- intended, and gives Q-2d's retry path an INSERT it can safely repeat.
+    UNIQUE KEY uniq_review_logs_recall_attempt (recall_attempt_id),
     INDEX idx_review_logs_check_key_created_at (check_key, created_at DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

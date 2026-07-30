@@ -102,8 +102,10 @@ func TestEaseFactorAdjust_FloorReachedAndHeld(t *testing.T) {
 	}
 }
 
-// TestNextInterval pins I(n) := I(n-1) * EF's rounding rule, including an
-// exact .5 tie, independent of any ReviewCard plumbing.
+// TestNextInterval pins I(n) := I(n-1) * EF's rounding rule: nearest, not
+// the spec's ceiling (see nextInterval's doc comment for why round is the
+// deliberate choice), computed as exact integer arithmetic so it cannot
+// drift from float64 imprecision on a tie.
 func TestNextInterval(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -111,9 +113,15 @@ func TestNextInterval(t *testing.T) {
 		hundredths   int
 		want         int
 	}{
-		{name: "rounds down", previousDays: 6, hundredths: 270, want: 16},    // 16.2
+		// 6*2.70=16.2: ceil would give 17, this pins that we round instead.
+		{name: "nearest, not the spec's ceil", previousDays: 6, hundredths: 270, want: 16},
 		{name: "half rounds up", previousDays: 5, hundredths: 250, want: 13}, // 12.5
 		{name: "exact", previousDays: 10, hundredths: 200, want: 20},
+		// 95*2.30=218.5 exactly, but float64 cannot represent 2.30 exactly:
+		// previousDays*ease.Float64() (the old implementation) computes
+		// 218.49999999999997 and rounds DOWN to 218 — this pins the correct
+		// 219 via integer-only arithmetic instead.
+		{name: "exact tie unreachable by float64 imprecision", previousDays: 95, hundredths: 230, want: 219},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -122,7 +130,7 @@ func TestNextInterval(t *testing.T) {
 				t.Fatalf("NewEaseFactor(%d) unexpected error: %v", tt.hundredths, err)
 			}
 			if got := nextInterval(tt.previousDays, ease); got != tt.want {
-				t.Errorf("nextInterval(%d, %.2f) = %d, want %d", tt.previousDays, ease.Float64(), got, tt.want)
+				t.Errorf("nextInterval(%d, hundredths=%d) = %d, want %d", tt.previousDays, ease.Hundredths(), got, tt.want)
 			}
 		})
 	}

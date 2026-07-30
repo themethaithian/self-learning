@@ -16,6 +16,14 @@ const (
 // hundredths-as-int keeps every update exact integer arithmetic, so the
 // binary-fraction rounding a float64 read-modify-write would accumulate
 // across hundreds of reviews cannot happen here.
+//
+// Deliberately no float64 accessor: a fixed-point type that hands out a
+// lossy escape hatch invites exactly the bug that escape hatch causes — see
+// nextInterval in reviewcard.go, which fed this type's Hundredths()*ease
+// through float64 and rounded an exact .5 tie the wrong way. Add one only
+// when something outside this package genuinely needs a decimal string,
+// and name it for what it produces (e.g. DecimalString), not as a numeric
+// type that reads as safe to compute with.
 type EaseFactor struct {
 	hundredths int
 }
@@ -34,13 +42,7 @@ func NewEaseFactor(hundredths int) (EaseFactor, error) {
 	return EaseFactor{hundredths: hundredths}, nil
 }
 
-// Hundredths returns the stored integer representation (250 = 2.50).
 func (e EaseFactor) Hundredths() int { return e.hundredths }
-
-// Float64 returns the conventional decimal ease factor, for display only —
-// never feed this back into arithmetic that gets persisted (see the type
-// doc for why).
-func (e EaseFactor) Float64() float64 { return float64(e.hundredths) / 100 }
 
 // Adjust applies SM-2's published recurrence for one review's quality:
 // EF' = EF + (0.1 - (5-q)*(0.08+(5-q)*0.02)), floored at 1.3. d is 5-q,
@@ -48,7 +50,7 @@ func (e EaseFactor) Float64() float64 { return float64(e.hundredths) / 100 }
 // 100 and reordered into pure integer arithmetic (10 = 0.1*100, 8 =
 // 0.08*100, 2 = 0.02*100) — no float anywhere in the computation.
 func (e EaseFactor) Adjust(quality ReviewQuality) EaseFactor {
-	d := 5 - quality.Value()
+	d := 5 - quality.Grade()
 	delta := 10 - d*(8+2*d)
 	next := e.hundredths + delta
 	if next < easeFactorFloorHundredths {

@@ -29,8 +29,8 @@ func TestNewReviewQuality(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewReviewQuality(%s, %s) unexpected error: %v", tt.outcome, tt.confidence, err)
 			}
-			if got := q.Value(); got != tt.want {
-				t.Errorf("NewReviewQuality(%s, %s).Value() = %d, want %d", tt.outcome, tt.confidence, got, tt.want)
+			if got := q.Grade(); got != tt.want {
+				t.Errorf("NewReviewQuality(%s, %s).Grade() = %d, want %d", tt.outcome, tt.confidence, got, tt.want)
 			}
 		})
 	}
@@ -44,17 +44,17 @@ func TestNewReviewQuality_ConfidentIncorrectIsLowestGrade(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if confidentWrong.Value() != 0 {
-		t.Fatalf("confident-incorrect quality = %d, want 0", confidentWrong.Value())
+	if confidentWrong.Grade() != 0 {
+		t.Fatalf("confident-incorrect quality = %d, want 0", confidentWrong.Grade())
 	}
 
 	guessedWrong, err := NewReviewQuality(mustAttemptOutcome(t, "incorrect"), mustConfidence(t, "guessed"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if confidentWrong.Value() >= guessedWrong.Value() {
+	if confidentWrong.Grade() >= guessedWrong.Grade() {
 		t.Fatalf("confident-incorrect quality (%d) must be strictly below guessed-incorrect quality (%d)",
-			confidentWrong.Value(), guessedWrong.Value())
+			confidentWrong.Grade(), guessedWrong.Grade())
 	}
 }
 
@@ -94,8 +94,8 @@ func TestReviewQualityIsCorrect_Boundary(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if q.Value() != tt.wantValue {
-			t.Fatalf("Value() = %d, want %d", q.Value(), tt.wantValue)
+		if q.Grade() != tt.wantValue {
+			t.Fatalf("Grade() = %d, want %d", q.Grade(), tt.wantValue)
 		}
 		if got := q.IsCorrect(); got != tt.wantCorrect {
 			t.Errorf("quality %d IsCorrect() = %v, want %v", tt.wantValue, got, tt.wantCorrect)
@@ -120,13 +120,19 @@ func TestReviewQualityIsCorrect_AllSixValues(t *testing.T) {
 // mapping ADDED, REMOVED, or altered by one grade, not just the specific
 // combinations TestNewReviewQuality happens to enumerate.
 func TestQualityMappingsIsExactly(t *testing.T) {
+	correct := mustAttemptOutcome(t, "correct")
+	incorrect := mustAttemptOutcome(t, "incorrect")
+	guessed := mustConfidence(t, "guessed")
+	unsure := mustConfidence(t, "unsure")
+	confident := mustConfidence(t, "confident")
+
 	want := []qualityMapping{
-		{outcome: "correct", confidence: "confident", quality: 5},
-		{outcome: "correct", confidence: "unsure", quality: 4},
-		{outcome: "correct", confidence: "guessed", quality: 3},
-		{outcome: "incorrect", confidence: "guessed", quality: 2},
-		{outcome: "incorrect", confidence: "unsure", quality: 1},
-		{outcome: "incorrect", confidence: "confident", quality: 0},
+		{outcome: correct, confidence: confident, quality: 5},
+		{outcome: correct, confidence: unsure, quality: 4},
+		{outcome: correct, confidence: guessed, quality: 3},
+		{outcome: incorrect, confidence: guessed, quality: 2},
+		{outcome: incorrect, confidence: unsure, quality: 1},
+		{outcome: incorrect, confidence: confident, quality: 0},
 	}
 	if got := qualityMappings[:]; !slices.Equal(got, want) {
 		t.Errorf("qualityMappings = %+v, want exactly %+v", got, want)

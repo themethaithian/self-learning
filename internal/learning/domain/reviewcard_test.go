@@ -45,12 +45,15 @@ func TestReviewCard_Advance_ZeroInputs(t *testing.T) {
 }
 
 // TestReviewCard_FirstThreeReviews walks a fresh card through three
-// consecutive q=5 reviews and pins every resulting field against values
-// hand-derived from the published algorithm (Wozniak 1990):
+// consecutive q=5 reviews. Every field is hand-derived from the published
+// algorithm (Wozniak 1990) EXCEPT review 3's interval rounding: Wozniak's
+// own ceiling rule gives ceil(6*2.70)=17, not 16 — this app deliberately
+// rounds to nearest instead (see nextInterval's doc comment for why), so
+// 16 is OUR chosen output, not the published algorithm's:
 //
 //	review 1: n=0 -> I(1)=1;  EF 2.50 -> 2.60 (delta +0.10 at q=5)
 //	review 2: n=1 -> I(2)=6;  EF 2.60 -> 2.70
-//	review 3: n=2 -> I(3)=round(I(2)*EF_before_review_3)=round(6*2.70)=16; EF 2.70 -> 2.80
+//	review 3: n=2 -> I(3)=nearest(I(2)*EF_before_review_3)=nearest(6*2.70)=16 (Wozniak's ceil would give 17); EF 2.70 -> 2.80
 //
 // Each review happens well past the card's own previous due date, which
 // also proves the new due date is computed from reviewedAt, not from the
@@ -64,24 +67,24 @@ func TestReviewCard_FirstThreeReviews(t *testing.T) {
 	if err != nil {
 		t.Fatalf("review 1: unexpected error: %v", err)
 	}
-	assertCardState(t, "review 1", after1, 1, 1, 260, reviewedAt1.AddDate(0, 0, 1))
+	assertCardState(t, "review 1", after1, 1, 1, 260, reviewedAt1.AddDate(0, 0, 1), reviewedAt1)
 
 	reviewedAt2 := reviewedAt1.AddDate(0, 0, 40) // deliberately late vs. after1.DueAt()
 	after2, err := after1.Advance(q5, reviewedAt2)
 	if err != nil {
 		t.Fatalf("review 2: unexpected error: %v", err)
 	}
-	assertCardState(t, "review 2", after2, 2, 6, 270, reviewedAt2.AddDate(0, 0, 6))
+	assertCardState(t, "review 2", after2, 2, 6, 270, reviewedAt2.AddDate(0, 0, 6), reviewedAt2)
 
 	reviewedAt3 := reviewedAt2.AddDate(0, 0, 90) // deliberately late vs. after2.DueAt()
 	after3, err := after2.Advance(q5, reviewedAt3)
 	if err != nil {
 		t.Fatalf("review 3: unexpected error: %v", err)
 	}
-	assertCardState(t, "review 3", after3, 3, 16, 280, reviewedAt3.AddDate(0, 0, 16))
+	assertCardState(t, "review 3", after3, 3, 16, 280, reviewedAt3.AddDate(0, 0, 16), reviewedAt3)
 }
 
-func assertCardState(t *testing.T, label string, card ReviewCard, wantRepetition, wantIntervalDays, wantEaseHundredths int, wantDueAt time.Time) {
+func assertCardState(t *testing.T, label string, card ReviewCard, wantRepetition, wantIntervalDays, wantEaseHundredths int, wantDueAt, wantLastReviewedAt time.Time) {
 	t.Helper()
 	if card.Repetition() != wantRepetition {
 		t.Errorf("%s: Repetition() = %d, want %d", label, card.Repetition(), wantRepetition)
@@ -94,6 +97,9 @@ func assertCardState(t *testing.T, label string, card ReviewCard, wantRepetition
 	}
 	if !card.DueAt().Equal(wantDueAt) {
 		t.Errorf("%s: DueAt() = %v, want %v", label, card.DueAt(), wantDueAt)
+	}
+	if !card.LastReviewedAt().Equal(wantLastReviewedAt) {
+		t.Errorf("%s: LastReviewedAt() = %v, want %v", label, card.LastReviewedAt(), wantLastReviewedAt)
 	}
 }
 
@@ -129,6 +135,15 @@ func TestReviewCard_Advance_DueDateBasedOnReviewedAt(t *testing.T) {
 // streak, then fails the 4th review, and pins the full reset: repetition
 // back to 0, interval back to the fixed 1 day, and the ease factor still
 // adjusted by the failing quality's own penalty (not left untouched).
+//
+// failedAt is deliberately 40 days past streak.DueAt(), not exactly at it:
+// the loop below drives reviewedAt to exactly equal streak.DueAt() by
+// construction (each Advance sets dueAt = reviewedAt + interval, and the
+// loop re-seeds reviewedAt from that same interval), so using either value
+// unchanged would make the two candidate due-date bases (reviewedAt vs the
+// card's own previous due date) numerically identical and this test unable
+// to tell a real fix from a mutant that swaps them — see the "40 days
+// late" scenario in the fix commit for the concrete failure mode.
 func TestReviewCard_FailedReviewAfterLongStreak(t *testing.T) {
 	card := mustReviewCard(t, "What is a B-tree?")
 	q5 := reviewQualityValue(t, 5)
@@ -148,7 +163,7 @@ func TestReviewCard_FailedReviewAfterLongStreak(t *testing.T) {
 			streak.Repetition(), streak.IntervalDays(), streak.EaseFactor().Hundredths())
 	}
 
-	failedAt := reviewedAt
+	failedAt := streak.DueAt().AddDate(0, 0, 40)                      // 40 days late, deliberately != streak.DueAt()
 	failed, err := streak.Advance(reviewQualityValue(t, 1), failedAt) // q=1: d=4, delta=-54
 	if err != nil {
 		t.Fatalf("failed review: unexpected error: %v", err)

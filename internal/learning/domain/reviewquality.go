@@ -16,14 +16,18 @@ type ReviewQuality struct {
 }
 
 type qualityMapping struct {
-	outcome    string
-	confidence string
+	outcome    AttemptOutcome
+	confidence Confidence
 	quality    int
 }
 
 // qualityMappings is the single source of truth for every (outcome,
 // confidence) -> quality pairing; NewReviewQuality is the only constructor,
-// so no other pairing can ever exist.
+// so no other pairing can ever exist. Fields are the AttemptOutcome/
+// Confidence VOs themselves (indexed from attemptOutcomes/confidences, the
+// same arrays those types' own constructors validate against), not bare
+// strings — a typo like "corect" here would fail to compile instead of
+// silently falling into NewReviewQuality's "no mapping" branch.
 //
 // Confident-and-wrong maps to 0, BELOW guessed-and-wrong's 2: a confidently
 // held wrong belief resists correction more than an acknowledged gap, so it
@@ -34,12 +38,12 @@ type qualityMapping struct {
 // you" is no longer a measurement of recall, it is a measurement of
 // hindsight.
 var qualityMappings = [...]qualityMapping{
-	{outcome: "correct", confidence: "confident", quality: 5},
-	{outcome: "correct", confidence: "unsure", quality: 4},
-	{outcome: "correct", confidence: "guessed", quality: 3},
-	{outcome: "incorrect", confidence: "guessed", quality: 2},
-	{outcome: "incorrect", confidence: "unsure", quality: 1},
-	{outcome: "incorrect", confidence: "confident", quality: 0},
+	{outcome: attemptOutcomes[0], confidence: confidences[2], quality: 5}, // correct, confident
+	{outcome: attemptOutcomes[0], confidence: confidences[1], quality: 4}, // correct, unsure
+	{outcome: attemptOutcomes[0], confidence: confidences[0], quality: 3}, // correct, guessed
+	{outcome: attemptOutcomes[1], confidence: confidences[0], quality: 2}, // incorrect, guessed
+	{outcome: attemptOutcomes[1], confidence: confidences[1], quality: 1}, // incorrect, unsure
+	{outcome: attemptOutcomes[1], confidence: confidences[2], quality: 0}, // incorrect, confident
 }
 
 // NewReviewQuality derives q from Q-1's two collected axes. Every
@@ -55,19 +59,18 @@ func NewReviewQuality(outcome AttemptOutcome, confidence Confidence) (ReviewQual
 		return ReviewQuality{}, fmt.Errorf("learning: review quality: confidence is zero: %w", ErrInvalidConfidence)
 	}
 	for _, m := range qualityMappings {
-		if m.outcome == outcome.String() && m.confidence == confidence.String() {
+		if m.outcome == outcome && m.confidence == confidence {
 			return ReviewQuality{grade: m.quality + 1}, nil
 		}
 	}
 	return ReviewQuality{}, fmt.Errorf("learning: review quality: no mapping for outcome=%s confidence=%s: %w", outcome, confidence, ErrInvalidReviewQuality)
 }
 
-// Value returns the 0-5 SM-2 grade.
-func (q ReviewQuality) Value() int { return q.grade - 1 }
+func (q ReviewQuality) Grade() int { return q.grade - 1 }
 
 // IsCorrect reports SM-2's q >= 3 boundary: the point at which a review
 // advances the repetition count instead of resetting it.
-func (q ReviewQuality) IsCorrect() bool { return q.Value() >= 3 }
+func (q ReviewQuality) IsCorrect() bool { return q.Grade() >= 3 }
 
 // IsZero reports whether q was never constructed via NewReviewQuality.
 func (q ReviewQuality) IsZero() bool { return q.grade == 0 }
