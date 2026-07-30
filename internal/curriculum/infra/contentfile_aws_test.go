@@ -9,12 +9,14 @@ var wantAwsChapters = []wantContentChapter{
 	{"secure-architectures", []string{
 		"iam-users-roles-policies", "iam-policy-evaluation", "organizations-scp", "cognito",
 		"kms-encryption", "secrets-vs-parameter-store", "sg-vs-nacl", "vpc-endpoints-privatelink",
-		"waf-shield", "s3-security",
+		"waf-shield", "s3-security", "vpc-fundamentals", "hybrid-cross-vpc-connectivity",
+		"security-detection-governance", "multi-account-access-governance", "acm-tls-in-transit-encryption",
 	}},
 	{"resilient-architectures", []string{
 		"regions-az-edge", "elb-types", "auto-scaling-groups", "rds-multi-az-read-replicas",
 		"aurora-ha", "sqs-sns-decoupling", "eventbridge", "route53-routing-policies",
-		"dr-strategies", "backup-strategies",
+		"dr-strategies", "backup-strategies", "observability-cloudwatch-cloudtrail",
+		"api-gateway-step-functions", "managed-ai-services-overview",
 	}},
 	{"high-performing", []string{
 		"ec2-families-purchasing", "ebs-efs-instance-store", "s3-performance", "cloudfront",
@@ -23,7 +25,9 @@ var wantAwsChapters = []wantContentChapter{
 	}},
 	{"cost-optimized", []string{
 		"pricing-models-ri-sp-spot", "s3-storage-classes-lifecycle", "compute-cost-optimization",
-		"data-transfer-costs", "cost-tools-budgets",
+		"data-transfer-costs", "cost-tools-budgets", "cost-optimized-databases-capacity",
+		"cost-optimized-databases-storage-lifecycle", "cost-optimized-networking",
+		"migration-and-transfer-services", "storage-cost-optimization-beyond-s3",
 	}},
 }
 

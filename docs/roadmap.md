@@ -4,7 +4,14 @@
 > ส่วน design ฉบับเต็ม (DDD, schema, API, VPS) อยู่ที่ [`docs/design.md`](design.md)
 > ⚠️ `design.md` **เก่ากว่าไฟล์นี้** — ดูหัวข้อ "หนี้ที่รู้ตัว" ท้ายไฟล์
 >
-> อัปเดตล่าสุด **2026-07-29** (หลัง PR #46)
+> อัปเดตล่าสุด **2026-07-30** (AWS-0 — AWS certification กลายเป็น priority อันดับ 1)
+
+## 🔥 Priority ปัจจุบัน: AWS Certified Solutions Architect – Associate (SAA-C03)
+
+สอบจริงใน **1–2 เดือน**, อ่านวันละ 1–2 ชม., ยังไม่เคยจับ AWS จริง (รู้แค่ชื่อ service) —
+เป้าหมายนี้แทรกหน้าคิวชั่วคราว รายละเอียดเต็มอยู่ที่ [`docs/tickets/aws-cert.md`](tickets/aws-cert.md)
+(blueprint ข้อสอบ, concept → task statement mapping, แผนคลังข้อสอบ ~550 ข้อ, กติกาการเขียน
+คำถาม+เฉลย) — **Q-2d, Q-3, SIM-\* พักไว้ระหว่างนี้** (ดูหัวข้อ "พักไว้โดยตั้งใจ" ด้านล่าง)
 
 ## เป้าหมายตอนนี้
 
@@ -13,7 +20,7 @@ Backend / AI-CRM Platform — โหมด **learn-first**: ให้ควา�
 อ่าน→ทดสอบ→วัดผล* ก่อน feature และก่อน deploy
 
 ทักษะเป้าหมาย 7 track: DDD · **DDIA (Distributed Data)** · **AI & LLM Systems** ·
-Distributed Systems · AWS SAA-C03 · Go · DSA
+Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go · DSA
 (สองตัวหนา = เขียนบทเรียนครบแล้ว, ที่เหลือมี tree แต่ยังไม่มีบทเรียน)
 
 ## สถาปัตยกรรมสรุป
@@ -49,15 +56,23 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 
 | Phase | เป้าหมาย | สถานะ |
 |---|---|---|
+| **AWS-cert** | รีบาลานซ์ curriculum tree ให้ตรง exam guide + คลังข้อสอบ ~550 ข้อ ก่อนสอบ SAA-C03 | 🔥 **priority ปัจจุบัน** ([aws-cert.md](tickets/aws-cert.md)) |
 | 0. Walking skeleton + reading slice | คลิก concept → อ่านบทเรียนจริง (mermaid + references + recall) | ✅ จบ |
 | 1. Content | เขียนบทเรียน 2 track ที่ตรงกับตำแหน่งที่สุด | ✅ จบ |
 | 2. Quality + รันเองได้ | MCQ ที่เดาไม่ได้ + `make dev` คำสั่งเดียว | ✅ จบ |
 | 3. Guided learning path | รู้ว่า "วันนี้อ่านอะไรต่อ" และอ่านถึงไหนแล้ว | ✅ จบ (UX-8 เป็น optional, ทำเมื่อรู้สึกขาดจริง) |
-| 4. Measurable recall | quiz กดเลือกได้ + เก็บประวัติ + SRS ที่วัดผลได้ | ⏭ ถัดไป (Q-1…Q-3) |
-| 5. Visual simulation | บทเรียนที่เห็นภาพและโต้ตอบได้ | ⏭ หลัง phase 4 (SIM-0…SIM-3) |
+| 4. Measurable recall | quiz กดเลือกได้ + เก็บประวัติ + SRS ที่วัดผลได้ | ⏸ พักไว้ระหว่าง AWS-cert (Q-2d, Q-3) |
+| 5. Visual simulation | บทเรียนที่เห็นภาพและโต้ตอบได้ | ⏸ พักไว้ระหว่าง AWS-cert (SIM-0…SIM-3) |
 | — | Deploy ขึ้น VPS + track ที่เหลือ | ⏸ **พักไว้โดยตั้งใจ** |
 
 ## Ticket index (ติ๊กเมื่อ merge แล้ว)
+
+### AWS-cert — priority ปัจจุบัน 🔥 ([รายละเอียด](tickets/aws-cert.md))
+- [ ] AWS-0 (in review) — รีบาลานซ์ curriculum tree จาก 37 → **50 concept** ให้ตรง 30/26/24/20
+  ตาม domain weight จริงของ SAA-C03 exam guide (เดิม 10/10/12/5 เอียงไปทาง Domain 3) +
+  pin blueprint ข้อสอบ, concept → task statement mapping, แผนคลังข้อสอบ ~550 ข้อ ไว้ที่
+  [`docs/tickets/aws-cert.md`](tickets/aws-cert.md)
+- [ ] AWS-1..N (ยังไม่ตัดชื่อ) — เขียนคลังข้อสอบทีละ domain ตามแผนใน aws-cert.md
 
 ### Phase 0 — walking skeleton + reading slice ✅
 - [x] T1 [x] T2 [x] T3 [x] T4 [x] T35 [x] T5 [x] T6 [x] T7 [x] T7b [x] T8 ([week-1](tickets/week-1.md))
@@ -71,8 +86,9 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
 - **AI & LLM Systems** ([รายละเอียด](tickets/ai-systems.md)): [x] T-ai-track (tree 11 บท / 53 concept) ·
   **53 บทเรียน / 11 บท ครบทั้ง track** — เจาะตำแหน่ง Backend/AI-CRM ([🎯 roadmap](https://claude.ai/code/artifact/a6d332fd-de7b-44bb-91db-37549984c7a7))
 - **DDD**: 4 บทเรียน (บท 1 จาก 5) — ยังไม่ครบ track
-- `distsys` / `aws` / `go` / `dsa`: มี curriculum tree แต่ **0 บทเรียน**
-- รวม concept ทั้ง 7 tree = **309** · recall check ทั้งหมด **586** ข้อ (mcq 356 / short_answer 230)
+- `distsys` / `aws` / `go` / `dsa`: มี curriculum tree แต่ **0 บทเรียน** (aws รีบาลานซ์เป็น
+  50 concept ใน AWS-0 แล้ว แต่ยังไม่มีบทเรียน — คลังข้อสอบคือ deliverable ถัดไป ไม่ใช่บทเรียนอ่าน)
+- รวม concept ทั้ง 7 tree = **322** (หลัง AWS-0) · recall check ทั้งหมด **586** ข้อ (mcq 356 / short_answer 230)
 
 ### Phase 2 — quality + รันเองได้ ✅
 - [x] T-local-docker (#39, [รายละเอียด](tickets/local-docker.md)) — `make dev` = mysql + api + web + seed
@@ -154,6 +170,8 @@ Distributed Systems · AWS SAA-C03 · Go · DSA
   [ ] SIM-3 2PC (step + ปุ่ม crash coordinator) → **หยุดประเมินก่อนทำเพิ่ม**
 
 ### พักไว้โดยตั้งใจ (ไม่ได้ยกเลิก)
+- **Q-2d, Q-3, SIM-0…SIM-3**: พักตั้งแต่ AWS certification กลายเป็น priority อันดับ 1
+  (สอบใน 1–2 เดือน) — กลับมาทำต่อหลังคลังข้อสอบ AWS ในแผน [`aws-cert.md`](tickets/aws-cert.md) เสร็จ
 - **Deploy**: [x] T28 (prod Dockerfile + compose + Caddyfile, #25) · [ ] T29 [ ] T30
   (GitHub Actions → VPS) — พักตั้งแต่เปลี่ยนเป็นโหมด learn-first
 - **Feature จากแผนเดิม** — บางส่วนจะถูกแทนที่ด้วย phase 4/5 ที่ออกแบบใหม่แล้ว:

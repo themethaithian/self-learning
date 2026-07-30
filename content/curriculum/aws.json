@@ -24,7 +24,7 @@
         {
           "slug": "organizations-scp",
           "title": "AWS Organizations & Service Control Policies (SCPs)",
-          "outline": "อธิบาย AWS Organizations สำหรับจัดการหลาย account แบบรวมศูนย์\nอธิบาย Service Control Policy (SCP) ว่ากำหนด permission boundary สูงสุดของ account ในกลุ่ม\nยกตัวอย่างการใช้ OU (Organizational Unit) แบ่งกลุ่ม account",
+          "outline": "อธิบาย AWS Organizations สำหรับจัดการหลาย account แบบรวมศูนย์\nอธิบาย Service Control Policy (SCP) ว่ากำหนด permission boundary สูงสุดของ account ในกลุ่ม\nยกตัวอย่างการใช้ OU (Organizational Unit) แบ่งกลุ่ม account\nอธิบาย AWS Resource Access Manager (RAM) สำหรับแชร์ resource เช่น subnet หรือ Transit Gateway ข้าม account ภายใน Organization โดยไม่ต้อง duplicate",
           "position": 3
         },
         {
@@ -68,6 +68,36 @@
           "title": "Amazon S3 Security",
           "outline": "อธิบายกลไกความปลอดภัยของ S3: bucket policy, ACL, Block Public Access\nเน้นการเข้ารหัส SSE-S3, SSE-KMS และ access logging\nยกตัวอย่าง misconfiguration ที่ทำให้ bucket เปิด public โดยไม่ตั้งใจ",
           "position": 10
+        },
+        {
+          "slug": "vpc-fundamentals",
+          "title": "Amazon VPC Fundamentals",
+          "outline": "อธิบาย Amazon VPC และองค์ประกอบพื้นฐาน: subnet (public/private), route table, Internet Gateway (IGW)\nอธิบาย NAT Gateway สำหรับให้ resource ใน private subnet ออก internet ได้แบบ outbound-only\nเน้นหลัก CIDR planning: เลือกขนาด CIDR block ให้พอสำหรับ subnet ในอนาคตโดยไม่ชนกันเมื่อต้อง peering\nยกตัวอย่างการออกแบบ VPC แบบ public/private subnet เป็นพื้นฐานให้ทุก workload ที่ต้องการความปลอดภัยระดับ network",
+          "position": 11
+        },
+        {
+          "slug": "hybrid-cross-vpc-connectivity",
+          "title": "Hybrid & Cross-VPC Connectivity",
+          "outline": "อธิบาย Direct Connect (private dedicated link) และ Site-to-Site VPN (encrypted tunnel ผ่าน internet) สำหรับเชื่อม on-premises กับ AWS\nอธิบาย Transit Gateway เป็น hub กลางเชื่อมหลาย VPC/on-premises แทนการทำ VPC Peering แบบ full-mesh\nเปรียบเทียบ VPC Peering (point-to-point ไม่ transitive) กับ Transit Gateway (transitive scale ง่ายกว่าเมื่อจำนวน VPC เยอะ)\nอธิบาย Global Accelerator ใช้ Anycast IP ผ่าน AWS global network ลด latency และเพิ่มความทนทานให้ endpoint หลาย region",
+          "position": 12
+        },
+        {
+          "slug": "security-detection-governance",
+          "title": "Security Detection & Governance Services",
+          "outline": "อธิบาย Amazon GuardDuty ตรวจจับภัยคุกคามจาก log (VPC Flow Logs, CloudTrail, DNS) แบบ managed threat detection\nอธิบาย Amazon Macie ค้นหาและจัดประเภทข้อมูลอ่อนไหวใน S3 ด้วย machine learning\nอธิบาย Amazon Inspector สแกนช่องโหว่ (vulnerability) ของ EC2/container/Lambda อัตโนมัติ\nอธิบาย AWS Security Hub รวมผลจากบริการความปลอดภัยหลายตัวไว้ที่เดียวเพื่อดู compliance ภาพรวม",
+          "position": 13
+        },
+        {
+          "slug": "multi-account-access-governance",
+          "title": "Multi-Account Access & Governance",
+          "outline": "อธิบาย AWS IAM Identity Center (เดิมชื่อ AWS Single Sign-On) สำหรับ single sign-on ข้ามหลาย AWS account ใน Organization\nอธิบาย AWS Control Tower สำหรับตั้ง landing zone และบังคับ guardrail มาตรฐานให้ account ใหม่ทุกใบ\nอธิบาย AWS Directory Service สำหรับเชื่อมหรือรัน Active Directory บน AWS\nเน้น STS และการทำ cross-account role switching เพื่อให้ user ใน account หนึ่งขอ temporary credential ไปทำงานใน account อื่น\nอธิบาย Shared Responsibility Model ว่า AWS ดูแลความปลอดภัย \"ของ\" cloud ส่วนลูกค้าดูแลความปลอดภัย \"ใน\" cloud",
+          "position": 14
+        },
+        {
+          "slug": "acm-tls-in-transit-encryption",
+          "title": "ACM & Encryption in Transit",
+          "outline": "อธิบาย AWS Certificate Manager (ACM) ออกและต่ออายุ TLS certificate ให้อัตโนมัติ ไม่ต้องจัดการเองเหมือน certificate แบบเดิม\nยกตัวอย่างการติดตั้ง certificate จาก ACM ที่ ALB หรือ CloudFront เพื่อทำ HTTPS termination\nเน้นความแตกต่างระหว่าง encryption in transit (TLS ระหว่าง client-server) กับ encryption at rest (KMS)\nอธิบาย key rotation ของ KMS ทั้งแบบอัตโนมัติรายปีและแบบ manual rotation เมื่อ compliance ต้องการควบคุมเอง",
+          "position": 15
         }
       ]
     },
@@ -79,7 +109,7 @@
         {
           "slug": "regions-az-edge",
           "title": "Regions, Availability Zones & Edge Locations",
-          "outline": "อธิบายโครงสร้าง Region, Availability Zone (AZ) และ Edge Location ของ AWS\nเน้นว่า AZ หลายแห่งในหนึ่ง Region เชื่อมด้วย low-latency network เพื่อทำ HA\nยกตัวอย่างการออกแบบ workload ให้ทนต่อการล่มของทั้ง AZ",
+          "outline": "อธิบายโครงสร้าง Region, Availability Zone (AZ) และ Edge Location ของ AWS\nเน้นว่า AZ หลายแห่งในหนึ่ง Region เชื่อมด้วย low-latency network เพื่อทำ HA\nยกตัวอย่างการออกแบบ workload ให้ทนต่อการล่มของทั้ง AZ\nอธิบาย AWS Outposts สำหรับขยาย AWS infrastructure และ API มาไว้ในศูนย์ข้อมูลของลูกค้าเองเมื่อมีข้อจำกัดด้าน latency หรือ data residency",
           "position": 1
         },
         {
@@ -91,7 +121,7 @@
         {
           "slug": "auto-scaling-groups",
           "title": "Auto Scaling Groups",
-          "outline": "อธิบาย Auto Scaling Group (ASG) ทำงานร่วมกับ launch template และ scaling policy\nเน้นความแตกต่างของ target tracking, step scaling และ scheduled scaling\nยกตัวอย่างการออกแบบ ASG ร่วมกับ ELB เพื่อความยืดหยุ่น",
+          "outline": "อธิบาย Auto Scaling Group (ASG) ทำงานร่วมกับ launch template และ scaling policy\nเน้นความแตกต่างของ target tracking, step scaling และ scheduled scaling\nยกตัวอย่างการออกแบบ ASG ร่วมกับ ELB เพื่อความยืดหยุ่น\nยกตัวอย่าง immutable infrastructure: ใช้ CloudFormation หรือ Elastic Beanstalk deploy instance ชุดใหม่แทนการ patch instance เดิม ลดความเสี่ยง configuration drift",
           "position": 3
         },
         {
@@ -109,7 +139,7 @@
         {
           "slug": "sqs-sns-decoupling",
           "title": "SQS & SNS for Decoupling",
-          "outline": "อธิบาย SQS ใช้ decouple service แบบ queue point-to-point\nอธิบาย SNS ใช้ทำ pub/sub แบบ fan-out ไปหลาย subscriber\nยกตัวอย่างการรวม SNS+SQS เพื่อ fan-out แบบ reliable",
+          "outline": "อธิบาย SQS ใช้ decouple service แบบ queue point-to-point\nอธิบาย SNS ใช้ทำ pub/sub แบบ fan-out ไปหลาย subscriber\nยกตัวอย่างการรวม SNS+SQS เพื่อ fan-out แบบ reliable\nอธิบาย Amazon MQ เป็นทางเลือกสำหรับย้าย legacy application ที่ผูกกับ protocol มาตรฐานอย่าง JMS/AMQP/MQTT มาใช้ managed message broker โดยไม่ต้องเขียนโค้ดใหม่ทั้งหมด",
           "position": 6
         },
         {
@@ -135,6 +165,24 @@
           "title": "AWS Backup Strategies",
           "outline": "อธิบาย AWS Backup สำหรับจัดการ backup แบบรวมศูนย์ข้ามหลายบริการ\nเน้น backup plan, retention policy และ cross-region copy\nยกตัวอย่างการทำ automated backup สำหรับ RDS, EBS, DynamoDB",
           "position": 10
+        },
+        {
+          "slug": "observability-cloudwatch-cloudtrail",
+          "title": "Observability: CloudWatch, CloudTrail, X-Ray & Config",
+          "outline": "อธิบาย Amazon CloudWatch เก็บ metric, log และตั้ง alarm เพื่อตรวจจับความผิดปกติของระบบแบบ real-time\nอธิบาย AWS CloudTrail บันทึก API call ทุกตัวในบัญชีเพื่อ audit และสืบสวนเหตุการณ์ย้อนหลัง\nอธิบาย AWS X-Ray ทำ distributed tracing ตาม request ข้ามหลาย service เพื่อหา bottleneck\nอธิบาย AWS Config ตรวจสอบว่า resource configuration ตรงกับ compliance rule ที่ตั้งไว้หรือไม่\nเน้น service quotas และการตรวจจับ throttling เป็นสาเหตุทั่วไปที่ทำให้ระบบดู \"ไม่ available\" ทั้งที่ resource ยังทำงานอยู่",
+          "position": 11
+        },
+        {
+          "slug": "api-gateway-step-functions",
+          "title": "API Gateway & Step Functions",
+          "outline": "อธิบาย Amazon API Gateway เป็น managed entry point สำหรับ REST/HTTP API รองรับ throttling, caching และ authorization\nอธิบาย AWS Step Functions ทำ orchestration ของหลาย service เป็น state machine แทนการเขียน glue code เอง\nเปรียบเทียบ Standard Workflow (exactly-once ราคาตาม state transition) กับ Express Workflow (at-least-once ราคาตาม duration เหมาะ high-volume)\nยกตัวอย่างการต่อ API Gateway เรียก Step Functions เพื่อ decouple compute ออกจากกันแบบ loosely coupled",
+          "position": 12
+        },
+        {
+          "slug": "managed-ai-services-overview",
+          "title": "Managed AI/ML Services for Decoupled Workloads",
+          "outline": "อธิบายแนวคิดการใช้ managed AI service แทนการดูแล ML infrastructure เอง เพื่อลดภาระ operational และเพิ่มความทนทานของระบบ\nยกตัวอย่างบริการ: Comprehend (NLP), Polly (text-to-speech), Transcribe (speech-to-text), Translate (แปลภาษา), Textract (ดึงข้อความจากเอกสาร)\nยกตัวอย่างเพิ่มเติม: Rekognition (วิเคราะห์ภาพ/วิดีโอ), Lex (chatbot), Kendra (enterprise search), SageMaker AI (custom ML model)\nเน้นว่าในข้อสอบ service กลุ่มนี้มักเป็นคำตอบเมื่อโจทย์ต้องการ \"ไม่อยากดูแล ML infra เอง\" ไม่ใช่คำถามเชิงลึกเรื่อง ML",
+          "position": 13
         }
       ]
     },
@@ -146,13 +194,13 @@
         {
           "slug": "ec2-families-purchasing",
           "title": "EC2 Instance Families & Purchasing Options",
-          "outline": "อธิบายกลุ่ม EC2 instance family หลัก เช่น general purpose, compute optimized, memory optimized\nอธิบาย purchasing option: On-Demand, Reserved, Savings Plans, Spot\nยกตัวอย่างการเลือก instance type ตาม workload",
+          "outline": "อธิบายกลุ่ม EC2 instance family หลัก เช่น general purpose, compute optimized, memory optimized\nอธิบาย purchasing option: On-Demand, Reserved, Savings Plans, Spot\nยกตัวอย่างการเลือก instance type ตาม workload\nอธิบาย EC2 hibernation เก็บสถานะ RAM ลง EBS ตอน stop เพื่อให้ instance กลับมาทำงานต่อได้เร็วโดยไม่ต้อง boot ใหม่ทั้งหมด",
           "position": 1
         },
         {
           "slug": "ebs-efs-instance-store",
           "title": "EBS, EFS & Instance Store",
-          "outline": "เปรียบเทียบ EBS (block storage ผูกกับ AZ), EFS (shared file system) และ Instance Store (ephemeral)\nเน้นเรื่อง persistence และ use case ที่เหมาะกับแต่ละแบบ\nยกตัวอย่าง EBS volume type เช่น gp3, io2",
+          "outline": "เปรียบเทียบ EBS (block storage ผูกกับ AZ), EFS (shared file system) และ Instance Store (ephemeral)\nเน้นเรื่อง persistence และ use case ที่เหมาะกับแต่ละแบบ\nยกตัวอย่าง EBS volume type เช่น gp3, io2\nอธิบาย Amazon FSx (Windows File Server, Lustre, NetApp ONTAP, OpenZFS) เป็น managed file system เฉพาะทางเพิ่มเติมนอกเหนือจาก EFS",
           "position": 2
         },
         {
@@ -182,13 +230,13 @@
         {
           "slug": "dynamodb-advanced",
           "title": "DynamoDB Advanced Patterns",
-          "outline": "อธิบาย Global Secondary Index (GSI) และ Local Secondary Index (LSI)\nเน้น DynamoDB Streams สำหรับ capture การเปลี่ยนแปลงข้อมูล\nยกตัวอย่าง Global Table สำหรับ multi-region replication",
+          "outline": "อธิบาย Global Secondary Index (GSI) และ Local Secondary Index (LSI)\nเน้น DynamoDB Streams สำหรับ capture การเปลี่ยนแปลงข้อมูล\nยกตัวอย่าง Global Table สำหรับ multi-region replication\nอธิบายทางเลือกเมื่อ DynamoDB ไม่เหมาะกับรูปแบบข้อมูล: Amazon DocumentDB (document เข้ากันได้กับ MongoDB), Amazon Neptune (graph), Amazon Keyspaces (wide-column เข้ากันได้กับ Cassandra) — เลือกตามรูปแบบข้อมูลจริง ไม่ใช่ตามความเคยชิน",
           "position": 7
         },
         {
           "slug": "rds-performance",
           "title": "RDS Performance",
-          "outline": "อธิบายเทคนิคเพิ่ม performance ของ RDS เช่น instance class, storage type (io1/gp3)\nเน้น Performance Insights สำหรับวิเคราะห์ bottleneck\nยกตัวอย่างการใช้ Read Replica แบ่งเบา read-heavy workload",
+          "outline": "อธิบายเทคนิคเพิ่ม performance ของ RDS เช่น instance class, storage type (io1/gp3)\nเน้น Performance Insights สำหรับวิเคราะห์ bottleneck\nยกตัวอย่างการใช้ Read Replica แบ่งเบา read-heavy workload\nอธิบาย RDS Proxy ทำ connection pooling ให้ application ที่เปิด-ปิด connection ถี่ เช่น Lambda ลดปัญหา database connection exhaustion",
           "position": 8
         },
         {
@@ -200,7 +248,7 @@
         {
           "slug": "athena-glue",
           "title": "Amazon Athena & AWS Glue",
-          "outline": "อธิบาย Athena สำหรับ query ข้อมูลบน S3 ด้วย SQL แบบ serverless\nอธิบาย AWS Glue สำหรับ ETL และสร้าง Glue Data Catalog\nยกตัวอย่างการใช้ Glue Crawler สร้าง schema ให้ Athena query",
+          "outline": "อธิบาย Athena สำหรับ query ข้อมูลบน S3 ด้วย SQL แบบ serverless\nอธิบาย AWS Glue สำหรับ ETL และสร้าง Glue Data Catalog\nยกตัวอย่างการใช้ Glue Crawler สร้าง schema ให้ Athena query\nอธิบาย Amazon EMR สำหรับประมวลผลข้อมูลขนาดใหญ่ด้วย Spark/Hadoop เมื่อ workload ซับซ้อนเกินกว่าที่ Athena query ตรง ๆ จะรองรับ",
           "position": 10
         },
         {
@@ -212,7 +260,7 @@
         {
           "slug": "ecs-eks-fargate",
           "title": "ECS, EKS & Fargate",
-          "outline": "เปรียบเทียบ ECS (AWS-native orchestration) กับ EKS (managed Kubernetes)\nอธิบาย Fargate เป็น serverless compute engine ที่ไม่ต้องจัดการ EC2 เอง\nยกตัวอย่างการเลือกใช้ launch type ตามความต้องการ control และ ecosystem",
+          "outline": "เปรียบเทียบ ECS (AWS-native orchestration) กับ EKS (managed Kubernetes)\nอธิบาย Fargate เป็น serverless compute engine ที่ไม่ต้องจัดการ EC2 เอง\nยกตัวอย่างการเลือกใช้ launch type ตามความต้องการ control และ ecosystem\nอธิบาย AWS Batch สำหรับรัน batch computing job บน ECS/EKS/Fargate โดยจัดการ job queue และ compute environment ให้อัตโนมัติ\nอธิบาย Amazon ECR เป็น container registry แบบ managed สำหรับเก็บ image ที่ ECS/EKS/Fargate ดึงไปรัน",
           "position": 12
         }
       ]
@@ -249,8 +297,38 @@
         {
           "slug": "cost-tools-budgets",
           "title": "AWS Cost Tools & Budgets",
-          "outline": "อธิบาย AWS Cost Explorer สำหรับวิเคราะห์และ forecast ค่าใช้จ่าย\nอธิบาย AWS Budgets สำหรับตั้ง alert เมื่อ spending เกินเกณฑ์\nยกตัวอย่างการใช้ Cost Allocation Tags แยกต้นทุนตาม project",
+          "outline": "อธิบาย AWS Cost Explorer สำหรับวิเคราะห์และ forecast ค่าใช้จ่าย\nอธิบาย AWS Budgets สำหรับตั้ง alert เมื่อ spending เกินเกณฑ์\nยกตัวอย่างการใช้ Cost Allocation Tags แยกต้นทุนตาม project\nอธิบาย AWS Trusted Advisor ตรวจสอบและแนะนำจุดที่ optimize ต้นทุนได้ทันที เช่น resource ที่ idle หรือ underutilized ควบคู่กับ Cost Explorer และ Budgets",
           "position": 5
+        },
+        {
+          "slug": "cost-optimized-databases-capacity",
+          "title": "Cost-Optimized Database Capacity Models",
+          "outline": "อธิบาย DynamoDB on-demand capacity เหมาะ workload ที่ traffic ไม่แน่นอน ส่วน provisioned capacity คุ้มกว่าเมื่อ traffic คาดการณ์ได้และตั้ง Auto Scaling ได้\nอธิบาย Aurora Serverless v2 ปรับ capacity อัตโนมัติตาม load จ่ายตามที่ใช้จริง เหมาะ workload ที่ traffic แกว่งเยอะหรือไม่สม่ำเสมอ\nเปรียบเทียบ RDS On-Demand กับ RDS Reserved Instance ว่า Reserved คุ้มเมื่อ workload รันต่อเนื่องระยะยาวที่คาดการณ์ได้",
+          "position": 6
+        },
+        {
+          "slug": "cost-optimized-databases-storage-lifecycle",
+          "title": "Database Storage & Backup Cost Management",
+          "outline": "อธิบายผลของ snapshot frequency และ retention period ต่อค่าใช้จ่ายเก็บ backup ระยะยาว\nเน้นการตั้ง retention ให้พอดีกับ RPO ที่ต้องการ ไม่เก็บนานเกินความจำเป็นทางธุรกิจ\nอธิบายการเลือก database type ให้เหมาะ workload เพื่อคุมต้นทุน เช่น Amazon Timestream สำหรับ time-series data และ Amazon Redshift สำหรับ columnar analytics แทนการฝืนใช้ RDS ทั่วไป",
+          "position": 7
+        },
+        {
+          "slug": "cost-optimized-networking",
+          "title": "Cost-Optimized Networking",
+          "outline": "เปรียบเทียบ NAT Gateway ตัวเดียวที่ใช้ร่วมกันหลาย AZ (ถูกกว่าแต่เสี่ยง single point of failure) กับ NAT Gateway แยกทุก AZ (แพงกว่าแต่ทนทานกว่า)\nเปรียบเทียบ NAT instance (คุมต้นทุนเองได้แต่ต้องดูแล) กับ NAT Gateway (managed แต่คิดค่าใช้จ่ายตาม data processed)\nเปรียบเทียบ Transit Gateway (ค่าใช้จ่ายต่อ attachment เหมาะเชื่อมหลาย VPC) กับ VPC Peering (ไม่มีค่า gateway แต่ scale ยากเมื่อ VPC เยอะ)\nเปรียบเทียบ Direct Connect (ค่าใช้จ่ายคงที่บวกรายเดือน คุ้มเมื่อ traffic เยอะสม่ำเสมอ) กับ Site-to-Site VPN (ถูกกว่าเมื่อ traffic น้อย) กับ public internet (ฟรีแต่ไม่มี SLA)",
+          "position": 8
+        },
+        {
+          "slug": "migration-and-transfer-services",
+          "title": "Migration & Transfer Services",
+          "outline": "อธิบาย AWS Snow Family (Snowcone, Snowball, Snowmobile) สำหรับย้ายข้อมูลปริมาณมากแบบออฟไลน์เมื่อ bandwidth ไม่พอ\nอธิบาย AWS DataSync สำหรับย้ายและ sync ข้อมูลระหว่าง on-premises กับ AWS storage แบบอัตโนมัติผ่าน network\nอธิบาย AWS Storage Gateway (File/Volume/Tape Gateway) เชื่อม on-premises application เข้ากับ S3/EBS/Glacier แบบโปร่งใส\nอธิบาย AWS Transfer Family รองรับ SFTP/FTPS/FTP เข้าถึง S3 โดยไม่ต้องเปลี่ยน client เดิม\nอธิบาย AWS Database Migration Service (DMS) สำหรับย้าย database ข้าม engine แบบ downtime น้อยที่สุด",
+          "position": 9
+        },
+        {
+          "slug": "storage-cost-optimization-beyond-s3",
+          "title": "Storage Cost Optimization Beyond S3",
+          "outline": "อธิบายการเลือกขนาดและชนิด EBS ให้เหมาะ workload เช่น gp3 (ปรับ IOPS/throughput แยกจากขนาดได้ ถูกกว่า gp2) แทนการใช้ io2 เกินความจำเป็น\nอธิบาย EFS Infrequent Access storage class ลดต้นทุนไฟล์ที่เข้าถึงไม่บ่อยแบบอัตโนมัติด้วย lifecycle management\nเน้นการตั้ง snapshot lifecycle ของ EBS ให้ลบ snapshot เก่าที่ไม่จำเป็นแทนการเก็บสะสมไปเรื่อย ๆ\nยกตัวอย่างการเลือก storage คุ้มต้นทุนตาม access pattern แทนใช้ default ตัวเดียวกันทุก workload",
+          "position": 10
         }
       ]
     }
