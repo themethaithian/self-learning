@@ -79,10 +79,7 @@ func (rc RecallCheck) Position() Position     { return rc.position }
 func (rc RecallCheck) Kind() RecallKind       { return rc.kind }
 func (rc RecallCheck) Question() string       { return rc.question }
 func (rc RecallCheck) ExpectedAnswer() string { return rc.expectedAnswer }
-
-// Explanation returns the recall check's optional explanation, or "" when
-// none was given.
-func (rc RecallCheck) Explanation() string { return rc.explanation }
+func (rc RecallCheck) Explanation() string    { return rc.explanation }
 
 // Options returns a copy of the mcq options, or nil for a short_answer
 // check; mutating the result does not affect the RecallCheck.

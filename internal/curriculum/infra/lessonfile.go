@@ -19,7 +19,7 @@ type recallCheckFileDTO struct {
 	Options        []string `json:"options,omitempty"`
 	// Explanation is optional: absent and "" decode identically for a plain
 	// string field, and the domain treats both as "no explanation" (see
-	// domain.validateRecallExplanation) — every pre-AWS-1 content file omits
+	// domain.validateRecallExplanation) — every pre-AWS-S1 content file omits
 	// this key and must keep importing unchanged.
 	Explanation string `json:"explanation,omitempty"`
 }

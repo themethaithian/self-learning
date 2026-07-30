@@ -169,14 +169,29 @@ func appliedVersions(ctx context.Context, db *sql.DB) (map[int]bool, error) {
 	return applied, nil
 }
 
+// applyOne runs every statement of one migration file, plus its
+// schema_migrations bookkeeping insert, over a single acquired connection
+// rather than the ambient pool. This is required, not cosmetic: a guarded
+// ALTER (see migrations/008_recall-check-explanation.sql) sets a MySQL user
+// variable in one statement and consumes it via PREPARE/EXECUTE in a later
+// one, and user variables are connection-session state — database/sql gives
+// no documented guarantee that two separate DB.ExecContext calls land on the
+// same pooled connection. A migration that relied on that anyway would swap
+// one crash-loop risk (R1) for a rarer, unproven one.
 func applyOne(ctx context.Context, db *sql.DB, m migrationFile) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire connection: %w", err)
+	}
+	defer conn.Close()
+
 	for _, stmt := range m.stmts {
-		if _, err := db.ExecContext(ctx, stmt); err != nil {
+		if _, err := conn.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("exec statement: %w", err)
 		}
 	}
 
-	if _, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (version) VALUES (?)", m.version); err != nil {
+	if _, err := conn.ExecContext(ctx, "INSERT INTO schema_migrations (version) VALUES (?)", m.version); err != nil {
 		return fmt.Errorf("record version: %w", err)
 	}
 	return nil

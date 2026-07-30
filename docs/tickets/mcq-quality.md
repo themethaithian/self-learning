@@ -16,7 +16,7 @@
 - เดาด้วยกฎ "เลือกตำแหน่งเดิมเสมอ" ต้องได้ ≈baseline
 - ตัวเลขปัจจุบันหลัง ticket นี้ (corpus 3 ตัวเลือก, baseline 33%): ความยาว 33.7% · ตำแหน่ง 33.4% ·
   (ก่อนแก้: 89.6% และ 41.6%)
-- **หมายเหตุ (AWS-1, verified โดยตรงจาก git history)**: ตัวเลขข้างต้นมาจาก script ที่รันแบบ ad hoc
+- **หมายเหตุ (AWS-S1, verified โดยตรงจาก git history)**: ตัวเลขข้างต้นมาจาก script ที่รันแบบ ad hoc
   นอก version control — ไม่มี script วัดใด ๆ commit ไว้ในโปรเจกต์นี้ (เช็คแล้ว: ไม่มี `.py`/`.go`
   ใต้ `cmd/`/`scripts/` ใด ๆ ที่ทำหน้าที่นี้ ทั้ง `content/mcq-length-sweep`/`content/mcq-balance`
   commits ทั้งหมดแก้แค่ไฟล์ JSON เนื้อหา ไม่มี tooling ติดมาด้วย) ticket ในอนาคตที่ต้องการรันวัดซ้ำ

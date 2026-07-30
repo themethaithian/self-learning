@@ -67,8 +67,36 @@ func newTestLesson(t *testing.T, slug string, version int) domain.Lesson {
 	return l
 }
 
+// newTestLessonNoExplanations builds a lesson whose recall checks all carry
+// no explanation, standing in for any of the 118 pre-AWS-S1 lessons — used
+// where a test needs to prove the wire format has no trace of the key at
+// all, not merely that the decoded struct field is "".
+func newTestLessonNoExplanations(t *testing.T, slug string, version int) domain.Lesson {
+	t.Helper()
+	s, err := domain.NewSlug(slug)
+	if err != nil {
+		t.Fatalf("NewSlug(%q): %v", slug, err)
+	}
+	est, err := domain.NewEstMinutes(7)
+	if err != nil {
+		t.Fatalf("NewEstMinutes: %v", err)
+	}
+	l, err := domain.NewLesson(s, version, "Title "+slug, est, "body "+slug,
+		[]domain.Reference{newTestReference(t, "ref-a"), newTestReference(t, "ref-b")},
+		[]domain.RecallCheck{
+			newTestRecallCheck(t, 1, "short_answer", nil, ""),
+			newTestRecallCheck(t, 2, "mcq", []string{"answer 2", "opt-b"}, ""),
+			newTestRecallCheck(t, 3, "short_answer", nil, ""),
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewLesson(%q): %v", slug, err)
+	}
+	return l
+}
+
 // newManyCheckLesson builds a lesson with n recall checks (n > 5, only
-// possible after AWS-1 raised maxRecallChecks), each carrying a distinct,
+// possible after AWS-S1 raised maxRecallChecks), each carrying a distinct,
 // position-derived explanation — "explanation 1".."explanation n" — so a
 // round trip can assert check i's explanation is exactly explanation i, not
 // a neighbour's, catching an index/ordering mix-up that a fixture capped at
@@ -304,7 +332,7 @@ func TestRepositorySaveLesson_RecallChecksReplacedInOrder(t *testing.T) {
 // TestRepositorySaveLesson_RoundTripManyChecksExplanationNotMixedUp proves
 // explanation stays attached to its own check across a full DELETE+INSERT
 // write and a fresh ORDER-BY-position SELECT, at a check count (8) the
-// pre-AWS-1 ceiling of 5 made impossible to fixture. A bug that shifted
+// pre-AWS-S1 ceiling of 5 made impossible to fixture. A bug that shifted
 // explanations by one position, or dropped them for any single check, would
 // fail this even though TestRepositorySaveLesson_RecallChecksReplacedInOrder
 // (only 3 checks) could pass.

@@ -9,11 +9,14 @@
 
 - **AWS-0** (เอกสารนี้) — รีบาลานซ์ `content/curriculum/aws.json` ให้ตรง exam guide จริง + pin แผนนี้
   (round 2: แก้ currency issues + content-model blocker หลัง code review)
-- **AWS-1** (เสร็จแล้ว, PR pending — ดูหัวข้อ "AWS-1 — explanation + raised check ceiling" ด้านล่าง) —
-  `maxRecallChecks` 5→15 + `explanation` end-to-end คนละ ticket จาก AWS-0 เพราะแตะ `internal/`
-  ซึ่ง AWS-0 ไม่แตะ
-- **AWS-2** (ยังไม่เริ่ม) — multiple-response support (second correct answer, "Select TWO",
+- **AWS-S1** (code review round 2 แก้แล้ว, PR pending — ดูหัวข้อ "AWS-S1 — explanation + raised
+  check ceiling" ด้านล่าง) — `maxRecallChecks` 5→15 + `explanation` end-to-end คนละ ticket จาก
+  AWS-0 เพราะแตะ `internal/` ซึ่ง AWS-0 ไม่แตะ
+- **AWS-S2** (ยังไม่เริ่ม) — multiple-response support (second correct answer, "Select TWO",
   all-or-nothing scoring) — ดูหัวข้อ blocker ข้อ 3 ด้านล่าง
+- **AWS-S3** (ยังไม่เริ่ม, spec ปักไว้แล้ว) — guessability measurement tool ที่ parameterize baseline
+  ได้ต่อ corpus — ดูหัวข้อ "AWS-S3" ด้านล่าง gate คลังข้อสอบจริง
+- **AWS-C1..C4** (ยังไม่เริ่ม, gated บน S1/S2/S3) — คลังข้อสอบจริง ~550 ข้อ ทีละ domain
 
 ## Blueprint ข้อสอบ (verified โดยตรงจาก docs.aws.amazon.com ระหว่าง round 2 ของ ticket นี้)
 
@@ -39,7 +42,7 @@ service ให้ fetch docs HTML ไม่ใช่เชื่อ PDF ทุ�
 
 **Sequencing ที่ต้องรู้**: ลิงก์ด้านบนเป็น relative link ไปยังไฟล์ที่ยังอยู่แค่บน branch
 `docs/aws-currency-checklist` (PR #54) เท่านั้น — บน `develop` ตอนนี้ลิงก์นี้ตายเพราะไฟล์ยังไม่ merge
-**PR #54 ต้อง merge เข้า develop ก่อน AWS-1 เริ่มงานเสมอ** ไม่ใช่แค่ก่อนเขียนคำถามจริง
+**PR #54 ต้อง merge เข้า develop ก่อน AWS-S1 เริ่มงานเสมอ** ไม่ใช่แค่ก่อนเขียนคำถามจริง
 
 ### Domain, น้ำหนัก และ task statement ทั้ง 14 ข้อ (verbatim จาก official exam guide)
 
@@ -103,21 +106,21 @@ SM-2 scheduling) ทั้งหมดสร้างบน path นี้ ถ�
 Mock exam คือ **sampling policy** เหนือคำถามทั้งหมด ถ่วงน้ำหนัก 30/26/24/20 ตอน sample ไม่ใช่
 question store แยก
 
-### 3 schema change ที่ต้องทำก่อน (นี่คือ AWS-1's งาน ไม่ใช่ AWS-0 — AWS-0 ไม่แตะ `internal/`)
+### 3 schema change ที่ต้องทำก่อน (นี่คือ AWS-S1's งาน ไม่ใช่ AWS-0 — AWS-0 ไม่แตะ `internal/`)
 
 1. ~~**เพิ่ม `maxRecallChecks`** จาก 5 เป็น ~15 (เผื่อ headroom เหนือเป้า 11/concept)~~ — **เสร็จแล้ว
-   ใน AWS-1** (5 → 15) ดูหัวข้อ "AWS-1 — explanation + raised check ceiling" ด้านล่าง
+   ใน AWS-S1** (5 → 15) ดูหัวข้อ "AWS-S1 — explanation + raised check ceiling" ด้านล่าง
 2. ~~**เพิ่มฟิลด์ `explanation`**: domain (`RecallCheck`) → `recallCheckFileDTO` → importer → API
-   response → หน้า quiz ต้อง render~~ — **เสร็จแล้วใน AWS-1** (schema half ของ Q-3 เท่านั้น — การ
+   response → หน้า quiz ต้อง render~~ — **เสร็จแล้วใน AWS-S1** (schema half ของ Q-3 เท่านั้น — การ
    เขียน explanation ให้ 356 ข้อเดิมยังพักไว้ตามเดิมจนกว่าจะว่าง)
 3. **เพิ่ม multiple-response support**: ต้องมี second correct-answer representation (เช่น
    `expectedAnswers []string` หรือ MCQ กับ multiple-response แยก type) + UI ฝั่ง quiz ให้เลือกได้
    มากกว่า 1 ตัวเลือก — multi-response เป็น ~15–20% ของข้อสอบจริงและเป็นประเภทที่คนเสียคะแนนมากที่สุด
-   ทิ้งไปไม่ได้ — **ยังไม่ทำ นี่คือ AWS-2**
+   ทิ้งไปไม่ได้ — **ยังไม่ทำ นี่คือ AWS-S2**
 
 **ข้อจำกัดที่ตามมาจนกว่า (3) จะเสร็จ**: multiple-response ยังเขียนไม่ได้เชิงโครงสร้าง
-(`expected_answer` ยังเป็น string เดี่ยว) — ห้ามเขียนคำถามที่ต้องการ "(Select TWO.)" ก่อน AWS-2
-landed (explanation ตอนนี้เขียนได้แล้วหลัง AWS-1 — ข้อจำกัดเดิมเรื่อง `DisallowUnknownFields()`
+(`expected_answer` ยังเป็น string เดี่ยว) — ห้ามเขียนคำถามที่ต้องการ "(Select TWO.)" ก่อน AWS-S2
+landed (explanation ตอนนี้เขียนได้แล้วหลัง AWS-S1 — ข้อจำกัดเดิมเรื่อง `DisallowUnknownFields()`
 reject ทั้งไฟล์หมดไปแล้ว)
 
 ## Concept → Task statement mapping (tree ที่รีบาลานซ์แล้ว, 50 concept)
@@ -256,7 +259,7 @@ domain ถูกออกแบบให้ตรงสัดส่วนน้�
   fact-check ทันที ตาม convention เดิมของ track อื่น (DDD/DDIA/AI-systems) — FAIL ต้อง regenerate
   เฉพาะ concept นั้นก่อนไปต่อ ไม่ retry ทั้ง batch
 - รวม **50 invocation-pair** ทั้งหมด (ไม่ใช่ 4 batch ระดับ domain แบบแผนเดิม)
-- จัด ticket AWS-1..N เป็น **1 ticket ต่อ domain** เพื่อความสะดวกเวลารีวิว (ticket ละ 10–15
+- จัด ticket AWS-C1..C4 เป็น **1 ticket ต่อ domain** เพื่อความสะดวกเวลารีวิว (ticket ละ 10–15
   invocation-pair) แต่หน่วยการทำงานจริงข้างในคือ concept — การจัด ticket ระดับ domain ไม่ใช่การ
   สั่งให้เขียนทีเดียวทั้ง domain
 
@@ -278,7 +281,41 @@ domain ถูกออกแบบให้ตรงสัดส่วนน้�
   นั้นเท่านั้น เอาไปใช้ตรง ๆ กับ corpus 4-option ของ AWS จะเป็น false-green แบบเดียวกับที่ #38 เคย
   รายงาน `VIOLATIONS: NONE` ทั้งที่เดาถูก 89.6% — วัดผิด baseline คือ วัดผิดโจทย์แบบเดียวกัน (ดู
   mcq-quality.md's "บทเรียนที่ 1") กติกา distractor length/position เดิมยังใช้ต่อ แค่เทียบกับ 25%
-  แทน 33%
+  แทน 33% — **แต่เกทนี้ unenforceable จนกว่า AWS-S3 จะสร้างเครื่องมือวัดจริง** (ดู "AWS-S3 —
+  guessability measurement tool" ด้านล่างสำหรับ spec) เพราะไม่มี script วัดใด ๆ commit ไว้ใน
+  โปรเจกต์นี้เลย (verified: ไม่มีทั้งใน working tree และ `git log --all --diff-filter=A`) — **ห้าม
+  เริ่มเขียนคำถามชุดจริง (AWS-C1..C4) ก่อน AWS-S3 เสร็จ** เพราะไม่มีทางวัดว่าชุดที่เขียนผ่านเกท 25%
+  จริงหรือไม่จนกว่าเครื่องมือจะมี
+
+## AWS-S3 — guessability measurement tool (spec ที่นี่เท่านั้น — ticket แยกต่างหาก ไม่ทำใน AWS-S1)
+
+**สถานะ**: ยังไม่เริ่ม — เอกสารนี้กำหนด spec ขั้นต่ำไว้ล่วงหน้าเพื่อให้ ticket ถัดไปสร้างได้เลย
+ไม่ต้องออกแบบใหม่ gate ทั้งเก่า (33% บน corpus 3 ตัวเลือก) และใหม่ (25% บน corpus AWS 4 ตัวเลือก)
+**unenforceable จนกว่า tool นี้จะมี** เพราะไม่มี measurement script ใด commit ไว้ในโปรเจกต์
+
+**สิ่งที่ AWS-C1..C4 (คลังข้อสอบ) ต้องรอ**: AWS-S3 ต้องเสร็จก่อน batch เขียนคำถามจริงชุดแรกเริ่ม —
+ไม่ใช่แค่ก่อนตรวจ ไม่งั้นจะเขียนคำถามเป็นร้อยข้อโดยไม่มีทางรู้ว่าเดาได้ง่ายไปหรือเปล่าจนสายเกินแก้
+
+### Spec ขั้นต่ำ
+
+1. **Input**: อ่าน `content/lessons/*/*.json` ทุกไฟล์ (หรือรับ path/glob เป็น flag เพื่อจำกัด
+   scope ต่อ track ได้)
+2. **Filter**: ใช้เฉพาะ `recall_checks` ที่ `type == "mcq"` เท่านั้น (`short_answer` ไม่มี
+   ตัวเลือกให้เดา ไม่เกี่ยว)
+3. **Baseline ต่อข้อ**: `1/len(options)` เสมอ — **ห้าม hardcode 33% หรือ 25%** คำนวณจากจำนวน
+   ตัวเลือกจริงของแต่ละข้อ (corpus ที่ผสมข้อ 3 กับ 4 ตัวเลือกกันจะได้ baseline คนละค่าต่อข้อ ซึ่งถูกต้อง)
+4. **Heuristic ที่ต้องรายงาน hit rate เทียบ baseline**:
+   - **ความยาว**: เดาว่าตัวเลือกที่ยาวที่สุด (หรือสั้นที่สุด) คือคำตอบ — วัด hit rate จริงเทียบ
+     baseline ของแต่ละข้อ (ไม่ใช่ baseline คงที่ตัวเดียวทั้ง corpus ถ้า corpus ผสมจำนวนตัวเลือก)
+   - **ตำแหน่ง**: เดาตำแหน่งเดิมเสมอ (เช่น index 0) ทุกข้อ — วัด hit rate เดียวกัน
+5. **Output**: hit rate ของแต่ละ heuristic เทียบ baseline เฉลี่ยของ corpus ที่วัด (เช่น
+   "length heuristic: 33.7% actual vs 33.3% baseline avg — PASS/FAIL ตามเกณฑ์ที่ตั้งไว้")
+6. **ต้องใช้ซ้ำได้กับหลาย corpus**: รันแยกได้ต่อ track/ต่อไฟล์ ไม่ใช่ผูกกับ DDIA/AI-systems
+   corpus เดิมตายตัว — เหตุผลทั้งหมดของ ticket นี้คือ corpus AWS (4 ตัวเลือก) กับ corpus เดิม
+   (3 ตัวเลือก) ต้องวัดแยกกันได้โดยไม่ต้องแก้โค้ด
+
+**ไม่ใช่ scope ของ AWS-S3**: การแก้ distractor ที่วัดแล้วมีปัญหา (เป็นงานของ batch เขียนคำถามเอง
+ตามกฎใน mcq-quality.md) — AWS-S3 เป็นแค่เครื่องวัด ไม่ใช่เครื่องแก้
 
 ## รูปแบบ explanation (ข้อกำหนดสำคัญที่สุดจากผู้ใช้)
 
@@ -320,7 +357,7 @@ Pays เข้า `s3-storage-classes-lifecycle`, บันทึก dual-mappin
 (`vpc-endpoints-privatelink`→+3.4, `rds-multi-az-read-replicas`→+2.1, `auto-scaling-groups`→+2.2,
 migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2), แก้ title
 `ec2-families-purchasing` ที่ยังขัดกับ outline ของตัวเองหลัง round 2 ลดขอบเขตแล้ว, ระบุ sequencing
-ว่า PR #54 ต้อง merge ก่อน AWS-1 เริ่ม — **`aws.json` ยังไม่มีการเพิ่ม/ลบ/ย้าย concept ในรอบนี้เช่นกัน
+ว่า PR #54 ต้อง merge ก่อน AWS-S1 เริ่ม — **`aws.json` ยังไม่มีการเพิ่ม/ลบ/ย้าย concept ในรอบนี้เช่นกัน
 (ยังคง 15/13/12/10 = 50) จึงไม่ต้องแตะ `contentfile_aws_test.go`**
 
 **Outline bloat**: แก้ด้วยการ redistribute เนื้อหาระหว่าง concept ที่มีอยู่ (ไม่ใช่แยก concept ใหม่ —
@@ -356,7 +393,7 @@ migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2)
    ทาง: redistribute เนื้อหาไปหา concept ที่มีที่ว่าง (ทำไปแล้วกับ organizations-scp,
    cost-optimized-networking) กับตัดคำฟุ่มเฟือยในประโยค (ทำไปแล้วเช่นกัน) — การจะลดต่ำกว่านี้อีก
    ต้องแยก concept ที่มีหลาย topic ออกเป็นสองใบจริง ๆ ซึ่งเปลี่ยนจำนวน concept และต้องแก้ golden
-   test ทันที เป็นการเปลี่ยนแปลงเชิงโครงสร้างที่ควรอยู่ใน ticket ที่แตะ `internal/` ได้ (เช่น AWS-1)
+   test ทันที เป็นการเปลี่ยนแปลงเชิงโครงสร้างที่ควรอยู่ใน ticket ที่แตะ `internal/` ได้ (เช่น AWS-S1)
    ไม่ใช่ ticket นี้ที่ scope จำกัดไว้แค่ content + docs
 3. เพราะ dual-mapping ที่บันทึกในตารางเป็นแค่ **ข้อมูลสำหรับ tag คำถามตอนเขียนคลังข้อสอบ** (ข้อไหน
    cover task ไหนบ้าง) ไม่ใช่ตัวกำหนดว่า concept ต้องอยู่ chapter ไหน — `rds-multi-az-read-replicas`
@@ -368,16 +405,21 @@ migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2)
 </details>
 </details>
 
-## AWS-1 — explanation + raised check ceiling
+## AWS-S1 — explanation + raised check ceiling
 
 **สิ่งที่ทำ**: แก้สอง schema blocker ที่ปักไว้ในหัวข้อ "3 schema change ที่ต้องทำก่อน" ด้านบน (ข้อ 1
 และ 2) end-to-end — content file → domain → MySQL → API → หน้า quiz — โดยไม่แตะ multiple-response
-(AWS-2) และไม่แยก concept ใดใน `aws.json`
+(AWS-S2) และไม่แยก concept ใดใน `aws.json`
 
 ### สิ่งที่ deliver
 
-- Migration `migrations/008_recall-check-explanation.sql` — `ALTER TABLE recall_checks ADD COLUMN
-  explanation TEXT NULL AFTER options`
+- Migration `migrations/008_recall-check-explanation.sql` — adds `recall_checks.explanation TEXT
+  NULL`, guarded via `information_schema.COLUMNS` + `PREPARE`/`EXECUTE` (not a bare `ALTER TABLE`)
+  so a restart after a crash between the DDL and the `schema_migrations` INSERT converges instead
+  of looping (see "Round 2" below — this guard is a code-review fix, not part of the original cut)
+- `internal/platform/mysql/migrate.go`'s `applyOne` now runs one migration's statements over a
+  single acquired `*sql.Conn` instead of the ambient pool, so the guard's `SET`/`PREPARE`/`EXECUTE`
+  sequence can't land on different pooled connections mid-migration (also a Round 2 fix)
 - Domain: `RecallCheck` มีฟิลด์ `explanation` + accessor `Explanation()`, `NewRecallCheck` รับ
   parameter ใหม่, `maxRecallChecks` 5 → 15, `validateRecallExplanation` (bound ใหม่)
 - Infra: `recallCheckFileDTO` มีฟิลด์ `explanation,omitempty`, `lessonwriter.go`/`lessonreader.go`
@@ -391,8 +433,12 @@ migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2)
 - **`maxRecallChecks` 5 → 15**: แผน AWS ต้องการ ~11 ข้อ/concept (docs/tickets/aws-cert.md) เพดาน 15
   เผื่อ headroom เหนือเป้านั้นโดยไม่เปิดให้ quiz ต่อ lesson ยาวไม่จำกัด
 - **`minRecallChecks` คงที่ 3 ไม่แก้**: blocker เดิมคือเพดานบน (5×50=250 ไม่พอ 550) ไม่ใช่พื้นล่าง —
-  114 lesson เดิม (DDIA 61 + AI-systems 53) พึ่งพื้นนี้อยู่ บางใบมีพอดี 3 ข้อ การขยับพื้นจะเป็น
-  breaking change ที่ไม่มีอะไรใน scope ของ ticket นี้เรียกร้อง
+  **แก้ไขหลัง code review รอบ 2**: ข้อความรอบแรกที่นี่อ้างว่า "118 lesson เดิม บางใบมีพอดี 3 ข้อ"
+  ผิด — นับจริงจาก `content/lessons/*/*.json` ทั้ง 118 ไฟล์ ได้ distribution {4 checks: 4, 5 checks:
+  114} **ต่ำสุดคือ 4 ไม่มีใบไหนมี 3 เลย** พื้นนี้จึงไม่เคย binding กับเนื้อหาจริงตั้งแต่ต้น
+  การตัดสินใจ (คงพื้นไว้ที่ 3) ยังถูกต้องเหมือนเดิม แค่เหตุผลเดิมที่อ้างหลักฐานผิดต้องแก้ — เหตุผลจริง
+  คือไม่มีอะไรใน scope ของ ticket นี้เรียกร้องให้เปลี่ยน contract ของพื้นนี้ ไม่ใช่เพราะมีใบไหนอยู่ติด
+  ขอบ 3 พอดี
 - **Length bound ของ explanation = 4000 runes**: ใกล้เคียง `maxOutlineRunes` (โครงสร้างระดับ
   "ย่อหน้าหลายส่วน" เหมือนกัน) มากกว่า `maxRecallAnswerRunes` (2000, คำตอบสั้นข้อเดียว) แต่ยังห่างจาก
   `maxBodyMdRunes` (50000, เนื้อหาบทเรียนเต็ม) มาก — เนื้อหาจริงตามสเปค (3 ส่วน หลายประโยค) น่าจะอยู่
@@ -403,7 +449,7 @@ migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2)
   คือ JSON ที่ไม่มี key `explanation` เลย กับ JSON ที่มี `"explanation": ""` **decode ออกมาเหมือนกัน
   ทุกประการ** (ทั้งคู่ได้ `""`) ดังนั้นการแยกสองเคสนี้เป็นไปไม่ได้อยู่แล้วในระดับ decode เว้นแต่เปลี่ยน
   type เป็น pointer ซึ่งเกินความจำเป็น — `validateRecallExplanation` จึง treat `""` (หลัง trim) เป็น
-  "ไม่มี explanation" เสมอ ไม่ error เด็ดขาด เพราะ 114 lesson เดิมทุกใบไม่มี key นี้และต้อง import
+  "ไม่มี explanation" เสมอ ไม่ error เด็ดขาด เพราะ 118 lesson เดิมทุกใบไม่มี key นี้และต้อง import
   ผ่านเหมือนเดิม
 - **DB representation: `NULL` ไม่ใช่ `''`**: ใช้ convention เดียวกับคอลัมน์ `options` ที่มีอยู่แล้วใน
   ตารางเดียวกัน (ค่า optional → SQL NULL)
@@ -415,7 +461,7 @@ migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2)
   ทั้งหมด (`text-faint`, `text-body`, `bg-page`, `border-subtle`) ที่ verify contrast ไว้แล้วใน
   frontend-design skill
 
-### Mutation table (11 mutation, ทุกตัว revert กลับหลัง confirm แล้ว)
+### Mutation table (13 mutation หลัง round 2, ทุกตัว revert กลับหลัง confirm แล้ว)
 
 | # | Mutation | Killed by |
 |---|---|---|
@@ -423,15 +469,18 @@ migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2)
 | 2 | explanation หายที่ hop domain→DB เขียน (`lessonwriter.go`'s `insertRecallCheck` ไม่ set ค่า) | `TestRepositorySaveLesson_RecallChecksReplacedInOrder`, `TestRepositorySaveLesson_RoundTripManyChecksExplanationNotMixedUp` |
 | 3 | explanation หายที่ hop DB→domain อ่าน (`lessonreader.go`'s `toRecallCheck` รับ `""` แทน `explanation.String`) | `TestRepositoryLessonByConcept_HappyPath`, `TestRepositorySaveLesson_RoundTripManyChecksExplanationNotMixedUp` |
 | 4 | explanation หายที่ hop domain→API DTO (`handler.go`'s `toRecallCheckDTOs` ไม่ set `Explanation`) | `TestHandlerGetLesson_Success` |
-| 5 | explanation หายที่ hop API→UI (`RecallCheckCard.tsx` ไม่ render `check.explanation` เลย) | 3 เคสใน `describe("RecallCheckCard — explanation (AWS-1)")` |
+| 5 | explanation หายที่ hop API→UI (`RecallCheckCard.tsx` ไม่ render `check.explanation` เลย) | 3 เคสใน `describe("RecallCheckCard — explanation (AWS-S1)")` |
 | 6 | explanation render ก่อน stage 3 (ย้ายบล็อกออกไปนอก `stage === "reveal"`) | เคสเดียวกับ #5 ("never puts explanation... before stage 3") |
 | 7 | optionality หลุด (`validateRecallExplanation` reject string ว่าง) | `TestNewRecallCheck` (เคส valid, whitespace-only) + `TestLoadLesson_Valid` (fixture จริงไม่มี explanation) |
 | 8 | `maxRecallChecks` revert กลับ 5 | `TestNewLesson` ("fifteen recall checks"), `TestLoadLesson_ManyChecksWithExplanation`, `TestRepositorySaveLesson_RoundTripManyChecksExplanationNotMixedUp` |
 | 9 | `minRecallChecks` bound หลุด | `TestNewLesson` ("two recall checks"), `TestLoadLesson_Errors` ("two recall checks") |
 | 10 | length bound หลุด | `TestNewRecallCheck` ("explanation exceeding max runes") |
 | 11 | explanation ผูกผิด check (index mixup ที่ file→domain, ใช้ `d.RecallChecks[0].Explanation` แทน `rc.Explanation` ทุกตัว) | `TestLoadLesson_ManyChecksWithExplanation` (fixture 8 ข้อ, เกิน 5 เดิม) |
+| 12 | (round 2, code review S1) `RecallCheckCard.tsx`'s `check.explanation &&` → `check.explanation !== undefined &&` — เดิม**รอด**เพราะไม่มีเทสต์ไหน supply `explanation: ""` | `"renders no explanation section when explanation is an empty string, not just when it is absent"` (เทสต์ใหม่) |
+| 13 | (round 2, code review S1) `recallCheckDTO.Explanation`'s JSON tag `omitempty` ถูกลบ — เดิม**รอด**เพราะเทสต์เดิม decode เป็น struct ก่อนเทียบ ซึ่ง `""` จาก key หาย กับ `""` จาก key ว่างเปล่า decode ออกมาเหมือนกันเป๊ะ | `TestHandlerGetLesson_OmitsExplanationKeyWhenAbsent` (เทสต์ใหม่ เช็ค raw response body string) |
 
-**Survivor**: ไม่มี — ทุก mutation ตายตามที่คาด
+**Survivor**: ไม่มี — ทุก mutation ตายตามที่คาด (รวม 13 มิวเทชันหลัง round 2 คือ 11 ตัวเดิม + 2
+ตัวที่ code review พบว่ารอดรอบแรกแล้วมีเทสต์ใหม่มา kill)
 
 **หมายเหตุ scope ของ #11**: mutate จริงทำที่ hop file→domain เท่านั้น (ที่เดียวที่ explanation กับ
 question ถูก zip มาจาก array คนละตัว/index) เพราะ hop อื่น (DB write/read, API DTO) ส่งต่อ
@@ -440,6 +489,38 @@ mix up ได้ในเชิงโครงสร้าง — `TestRepositor
 (DB round-trip 8 ข้อ) และ `TestNewLessonSortKeepsExplanationWithItsOwnCheck` (domain sort) ยังคง
 เป็น regression net แต่ไม่ได้ผ่านการ mutate จริงเพราะไม่มี mutation ที่สมจริงจะ decouple ได้ที่ hop
 นั้น
+
+### Migration re-run evidence (R1, code review round 2)
+
+Reproduce ทั้ง before และ after บน stack แยก `docker compose -p aws1fix` (ไม่แตะ
+`self-learning_mysql_data`, ปิดท้ายด้วย `docker compose down` เปล่า ๆ ไม่มี `-v`):
+
+- **ก่อนแก้ (bare `ALTER TABLE`, จำลอง crash)**: สร้างตารางแยก, รัน `ALTER TABLE ... ADD COLUMN
+  explanation` สำเร็จ, รันซ้ำจำลอง "restart หลัง crash ก่อนบันทึก version row" → **`ERROR 1060
+  (42S21): Duplicate column name 'explanation'`** ตรงตามที่ reviewer อธิบาย ยืนยันว่า bug จริง
+  ไม่ใช่ทฤษฎี
+- **จำลอง crash จริงกับ API binary จริง**: boot stack เต็ม (mysql + api) ครั้งแรก → migration 8
+  ผ่าน, `schema_migrations` มี version 1-8, คอลัมน์ `explanation` มีจริง → `DELETE FROM
+  schema_migrations WHERE version = 8` (จำลอง "ALTER สำเร็จแต่ crash ก่อนบันทึก version") →
+  `docker compose restart api`
+- **หลังแก้ (guarded ALTER + `applyOne` ใช้ connection เดียว)**: container **ไม่ crash-loop**
+  (`RestartCount = 0`, health check ผ่านต่อเนื่องหลัง restart), log สะอาดไม่มี error 1060,
+  `schema_migrations` มี version 8 กลับมาเหมือนเดิม (migration รันซ้ำแล้ว no-op ผ่านการ guard),
+  คอลัมน์ `explanation` ยังอยู่ครบ ไม่มีการ error หรือ column ซ้ำ
+- **Static guard**: `TestAllMigrationsAlterTableAddColumnIsGuarded` (ใหม่ ใน
+  `internal/platform/mysql/migrate_embedded_test.go`) เช็คว่าไฟล์ migration ใดก็ตามที่มี
+  `ADD COLUMN` ต้องมี marker ของ guard pattern ครบ (`information_schema.COLUMNS`, `PREPARE `,
+  `EXECUTE `, `DEALLOCATE PREPARE`) — **ไม่ใช่การ extend `TestAllMigrationsCreateTableIsIdempotent`
+  ตรง ๆ** เพราะ `ADD COLUMN` ไม่มี token เดียวแบบ `IF NOT EXISTS` ให้เช็คต่อท้ายเหมือน `CREATE TABLE`
+  จึงเขียนเป็นเทสต์คู่ขนานแยกต่างหากที่เช็ค marker set ของ pattern นี้โดยเฉพาะ เทสต์นี้พิสูจน์แค่
+  **syntax** ของ guard ว่ามีอยู่ (ข้อจำกัดแบบเดียวกับเทสต์ CREATE TABLE เดิม) ส่วน**พฤติกรรม**จริงของ
+  MySQL พิสูจน์ด้วย live re-run ข้างบนแทน ไม่ใช่ `go test`
+- **เหตุผลที่ต้องแก้ `applyOne` ด้วย ไม่ใช่แค่ SQL**: `SET @var`/`PREPARE`/`EXECUTE` เป็น
+  session-scoped state ของ MySQL connection เดียว — `database/sql` ไม่การันตีว่า
+  `db.ExecContext` สองครั้งติดกันจะได้ connection เดิมจาก pool เสมอ (ทดสอบ stress จริงด้วย 9
+  goroutine ยิง query พร้อมกันระหว่าง sequence 5 statement ไม่พบการสลับ connection เลยใน 15 รอบ
+  แต่นั่นเป็นพฤติกรรมที่ไม่มีสัญญาเป็นเอกสาร ไม่ใช่ contract ที่พึ่งได้) `applyOne` จึงเปลี่ยนไปใช้
+  `db.Conn(ctx)` ตัวเดียวตลอดทั้ง migration file แทนที่จะพึ่งพฤติกรรมที่ verify แต่ไม่รับประกัน
 
 ### Import-parity evidence
 
@@ -478,51 +559,86 @@ Stack แยก `docker compose -p aws1check` (ไม่แตะ `self-learning
 
 ### Test count
 
-- Go: `go vet ./...` clean, `gofmt -l .` clean, `go test -count=1 ./...` **296 → 299** (นับจาก
-  `go test -v` ผ่าน `grep -c "^--- PASS"`, เทียบกับ develop baseline ที่วัดจริงผ่าน git worktree)
+- Go: `go vet ./...` clean, `gofmt -l .` clean, `go test -count=1 ./...` **296 (develop) → 299
+  (round 1) → 301 (round 2)** (นับจาก `go test -v` ผ่าน `grep -c "^--- PASS"`; round 2 เพิ่ม
+  `TestAllMigrationsAlterTableAddColumnIsGuarded` + `TestHandlerGetLesson_OmitsExplanationKeyWhenAbsent`)
 - Frontend: `npx tsc --noEmit` clean, `npx eslint .` clean, `npm run build` clean,
-  `npx vitest run` **169 → 175**
+  `npx vitest run` **169 (develop) → 175 (round 1) → 176 (round 2)** (เพิ่ม explanation=""
+  test case)
 
 ### สิ่งที่ตั้งใจไม่ทำในรอบนี้
 
 - ไม่เขียน explanation ให้ MCQ 356 ข้อเดิม (Q-3's เนื้อหาส่วนที่เหลือ ยังพักตามแผน)
-- ไม่สร้าง guessability measurement script ใหม่ (ไม่มี script เดิม commit ไว้ให้ parameterize — บันทึก
-  ไว้ตรง ๆ ใน `mcq-quality.md` แทนที่จะเดา/สร้างของใหม่แบบไม่ได้ขอ)
-- ไม่แตะ multiple-response (AWS-2) และไม่แยก concept ใน `aws.json`
+- ไม่สร้าง AWS-S3 (guessability measurement tool) เอง — spec เขียนไว้แล้วในหัวข้อ "AWS-S3" ด้านบน
+  ตามที่ reviewer ขอ รอ ticket แยก
+- ไม่แตะ multiple-response (AWS-S2) และไม่แยก concept ใน `aws.json`
+- ไม่ refresh `docs/design.md` ทั้งไฟล์ (เพิ่มแค่ 1 บรรทัดในหนี้ที่รู้ตัวเดิมของ roadmap.md ว่า schema
+  block ขาด `explanation` — ตามที่ code review บอกว่าไม่ต้องทำ refresh เต็มในรอบนี้)
 
-### Status: implemented, PR pending
+### Round 2 (code review) — สรุปสิ่งที่แก้
 
-### Review focus
+REQUEST_CHANGES รอบแรกพบ 7 ปัญหาหลัก (R1–R7) + 3 ปัญหาเสริม (S1, S2, S4) แก้ครบทุกข้อ:
+
+- **R1 (แก้ที่ใหญ่ที่สุด)**: migration 008 เดิมเป็น bare `ALTER TABLE ADD COLUMN` ซึ่งไม่มี
+  `IF NOT EXISTS` ใน MySQL 8 — restart หลัง crash ระหว่าง DDL กับการบันทึก version row จะวน error
+  1060 ตลอดไป (compose ตั้ง `restart: unless-stopped`) แก้ด้วย guard ผ่าน
+  `information_schema.COLUMNS` + `PREPARE`/`EXECUTE`, และแก้ `applyOne` ให้ใช้ connection เดียว
+  ตลอด migration file (เหตุผลเต็มอยู่ที่ "Migration re-run evidence" ด้านบน) — พิสูจน์ด้วย live
+  crash-recovery replay จริงบน `docker compose -p aws1fix`
+- **R2**: comment ของ `minRecallChecks` อ้างหลักฐานผิด ("118 lesson บางใบมีพอดี 3 ข้อ") นับจริงแล้ว
+  ต่ำสุดคือ 4 ไม่มีใบไหนมี 3 — แก้ comment ให้ตรงข้อเท็จจริง (การตัดสินใจเดิมยังถูกต้อง)
+- **R3**: ตัวเลข "356" ผิดที่ 2 จุด (migration comment, review-focus เฉลยข้อ 3) ที่จริงคือ 586
+  (ทุกแถว ไม่ใช่แค่ mcq) และ "114 lesson" ผิดที่ 2 จุด (text.go comment, vitest test name) ที่จริง
+  คือ 118 — แก้ครบทุกจุด
+- **R4**: ลบ WHAT-comment บน `Explanation()` ที่ restate signature ซ้ำกับ struct doc
+- **R5**: `.claude/agents/lesson-writer.md`/`lesson-verifier.md` ยังไม่รู้จัก `explanation` และยัง
+  ระบุ "3-5 items" — แก้ schema ให้มี `explanation` (REQUIRED เฉพาะ AWS track), เพิ่ม item count
+  เป็น ~11 สำหรับ AWS track, เพิ่ม verifier gate ข้อ 8 ที่ FAIL ถ้า AWS-track question ไม่มี
+  3-part explanation ครบ
+- **R6**: บันทึกตรง ๆ ว่า guessability baseline 33.7%/33.4%/89.6% ใน roadmap.md **รันซ้ำไม่ได้**
+  (ไม่มี script), 25% gate ของ AWS corpus **unenforceable จนกว่า AWS-S3 จะมี**, เขียน spec ขั้นต่ำ
+  ของ AWS-S3 ไว้ใน aws-cert.md
+- **R7**: ชื่อ ticket ชนกัน ("AWS-1" หมายถึงทั้ง ticket นี้และ placeholder เดิมของคลังข้อสอบ) — เปลี่ยน
+  เป็น AWS-S1 (ticket นี้) / AWS-S2 (multiple-response) / AWS-S3 (measurement tool) / AWS-C1..C4
+  (คลังข้อสอบต่อ domain) ทั้งใน aws-cert.md และ roadmap.md — **ไม่เปลี่ยนชื่อ branch**
+  (`ticket/aws-1-explanation` เกิดก่อนเปลี่ยนชื่อ ตามที่ reviewer สั่งให้บันทึกไว้แทนการ force-push)
+- **S1**: `check.explanation &&` ใน `RecallCheckCard.tsx` เปลี่ยนเป็น `!== undefined` แล้ว**รอด**
+  ทุกเทสต์เดิม (ไม่มีเทสต์ไหน supply `explanation: ""`) — เพิ่มเทสต์ frontend ใหม่ + เทสต์ backend
+  ใหม่ที่เช็ค raw JSON body ไม่มี substring `"explanation"` เมื่อไม่มีค่า (ดู mutation #12, #13)
+- **S2**: เพิ่ม `explanation` เข้า comment ของ `lessonDTO` ที่บันทึกการตัดสินใจส่งข้อมูลเฉลยให้ client
+- **S4**: เปลี่ยนชื่อเทสต์ที่อ้างว่า "two cards mounted side by side" ทั้งที่จริง sequential
+  (unmount การ์ดแรกก่อน mount การ์ดที่สอง)
+
+### Status: implemented, code review round 2 fixes applied, PR pending
+
+### Review focus (round 2 — เน้นจุดที่แก้ตาม code review)
 
 <details>
 <summary>คำถามสำหรับรีวิว diff รอบนี้ (เฉลยพับไว้ด้านล่าง)</summary>
 
-1. ทำไม `recallCheckFileDTO.Explanation` ถึงเป็น `string` ธรรมดาแทนที่จะเป็น `*string` ทั้งที่ต้อง
-   แยก "ไม่มี key นี้เลย" กับ "มี key แต่ค่าว่าง"?
-2. ทำไม mutation #11 (index mixup) ถึง mutate จริงแค่ที่ hop file→domain เท่านั้น ไม่ mutate ที่ hop
-   DB write/read ด้วย?
-3. ทำไม migration ใหม่ต้องใช้ `explanation TEXT NULL` แทนที่จะเป็น `NOT NULL DEFAULT ''`?
+1. ทำไมแค่แก้ SQL ของ migration 008 ให้มี guard อย่างเดียวไม่พอ ต้องแก้ `applyOne` ใน `migrate.go`
+   ด้วย?
+2. `TestAllMigrationsAlterTableAddColumnIsGuarded` พิสูจน์อะไร และ**ไม่**พิสูจน์อะไร?
+3. ทำไม `minRecallChecks` ยังคงค่า 3 เหมือนเดิมหลัง round 2 ทั้งที่ comment ที่ใช้เป็นหลักฐานผิด?
 
 <details>
 <summary>เฉลย</summary>
 
-1. เพราะ `Q` และ `ExpectedAnswer` (ฟิลด์ข้างเคียงในไฟล์เดียวกัน) ก็เป็น `string` เดี่ยวอยู่แล้วตาม
-   convention เดิมของไฟล์นี้ และที่สำคัญกว่านั้นคือ **แยกสองเคสนั้นไม่ได้อยู่ดี**: `encoding/json`
-   decode ทั้ง "ไม่มี key" และ `"explanation": ""` ให้ `string` ธรรมดาออกมาเป็น `""` เหมือนกันทุก
-   ประการ (ต่างจาก `*string` ที่จะได้ `nil` กับ `&""` แยกกัน) การเปลี่ยนเป็น pointer จึงไม่ได้ให้
-   ความสามารถแยกแยะอะไรเพิ่มถ้า validator ท้ายทางจะ treat สองเคสนี้เหมือนกันอยู่ดี (ซึ่งเป็น
-   การตัดสินใจที่ตั้งใจ — ดูหัวข้อ "Empty string == absent" ด้านบน)
-2. เพราะ explanation เป็นฟิลด์ที่ติดอยู่กับ `RecallCheck` struct เสมอตั้งแต่ domain ถูกสร้างขึ้น
-   (`NewRecallCheck` รับมันมาพร้อม question/answer ในการเรียกเดียว) การ "หลุด index" จะเกิดได้จริง
-   เฉพาะจุดเดียวคือตอน zip ข้อมูลจากสอง array คนละตัว (array ของ recall_check ในไฟล์ JSON คนละ
-   index กับ array ของ explanation ที่ตั้งใจ) ซึ่งเกิดที่ `lessonfile.go`'s loop เท่านั้น — DB
-   write/read ส่งต่อ `RecallCheck` เป็น value เดียวทั้งก้อน ไม่มี array คู่ขนานให้ mix up ได้เชิง
-   โครงสร้าง mutation ที่ hop นั้นจึงทำไม่ได้แบบสมจริง (ต้องปลอมสถานการณ์ที่โค้ดจริงไม่มีทางเกิด)
-3. เพราะ 356 recall_checks ที่มีอยู่แล้วในฐานข้อมูลจริง (ก่อน migration นี้) ไม่มีค่า explanation
-   เลย — `NOT NULL DEFAULT ''` จะทำให้แถวเก่าทุกแถวมี `explanation = ''` ทันทีหลัง migration ซึ่ง
-   งานฝั่ง Go (`insertRecallCheck`) ต้องคอย normalize `''` ↔ NULL เองทุกครั้งที่เขียนทับ (เพราะ
-   convention ที่เลือกคือ optional value → NULL) `NULL` ตั้งแต่ต้นตัดปัญหานี้ทิ้งไปเลย และตรงกับ
-   convention ของคอลัมน์ `options` ในตารางเดียวกันที่ทำแบบเดียวกันอยู่แล้ว
+1. เพราะ guard ใหม่ (`SET @var` → `PREPARE`/`EXECUTE`) พึ่ง MySQL user variable ซึ่งเป็น
+   session-scoped state ของ connection เดียว ในขณะที่ `applyOne` เดิมเรียก `db.ExecContext` บน
+   `*sql.DB` (pool) ตรง ๆ ทีละ statement — `database/sql` ไม่การันตีว่าสอง `Exec` ติดกันจะได้
+   connection เดิมจาก pool เสมอ (ไม่มีสัญญาเอกสารข้อนี้) ถ้าเผอิญได้ connection คนละตัว
+   `@add_explanation_ddl` จะเป็น NULL และ `PREPARE stmt FROM NULL` จะ error 1064 ทันที — แก้แค่ SQL
+   แต่ไม่ปักหมุด connection คือแก้ crash-loop เดิม (R1) แต่เปิดความเสี่ยงใหม่ที่พิสูจน์ไม่ได้ว่าไม่เกิด
+   จึงต้องแก้ `applyOne` ให้ใช้ `db.Conn(ctx)` ตัวเดียวตลอด statement ของ migration file นั้นด้วย
+2. พิสูจน์แค่ว่าไฟล์ migration ที่มี `ADD COLUMN` มี **marker ของ guard pattern ครบ** (text-based,
+   เหมือนเทสต์ `CREATE TABLE`/`IF NOT EXISTS` เดิม) — **ไม่**พิสูจน์ว่า guard **ทำงานถูกจริง** บน
+   MySQL จริง (เช่น syntax ผิดเล็กน้อยที่ยังมี marker ครบแต่รันไม่ผ่านจริงจะไม่ถูกจับ) พฤติกรรมจริง
+   พิสูจน์ด้วย live crash-recovery replay บน `docker compose -p aws1fix` แทน ไม่ใช่ `go test`
+3. เพราะ**ข้อสรุป**ของ decision (คงพื้นไว้ที่ 3) ยังถูกต้องอยู่ — สิ่งที่ผิดคือ**หลักฐาน**ที่ยกมาอ้าง
+   (อ้างว่ามีใบที่มีพอดี 3 ข้อ ซึ่งนับจริงแล้วไม่มี ต่ำสุดคือ 4) ไม่ใช่ตัวการตัดสินใจเอง — ไม่มีอะไรใน
+   scope ของ ticket นี้เรียกร้องให้เปลี่ยน floor จาก 3 เป็นค่าอื่น (blocker เดิมคือเพดานบนเท่านั้น)
+   ดังนั้นแก้แค่ comment ให้ตรงข้อเท็จจริง ไม่ต้องเปลี่ยนค่า constant
 
 </details>
 </details>

@@ -321,6 +321,28 @@ func TestHandlerGetLesson_Success(t *testing.T) {
 	}
 }
 
+// TestHandlerGetLesson_OmitsExplanationKeyWhenAbsent proves omitempty at the
+// wire level, which TestHandlerGetLesson_Success's decode-then-compare
+// cannot: unmarshaling a JSON body missing the "explanation" key and one
+// carrying `"explanation": ""` produce the identical Go zero value, so only
+// inspecting the raw bytes tells them apart. Every 118 pre-AWS-S1 lesson's
+// response must look like this — no reader of an old lesson should ever see
+// the key appear.
+func TestHandlerGetLesson_OmitsExplanationKeyWhenAbsent(t *testing.T) {
+	logger, _ := newTestLogger()
+	lesson := newTestLessonNoExplanations(t, "bare-lesson", 1)
+	h := NewHandler(fakeTreeService{lesson: lesson}, logger)
+
+	rec := doGetLesson(h, "domain-driven-design", "bare-lesson")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if body := rec.Body.String(); strings.Contains(body, "explanation") {
+		t.Errorf("response body contains the literal substring %q for a lesson with no explanations: %s", "explanation", body)
+	}
+}
+
 func TestHandlerGetLesson_NotFound(t *testing.T) {
 	logger, _ := newTestLogger()
 	notFoundErr := fmt.Errorf("infra: lesson not found: %w", curriculumapp.ErrLessonNotFound)

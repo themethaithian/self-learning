@@ -166,10 +166,10 @@ type recallCheckDTO struct {
 	Explanation    string   `json:"explanation,omitempty"`
 }
 
-// lessonDTO carries each recall check's expected_answer and options: grading
-// is self-graded client-side (the user reveals the answer and rates
-// themselves), and single-user bearer auth means there is no cheating
-// concern in exposing them over the API.
+// lessonDTO carries each recall check's expected_answer, options, and
+// explanation: grading is self-graded client-side (the user reveals the
+// answer and rates themselves), and single-user bearer auth means there is
+// no cheating concern in exposing any of them over the API.
 type lessonDTO struct {
 	Topic        string           `json:"topic"`
 	Concept      string           `json:"concept"`

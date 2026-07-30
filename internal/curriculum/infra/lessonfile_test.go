@@ -53,7 +53,7 @@ func TestLoadLesson_Valid(t *testing.T) {
 
 // TestLoadLesson_ManyChecksWithExplanation exercises two things a 5-check
 // ceiling made impossible to fixture together: a lesson past the old max
-// (8 checks, valid only after AWS-1 raised it to 15), and explanation
+// (8 checks, valid only after AWS-S1 raised it to 15), and explanation
 // threaded from the file through to the domain for some checks but not
 // others — proving both optionality and per-check identity (no check gets
 // its neighbour's explanation).

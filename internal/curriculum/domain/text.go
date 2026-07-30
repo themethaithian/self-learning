@@ -59,7 +59,7 @@ func validateRecallOption(raw string) (string, error) {
 
 // validateRecallExplanation trims raw and, unlike validateBounded, treats an
 // empty result as "no explanation" rather than an error — explanation is
-// optional (114 pre-AWS-1 lessons have none), and a plain string field can't
+// optional (118 pre-AWS-S1 lessons have none), and a plain string field can't
 // distinguish an omitted JSON key from an explicit "" on decode anyway, so
 // the two must mean the same thing here.
 func validateRecallExplanation(raw string) (string, error) {

@@ -362,7 +362,7 @@ describe("RecallCheckCard — reveal stage (mcq)", () => {
   });
 });
 
-describe("RecallCheckCard — explanation (AWS-1)", () => {
+describe("RecallCheckCard — explanation (AWS-S1)", () => {
   it("never puts explanation in the serialized DOM before stage 3, for mcq", () => {
     const { container } = renderCard(mcqCheckWithExplanation, { rng: zeroRng });
     expect(container.innerHTML).not.toContain(mcqCheckWithExplanation.explanation);
@@ -406,7 +406,7 @@ describe("RecallCheckCard — explanation (AWS-1)", () => {
     expect(container.innerHTML).toContain(shortAnswerCheckWithExplanation.explanation);
   });
 
-  it("renders no explanation section at all when the check has none (114 pre-AWS-1 lessons)", () => {
+  it("renders no explanation section at all when the check has none (118 pre-AWS-S1 lessons)", () => {
     renderCard(mcqCheck, { rng: zeroRng });
     fireEvent.click(screen.getByRole("button", { name: "Show options" }));
     fireEvent.click(screen.getAllByRole("radio")[0]);
@@ -416,7 +416,24 @@ describe("RecallCheckCard — explanation (AWS-1)", () => {
     expect(screen.queryByText("Why")).toBeNull();
   });
 
-  it("shows each check's own explanation, not another check's, when two cards are mounted side by side", () => {
+  it("renders no explanation section when explanation is an empty string, not just when it is absent", () => {
+    // A truthiness check (`check.explanation && (...)`) and an `!== undefined`
+    // check both pass every other test here, since none of them ever supplies
+    // "" — only this case tells them apart. Empty string can reach the
+    // client either via omitempty NOT firing (a JSON encoding regression) or
+    // a future non-Go caller, so the component's own guard is the last line
+    // of defense and must be proven independently of the API layer.
+    const checkWithEmptyExplanation: RecallCheck = { ...mcqCheck, explanation: "" };
+    renderCard(checkWithEmptyExplanation, { rng: zeroRng });
+    fireEvent.click(screen.getByRole("button", { name: "Show options" }));
+    fireEvent.click(screen.getAllByRole("radio")[0]);
+    fireEvent.click(screen.getByRole("radio", { name: "Confident" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(screen.queryByText("Why")).toBeNull();
+  });
+
+  it("shows each check's own explanation, not another check's, across two sequential renders (not concurrently mounted)", () => {
     const { unmount: unmountA } = renderCard(mcqCheckWithExplanation, { rng: zeroRng });
     fireEvent.click(screen.getByRole("button", { name: "Show options" }));
     fireEvent.click(screen.getAllByRole("radio")[0]);

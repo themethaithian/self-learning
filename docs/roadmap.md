@@ -75,7 +75,17 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
   ตาม domain weight จริงของ SAA-C03 exam guide (เดิม 10/10/12/5 เอียงไปทาง Domain 3) +
   pin blueprint ข้อสอบ, concept → task statement mapping, แผนคลังข้อสอบ ~550 ข้อ ไว้ที่
   [`docs/tickets/aws-cert.md`](tickets/aws-cert.md)
-- [ ] AWS-1..N (ยังไม่ตัดชื่อ) — เขียนคลังข้อสอบทีละ domain ตามแผนใน aws-cert.md
+- [ ] AWS-S1 (in review, round 2) — `maxRecallChecks` 5→15 + `explanation` end-to-end
+  (recall_checks schema, ไม่แตะ multiple-response) — branch `ticket/aws-1-explanation`
+  (ชื่อ branch เกิดก่อน ticket ID นี้ถูกตั้งใหม่เป็น AWS-S1/AWS-S2/AWS-S3/AWS-C1..C4 — ไม่ force-push
+  เปลี่ยนชื่อ branch, ดูรายละเอียดที่ aws-cert.md)
+- [ ] AWS-S2 (ยังไม่เริ่ม) — multiple-response support (second correct answer, "Select TWO",
+  all-or-nothing scoring)
+- [ ] AWS-S3 (ยังไม่เริ่ม, spec ปักไว้แล้วใน aws-cert.md) — guessability measurement tool
+  ที่ parameterize ได้ (`1/len(options)` ต่อ corpus) — **gate คลังข้อสอบจริง (AWS-C1..C4) ต้องรอ
+  ticket นี้ก่อน**
+- [ ] AWS-C1..C4 (ยังไม่ตัดชื่อ, gated บน AWS-S1/S2/S3) — เขียนคลังข้อสอบทีละ domain ตามแผนใน
+  aws-cert.md
 
 ### Phase 0 — walking skeleton + reading slice ✅
 - [x] T1 [x] T2 [x] T3 [x] T4 [x] T35 [x] T5 [x] T6 [x] T7 [x] T7b [x] T8 ([week-1](tickets/week-1.md))
@@ -97,7 +107,10 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
 - [x] T-local-docker (#39, [รายละเอียด](tickets/local-docker.md)) — `make dev` = mysql + api + web + seed
 - [x] C-mcq-sweep (#38) · [x] C-mcq-balance (#43) ([รายละเอียด](tickets/mcq-quality.md)) —
   **MCQ 356 ข้อ** เดาด้วย heuristic ความยาวได้ **33.7%** (เดิม 89.6%) เดาด้วยตำแหน่ง 33.4% (เดิม 41.6%)
-  \+ กติกาการแก้ distractor ที่ grep ตรวจได้
+  \+ กติกาการแก้ distractor ที่ grep ตรวจได้ — **หมายเหตุ (ยืนยันแล้วตอน AWS-S1)**: ตัวเลขเหล่านี้
+  วัดด้วย script ที่รันแบบ ad hoc นอก version control **ไม่มี script นี้ commit ไว้ในโปรเจกต์เลย**
+  (เช็คแล้วทั้ง working tree และ `git log --all --diff-filter=A`) ตัวเลขจึง **รันซ้ำไม่ได้ตอนนี้** —
+  ต้องรอ AWS-S3 (สร้าง measurement tool ใหม่) ก่อนถึงจะ verify ซ้ำหรือรันกับ corpus อื่นได้
 
 ### Phase 3 — guided learning path ✅ ([รายละเอียด](tickets/ux-today.md))
 - [x] UX-1 (#40) `has_lesson`/`est_minutes` บน curriculum API
@@ -194,9 +207,11 @@ Distributed Systems · **AWS SAA-C03 (priority ปัจจุบัน)** · Go
 ## หนี้ที่รู้ตัว (ยังไม่แก้ ตั้งใจปล่อย)
 
 - **`docs/design.md` ล้าสมัยหลายจุด** — §7 ยังเขียนว่า "195 concepts" (จริง 309), layout ยังเป็น
-  5 track (ก่อนมี ddia/ai-systems), 6 bounded context ที่ไม่มี `prefs`, และ §API ยังบอกว่า
-  `GET /lessons/{id}` ต้องตัด expected answer ออก — Q-1 ตัดสินใจแล้วว่า v1 (self-graded) ไม่ตัด
-  (เหตุผลเต็มอยู่ที่บรรทัด Q-1 ด้านบน) เพราะฉะนั้นบรรทัดนี้ใน design.md **ล้าสมัย ไม่ใช่ code ผิด**
+  5 track (ก่อนมี ddia/ai-systems), 6 bounded context ที่ไม่มี `prefs`, §API ยังบอกว่า
+  `GET /lessons/{id}` ต้องตัด expected answer ออก (Q-1 ตัดสินใจแล้วว่า v1 self-graded ไม่ตัด
+  เหตุผลเต็มอยู่ที่บรรทัด Q-1 ด้านบน) และ **§2 MySQL Schema's `recall_checks` block (บรรทัด ~77)
+  ยังไม่มีคอลัมน์ `explanation`** ที่เพิ่มใน AWS-S1 (migration 008) — ทุกจุดนี้ **ล้าสมัย ไม่ใช่
+  code ผิด**, ตั้งใจไม่ refresh design.md ทั้งไฟล์ตอนนี้ (ทำทีเดียวตอนว่างจริง ๆ ตามที่บันทึกไว้)
 - **`cors_test.go` ยังเทียบกับ constant ตัวเองบางส่วน** — `wantMethods` ถูกแก้เป็น literal แล้วใน #41
   แต่ `wantHeaders`/`wantMaxAge` ยังอ้าง `corsAllowedHeaders`/`corsMaxAge` = mutation ไม่มีทางจับได้
 - rating รายข้อในหน้า reader ไม่ถูก persist (ปลดใน Q-2b — endpoint พร้อมแล้วจาก Q-2a) ·

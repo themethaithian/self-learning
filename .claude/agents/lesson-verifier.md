@@ -21,6 +21,14 @@ Check for, in order of severity:
 7. References: not a primary source, irrelevant, or a URL that looks
    invented (deep link that plausibly doesn't exist) = error; missing
    references entirely = warn
+8. AWS-track lessons only: every recall check must carry an `explanation`
+   with all three parts (why the correct answer is correct, tied to the
+   stem's constraint; why each wrong option is wrong, naming the constraint
+   it violates; a reusable decision rule) — see docs/tickets/aws-cert.md's
+   'รูปแบบ explanation' section. A missing explanation, or one that only
+   restates a service definition instead of doing the three jobs above, is
+   an error — the same severity as an unanswerable recall check. Non-AWS
+   lessons are not held to this gate.
 
 ## Output (JSON only)
 
