@@ -54,6 +54,9 @@ func TestRepositoryLessonByConcept_HappyPath(t *testing.T) {
 		if g.Position() != w.Position() || g.Kind() != w.Kind() || g.Question() != w.Question() || g.ExpectedAnswer() != w.ExpectedAnswer() {
 			t.Errorf("RecallChecks()[%d] = %+v, want %+v", i, g, w)
 		}
+		if g.Explanation() != w.Explanation() {
+			t.Errorf("RecallChecks()[%d].Explanation() = %q, want %q", i, g.Explanation(), w.Explanation())
+		}
 		if gotOpts, wantOpts := g.Options(), w.Options(); len(gotOpts) != len(wantOpts) {
 			t.Errorf("RecallChecks()[%d].Options() = %v, want %v", i, gotOpts, wantOpts)
 		} else {

@@ -69,6 +69,7 @@ export interface RecallCheck {
   question: string;
   expected_answer: string;
   options?: string[];
+  explanation?: string;
 }
 
 export interface Lesson {

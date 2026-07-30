@@ -20,6 +20,13 @@ const (
 	maxRecallQuestionRunes = 1000
 	maxRecallAnswerRunes   = 2000
 	maxRecallOptionRunes   = 255
+
+	// maxRecallExplanationRunes matches maxOutlineRunes: an explanation is
+	// structured prose (why the answer is right, why each distractor is
+	// wrong, a reusable decision rule — see docs/tickets/aws-cert.md), the
+	// same order of magnitude as a concept outline, and well short of a
+	// full body_md chunk.
+	maxRecallExplanationRunes = 4000
 )
 
 func validateTitle(raw string) (string, error) {
@@ -48,6 +55,22 @@ func validateRecallAnswer(raw string) (string, error) {
 
 func validateRecallOption(raw string) (string, error) {
 	return validateBounded(raw, maxRecallOptionRunes, ErrInvalidRecallOptions)
+}
+
+// validateRecallExplanation trims raw and, unlike validateBounded, treats an
+// empty result as "no explanation" rather than an error — explanation is
+// optional (118 pre-AWS-S1 lessons have none), and a plain string field can't
+// distinguish an omitted JSON key from an explicit "" on decode anyway, so
+// the two must mean the same thing here.
+func validateRecallExplanation(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil
+	}
+	if n := utf8.RuneCountInString(trimmed); n > maxRecallExplanationRunes {
+		return "", fmt.Errorf("%d runes exceeds max %d: %w", n, maxRecallExplanationRunes, ErrInvalidRecallExplanation)
+	}
+	return trimmed, nil
 }
 
 func validateBounded(raw string, maxRunes int, sentinel error) (string, error) {

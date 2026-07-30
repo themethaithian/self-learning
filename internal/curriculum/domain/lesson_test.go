@@ -93,8 +93,12 @@ func TestNewLesson(t *testing.T) {
 			wantErr: ErrInvalidRecallCheckCount,
 		},
 		{
-			name: "six recall checks", slug: mustSlug(t, "aggregate"), version: 1, titleEn: "Aggregate Root",
-			estMinutes: mustEstMinutes(t, 7), bodyMd: "body", references: validRefs, checks: makeRecallChecks(t, 6),
+			name: "fifteen recall checks (new ceiling, valid)", slug: mustSlug(t, "aggregate"), version: 1, titleEn: "Aggregate Root",
+			estMinutes: mustEstMinutes(t, 7), bodyMd: "body", references: validRefs, checks: makeRecallChecks(t, 15),
+		},
+		{
+			name: "sixteen recall checks", slug: mustSlug(t, "aggregate"), version: 1, titleEn: "Aggregate Root",
+			estMinutes: mustEstMinutes(t, 7), bodyMd: "body", references: validRefs, checks: makeRecallChecks(t, 16),
 			wantErr: ErrInvalidRecallCheckCount,
 		},
 		{
@@ -159,6 +163,26 @@ func TestNewLessonSortsRecallChecksByPosition(t *testing.T) {
 	for i, want := range []int{1, 2, 3} {
 		if checks[i].Position().Int() != want {
 			t.Errorf("RecallChecks()[%d].Position() = %d, want %d (not sorted)", i, checks[i].Position().Int(), want)
+		}
+	}
+}
+
+// TestNewLessonSortKeepsExplanationWithItsOwnCheck guards against a sort
+// that reorders positions but leaves explanation (or any other per-check
+// field) behind at the old index — impossible here since explanation lives
+// on the RecallCheck value itself, not a parallel slice, but this is the
+// contract a future refactor could accidentally break.
+func TestNewLessonSortKeepsExplanationWithItsOwnCheck(t *testing.T) {
+	l := mustLesson(t, "aggregate", 1, "Aggregate Root", 7, "body", validReferences(t), []RecallCheck{
+		mustRecallCheckExplained(t, 3, "short_answer", "q3", "a3", nil, "explains q3"),
+		mustRecallCheckExplained(t, 1, "short_answer", "q1", "a1", nil, "explains q1"),
+		mustRecallCheckExplained(t, 2, "short_answer", "q2", "a2", nil, "explains q2"),
+	})
+
+	checks := l.RecallChecks()
+	for i, want := range []string{"explains q1", "explains q2", "explains q3"} {
+		if checks[i].Explanation() != want {
+			t.Errorf("RecallChecks()[%d].Explanation() = %q, want %q", i, checks[i].Explanation(), want)
 		}
 	}
 }

@@ -1,0 +1,21 @@
+{
+  "topic": "domain-driven-design",
+  "concept_id": "many-checks-with-explanation",
+  "title_en": "Many Checks With Explanation",
+  "est_minutes": 7,
+  "body_md": "body",
+  "recall_checks": [
+    { "q": "q1", "expected_answer": "a1", "type": "short_answer", "explanation": "explanation 1" },
+    { "q": "q2", "expected_answer": "a2", "type": "short_answer" },
+    { "q": "q3", "expected_answer": "a3", "type": "short_answer", "explanation": "explanation 3" },
+    { "q": "q4", "expected_answer": "a4", "type": "mcq", "options": ["a4", "b4", "c4", "d4"], "explanation": "explanation 4" },
+    { "q": "q5", "expected_answer": "a5", "type": "short_answer", "explanation": "explanation 5" },
+    { "q": "q6", "expected_answer": "a6", "type": "short_answer" },
+    { "q": "q7", "expected_answer": "a7", "type": "short_answer", "explanation": "explanation 7" },
+    { "q": "q8", "expected_answer": "a8", "type": "short_answer", "explanation": "explanation 8" }
+  ],
+  "references": [
+    { "title": "t1", "source": "s1", "why": "w1" },
+    { "title": "t2", "source": "s2", "why": "w2" }
+  ]
+}

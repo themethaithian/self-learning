@@ -32,8 +32,19 @@ what it costs — senior interviews probe the trade-off, not the pitch,
 so this section is REQUIRED) → interview angle (how it gets asked).",
 "recall_checks": [
 { "q": "...", "expected_answer": "...", "type": "short_answer" },
-{ "q": "...", "expected_answer": "...", "type": "mcq", "options": ["...", "...", "..."] }
-// 3-5 items, answerable purely from this lesson.
+{ "q": "...", "expected_answer": "...", "type": "mcq", "options": ["...", "...", "..."],
+  "explanation": "Thai prose, three parts in order: (1) why the correct answer
+  is correct, tied to a specific constraint in the stem, not a generic
+  service description; (2) why EVERY wrong option is wrong, naming the stem
+  constraint each one violates; (3) a reusable decision rule that helps with
+  other questions of the same shape. See docs/tickets/aws-cert.md's
+  'รูปแบบ explanation' section for the full spec and worked reasoning." }
+// Default (non-AWS tracks): 3-5 items, answerable purely from this lesson,
+// "explanation" optional.
+// AWS track: ~11 items per concept (ceiling 15 — domain.maxRecallChecks),
+// per docs/tickets/aws-cert.md's blueprint — NOT 3-5. "explanation" is
+// REQUIRED on every AWS-track item, all three parts above; a question
+// missing it or with a one-part explanation is not done.
 // "options" (2+ choices) is REQUIRED for type "mcq" and MUST be absent for
 // "short_answer"; expected_answer is one of the options for mcq.
 ],

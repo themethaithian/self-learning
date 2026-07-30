@@ -51,6 +51,33 @@ func TestLoadLesson_Valid(t *testing.T) {
 	}
 }
 
+// TestLoadLesson_ManyChecksWithExplanation exercises two things a 5-check
+// ceiling made impossible to fixture together: a lesson past the old max
+// (8 checks, valid only after AWS-S1 raised it to 15), and explanation
+// threaded from the file through to the domain for some checks but not
+// others — proving both optionality and per-check identity (no check gets
+// its neighbour's explanation).
+func TestLoadLesson_ManyChecksWithExplanation(t *testing.T) {
+	_, lesson, err := LoadLesson(filepath.Join("testdata", "domain-driven-design", "many-checks-with-explanation.json"))
+	if err != nil {
+		t.Fatalf("LoadLesson() unexpected error: %v", err)
+	}
+
+	checks := lesson.RecallChecks()
+	if len(checks) != 8 {
+		t.Fatalf("len(RecallChecks()) = %d, want 8", len(checks))
+	}
+
+	wantExplanations := map[int]string{1: "explanation 1", 3: "explanation 3", 4: "explanation 4", 5: "explanation 5", 7: "explanation 7", 8: "explanation 8"}
+	for _, c := range checks {
+		pos := c.Position().Int()
+		want := wantExplanations[pos]
+		if c.Explanation() != want {
+			t.Errorf("check at position %d: Explanation() = %q, want %q", pos, c.Explanation(), want)
+		}
+	}
+}
+
 func TestLoadLesson_DefaultsVersionWhenOmitted(t *testing.T) {
 	_, lesson, err := LoadLesson(filepath.Join("testdata", "domain-driven-design", "version-omitted.json"))
 	if err != nil {
@@ -84,7 +111,7 @@ func TestLoadLesson_Errors(t *testing.T) {
 		{name: "one reference", file: "one-reference.json", wantErr: domain.ErrInvalidReferenceCount, wantContain: []string{"one-reference.json"}},
 		{name: "five references", file: "five-references.json", wantErr: domain.ErrInvalidReferenceCount, wantContain: []string{"five-references.json"}},
 		{name: "two recall checks", file: "two-recall-checks.json", wantErr: domain.ErrInvalidRecallCheckCount, wantContain: []string{"two-recall-checks.json"}},
-		{name: "six recall checks", file: "six-recall-checks.json", wantErr: domain.ErrInvalidRecallCheckCount, wantContain: []string{"six-recall-checks.json"}},
+		{name: "sixteen recall checks (past the raised ceiling)", file: "sixteen-recall-checks.json", wantErr: domain.ErrInvalidRecallCheckCount, wantContain: []string{"sixteen-recall-checks.json"}},
 		{name: "concept_id does not match filename", file: "mismatched-concept.json", wantContain: []string{"mismatched-concept.json", "concept_id", "something-else"}},
 		{name: "topic does not match folder", file: "mismatched-topic.json", wantContain: []string{"mismatched-topic.json", "wrong-topic"}},
 	}

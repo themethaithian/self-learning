@@ -17,6 +17,11 @@ type recallCheckFileDTO struct {
 	ExpectedAnswer string   `json:"expected_answer"`
 	Type           string   `json:"type"`
 	Options        []string `json:"options,omitempty"`
+	// Explanation is optional: absent and "" decode identically for a plain
+	// string field, and the domain treats both as "no explanation" (see
+	// domain.validateRecallExplanation) — every pre-AWS-S1 content file omits
+	// this key and must keep importing unchanged.
+	Explanation string `json:"explanation,omitempty"`
 }
 
 type referenceFileDTO struct {
@@ -116,7 +121,7 @@ func (d lessonFileDTO) toDomain() (domain.Lesson, error) {
 		if err != nil {
 			return domain.Lesson{}, fmt.Errorf("lesson %q: recall check %d: position: %w", d.ConceptID, i, err)
 		}
-		check, err := domain.NewRecallCheck(position, kind, rc.Q, rc.ExpectedAnswer, rc.Options)
+		check, err := domain.NewRecallCheck(position, kind, rc.Q, rc.ExpectedAnswer, rc.Options, rc.Explanation)
 		if err != nil {
 			return domain.Lesson{}, fmt.Errorf("lesson %q: recall check %d: %w", d.ConceptID, i, err)
 		}
