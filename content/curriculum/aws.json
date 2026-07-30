@@ -18,13 +18,13 @@
         {
           "slug": "iam-policy-evaluation",
           "title": "IAM Policy Evaluation Logic",
-          "outline": "อธิบายลำดับการประเมิน IAM policy: explicit deny > explicit allow > default deny\nยกตัวอย่างการรวม policy หลายชั้น เช่น identity-based กับ resource-based\nพูดถึง SCP ที่มาจำกัด permission เพิ่มอีกชั้น",
+          "outline": "อธิบายลำดับการประเมิน IAM policy: explicit deny > explicit allow > default deny\nยกตัวอย่างการรวม policy หลายชั้น เช่น identity-based กับ resource-based\nพูดถึง SCP ที่มาจำกัด permission เพิ่มอีกชั้น\nอธิบาย IAM Permissions Boundary ว่าเป็นคนละ feature จาก SCP — จำกัดสิทธิ์สูงสุดของ IAM user/role หนึ่งตัว (ไม่ใช่ทั้ง account/OU แบบ SCP) คำตอบมาตรฐานของโจทย์ \"ให้ developer สร้าง role เองได้โดยห้าม privilege escalation\"",
           "position": 2
         },
         {
           "slug": "organizations-scp",
           "title": "AWS Organizations & Service Control Policies (SCPs)",
-          "outline": "อธิบาย AWS Organizations สำหรับจัดการหลาย account แบบรวมศูนย์\nอธิบาย Service Control Policy (SCP) ว่ากำหนดขอบเขตสิทธิ์สูงสุดที่ทุก principal ใน account/OU ทำได้ — ไม่ใช่สิ่งเดียวกับ IAM Permissions Boundary ซึ่งจำกัดสิทธิ์สูงสุดของ IAM user/role หนึ่งตัว (คำตอบมาตรฐานของโจทย์ \"ให้ developer สร้าง role เองได้โดยห้าม privilege escalation\")\nอธิบาย Resource Control Policies (RCPs) ที่มาใหม่ใน Organizations (2024-11-13) จำกัดสิทธิ์ที่ resource (ครอบ S3, STS, KMS, SQS, Secrets Manager) ต่างจาก SCP ที่จำกัดที่ principal — SCP จึงไม่ใช่ guardrail เชิงป้องกันตัวเดียวขององค์กรอีกต่อไป\nยกตัวอย่างการใช้ OU (Organizational Unit) แบ่งกลุ่ม account\nอธิบาย AWS Resource Access Manager (RAM) สำหรับแชร์ resource เช่น subnet หรือ Transit Gateway ข้าม account ภายใน Organization โดยไม่ต้อง duplicate",
+          "outline": "อธิบาย AWS Organizations สำหรับจัดการหลาย account แบบรวมศูนย์\nอธิบาย Service Control Policy (SCP) ว่ากำหนดขอบเขตสิทธิ์สูงสุดที่ทุก principal ใน account/OU ทำได้\nอธิบาย Resource Control Policies (RCPs) ที่มาใหม่ใน Organizations (2024-11-13) จำกัดสิทธิ์ที่ resource (ครอบ S3, STS, KMS, SQS, Secrets Manager) ต่างจาก SCP ที่จำกัดที่ principal — SCP จึงไม่ใช่ guardrail เชิงป้องกันตัวเดียวขององค์กรอีกต่อไป\nยกตัวอย่างการใช้ OU (Organizational Unit) แบ่งกลุ่ม account",
           "position": 3
         },
         {
@@ -90,7 +90,7 @@
         {
           "slug": "multi-account-access-governance",
           "title": "Multi-Account Access & Governance",
-          "outline": "อธิบาย AWS IAM Identity Center (เดิมชื่อ AWS SSO) สำหรับ single sign-on ข้ามหลาย account และ AWS Directory Service สำหรับเชื่อม/รัน Active Directory เป็นแหล่ง identity ให้ Identity Center\nอธิบาย AWS Control Tower ตั้ง landing zone และบังคับ guardrail มาตรฐานให้ account ใหม่ทุกใบใน Organization\nเน้น STS กับ cross-account role switching สำหรับขอ temporary credential ข้าม account\nสรุป Shared Responsibility Model: AWS ดูแลความปลอดภัย \"ของ\" cloud ส่วนลูกค้าดูแลความปลอดภัย \"ใน\" cloud",
+          "outline": "อธิบาย AWS IAM Identity Center (เดิมชื่อ AWS SSO) สำหรับ single sign-on ข้ามหลาย account และ AWS Directory Service สำหรับเชื่อม/รัน Active Directory เป็นแหล่ง identity ให้ Identity Center\nอธิบาย AWS Control Tower ตั้ง landing zone และบังคับ guardrail มาตรฐานให้ account ใหม่ทุกใบใน Organization\nเน้น STS กับ cross-account role switching สำหรับขอ temporary credential ข้าม account\nอธิบาย AWS Resource Access Manager (RAM) สำหรับแชร์ resource เช่น subnet หรือ Transit Gateway ข้าม account ภายใน Organization โดยไม่ต้อง duplicate\nสรุป Shared Responsibility Model: AWS ดูแลความปลอดภัย \"ของ\" cloud ส่วนลูกค้าดูแลความปลอดภัย \"ใน\" cloud",
           "position": 14
         },
         {
@@ -181,7 +181,7 @@
         {
           "slug": "managed-ai-services-overview",
           "title": "Managed AI/ML Services for Decoupled Workloads",
-          "outline": "อธิบายแนวคิด AWS Managed Services (AMS) ตาม Task 2.2 ของคู่มือสอบ: ใช้ managed AI service อย่าง Amazon Comprehend (NLP) และ Amazon Polly (text-to-speech) แทนการดูแล ML infrastructure เอง — สองตัวนี้ถูกระบุชื่อตรงใน Task 2.2 ของคู่มือ\nยกตัวอย่าง managed AI service อื่นที่อยู่ใน scope ข้อสอบเช่นกันแต่ไม่ได้ระบุชื่อตรงใน task ไหนเป็นการเฉพาะ: Transcribe (speech-to-text), Translate (แปลภาษา), Textract (ดึงข้อความจากเอกสาร), Rekognition (วิเคราะห์ภาพ/วิดีโอ), Lex (chatbot), SageMaker AI (custom ML model)\nระวัง Amazon Kendra (enterprise search) เข้า maintenance ตั้งแต่ 2026-06-30 — ใช้เป็น distractor ได้ แต่ห้ามเป็นคำตอบที่ถูก\nเน้นว่าในข้อสอบ service กลุ่มนี้มักเป็นคำตอบเมื่อโจทย์ต้องการ \"ไม่อยากดูแล ML infra เอง\" ไม่ใช่คำถามเชิงลึกเรื่อง ML",
+          "outline": "อธิบาย AWS Managed Services (AMS) ตาม Task 2.2: ใช้ Amazon Comprehend (NLP) และ Amazon Polly (text-to-speech) แทนการดูแล ML infra เอง — สองตัวนี้ระบุชื่อตรงใน Task 2.2 ของคู่มือ\nยกตัวอย่าง AI service อื่นที่ในสโคปแต่ไม่ได้ระบุชื่อตรงใน task ใด: Transcribe, Translate, Textract, Rekognition, Lex, SageMaker AI — และ Kendra ซึ่งเข้า maintenance ตั้งแต่ 2026-06-30 (ใช้เป็น distractor ได้ แต่ห้ามเป็นคำตอบที่ถูก)\nเน้นว่าในข้อสอบ service กลุ่มนี้เป็นคำตอบเมื่อโจทย์ต้องการ \"ไม่อยากดูแล ML infra เอง\" ไม่ใช่คำถามเชิงลึกเรื่อง ML",
           "position": 13
         }
       ]
@@ -193,7 +193,7 @@
       "concepts": [
         {
           "slug": "ec2-families-purchasing",
-          "title": "EC2 Instance Families & Purchasing Options",
+          "title": "EC2 Instance Families",
           "outline": "อธิบายกลุ่ม EC2 instance family หลัก เช่น general purpose, compute optimized, memory optimized และวิธีเลือก family/size ตาม workload requirement (CPU-bound, memory-bound, network-bound)\nกล่าวถึง purchasing option ที่มีอยู่ (On-Demand, Reserved, Savings Plans, Spot) แบบภาพรวม — รายละเอียด trade-off เชิงลึกอยู่ที่ concept pricing-models-ri-sp-spot\nยกตัวอย่างการเลือก instance type ตาม workload",
           "position": 1
         },
@@ -248,7 +248,7 @@
         {
           "slug": "athena-glue",
           "title": "Amazon Athena & AWS Glue",
-          "outline": "อธิบาย Athena สำหรับ query ข้อมูลบน S3 ด้วย SQL แบบ serverless\nอธิบาย AWS Glue สำหรับ ETL และสร้าง Glue Data Catalog\nยกตัวอย่างการใช้ Glue Crawler สร้าง schema ให้ Athena query\nอธิบาย Amazon EMR สำหรับประมวลผลข้อมูลขนาดใหญ่ด้วย Spark/Hadoop เมื่อ workload ซับซ้อนเกินกว่าที่ Athena query ตรง ๆ จะรองรับ",
+          "outline": "อธิบาย Athena สำหรับ query ข้อมูลบน S3 ด้วย SQL แบบ serverless\nอธิบาย AWS Glue สำหรับ ETL และสร้าง Glue Data Catalog\nยกตัวอย่างการใช้ Glue Crawler สร้าง schema ให้ Athena query\nอธิบาย Amazon EMR สำหรับประมวลผลข้อมูลขนาดใหญ่ด้วย Spark/Hadoop เมื่อ workload ซับซ้อนเกินกว่าที่ Athena query ตรง ๆ จะรองรับ\nอธิบาย AWS Lake Formation สำหรับสร้างและควบคุมสิทธิ์ data lake แบบรวมศูนย์ (ต่างจาก Glue Data Catalog ตรงที่เพิ่มชั้น access control)\nอธิบาย Amazon QuickSuite (เดิมชื่อ QuickSight) สำหรับทำ visualization/BI บนข้อมูลที่ Athena/Glue เตรียมไว้ — คู่มือสอบ Task 3.5 เขียนชื่อนี้ตรง ๆ",
           "position": 10
         },
         {
@@ -279,7 +279,7 @@
         {
           "slug": "s3-storage-classes-lifecycle",
           "title": "S3 Storage Classes & Lifecycle Policies",
-          "outline": "อธิบาย S3 storage class: Standard, Intelligent-Tiering, Standard-IA, One Zone-IA, S3 Glacier Instant Retrieval, S3 Glacier Flexible Retrieval, S3 Glacier Deep Archive\nเน้น S3 Intelligent-Tiering เป็นคำตอบมาตรฐานเมื่อโจทย์บอกว่า access pattern \"ไม่รู้แน่ชัดหรือเปลี่ยนไปเรื่อย ๆ\" เพราะ auto-tier ให้โดยไม่มีค่าใช้จ่าย retrieval และไม่มี minimum storage duration\nเน้น lifecycle policy สำหรับย้ายข้อมูลอัตโนมัติตามอายุการใช้งาน\nยกตัวอย่างการเลือก storage class ตาม access pattern",
+          "outline": "อธิบาย S3 storage class: Standard, Intelligent-Tiering, Standard-IA, One Zone-IA, S3 Glacier Instant Retrieval, S3 Glacier Flexible Retrieval, S3 Glacier Deep Archive\nเน้น S3 Intelligent-Tiering เป็นคำตอบมาตรฐานเมื่อโจทย์บอกว่า access pattern \"ไม่รู้แน่ชัดหรือเปลี่ยนไปเรื่อย ๆ\" เพราะ auto-tier ให้โดยไม่มีค่าใช้จ่าย retrieval และไม่มี minimum storage duration\nเน้น lifecycle policy สำหรับย้ายข้อมูลอัตโนมัติตามอายุการใช้งาน\nอธิบาย Requester Pays: ให้ผู้ดาวน์โหลดจ่ายค่า data transfer/request แทนเจ้าของ bucket — เหมาะเมื่อแชร์ dataset ขนาดใหญ่กับบุคคลที่สาม\nยกตัวอย่างการเลือก storage class ตาม access pattern",
           "position": 2
         },
         {
@@ -291,13 +291,13 @@
         {
           "slug": "data-transfer-costs",
           "title": "Data Transfer Costs",
-          "outline": "อธิบายโครงสร้างค่าใช้จ่าย data transfer: inbound ฟรี, outbound คิดเงิน, cross-AZ/cross-region\nเน้นวิธีลดต้นทุนด้วย CloudFront, VPC Endpoint หรือออกแบบ architecture ให้ traffic อยู่ใน AZ เดียวกัน\nยกตัวอย่างสถานการณ์ transfer cost ที่มักถูกมองข้าม",
+          "outline": "อธิบายโครงสร้างค่าใช้จ่าย data transfer: inbound ฟรี, outbound คิดเงิน, cross-AZ/cross-region\nเน้นวิธีลดต้นทุนด้วย CloudFront, VPC Endpoint หรือออกแบบ architecture ให้ traffic อยู่ใน AZ เดียวกัน\nอธิบายค่าใช้จ่าย public IPv4 address รายชั่วโมง ($0.005/IP/ชม. ตั้งแต่ 2024-02-01) ที่คิดกับทุก public IP ไม่ว่าจะใช้งานอยู่หรือไม่ ครอบคลุม EC2/RDS/EKS/ELB — ลดได้ด้วย IPv6, private subnet หลัง NAT, หรือ BYOIP\nยกตัวอย่างสถานการณ์ transfer cost ที่มักถูกมองข้าม",
           "position": 4
         },
         {
           "slug": "cost-tools-budgets",
           "title": "AWS Cost Tools & Budgets",
-          "outline": "อธิบาย AWS Cost Explorer สำหรับวิเคราะห์และ forecast ค่าใช้จ่าย\nอธิบาย AWS Budgets สำหรับตั้ง alert เมื่อ spending เกินเกณฑ์\nยกตัวอย่างการใช้ Cost Allocation Tags แยกต้นทุนตาม project\nอธิบาย AWS Trusted Advisor ตรวจสอบและแนะนำจุดที่ optimize ต้นทุนได้ทันที เช่น resource ที่ idle หรือ underutilized ควบคู่กับ Cost Explorer และ Budgets",
+          "outline": "อธิบาย AWS Cost Explorer สำหรับวิเคราะห์และ forecast ค่าใช้จ่าย\nอธิบาย AWS Budgets สำหรับตั้ง alert เมื่อ spending เกินเกณฑ์\nอธิบาย AWS Cost and Usage Report (CUR) เป็นรายงานละเอียดที่สุด ระบุ usage รายชั่วโมง/รายรีซอร์ส — คู่มือสอบระบุชื่อนี้ในทุก task ของ Domain 4\nยกตัวอย่างการใช้ Cost Allocation Tags และ multi-account billing (consolidated billing ใน Organizations) แยกต้นทุนตาม project/account\nอธิบาย AWS Trusted Advisor ตรวจสอบและแนะนำจุดที่ optimize ต้นทุนได้ทันที เช่น resource ที่ idle หรือ underutilized",
           "position": 5
         },
         {
@@ -315,13 +315,13 @@
         {
           "slug": "cost-optimized-networking",
           "title": "Cost-Optimized Networking",
-          "outline": "เปรียบเทียบ NAT Gateway ตัวเดียวที่ใช้ร่วมกันหลาย AZ (ถูกกว่าแต่เสี่ยง single point of failure) กับ NAT Gateway แยกทุก AZ (แพงกว่าแต่ทนทานกว่า)\nเปรียบเทียบ NAT instance กับ NAT Gateway ด้านต้นทุน — แต่ NAT instance AMI หมดอายุตั้งแต่ 2023-12-31 และ AWS แนะนำให้ย้ายไป NAT Gateway แล้ว จึงไม่ควรเป็นคำตอบที่ถูกในข้อที่ถามหาวิธีประหยัดต้นทุนที่ AWS แนะนำ\nเปรียบเทียบ Transit Gateway (ค่าใช้จ่ายต่อ attachment เหมาะเชื่อมหลาย VPC) กับ VPC Peering (ไม่มีค่า gateway แต่ scale ยากเมื่อ VPC เยอะ)\nเปรียบเทียบ Direct Connect (ค่าใช้จ่ายคงที่บวกรายเดือน คุ้มเมื่อ traffic เยอะสม่ำเสมอ) กับ Site-to-Site VPN (ถูกกว่าเมื่อ traffic น้อย) กับ public internet (ฟรีแต่ไม่มี SLA)\nอธิบายค่าใช้จ่าย public IPv4 address รายชั่วโมง ($0.005/IP/ชม. ตั้งแต่ 2024-02-01) ที่คิดกับทุก public IP ไม่ว่าจะใช้งานอยู่หรือไม่ ครอบคลุม EC2/RDS/EKS/ELB — วิธีลดคือใช้ IPv6, วาง resource ไว้ใน private subnet หลัง NAT, หรือใช้ BYOIP",
+          "outline": "เปรียบเทียบ NAT Gateway ตัวเดียวใช้ร่วมหลาย AZ (ถูกกว่าแต่เสี่ยง single point of failure) กับแยกทุก AZ (แพงกว่าแต่ทนทานกว่า) และกับ NAT instance (AMI หมดอายุ 2023-12-31 ไม่ควรเป็นคำตอบที่ถูก)\nเปรียบเทียบ Transit Gateway (ค่าต่อ attachment เหมาะเชื่อมหลาย VPC) กับ VPC Peering (ไม่มีค่า gateway แต่ scale ยากเมื่อ VPC เยอะ)\nเปรียบเทียบ Direct Connect (ค่าใช้จ่ายคงที่บวกรายเดือน คุ้มเมื่อ traffic เยอะสม่ำเสมอ) กับ Site-to-Site VPN (ถูกกว่าเมื่อ traffic น้อย) กับ public internet (ฟรีแต่ไม่มี SLA)",
           "position": 8
         },
         {
           "slug": "migration-and-transfer-services",
           "title": "Migration & Transfer Services",
-          "outline": "อธิบายหลักคำนวณว่าเมื่อไหร่ควรย้ายข้อมูลผ่าน network เทียบกับย้ายแบบออฟไลน์ (เช่น AWS Snow Family) โดยเทียบขนาดข้อมูลกับ bandwidth ที่มีจริง — Snowball Edge ปิดรับลูกค้าใหม่ตั้งแต่ 2025-11-07 และ Snowcone เลิกผลิตแล้ว จึงไม่ควรผูกคำตอบไว้กับชื่อ Snow Family รุ่นใดรุ่นหนึ่งโดยตรง\nอธิบาย AWS DataSync สำหรับย้ายและ sync ข้อมูลระหว่าง on-premises กับ AWS storage แบบอัตโนมัติผ่าน network\nอธิบาย AWS Storage Gateway (File/Volume/Tape Gateway) เชื่อม on-premises application เข้ากับ S3/EBS/S3 Glacier Flexible หรือ Deep Archive แบบโปร่งใส\nอธิบาย AWS Transfer Family รองรับ SFTP/FTPS/FTP เข้าถึง S3 โดยไม่ต้องเปลี่ยน client เดิม\nอธิบาย AWS Database Migration Service (DMS) สำหรับย้าย database ข้าม engine แบบ downtime น้อยที่สุด",
+          "outline": "เปรียบเทียบย้ายข้อมูลผ่าน network กับแบบออฟไลน์ (AWS Snow Family) โดยคำนวณจากขนาดข้อมูล/bandwidth — Snowball Edge ปิดรับลูกค้าใหม่ 2025-11-07, Snowcone เลิกผลิตแล้ว ห้ามผูกคำตอบกับรุ่นใดรุ่นหนึ่ง\nอธิบาย AWS DataSync ย้าย/sync ข้อมูล on-premises กับ AWS storage อัตโนมัติผ่าน network\nอธิบาย AWS Storage Gateway (File/Volume/Tape) เชื่อม on-premises app กับ S3/EBS/S3 Glacier Flexible หรือ Deep Archive แบบโปร่งใส\nอธิบาย AWS Transfer Family รองรับ SFTP/FTPS/FTP เข้าถึง S3 โดยไม่เปลี่ยน client เดิม\nอธิบาย AWS DMS ย้าย database ข้าม engine แบบ downtime น้อยที่สุด รวมถึงย้าย schema/data ข้าม engine",
           "position": 9
         },
         {

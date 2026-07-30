@@ -34,6 +34,10 @@ service ให้ fetch docs HTML ไม่ใช่เชื่อ PDF ทุ�
 `docs/aws-currency-checklist`) เป็น context บังคับด้วย — ไฟล์นั้นมีรายการ service ที่ปิดรับลูกค้าใหม่/
 เปลี่ยนชื่อ/เปลี่ยนราคา ที่โมเดลเขียนคำตอบผิดถ้าไม่เช็ค
 
+**Sequencing ที่ต้องรู้**: ลิงก์ด้านบนเป็น relative link ไปยังไฟล์ที่ยังอยู่แค่บน branch
+`docs/aws-currency-checklist` (PR #54) เท่านั้น — บน `develop` ตอนนี้ลิงก์นี้ตายเพราะไฟล์ยังไม่ merge
+**PR #54 ต้อง merge เข้า develop ก่อน AWS-1 เริ่มงานเสมอ** ไม่ใช่แค่ก่อนเขียนคำถามจริง
+
 ### Domain, น้ำหนัก และ task statement ทั้ง 14 ข้อ (verbatim จาก official exam guide)
 
 | Domain | น้ำหนัก | Task statements (verbatim) |
@@ -133,11 +137,11 @@ chapter อื่นจะทำให้สัดส่วน concept-count ต
 | iam-users-roles-policies | 1.1 |
 | iam-policy-evaluation | 1.1 |
 | organizations-scp | 1.1 |
-| cognito | 1.1 |
+| cognito | 1.2 (verified: Task 1.2's Knowledge ระบุ "Security services with appropriate use cases (for example, AWS Cognito, AWS GuardDuty, AWS Macie)" — Cognito เป็นชื่อแรกในวงเล็บเดียวกับ GuardDuty/Macie ที่ย้ายไปแล้ว แก้จาก 1.1 เดิม) |
 | kms-encryption | 1.3 |
 | secrets-vs-parameter-store | 1.2 |
 | sg-vs-nacl | 1.2 |
-| vpc-endpoints-privatelink | 1.2 |
+| vpc-endpoints-privatelink | 1.2, 3.4 (Task 3.4's Knowledge ระบุ "Network connection options (for example, AWS VPN, AWS Direct Connect, AWS PrivateLink)" ตรงตัว) |
 | waf-shield | 1.2 |
 | s3-security | 1.3 |
 | vpc-fundamentals | 1.2 (prerequisite ให้ 3.4, 4.4 ด้วย) |
@@ -152,8 +156,8 @@ chapter อื่นจะทำให้สัดส่วน concept-count ต
 |---|---|
 | regions-az-edge | 2.2 |
 | elb-types | 2.1 |
-| auto-scaling-groups | 2.1 |
-| rds-multi-az-read-replicas | 2.2 |
+| auto-scaling-groups | 2.1, 2.2 (Task 2.2's Knowledge ระบุ "Immutable infrastructure" ตรงตัว — outline ของ concept นี้ fold เรื่องนี้ไว้แล้ว) |
+| rds-multi-az-read-replicas | 2.2, 2.1 (Task 2.1's Skills ระบุ "When to use read replicas" ตรงตัว) |
 | aurora-ha | 2.2 |
 | sqs-sns-decoupling | 2.1 |
 | eventbridge | 2.1 |
@@ -183,7 +187,12 @@ chapter อื่นจะทำให้สัดส่วน concept-count ต
 
 Domain 3 เดิมมี 12 concept กระจุกที่ 3.1/3.2/3.3 อยู่แล้ว (9 จาก 12) — รอบนี้**ไม่เพิ่มจำนวน**
 แต่ enrich outline ของ concept ที่มีอยู่แทน เพื่อดันน้ำหนักไปทาง 3.4/3.5 โดยไม่ทำให้ Domain 3
-เกิน 24% ของ tree (12/50 = 24% พอดีอยู่แล้ว ตรงข้ามกับก่อนรีบาลานซ์ที่ 12/37 = 32%)
+เกิน 24% ของ tree (12/50 = 24% พอดีอยู่แล้ว ตรงข้ามกับก่อนรีบาลานซ์ที่ 12/37 = 32%) — round 3 เติม
+AWS Lake Formation และ Amazon QuickSuite (Task 3.5's Knowledge ระบุตรงตัว: "Data analytics and
+visualization services with appropriate use cases (for example, Amazon Athena, AWS Lake
+Formation, Amazon QuickSuite)") เข้า `athena-glue`'s outline แทนที่จะแยก concept ใหม่ เพราะ Task
+3.5 มีแค่ 2 concept (`kinesis`, `athena-glue`) คุม ~22 ข้อ และก่อนหน้านี้ไม่มี concept ไหนแตะ data
+lake governance หรือ visualization เลย
 
 ### Domain 4 — Cost-Optimized Architectures (10 concepts)
 
@@ -197,17 +206,18 @@ Domain 3 เดิมมี 12 concept กระจุกที่ 3.1/3.2/3.3 �
 | cost-optimized-databases-capacity | 4.3 |
 | cost-optimized-databases-storage-lifecycle | 4.3 |
 | cost-optimized-networking | 4.4 |
-| migration-and-transfer-services | 4.1, 3.5 |
+| migration-and-transfer-services | 4.1, 3.5 (DMS component ยัง serve 4.3 — Task 4.3's Skills ระบุ "Migrating database schemas and data to different locations and/or different database engines" ตรงตัว) |
 | storage-cost-optimization-beyond-s3 | 4.1 |
 
 ### Small named items folded into existing concepts' outline (ไม่ได้แยก concept ใหม่)
 
 | Item | Folded into |
 |---|---|
-| AWS Resource Access Manager (RAM) | `organizations-scp` |
+| AWS Resource Access Manager (RAM) | `multi-account-access-governance` (ย้ายจาก `organizations-scp` ใน round 3 เพื่อลด outline bloat) |
 | Resource Control Policies (RCPs, ใหม่ 2024-11-13) | `organizations-scp` |
+| IAM Permissions Boundary (แยกจาก SCP) | `iam-policy-evaluation` (ย้ายจาก `organizations-scp` ใน round 3 — เข้าธีม policy-layer evaluation ตรงกว่า) |
 | CloudFormation / immutable infrastructure, Elastic Beanstalk | `auto-scaling-groups` |
-| AWS Outposts | `regions-az-edge` |
+| AWS Outposts | `regions-az-edge` (ยัง serve **4.2** ด้วย — Task 4.2's Knowledge ระบุ "Hybrid compute options (for example, AWS Outposts)" ตรงตัว) |
 | Amazon MQ | `sqs-sns-decoupling` |
 | AWS Systems Manager Session Manager | `secrets-vs-parameter-store` |
 | S3 Versioning / MFA Delete / Object Lock | `s3-security` |
@@ -217,9 +227,14 @@ Domain 3 เดิมมี 12 concept กระจุกที่ 3.1/3.2/3.3 �
 | RDS Proxy | `rds-performance` |
 | AWS Batch, Amazon ECR | `ecs-eks-fargate` |
 | Amazon EMR | `athena-glue` |
+| AWS Lake Formation | `athena-glue` (ใหม่ round 3 — Task 3.5) |
+| Amazon QuickSuite (เดิมชื่อ QuickSight ก่อน 2025-10-09) | `athena-glue` (ใหม่ round 3 — Task 3.5) |
 | DocumentDB, Neptune, Keyspaces (purpose-built DB) | `dynamodb-advanced` |
 | AWS Trusted Advisor | `cost-tools-budgets` |
-| public IPv4 hourly charge ($0.005/IP/ชม. ตั้งแต่ 2024-02-01) | `cost-optimized-networking` |
+| AWS Cost and Usage Report (CUR) | `cost-tools-budgets` (ใหม่ round 3 — ระบุชื่อในทุก task 4.x, ปรากฏบ่อยกว่า named service อื่นใดใน Domain 4) |
+| Multi-account billing (consolidated billing) | `cost-tools-budgets` (ใหม่ round 3 — ระบุชื่อในทุก task 4.x) |
+| Requester Pays (S3) | `s3-storage-classes-lifecycle` (ใหม่ round 3 — Task 4.1's Knowledge ระบุตรงตัว) |
+| public IPv4 hourly charge ($0.005/IP/ชม. ตั้งแต่ 2024-02-01) | `data-transfer-costs` (ย้ายจาก `cost-optimized-networking` ใน round 3 เพื่อลด outline bloat — ยังอยู่ task 4.4 เหมือนเดิม) |
 
 ## แผนคลังข้อสอบ (~550 ข้อ + 50 lesson)
 
@@ -293,46 +308,58 @@ Comprehend/Polly ที่ verified และลดน้ำหนักขอ�
 
 ## Status
 
-**In review (round 2)** — แก้ตาม code review รอบแรก: content-model blocker + schema prerequisites,
-currency fixes (Snow Family/Glacier/Security Hub/Kendra/Timestream/NAT instance/public IPv4),
-guessability baseline, batch-size re-scope, 3 concept ที่ขาด (Session Manager/S3 Versioning-Object
-Lock/S3 Intelligent-Tiering) fold เข้า outline เดิม, purchasing-option overlap แก้ด้วยการแบ่งหน้าที่
-สามความเชี่ยวชาญเฉพาะ (ไม่ merge/ลบ concept เพราะรอบนี้ห้ามแตะ Go), task statement quote แบบ
-verbatim, roadmap phase-4 status แก้ให้ตรงกับที่ Q-2b/Q-2c ยังเดินอยู่จริง — **`aws.json` ไม่มีการ
-เพิ่ม/ลบ/ย้าย concept ในรอบนี้ (ยังคง 15/13/12/10 = 50) จึงไม่ต้องแตะ
-`contentfile_aws_test.go` เพิ่ม**
+**In review (round 3)** — round 2 ได้ REQUEST_CHANGES แบบแคบ (4 gap ที่ verify แล้วกับคู่มือ + dual
+mapping ที่ขาด + 2 เรื่องเล็ก) round 3 แก้ครบ: `cognito` remap 1.1→1.2, เติม AWS Lake
+Formation/Amazon QuickSuite เข้า `athena-glue` (Task 3.5 เดิมมีแค่ 2 concept คุมทั้ง task),
+เติม AWS Cost and Usage Report + multi-account billing เข้า `cost-tools-budgets` และ Requester
+Pays เข้า `s3-storage-classes-lifecycle`, บันทึก dual-mapping ที่ verify แล้ว 5 จุด
+(`vpc-endpoints-privatelink`→+3.4, `rds-multi-az-read-replicas`→+2.1, `auto-scaling-groups`→+2.2,
+migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2), แก้ title
+`ec2-families-purchasing` ที่ยังขัดกับ outline ของตัวเองหลัง round 2 ลดขอบเขตแล้ว, ระบุ sequencing
+ว่า PR #54 ต้อง merge ก่อน AWS-1 เริ่ม — **`aws.json` ยังไม่มีการเพิ่ม/ลบ/ย้าย concept ในรอบนี้เช่นกัน
+(ยังคง 15/13/12/10 = 50) จึงไม่ต้องแตะ `contentfile_aws_test.go`**
 
-## Review focus (round 2)
+**Outline bloat**: แก้ด้วยการ redistribute เนื้อหาระหว่าง concept ที่มีอยู่ (ไม่ใช่แยก concept ใหม่ —
+รอบนี้ห้ามแตะ Go) — ย้าย IAM Permissions Boundary distinction จาก `organizations-scp` ไป
+`iam-policy-evaluation`, ย้าย AWS RAM จาก `organizations-scp` ไป `multi-account-access-governance`,
+ย้าย public IPv4 charge จาก `cost-optimized-networking` ไป `data-transfer-costs`, และตัดคำฟุ่มเฟือย
+ใน `migration-and-transfer-services`/`managed-ai-services-overview`/`cost-optimized-networking`
+ผล: max outline **1846 → 1136 bytes** (`athena-glue`, หลังเติม Lake Formation/QuickSuite),
+`organizations-scp` (offender ที่ระบุชื่อตรง) **1462 → 866 bytes**. ยังไม่เท่า ddia's 811 เป๊ะ
+(1136 ≈ 1.4×) เพราะข้อจำกัดรอบนี้ (ห้ามแยก concept ใหม่) ทำให้ทำได้แค่ redistribute+trim ไม่ใช่ split —
+ถ้าต้องการลดต่ำกว่านี้อีกต้องแยก concept ซึ่งกระทบ golden test และเป็นงานของ ticket ที่แตะ Go
+
+## Review focus (round 3)
 
 <details>
 <summary>คำถามสำหรับรีวิว diff รอบนี้ (เฉลยพับไว้ด้านล่าง)</summary>
 
-1. ทำไมการแก้ปัญหา "550 ข้อเกินเพดาน 250" ถึงไม่ใช่การสร้างตาราง question ใหม่ในฐานข้อมูล?
-2. ทำไม `managed-ai-services-overview` ยังคง map กับ Task 2.2 เหมือนเดิมในรอบนี้ ทั้งที่ code
-   review รอบแรกบอกให้ re-map?
-3. ทำไม EC2 hibernation ถึงย้ายจาก outline ของ `ec2-families-purchasing` ไปอยู่ที่
-   `compute-cost-optimization` แทน ทั้งที่ทั้งสอง concept ไม่ได้ถูกเพิ่ม/ลบ/ย้าย chapter เลย?
+1. ทำไม AWS RAM ถึงย้ายจาก `organizations-scp` ไป `multi-account-access-governance` แทนที่จะ
+   ตัดทิ้งไปเลยเพื่อลด byte เร็วกว่า?
+2. ทำไม max outline byte ยังไม่เท่ากับ track อื่น (ddia 811 bytes) ทั้งที่ลดจาก 1846 มาเยอะแล้ว?
+3. ทำไม dual-mapping ของ `rds-multi-az-read-replicas` (+2.1) ถึงไม่ทำให้ต้องย้าย concept นี้ไปอยู่
+   chapter อื่นหรือปรับ concept count ของ Domain 2?
 
 <details>
 <summary>เฉลย</summary>
 
-1. เพราะ `recall_attempts` (ตาราง attempt ที่ผู้ใช้ตอบจริง) มี FK ชี้ไป `lessons.id` อยู่แล้ว และ
-   ทั้ง Q-2a (persist attempt), Q-2b (wire หน้า quiz), Q-2c (SM-2 scheduling) ถูกสร้างบน path นี้
-   ทั้งหมด — เปิด question store คู่ขนานแปลว่าต้องสร้าง persistence + API + UI + scheduling ใหม่
-   ทั้งสามชั้นซ้ำ แทนที่จะขยาย schema เดิม (`maxRecallChecks`, `explanation`,
-   multiple-response) ซึ่งเป็นการเปลี่ยนที่เล็กกว่ามากและ path เดิมยังใช้ได้ทั้งหมด
-2. เพราะตอน verify กับ docs.aws.amazon.com ตรง ๆ (ไม่ใช่จำจาก training data) พบว่า Task 2.2's
-   Knowledge list ระบุ "AWS Managed Services (AMS) with appropriate use cases (for example,
-   Amazon Comprehend, Amazon Polly)" ตรงตัว — แปลว่า mapping เดิมถูกต้องสำหรับสองบริการนี้อย่าง
-   น้อย ข้อโต้แย้งของ review ("ไม่เกี่ยวกับ HA") ไม่ตรงกับ primary source ที่ fetch ได้ การแก้จริง
-   คือปรับ **outline** ให้ตรงกับสิ่งที่ verified (foreground Comprehend/Polly, ลดน้ำหนัก service
-   อื่นที่ไม่มีการอ้างอิงตรงในคู่มือ) แทนการย้าย task mapping ตามข้อโต้แย้งที่ยังไม่มีหลักฐานรองรับ
-3. เพราะ fetch คู่มือ Domain 4's task page พบว่า "Scaling strategies (for example, auto scaling,
-   hibernation)" และ "Determining appropriate scaling methods and strategies for elastic
-   workloads (for example, horizontal compared with vertical, EC2 hibernation)" อยู่ใน **Task
-   4.2** (cost-optimized compute) ไม่ใช่ Task 3.2 — round 1 วาง hibernation ไว้ผิดที่ ย้าย
-   บรรทัดเดียวระหว่าง outline สองอันที่มีอยู่แล้วไม่กระทบ slug/position/count ของ `aws.json` เลย
-   จึงไม่ต้องแตะ golden test ที่ห้ามแก้ในรอบนี้
+1. เพราะเนื้อหายังต้องมีที่อยู่ — AWS RAM เป็น item ที่ยืนยันแล้วว่าอยู่ใน scope ข้อสอบ (ticket AWS-0
+   เดิมเรียกมันว่า item ที่ "ต้องมีแต่ปริมาณคำถามน้อย ไม่คุ้มแยก concept ใหม่") การตัดทิ้งจะทำให้
+   coverage หายไปจริง ไม่ใช่แค่ byte หาย ส่วน `multi-account-access-governance` เป็นบ้านที่เหมาะกว่า
+   `organizations-scp` อยู่แล้วเพราะ RAM คือกลไก resource-sharing ระดับ multi-account เหมือนเนื้อหา
+   อื่นในนั้น (IAM Identity Center, Control Tower, STS cross-account)
+2. เพราะรอบนี้ห้ามแตะ Go ไฟล์ใด ๆ (`contentfile_aws_test.go` ต้องคงเดิม) การลด byte จึงทำได้แค่สอง
+   ทาง: redistribute เนื้อหาไปหา concept ที่มีที่ว่าง (ทำไปแล้วกับ organizations-scp,
+   cost-optimized-networking) กับตัดคำฟุ่มเฟือยในประโยค (ทำไปแล้วเช่นกัน) — การจะลดต่ำกว่านี้อีก
+   ต้องแยก concept ที่มีหลาย topic ออกเป็นสองใบจริง ๆ ซึ่งเปลี่ยนจำนวน concept และต้องแก้ golden
+   test ทันที เป็นการเปลี่ยนแปลงเชิงโครงสร้างที่ควรอยู่ใน ticket ที่แตะ `internal/` ได้ (เช่น AWS-1)
+   ไม่ใช่ ticket นี้ที่ scope จำกัดไว้แค่ content + docs
+3. เพราะ dual-mapping ที่บันทึกในตารางเป็นแค่ **ข้อมูลสำหรับ tag คำถามตอนเขียนคลังข้อสอบ** (ข้อไหน
+   cover task ไหนบ้าง) ไม่ใช่ตัวกำหนดว่า concept ต้องอยู่ chapter ไหน — `rds-multi-az-read-replicas`
+   ยังคงเป็นเนื้อหาแกนของ Domain 2 (high availability ผ่าน Multi-AZ) การที่มันมีบรรทัดหนึ่งที่ตอบ
+   Task 2.1 ได้ด้วย (read replica ช่วย scale) ไม่ได้แปลว่ามันควรย้ายไป Domain นั้น เหมือนกับ
+   `vpc-fundamentals`/`hybrid-cross-vpc-connectivity` ที่ยอมรับไว้แล้วตั้งแต่ round 1 ว่า
+   chapter-count ตรงสัดส่วนน้ำหนัก แต่ task-serving ข้ามโดเมนได้
 
 </details>
 </details>
