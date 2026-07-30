@@ -9,10 +9,11 @@ import "fmt"
 // mapping from (AttemptOutcome, Confidence) to q is THIS application's own
 // design decision, not part of SM-2 itself.
 type ReviewQuality struct {
-	// grade holds q+1: q=0 is a legitimate SM-2 grade (confident-and-wrong,
-	// see qualityMappings), so a raw 0-5 field could not double as "never
-	// constructed" the way most VOs in this package use their zero value.
-	grade int
+	// gradePlusOne holds q+1: q=0 is a legitimate SM-2 grade
+	// (confident-and-wrong, see qualityMappings), so a raw 0-5 field could
+	// not double as "never constructed" the way most VOs in this package
+	// use their zero value.
+	gradePlusOne int
 }
 
 type qualityMapping struct {
@@ -60,17 +61,17 @@ func NewReviewQuality(outcome AttemptOutcome, confidence Confidence) (ReviewQual
 	}
 	for _, m := range qualityMappings {
 		if m.outcome == outcome && m.confidence == confidence {
-			return ReviewQuality{grade: m.quality + 1}, nil
+			return ReviewQuality{gradePlusOne: m.quality + 1}, nil
 		}
 	}
 	return ReviewQuality{}, fmt.Errorf("learning: review quality: no mapping for outcome=%s confidence=%s: %w", outcome, confidence, ErrInvalidReviewQuality)
 }
 
-func (q ReviewQuality) Grade() int { return q.grade - 1 }
+func (q ReviewQuality) Grade() int { return q.gradePlusOne - 1 }
 
 // IsCorrect reports SM-2's q >= 3 boundary: the point at which a review
 // advances the repetition count instead of resetting it.
 func (q ReviewQuality) IsCorrect() bool { return q.Grade() >= 3 }
 
 // IsZero reports whether q was never constructed via NewReviewQuality.
-func (q ReviewQuality) IsZero() bool { return q.grade == 0 }
+func (q ReviewQuality) IsZero() bool { return q.gradePlusOne == 0 }

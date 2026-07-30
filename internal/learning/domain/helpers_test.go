@@ -47,7 +47,7 @@ func reviewQualityValue(t *testing.T, v int) ReviewQuality {
 	if v < 0 || v > 5 {
 		t.Fatalf("reviewQualityValue(%d): out of range 0-5", v)
 	}
-	return ReviewQuality{grade: v + 1}
+	return ReviewQuality{gradePlusOne: v + 1}
 }
 
 func mustReviewCard(t *testing.T, question string) ReviewCard {

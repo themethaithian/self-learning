@@ -18,12 +18,10 @@ const (
 // across hundreds of reviews cannot happen here.
 //
 // Deliberately no float64 accessor: a fixed-point type that hands out a
-// lossy escape hatch invites exactly the bug that escape hatch causes — see
-// nextInterval in reviewcard.go, which fed this type's Hundredths()*ease
-// through float64 and rounded an exact .5 tie the wrong way. Add one only
-// when something outside this package genuinely needs a decimal string,
-// and name it for what it produces (e.g. DecimalString), not as a numeric
-// type that reads as safe to compute with.
+// lossy escape hatch invites exactly the bug that escape hatch causes. Add
+// one only when something outside this package genuinely needs a decimal
+// string, and name it for what it produces (e.g. DecimalString), not as a
+// numeric type that reads as safe to compute with.
 type EaseFactor struct {
 	hundredths int
 }

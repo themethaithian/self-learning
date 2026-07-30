@@ -1650,13 +1650,49 @@ Status: implemented, round 4 fixes applied post code-review, PR pending
   column ได้ `ERROR 1292 (22007)` ทันที ส่วน `DATETIME` (ไม่มีเพดานนี้)
   รับ `2042-06-15` ได้ปกติ — commit เดิม (round 1) มีคอมเมนต์ที่วิเคราะห์
   ช่วงของ `TIMESTAMP` จริง แต่วิเคราะห์แค่ **ขอบล่าง** (1970) ทั้งที่คอลัมน์นี้
-  ทั้งคอลัมน์มีไว้เก็บ**วันที่ในอนาคต** ล้วน ๆ — ผิดด้านที่ต้องระวังจริง.
-  `due_at` ยังคง default `CURRENT_TIMESTAMP` ("due ทันที") ได้ปกติ (ใช้งานได้
-  กับ `DATETIME` ตั้งแต่ MySQL 5.6.5+) — การ์ดใหม่ที่ไม่เคย review เลยยังโผล่
-  ใน query "due now" ได้เลยแบบไม่ต้องมี special case เหมือนเดิม. domain's
-  `NewReviewCard` แทนสถานะนี้ด้วย Go zero-value `time.Time` (ปี 1) ซึ่งเขียน
-  ลง `DATETIME` ตรง ๆ ไม่ได้เหมือนกัน (ขอบล่างของ `DATETIME` คือปี 1000) —
-  repository ของ Q-2d ยังต้องแทนที่ด้วย `time.Now()` ตอน insert การ์ดใหม่อยู่ดี
+  ทั้งคอลัมน์มีไว้เก็บ**วันที่ในอนาคต** ล้วน ๆ — ผิดด้านที่ต้องระวังจริง
+- **R10 (รอบ code-reviewer ที่สาม) — คำอธิบายเรื่อง "zero-value เขียนลง
+  `DATETIME` ไม่ได้" เป็นเท็จ**: รอบก่อนเขียนว่าขอบล่างของ `DATETIME` คือปี
+  1000 ทำให้เขียน Go zero-value `time.Time` (ปี 1) ไม่ได้ — **พิสูจน์แล้วว่า
+  ไม่จริง** บน `mysql:8.4` จริง: `INSERT ... VALUES ('0001-01-01 00:00:00')`
+  ลง `DATETIME` column **สำเร็จ** (เอกสาร MySQL บอกช่วงที่ "รองรับ" ไม่ใช่
+  ช่วงที่ "validate" จริง) — คำอธิบายเดิมถูกแค่ตอนคอลัมน์ยังเป็น `TIMESTAMP`
+  (ตอนนั้น `ERROR 1292` จริง) แต่พอเปลี่ยนเป็น `DATETIME` แล้วมีคนแก้ตัวเลข
+  1970→1000 โดยไม่ได้ insert ทดสอบซ้ำ — **เก็บกฎเดิมไว้ แต่เปลี่ยนเหตุผล**:
+  "ไม่เคย review = due ทันที" ต้องเป็นความหมายทางความหมาย (semantic) ไม่ใช่
+  ผลจากขอบเขต validation ที่ MySQL บังเอิญมีให้ — ถ้า Q-2d เขียน zero-value
+  ลงจริง (ปี 1) แล้วไม่ error เลย และ `WHERE due_at <= NOW()` ก็ยัง match
+  ค่านั้นอยู่ดี (ปี 1 น้อยกว่า NOW() เสมอ) จะดูเหมือนไม่มีอะไรพังทั้งที่มีค่า
+  นอกช่วงที่ MySQL รับประกันจริง ๆ (index ordering/timezone/driver
+  round-trip) ค้างอยู่ในตาราง
+- **R11 (รอบ code-reviewer ที่สาม) — ตัด `due_at` DEFAULT ทิ้ง เพราะ
+  `DATETIME` ไม่ normalize timezone เหมือน `TIMESTAMP`**: จุดที่ round 2 พลาด
+  ไม่ได้พูดถึงเลย — `TIMESTAMP` normalize เป็น UTC ตอนเขียนและแปลงกลับตอน
+  อ่านด้วย session timezone ซึ่งเป็นเหตุผลที่ DSN's `loc=UTC`
+  (`internal/platform/mysql/pool.go`) ทำให้ app เขียนตรงกับ column default
+  ได้ "โดยอัตโนมัติ" — `DATETIME` **ไม่แปลงอะไรเลย** เก็บตัวเลข wall-clock
+  ตรง ๆ ทำให้ `DEFAULT CURRENT_TIMESTAMP` กลายเป็น**นักเขียนคนที่สอง**ที่ใช้
+  system timezone ของ MySQL คนละอันกับที่ app ใช้ (UTC) — ที่ตรงกันวันนี้เพราะ
+  container dev ตั้ง UTC โดยบังเอิญ (`docker-compose.yml` ไม่ตั้ง `TZ`/
+  `time_zone` เลย) **สถานการณ์ที่จะพังจริงบน VPS ในอนาคต**: container ตั้ง
+  timezone อื่น (เช่น `Asia/Bangkok`) → การ์ดที่ insert โดยไม่ระบุ `due_at`
+  เอง จะได้ค่าที่เพี้ยนไป 7 ชั่วโมง (เร็วกว่า UTC) ทำให้การ์ดใหม่**มองไม่เห็น
+  ใน query "due now" นานถึง 7 ชั่วโมง** — ขัดกับจุดประสงค์ทั้งหมดของ column
+  นี้ที่ต้องการให้การ์ดใหม่โผล่ทันทีไม่มี special case; ตอน `TIMESTAMP`
+  ปัญหานี้**เกิดไม่ได้เลยในทางโครงสร้าง** — **แก้: ตัด `DEFAULT
+  CURRENT_TIMESTAMP` ออกจาก `due_at` ทิ้ง บังคับให้ Q-2d ต้องส่งค่ามาเองเสมอ**
+  (นักเขียนเดียว, timezone เดียว — ต้นทุนแทบเป็นศูนย์เพราะ repository ของ
+  Q-2d ต้องคำนวณค่าจริงส่งมาอยู่แล้วจาก R10 ข้างบน) — `last_reviewed_at` และ
+  `review_logs.reviewed_at` ยังคงเป็น `TIMESTAMP` ตามเดิม เพราะสองคอลัมน์นี้
+  เก็บเวลาที่**เกิดไปแล้ว**เสมอ (อยู่ในช่วง 1970-2038 ของ `TIMESTAMP` แน่นอน)
+  จึงไม่มีปัญหาเพดานที่ทำให้ต้องเปลี่ยนเป็น `DATETIME` และยังได้ประโยชน์จาก
+  UTC round-trip ที่ `TIMESTAMP` ให้ฟรีต่อไป
+- **ไม่มี mutation ระดับ Go ที่ยืนยัน R11 ได้ — บันทึกไว้ตรง ๆ**: การเติม
+  `DEFAULT CURRENT_TIMESTAMP` กลับเข้าไปใน `due_at` เป็น schema-level change
+  ล้วน ๆ ไม่มี Go code จุดไหนอ่าน/เขียน schema default นี้เลยในรอบนี้ (ไม่มี
+  repository code จนกว่าจะถึง Q-2d) — จึงไม่มี test suite ไหนจะจับ regression
+  แบบนี้ได้ในตอนนี้ การป้องกันตอนนี้มีแค่ระดับ code review + คอมเมนต์ใน
+  migration ที่บันทึกเหตุผลไว้ตรง ๆ ว่าทำไมห้ามเติมกลับ
 - **`review_logs` เพิ่ม `UNIQUE KEY` บน `recall_attempt_id` (เพิ่มในรอบ
   code-reviewer)**: สัญญาของ card advance policy ข้างบนคือ "1 attempt row = 1
   advance เป๊ะ" — UNIQUE constraint ทำให้ double-application เป็นไปไม่ได้ใน
@@ -1815,6 +1851,60 @@ iteration ก่อน merge เท่านั้น (ticket ยังไม่
     กลับเป็น 0 แถวเหมือนก่อนทดสอบ, volume `self-learning_mysql_data` ยืนยัน
     ว่ายังอยู่ทั้งก่อนและหลัง `docker compose down` (ไม่มี `-v`)
 
+### รอบ code-reviewer 2 (NO-SHIP → แก้ครบ)
+
+Round 2's DATETIME fix (R8) เปลี่ยน column type จริง แต่คำอธิบายที่ผูกอยู่กับ
+มันไม่ได้ re-test ตาม — reviewer เจอ 2 จุดที่เป็นผลตรงจาก R8 เอง และ 1 จุดที่
+เป็น process issue (schema ที่ hand-apply ไว้ไม่ตรงกับไฟล์ migration แล้ว):
+
+| # | ปัญหา | แก้อย่างไร |
+|---|---|---|
+| R10 | คำอธิบายเดิม (round 2) อ้างว่า Go zero-value `time.Time` เขียนลง `DATETIME` ไม่ได้เพราะขอบล่างคือปี 1000 — **เท็จ**: พิสูจน์จริงว่า `INSERT ... '0001-01-01 00:00:00'` ลง `DATETIME` **สำเร็จ** (MySQL "documents" ช่วงนี้ ไม่ได้ "validate" มัน) — เป็นเลขที่ถูกต้องตอนคอลัมน์ยังเป็น `TIMESTAMP` (ตอนนั้น `ERROR 1292` จริง) แต่พอเปลี่ยนเป็น `DATETIME` มีคนแก้ 1970→1000 โดยไม่ insert ทดสอบซ้ำ | เก็บกฎเดิมไว้ ("ห้าม persist zero-value") แต่เปลี่ยนเหตุผลเป็น semantic ล้วน: "ไม่เคย review ต้องแปลว่า due ทันที ไม่ใช่ due ปี 1" ไม่ใช่ผลจาก validation boundary ที่ MySQL บังเอิญมีให้ — แก้ทั้งใน `migrations/007_review.sql` และ `quiz.md` |
+| R11 | `DATETIME` ไม่ normalize timezone เหมือน `TIMESTAMP` (`TIMESTAMP` เขียน UTC/อ่านแปลงกลับด้วย session timezone ซึ่งเป็นเหตุผลที่ DSN's `loc=UTC` ทำให้ app เขียนตรงกับ column default ได้อัตโนมัติ) — `DEFAULT CURRENT_TIMESTAMP` บน `due_at` ที่เหลืออยู่จาก round 2 จึงกลายเป็นนักเขียนคนที่สองที่ใช้ system timezone ของ MySQL คนละอันกับที่ app ใช้ (UTC) ตรงกันวันนี้แค่เพราะ container dev ตั้ง UTC โดยบังเอิญ — บน VPS จริงที่ timezone อื่น การ์ดที่ insert แบบพึ่ง default จะมองไม่เห็นใน query "due now" นานหลายชั่วโมง | ตัด `DEFAULT CURRENT_TIMESTAMP` ออกจาก `due_at` ทิ้ง บังคับ Q-2d ต้องส่งค่ามาเอง (นักเขียนเดียว, timezone เดียว) — บันทึกเหตุผลไว้ในคอมเมนต์ migration กัน "ปรับให้สะดวก" กลับมาเติม default คืน |
+| Also (process) | Schema ที่ hand-apply ไว้บน `self-learning_mysql_data` (จาก round 2's manual drop+recreate) ไม่ตรงกับไฟล์ migration ที่แก้ล่าสุดแล้ว — reviewer ตรวจสอบ live schema ไม่ได้ (permission denied ตอน bring up project) | ไม่ diff ปัญหานี้ — กำจัดทิ้ง: `DROP TABLE review_logs, review_cards` จริง (ยืนยัน 0 แถวทั้งคู่ก่อน drop), ลบแถว `schema_migrations` version 7, restart API container ให้ auto-migrate สร้างใหม่จาก `007_review.sql` ตรง ๆ (ไม่ใช่ hand-pipe SQL อีกแล้ว) — path เดียวกับที่เครื่องสดจริงจะได้ |
+
+**ไม่มี Go-level mutation สำหรับ R11 — บันทึกไว้ตรง ๆ ตามที่ reviewer เรียกร้อง**:
+การเติม `DEFAULT CURRENT_TIMESTAMP` กลับเข้า `due_at` เป็น schema-only change
+ไม่มี repository/Go code จุดไหนอ่านหรือพึ่งพา schema default นี้เลยในรอบนี้
+(ไม่มี repository code จนกว่าจะถึง Q-2d) จึงไม่มี test suite ระดับ Go ที่จะจับ
+regression แบบนี้ได้ตอนนี้ — การป้องกันเดียวที่มีคือ code review + คอมเมนต์ใน
+migration ที่บันทึกเหตุผลไว้ตรง ๆ
+
+**หลักฐาน live หลังกำจัด drift** (`docker compose -p self-learning up -d
+--build` จาก worktree, ใช้ volume `self-learning_mysql_data` เดิม; drop
+ตาราง + ลบ `schema_migrations` version 7 + `docker compose restart api` ให้
+auto-migrate สร้างใหม่ — ไม่ใช่ hand-pipe SQL):
+
+- **`recall_attempts`: 13 ก่อน DROP → 13 หลัง migrate ใหม่** (ตรวจก่อน DROP
+  ว่า `review_cards`/`review_logs` มี 0 แถวทั้งคู่จริง ไม่มีข้อมูลเสียหาย)
+- **`SHOW CREATE TABLE review_cards`** (จาก auto-migrate ล้วน ๆ): `due_at
+  datetime NOT NULL` — **ไม่มี `DEFAULT` เลย** (ตัดตามที่ R11 กำหนด), `id` PK,
+  `UNIQUE KEY uniq_review_cards_check_key`, `CONSTRAINT
+  chk_review_cards_ease_factor_floor CHECK ((ease_factor >= 1.30))`, `KEY
+  idx_review_cards_due_at (due_at)` — ตรงตามที่ออกแบบทุกจุด
+- **`SHOW CREATE TABLE review_logs`**: `due_at_before`/`due_at_after
+  datetime NOT NULL`, **`UNIQUE KEY uniq_review_logs_recall_attempt
+  (recall_attempt_id)` ปรากฏเดี่ยว ๆ ไม่มี `KEY fk_review_logs_recall_attempt`
+  แยกซ้ำ** (MySQL ใช้ UNIQUE KEY เดียวกันตอบทั้ง uniqueness และ FK's index
+  requirement — ตรงกับ baseline ที่ reviewer คาดไว้เป๊ะ), `CONSTRAINT
+  fk_review_logs_recall_attempt FOREIGN KEY ... REFERENCES recall_attempts
+  (id)`, `CONSTRAINT chk_review_logs_quality_range CHECK ((quality <= 5))`
+- **R10 พิสูจน์ซ้ำบน schema สด**: `INSERT INTO review_cards (check_key,
+  due_at) VALUES (..., '0001-01-01 00:00:00')` → **สำเร็จ** (ยืนยันคำอธิบาย
+  เดิมเท็จจริง, ตอนนี้แก้เป็นเหตุผล semantic แล้ว)
+- **R8 พิสูจน์ซ้ำบน schema สด**: `TIMESTAMP` ยัง reject `2040-01-01` ด้วย
+  `ERROR 1292`; `review_cards.due_at` (`DATETIME`) ยัง accept `2042-06-15`
+  ได้ปกติ
+- **Constraint ทั้ง 5 จุด พิสูจน์ซ้ำครบบน schema สด**: `review_cards.check_key`
+  UNIQUE (`ERROR 1062`), `ease_factor` floor CHECK (`ERROR 3819`),
+  `review_logs.quality` range CHECK (`ERROR 3819`), `review_logs`'s FK
+  (`ERROR 1452`), `review_logs.recall_attempt_id` UNIQUE (`ERROR 1062`)
+- **Idempotency ซ้ำ**: pipe `007_review.sql` ตรง ๆ อีกครั้งหลัง auto-migrate
+  สร้างไปแล้ว — ผ่านไม่มี error
+- ลบแถวทดสอบทั้งหมดออกหลังพิสูจน์เสร็จ — `review_cards`/`review_logs` กลับเป็น
+  0 แถว, `recall_attempts` ยืนยัน **13 แถวเหมือนเดิม**, volume ยืนยันว่ายังอยู่
+  หลัง `docker compose down` (ไม่มี `-v`)
+
 ### Review focus
 
 - Wozniak's step 6 บอกตรง ๆ ไม่กำกวมว่าห้ามเปลี่ยน E-Factor ตอน q<3 ("without
@@ -1824,6 +1914,8 @@ iteration ก่อน merge เท่านั้น (ticket ยังไม่
   `review_cards.id` เลย ทั้งที่ log แต่ละแถวก็ผูกกับการ์ดหนึ่งใบเสมอ?
 - ทำไม `nextInterval` ถึงปัดเข้าใกล้ที่สุด (`round`) แทนที่จะปัดขึ้นเสมอ
   (`ceiling`) ตามที่ Wozniak's step 3 ระบุไว้ตรง ๆ?
+- ทำไม `due_at` ถึงตัด `DEFAULT CURRENT_TIMESTAMP` ทิ้งหลังเปลี่ยนเป็น
+  `DATETIME` ทั้งที่ตอนเป็น `TIMESTAMP` มี default อยู่ได้โดยไม่มีปัญหาอะไร?
 
 ### จงใจไม่ทำในรอบนี้
 
@@ -1839,4 +1931,4 @@ iteration ก่อน merge เท่านั้น (ticket ยังไม่
   จริงเบี่ยงไปแล้วโดยมีเหตุผลบันทึกอยู่ที่นี่และใน Q-2a/Q-2b, ไม่ใช่ scope
   ของ ticket นี้ที่จะไปย้อนแก้
 
-Status: implemented, round 2 fixes applied post code-review, PR pending
+Status: implemented, round 3 fixes applied post code-review, PR pending

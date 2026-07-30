@@ -36,15 +36,45 @@
 -- column under this repo's sql_mode raises ERROR 1292 (22007). DATETIME
 -- has no such ceiling, at the cost of 1 extra byte of storage per row (5
 -- vs 4) — irrelevant next to a column whose entire purpose breaks past
--- 2038. DEFAULT CURRENT_TIMESTAMP still works on DATETIME (MySQL 5.6.5+),
--- so a fresh card still defaults to "due immediately".
+-- 2038.
+--
+-- No DEFAULT on due_at, even though DATETIME still accepts
+-- "DEFAULT CURRENT_TIMESTAMP" syntactically (dropped deliberately, not an
+-- oversight): TIMESTAMP normalizes to UTC on write and converts back on
+-- read using the session time zone, which is what made the app's UTC
+-- writes (internal/platform/mysql/pool.go's loc=UTC DSN param) agree with
+-- a TIMESTAMP column's own default automatically. DATETIME does no such
+-- conversion — it stores literal wall-clock digits. A DEFAULT here would
+-- be a SECOND writer, using MySQL's system time zone, and it only matches
+-- the app's UTC writes because this container happens to run UTC today.
+-- If the eventual VPS container's time zone differs, a default-inserted
+-- due_at would be silently wrong by that offset while every other
+-- due_at (written explicitly by Q-2d's own inserts) stays correct — a
+-- new card would not surface in a due-now query for hours, for a column
+-- whose whole purpose is "no special case". One writer, one time zone:
+-- Q-2d's repository must always supply due_at itself.
+--
+-- That value must never be Go's zero-value time.Time either, even though
+-- (unlike TIMESTAMP) DATETIME's documented range starts at year 1000 but
+-- does not actually enforce it — MySQL accepts 0001-01-01 without error
+-- under this repo's sql_mode, proven live. The constraint is semantic, not
+-- a validation boundary MySQL happens to provide: "never reviewed" must
+-- mean "due now", not "due in year 1". The zero value would satisfy
+-- "<= NOW()" today, so nothing would look broken while an
+-- out-of-supported-range value sits in the table with no guarantee from
+-- MySQL about index ordering, time zone conversion, or driver
+-- round-tripping. Same rule for due_at_before/due_at_after below.
 CREATE TABLE IF NOT EXISTS review_cards (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     check_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     ease_factor DECIMAL(4,2) UNSIGNED NOT NULL DEFAULT 2.50,
     interval_days INT UNSIGNED NOT NULL DEFAULT 0,
     repetition INT UNSIGNED NOT NULL DEFAULT 0,
-    due_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    due_at DATETIME NOT NULL,
+    -- TIMESTAMP, not DATETIME: this holds a past event time, always within
+    -- TIMESTAMP's 1970-2038 range, so it keeps the UTC round-trip
+    -- guarantee due_at just gave up above — do not "consistently" convert
+    -- this one too.
     last_reviewed_at TIMESTAMP NULL,
     UNIQUE KEY uniq_review_cards_check_key (check_key),
     CONSTRAINT chk_review_cards_ease_factor_floor CHECK (ease_factor >= 1.30),
@@ -91,7 +121,11 @@ CREATE TABLE IF NOT EXISTS review_logs (
     -- reviewed_at is the domain event time the SM-2 formula was applied
     -- against (Advance's reviewedAt parameter) — created_at is merely when
     -- this audit row was written, which Q-2d's advance policy may not run
-    -- at the exact moment the triggering attempt happened.
+    -- at the exact moment the triggering attempt happened. Both are
+    -- TIMESTAMP, not DATETIME, for the same reason as
+    -- review_cards.last_reviewed_at: past event times never need
+    -- DATETIME's extended range, so they keep TIMESTAMP's UTC round-trip
+    -- guarantee.
     reviewed_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_review_logs_quality_range CHECK (quality <= 5),
