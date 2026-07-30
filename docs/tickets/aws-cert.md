@@ -1290,9 +1290,10 @@ Round 2 ของ code review เป็น **NO-SHIP สามข้อ** (N1–
 
 **ทำไมมี**: ระหว่างทำ practice exam ผู้ใช้ต้องนั่งจดเทคนิค/ศัพท์จากเฉลยเอง — เปลี่ยนเป็น
 เปิด session ไหนก็ได้ (model ปกติ: opus) วางโจทย์ + Overall explanation แล้ว skill
-`/aws-exam-note` สรุปเก็บเข้า `content/exam-notes/aws-saa-c03/` (index / keyword-map /
-traps / glossary / patterns รายหมวด / review-again) ให้รูปแบบเดียวกันเสมอ แล้ว quiz
-ทวนทันที · หลังสรุปผู้ใช้ถามต่อได้ — คำถาม follow-up และ quiz ที่ตอบผิดถูกจดลง
+`/aws-exam-note` แปลเฉลยเป็นไทยง่าย ๆ แล้ว**ผสาน**บทเรียนเข้า
+`content/exam-notes/aws-saa-c03/notes.md` — เอกสารสรุปไฟล์เดียว (เทคนิคอ่านโจทย์ /
+เนื้อหารายหมวดพร้อมตาราง+analogy / ศัพท์ / checklist) **ไม่มี quiz** (ผู้ใช้ระบุ —
+practice exam คือตัวทดสอบอยู่แล้ว) · หลังสรุปผู้ใช้ถามต่อได้ — คำถามเชิงเนื้อหาถูกจดลง
 `review-again.md` อัตโนมัติเป็นจุดอ่านซ้ำก่อนสอบ · workflow เต็มอยู่ใน
 `.claude/skills/aws-exam-note/SKILL.md` (single source of truth — ตั้งใจไม่เขียนซ้ำที่นี่)
 
@@ -1300,8 +1301,9 @@ traps / glossary / patterns รายหมวด / review-again) ให้ร�
 โดยตรง — เป็นงานเลขานุการจัดเก็บ ไม่ใช่ lesson/code · CLAUDE.md มี exception bullet
 ชี้มาที่ skill แล้ว · escalation ไป fable ยังต้องขอ permission ทุกครั้งตามเดิม
 
-- **AWS-EN1** — โครงไฟล์โน้ต 6 ไฟล์ + SKILL.md + seed entry แรก
-  (KDS → Lambda → DynamoDB: anonymize PII in transit)
+- **AWS-EN1** — `notes.md` (เอกสารสรุปสังเคราะห์ข้ามโจทย์) + `review-again.md` +
+  SKILL.md · seed จากสรุป 6 ข้อจริงของผู้ใช้ (Kinesis anonymization, Auto Scaling,
+  S3 hotlinking, FSx SharePoint, FSx ONTAP, SAML federation)
 - **AWS-EN2** (ยังไม่เริ่ม) — หน้าเว็บ read-only: Next.js static export อ่าน markdown
   ชุดนี้ตอน build (ไม่แตะ Go API / MySQL — additive ล้วน ๆ) ทำเมื่อไหร่ก็ได้
   ไม่ gate กับ AWS-C* และไม่ block อะไร
@@ -1315,13 +1317,16 @@ ticket record ครบ, rebase ฐานจาก aws-c0-pilot → develop) + s
 (Firehose destinations เปิดปลาย, traps เรียงตามตัวนับ, category tie-break, quiz 2–4,
 fable ต้องขอ permission) + follow-up loop / `review-again.md` ตาม requirement
 เพิ่มของผู้ใช้ระหว่าง ticket · round 2 = FIX เฉพาะ feature ใหม่ 3 จุด (ตัวนับ `เจอซ้ำ`
-+ ordering, scope filter follow-up, id scheme + ตัวคั่น) + 4 minor → แก้ครบ —
++ ordering, scope filter follow-up, id scheme + ตัวคั่น) + 4 minor → แก้ครบ ·
+round 3 = **redesign ตาม feedback ผู้ใช้** ("เหมือนไม่ได้อะไร"): ยุบ 6 ไฟล์
+(index/keyword-map/traps/glossary/patterns) เหลือ `notes.md` เอกสารสังเคราะห์
+ไฟล์เดียวตามตัวอย่างจริงที่ผู้ใช้ให้, ตัด quiz ออก, เพิ่มการแปลเฉลยไทยต่อข้อ —
 PR pending review
 
 **Review focus (AWS-EN1)**:
 
-1. ทำไมสถิติใน `index.md` ต้อง recompute จากไฟล์จริงทุกรอบ แทนที่จะ +1?
-2. ทำไม skill บังคับอ่าน `traps.md` / `glossary.md` / `keyword-map.md` เต็มไฟล์ทุกรอบ
-   แต่ `patterns/*.md` ให้ grep เอา?
-3. ประโยคเดิมใน seed "PII ดิบไม่เคยแตะ storage ใดเลย" ผิดตรงไหน ทำไมต้องแก้เป็น
-   "ไม่เคย landing ใน data store ปลายทาง"?
+1. ทำไม skill ต้อง**ผสาน**บทเรียนเข้า section เดิมของ `notes.md` แทนการ append
+   entry รายข้อต่อท้ายไฟล์?
+2. ทำไมจำนวนโจทย์ในหัวไฟล์ต้อง recompute จาก comment `<!-- ids: -->` แทนการ +1?
+3. ทำไมยังต้องมี currency check เทียบ `aws-currency-checklist.md` ทุกรอบ ทั้งที่
+   เฉลยของ practice exam ก็เขียนโดยคนที่รู้ AWS อยู่แล้ว?
