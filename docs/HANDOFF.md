@@ -125,8 +125,10 @@ wiring พร้อม debounced submit, unload flush, visit-based identity guar
 
 ## 6. Pipeline การผลิตข้อสอบ (ส่วนที่เสี่ยงหายมากที่สุด)
 
-เป้าหมาย ≈ **550 ข้อ** แบ่งตามน้ำหนัก domain (≈165 / 143 / 132 / 110 ข้อ)
-ผลิตทีละ domain มี 4 gate:
+เป้าหมาย ≈ **250 ข้อ** (4–6 ข้อ/concept, ปรับจาก ~11/550 เดิมใน AWS-C0 เพราะแอปนี้ไม่ใช่ exam
+simulator — ดู `docs/tickets/aws-cert.md`'s Template section) แบ่งตามน้ำหนัก domain
+(≈60–90 / 52–78 / 48–72 / 40–60 ข้อ)
+ผลิตทีละ concept (ไม่ใช่ทีละ domain — ดู token-efficiency skill) มี 4 gate:
 
 1. `lesson-writer` (opus) ร่างโจทย์ + answer key + explanation โดย**ทุก
    fact ต้องมี URL ของ AWS official docs กำกับ**

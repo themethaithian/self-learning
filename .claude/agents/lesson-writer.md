@@ -75,27 +75,41 @@ so this section is REQUIRED) → interview angle (how it gets asked).",
 
 ## AWS track
 
-Pinned in AWS-C0 (2026-07-30) from the `vpc-fundamentals`/`s3-security` pilot —
-this is the template for the other 48 AWS lessons, so treat every rule below
-as load-bearing, not a suggestion.
+Pinned in AWS-C0 (2026-07-30, corrected in round 2 code review) from the
+`vpc-fundamentals`/`s3-security` pilot — this is the template for the other
+48 AWS lessons, so treat every rule below as load-bearing, not a suggestion.
 
-- **Rune budget, not a vibe**: `body_md` must stay within **~1,150–1,200 runes
-  per `est_minutes`** — measure (rune count of `body_md`) ÷ `est_minutes`
-  before saving. "Aim for 5–10 minutes" alone produced a 24% overrun on the
-  `s3-security` pilot (1,460 runes/min at `est_minutes: 10`, against
-  `vpc-fundamentals`' fair 1,178/min at `est_minutes: 9`) — largely from
-  restating the same fact in two places. Check for duplication before adding
-  a new section, not after.
+- **Prose-rune ceiling, not a band, and not counting diagrams/tables/code**:
+  measure "prose runes" as `body_md` with every fenced block (` ```...``` `,
+  including mermaid) and every markdown table row (any line starting with
+  `|`) stripped out, then divide by `est_minutes`. Keep that **≤ 950
+  runes/min**. This is a **ceiling**, not the earlier 1,150–1,200 **band** —
+  a band forbids most natural lesson lengths for no reason, and counting
+  fenced/table content taxes exactly what CLAUDE.md wants more of (diagrams).
+  **Derivation** (re-derive this yourself if the corpus changes materially):
+  measured prose-rune rate across all 120 lessons that existed before this
+  round, mean 678 + 3 standard deviations (78) ≈ 909, and the single densest
+  lesson in the whole corpus independent of AWS
+  (`ai-and-llm-systems/online-eval-and-ab-testing`) already runs at 915 —
+  950 sits just above both of those with a little headroom, instead of
+  cutting off the corpus's own existing maximum. Both pilots measure well
+  inside it after correction: `s3-security` 813/min, `vpc-fundamentals`
+  831/min — dense, but the same order as the corpus's other dense lessons
+  (e.g. `designing-data-intensive-applications/latency-percentiles` at 832),
+  not outliers. A lesson within budget is never split just to hit a number.
 - **Explanation format is mandatory and uses bold Thai headers** — the
-  `vpc-fundamentals` style: **โจทย์ถามว่า** / **ทำไมข้อที่ถูกถึงถูก** /
-  **ทำไมตัวอื่นผิด** / **Decision rule**, each its own paragraph. `s3-security`'s
-  first draft used flowing prose with inline (ก)(ข)(ค) markers — factually
-  complete but far slower to scan for a reader with 1–2h/day who needs to
-  jump straight to the decision rule. Bold headers are not optional styling.
-- **`body_md` REQUIRES a "คำในโจทย์ → คำตอบที่ต้องมองก่อน" exam-cue section**
-  (stem keyword/phrase → the control or service to check first) — verifier
-  feedback on both pilot lessons named this the single highest-value section
-  for this reader. Skipping it is a FAIL, not a style choice.
+  style now used by both pilots: **โจทย์ถามว่า** / **ทำไมข้อที่ถูกถึงถูก** /
+  **ทำไมตัวอื่นผิด** / **Decision rule**, each its own paragraph, with wrong
+  options as a bulleted list (`- *option name* — reason`). Bold headers are
+  not optional styling.
+- **`body_md` REQUIRES a "คำในโจทย์ → คำตอบที่ต้องมองก่อน" exam-cue section**,
+  and it is pinned to **table form** (`| คำในโจทย์ | คำตอบที่ต้องมองก่อน |`),
+  matching both pilots — not a bullet list (an earlier `vpc-fundamentals`
+  draft used bullets under a differently-named header; both the name and
+  the table form are now fixed so nobody has to choose again). Verifier
+  feedback on both pilot lessons named this the single highest-value
+  section for this reader. Skipping it, or shipping it as a bullet list,
+  is a FAIL, not a style choice.
 - **Recall checks: 4–6 per concept** (ceiling stays 15 —
   `domain.maxRecallChecks`, headroom only, do not target it). This replaces
   the old ~11/concept target: the app is not an exam simulator — the user
@@ -109,12 +123,15 @@ as load-bearing, not a suggestion.
   Both pilots did this (S3 Transfer Acceleration, IAM Access Analyzer,
   presigned URLs as distractors) — this is a documented decision, not
   something a reviewer should re-flag.
-- **Vary which option carries the compound clause.** In 3 of the 8 pilot
-  questions the correct answer was also the longest option, because it had
-  to state a compound condition precisely (e.g. "compliance mode ... including
-  the root user"). That correlation is a guessable tell the aggregate
-  guessability metric does not catch at low n. Consciously move the compound
-  clause onto a distractor sometimes instead of always onto the correct answer.
+- **At most one of a lesson's 4–6 correct answers may be the longest
+  option.** Measured across both pilots: exactly 2 of the 8 questions have
+  the correct answer as the longest option (one per lesson), each because
+  the correct answer had to state a compound condition precisely (e.g.
+  "compliance mode ... including the root user"). That correlation is a
+  guessable tell the aggregate guessability metric does not catch at low n.
+  This rule is checkable per lesson at write time — count it before saving,
+  and if a second answer would also be the longest option, move the
+  compound clause onto a distractor instead.
 - **Every AWS fact needs an official docs URL you actually fetched** for this
   lesson, not recalled from training data — an unverifiable fact is omitted
   and reported to the verifier, never guessed. Open
@@ -122,6 +139,26 @@ as load-bearing, not a suggestion.
   contradicts it is wrong until re-checked live.
 - **Quotes need to be verbatim or not quotes at all**: only wrap text in
   quotation marks when you have fetched the exact string from the cited
-  page. A paraphrase that merely sounds like an AWS doc must not carry
-  quotation marks — `s3-security`'s pilot round shipped a paraphrase quoted
-  as if verbatim and it did not survive verification.
+  page. If you quote a fragment of a longer sentence rather than the whole
+  sentence, open it with `...` so a reader can tell it is a fragment, and
+  keep the source's own emphasis (e.g. bold) inside the quote — dropping it
+  changes which word carries the weight of the sentence. A paraphrase that
+  merely sounds like an AWS doc must not carry quotation marks at all —
+  `s3-security`'s pilot round shipped a paraphrase quoted as if verbatim
+  and it did not survive verification.
+- **Position balance (longest/shortest/middle/index) is a measurement, not
+  a design target.** Both pilots happen to land 2/2/2/2 across option
+  indices, but that was incidental, not something either was written
+  toward — `cmd/mcq-guessability` itself labels position as "content-quality
+  signal only, not user-facing" because `web/lib/shuffle.ts` reshuffles
+  options at render time. Do not write toward a specific position
+  distribution; it is checked after the fact, not planned during writing.
+- **End each Thai sentence/paragraph in `body_md` with a trailing period.**
+  Sampled across `domain-driven-design` and a slice of
+  `designing-data-intensive-applications`/`ai-and-llm-systems`, lines ending
+  a Thai sentence carry a period roughly 3 times as often as not (233 vs 77
+  in the sample counted for this round) — that is the corpus's real
+  majority convention, not "no period," which is what an earlier draft of
+  this rule assumed without checking. The two AWS pilots disagreed with
+  each other on this (one used periods rarely, the other not at all) before
+  this round; write toward the period from now on.
