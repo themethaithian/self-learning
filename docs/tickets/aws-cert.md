@@ -1314,7 +1314,9 @@ currency check, KDS retention fact, refs rule ขัดกันเอง, excep
 ticket record ครบ, rebase ฐานจาก aws-c0-pilot → develop) + suggested หลัก ๆ
 (Firehose destinations เปิดปลาย, traps เรียงตามตัวนับ, category tie-break, quiz 2–4,
 fable ต้องขอ permission) + follow-up loop / `review-again.md` ตาม requirement
-เพิ่มของผู้ใช้ระหว่าง ticket — PR pending review
+เพิ่มของผู้ใช้ระหว่าง ticket · round 2 = FIX เฉพาะ feature ใหม่ 3 จุด (ตัวนับ `เจอซ้ำ`
++ ordering, scope filter follow-up, id scheme + ตัวคั่น) + 4 minor → แก้ครบ —
+PR pending review
 
 **Review focus (AWS-EN1)**:
 

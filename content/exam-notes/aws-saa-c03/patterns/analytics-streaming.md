@@ -30,5 +30,5 @@
 **ศัพท์:** PII · anonymization · in transit / at rest · least privilege · data lake ·
 data warehouse · NoSQL → [glossary](../glossary.md)
 
-<sub>ที่มา: TD 20260730-kds-pii · refs: aws.amazon.com/kinesis/data-streams/ ·
+<sub>ที่มา: TD-20260730-kds-pii · refs: aws.amazon.com/kinesis/data-streams/ ·
 docs.aws.amazon.com/lambda/latest/dg/with-kinesis.html · 2026-07-30</sub>

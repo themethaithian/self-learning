@@ -39,8 +39,9 @@ management-governance · ml-ai · cost-optimization
 
 ## ขั้นตอนต่อ 1 รอบ ingest
 
-1. แยก input เป็นรายข้อ (user อาจวางหลายข้อติดกัน) · ตั้ง id ต่อข้อ: ใช้เลขชุด/ข้อ
-   ถ้า user แนบมา (เช่น `TD set3·Q17`) ไม่มีก็ใช้ `YYYYMMDD-<slug สั้น>` — ห้ามหยุดถาม
+1. แยก input เป็นรายข้อ (user อาจวางหลายข้อติดกัน) · ตั้ง id ต่อข้อ ขึ้นต้นด้วย
+   provider เสมอ: `TD-set3-Q17` ถ้า user แนบเลขชุด/ข้อ ไม่มีก็ `TD-YYYYMMDD-<slug สั้น>`
+   — ห้ามหยุดถาม · entry ที่ merge หลายโจทย์ คั่น id ด้วย `,`
 2. อ่าน `index.md` + `keyword-map.md` + `traps.md` + `glossary.md` เต็มไฟล์
    แล้ว Grep `patterns/*.md` ด้วยชื่อ service / คำ signal ของข้อนั้น
 3. ต่อข้อ สกัด 4 อย่าง:
@@ -58,11 +59,14 @@ management-governance · ml-ai · cost-optimization
 7. ตอบ user เป็นไทย: bullet สั้น ๆ ต่อข้อว่าอะไรใหม่/อะไร merge เก็บไว้ที่ไหน แล้ว
    **จบด้วย quiz MCQ 2–4 ข้อ** (ก/ข/ค, distractor ต้อง plausible) ทวนสิ่งที่เพิ่งเก็บ
 8. **Follow-up loop (ห้ามข้าม)** — หลังสรุป/เฉลย quiz:
-   - user ถามต่อเรื่องไหน → ตอบให้เข้าใจ แล้วถือว่านั่นคือจุดที่ยังไม่เข้าใจ
-     **จดลง `review-again.md` ทันทีโดยไม่ต้องรอสั่ง** (template ด้านล่าง)
+   - user ถามต่อ**เชิงเนื้อหา AWS/เทคนิคสอบ** → ตอบให้เข้าใจ แล้วถือว่านั่นคือจุดที่
+     ยังไม่เข้าใจ **จดลง `review-again.md` ทันทีโดยไม่ต้องรอสั่ง** (template ด้านล่าง)
+     · คำถามเชิง process/ไฟล์/git/รูปแบบโน้ต ตอบอย่างเดียว **ไม่จด**
    - quiz ตอบผิดข้อไหน → เฉลยพร้อมอธิบายว่าตัวเลือกที่ผิด ผิดเพราะอะไรทุกตัว
      แล้วจดจุดนั้นลง `review-again.md` เหมือนกัน
-   - จุดเดิมสะดุดซ้ำ → อัปเดตรายการเดิม (+วันที่ล่าสุด) ไม่สร้างรายการซ้ำ
+   - จุดเดิมสะดุดซ้ำ → รายการเดิม: บวกตัวนับ `**เจอซ้ำ:** N` + อัปเดตวันที่ล่าสุด
+     ไม่สร้างรายการซ้ำ · เรียงรายการตามตัวนับ มาก→น้อย (สมมาตรกับ traps.md)
+   - เพิ่มรายการแรก → ลบบรรทัด placeholder ในไฟล์ทิ้ง
 
 ## กติกา merge / กันซ้ำ (ผลลัพธ์ต้อง idempotent)
 
@@ -76,8 +80,9 @@ management-governance · ml-ai · cost-optimization
   **ห้ามบวกตัวนับและสถิติ**
 - **สถิติใน index.md ห้าม increment** — recompute จากไฟล์จริงทุกรอบ:
   โจทย์ = จำนวน id ไม่ซ้ำในบรรทัด `ที่มา` รวมทุก patterns/ · pattern entries =
-  จำนวน `## ` ใน patterns/*.md · traps = จำนวน `## ` ใน traps.md · ศัพท์ = จำนวนแถว
-  ตาราง glossary · จุดอ่านซ้ำ = จำนวน `## ` ใน review-again.md
+  จำนวน `## ` ใน patterns/*.md · traps = จำนวน `## ` ใน traps.md · ศัพท์ = จำนวน
+  data row ของตาราง glossary (ไม่นับ header และแถวคั่น `|---|`) · จุดอ่านซ้ำ =
+  จำนวน `## ` ใน review-again.md
   (วางโจทย์ซ้ำหรือรอบก่อนนับพลาด ก็ converge ที่เลขเดียวกัน)
 
 ## Templates
@@ -99,10 +104,12 @@ management-governance · ml-ai · cost-optimization
 
 **เก็บเพิ่ม:** <fact ข้างเคียงที่มีประโยชน์ ถ้ามี — ไม่มีให้ตัดหัวข้อนี้ทิ้ง>
 
+⚠ currency: หรือ ⚠ ต้อง verify: <optional — วางตรงนี้เมื่อขั้นตอน 5 หรือ escalation สั่ง>
+
 **ศัพท์:** <ทุกคำที่ entry นี้เพิ่มเข้า glossary คั่นด้วย ·> → [glossary](../glossary.md)
 
-<sub>ที่มา: <id> · refs: <URL จากเฉลย หรือ official AWS docs ที่แน่ใจว่ามีจริงเท่านั้น
-— ห้ามเดา> · <YYYY-MM-DD></sub>
+<sub>ที่มา: <id[, id, …]> · refs: <URL จากเฉลย หรือ official AWS docs ที่แน่ใจว่ามีจริง
+เท่านั้น — ห้ามเดา> · <YYYY-MM-DD></sub>
 ```
 
 ### trap (`traps.md`)
@@ -119,16 +126,17 @@ management-governance · ml-ai · cost-optimization
 
 ```markdown
 | Signal ในโจทย์ | นึกถึง | ระวัง |
+|---|---|---|
 ```
 
-### glossary row — ตาราง 2 คอลัมน์ `| ศัพท์ | คำอธิบาย |`
+### glossary row — ตาราง 2 คอลัมน์ (`| ศัพท์ | คำอธิบาย |` + แถวคั่น `|---|---|`)
 
 ### review-again item (`review-again.md`)
 
 ```markdown
 ## <หัวข้อสั้นของจุดที่สะดุด>
 
-- **เมื่อ:** <YYYY-MM-DD> · **entry:** [<ชื่อ pattern>](patterns/<file>.md)
+- **เจอซ้ำ:** N ครั้ง (ล่าสุด YYYY-MM-DD) · **entry:** [<ชื่อ pattern>](patterns/<file>.md)
 - **ที่สงสัย:** <คำถามของ user / ข้อ quiz ที่พลาด แบบ paraphrase>
 - **คำตอบสั้น:** <ไทย 2–4 บรรทัด พออ่านซ้ำแล้วเคลียร์>
 ```
