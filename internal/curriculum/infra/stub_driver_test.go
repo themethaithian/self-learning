@@ -321,6 +321,7 @@ type stubRecallCheckRow struct {
 	question       string
 	expectedAnswer string
 	options        *string
+	explanation    *string
 }
 
 // lessonConceptKey mirrors resolveConceptID's own WHERE predicate — (topic
@@ -509,6 +510,7 @@ func (tb *stubTables) insertRecallCheck(args []driver.NamedValue) (driver.Result
 	row := stubRecallCheckRow{
 		position: argInt64(args[1]), kind: argString(args[2]),
 		question: argString(args[3]), expectedAnswer: argString(args[4]), options: argOptionalString(args[5]),
+		explanation: argOptionalString(args[6]),
 	}
 
 	tb.nextID++
@@ -576,9 +578,13 @@ func (tb *stubTables) lookupRecallChecksByLesson(args []driver.NamedValue) []stu
 		if c.options != nil {
 			options = *c.options
 		}
+		var explanation any
+		if c.explanation != nil {
+			explanation = *c.explanation
+		}
 		rows[i] = stubRow{
 			"position": int(c.position), "type": c.kind, "question": c.question,
-			"expected_answer": c.expectedAnswer, "options": options,
+			"expected_answer": c.expectedAnswer, "options": options, "explanation": explanation,
 		}
 	}
 	return rows

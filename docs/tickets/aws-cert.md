@@ -9,8 +9,11 @@
 
 - **AWS-0** (เอกสารนี้) — รีบาลานซ์ `content/curriculum/aws.json` ให้ตรง exam guide จริง + pin แผนนี้
   (round 2: แก้ currency issues + content-model blocker หลัง code review)
-- **AWS-1** — schema prerequisites (ดูหัวข้อ blocker) + เขียนคลังข้อสอบตามแผนด้านล่าง คนละ ticket
-  จาก AWS-0 เพราะแตะ `internal/` ซึ่ง AWS-0 ไม่แตะ
+- **AWS-1** (เสร็จแล้ว, PR pending — ดูหัวข้อ "AWS-1 — explanation + raised check ceiling" ด้านล่าง) —
+  `maxRecallChecks` 5→15 + `explanation` end-to-end คนละ ticket จาก AWS-0 เพราะแตะ `internal/`
+  ซึ่ง AWS-0 ไม่แตะ
+- **AWS-2** (ยังไม่เริ่ม) — multiple-response support (second correct answer, "Select TWO",
+  all-or-nothing scoring) — ดูหัวข้อ blocker ข้อ 3 ด้านล่าง
 
 ## Blueprint ข้อสอบ (verified โดยตรงจาก docs.aws.amazon.com ระหว่าง round 2 ของ ticket นี้)
 
@@ -102,19 +105,20 @@ question store แยก
 
 ### 3 schema change ที่ต้องทำก่อน (นี่คือ AWS-1's งาน ไม่ใช่ AWS-0 — AWS-0 ไม่แตะ `internal/`)
 
-1. **เพิ่ม `maxRecallChecks`** จาก 5 เป็น ~15 (เผื่อ headroom เหนือเป้า 11/concept)
-2. **เพิ่มฟิลด์ `explanation`**: domain (`RecallCheck`) → `recallCheckFileDTO` → importer → API
-   response → หน้า quiz ต้อง render — **นี่คือ schema half ของ Q-3** (Q-3 เดิมคือ "เพิ่ม explanation
-   ให้ MCQ 356 ข้อที่มีอยู่") ดังนั้น Q-3 **ถูก unpause บางส่วน**: schema change ต้องทำ (ทำที่ AWS-1)
-   แต่การเขียน explanation ให้ 356 ข้อเดิมยังพักไว้ได้จนกว่าจะว่าง
+1. ~~**เพิ่ม `maxRecallChecks`** จาก 5 เป็น ~15 (เผื่อ headroom เหนือเป้า 11/concept)~~ — **เสร็จแล้ว
+   ใน AWS-1** (5 → 15) ดูหัวข้อ "AWS-1 — explanation + raised check ceiling" ด้านล่าง
+2. ~~**เพิ่มฟิลด์ `explanation`**: domain (`RecallCheck`) → `recallCheckFileDTO` → importer → API
+   response → หน้า quiz ต้อง render~~ — **เสร็จแล้วใน AWS-1** (schema half ของ Q-3 เท่านั้น — การ
+   เขียน explanation ให้ 356 ข้อเดิมยังพักไว้ตามเดิมจนกว่าจะว่าง)
 3. **เพิ่ม multiple-response support**: ต้องมี second correct-answer representation (เช่น
    `expectedAnswers []string` หรือ MCQ กับ multiple-response แยก type) + UI ฝั่ง quiz ให้เลือกได้
    มากกว่า 1 ตัวเลือก — multi-response เป็น ~15–20% ของข้อสอบจริงและเป็นประเภทที่คนเสียคะแนนมากที่สุด
-   ทิ้งไปไม่ได้
+   ทิ้งไปไม่ได้ — **ยังไม่ทำ นี่คือ AWS-2**
 
-**ข้อจำกัดที่ตามมาจนกว่า (2) จะเสร็จ: ไฟล์คำถามชุดไหนก็ตามที่มี `explanation` จะถูก
-`DisallowUnknownFields()` reject ทั้งไฟล์ตอน import — ห้ามเขียนคำถามที่มี explanation ก่อน schema
-change (2) landed จริงใน MySQL + importer**
+**ข้อจำกัดที่ตามมาจนกว่า (3) จะเสร็จ**: multiple-response ยังเขียนไม่ได้เชิงโครงสร้าง
+(`expected_answer` ยังเป็น string เดี่ยว) — ห้ามเขียนคำถามที่ต้องการ "(Select TWO.)" ก่อน AWS-2
+landed (explanation ตอนนี้เขียนได้แล้วหลัง AWS-1 — ข้อจำกัดเดิมเรื่อง `DisallowUnknownFields()`
+reject ทั้งไฟล์หมดไปแล้ว)
 
 ## Concept → Task statement mapping (tree ที่รีบาลานซ์แล้ว, 50 concept)
 
@@ -360,6 +364,165 @@ migration-and-transfer-services's DMS→+4.3, regions-az-edge's Outposts→+4.2)
    Task 2.1 ได้ด้วย (read replica ช่วย scale) ไม่ได้แปลว่ามันควรย้ายไป Domain นั้น เหมือนกับ
    `vpc-fundamentals`/`hybrid-cross-vpc-connectivity` ที่ยอมรับไว้แล้วตั้งแต่ round 1 ว่า
    chapter-count ตรงสัดส่วนน้ำหนัก แต่ task-serving ข้ามโดเมนได้
+
+</details>
+</details>
+
+## AWS-1 — explanation + raised check ceiling
+
+**สิ่งที่ทำ**: แก้สอง schema blocker ที่ปักไว้ในหัวข้อ "3 schema change ที่ต้องทำก่อน" ด้านบน (ข้อ 1
+และ 2) end-to-end — content file → domain → MySQL → API → หน้า quiz — โดยไม่แตะ multiple-response
+(AWS-2) และไม่แยก concept ใดใน `aws.json`
+
+### สิ่งที่ deliver
+
+- Migration `migrations/008_recall-check-explanation.sql` — `ALTER TABLE recall_checks ADD COLUMN
+  explanation TEXT NULL AFTER options`
+- Domain: `RecallCheck` มีฟิลด์ `explanation` + accessor `Explanation()`, `NewRecallCheck` รับ
+  parameter ใหม่, `maxRecallChecks` 5 → 15, `validateRecallExplanation` (bound ใหม่)
+- Infra: `recallCheckFileDTO` มีฟิลด์ `explanation,omitempty`, `lessonwriter.go`/`lessonreader.go`
+  thread ค่าผ่าน INSERT/SELECT ใหม่, API `recallCheckDTO` มีฟิลด์ `explanation,omitempty`
+- Frontend: `RecallCheck.explanation?: string` ใน `web/lib/api.ts`, `RecallCheckCard.tsx` render
+  ใน stage 3 (reveal) เท่านั้น
+- `docs/tickets/mcq-quality.md` บันทึกตรง ๆ ว่าไม่มี measurement script commit ไว้ในโปรเจกต์
+
+### การตัดสินใจ (พร้อมเหตุผล)
+
+- **`maxRecallChecks` 5 → 15**: แผน AWS ต้องการ ~11 ข้อ/concept (docs/tickets/aws-cert.md) เพดาน 15
+  เผื่อ headroom เหนือเป้านั้นโดยไม่เปิดให้ quiz ต่อ lesson ยาวไม่จำกัด
+- **`minRecallChecks` คงที่ 3 ไม่แก้**: blocker เดิมคือเพดานบน (5×50=250 ไม่พอ 550) ไม่ใช่พื้นล่าง —
+  114 lesson เดิม (DDIA 61 + AI-systems 53) พึ่งพื้นนี้อยู่ บางใบมีพอดี 3 ข้อ การขยับพื้นจะเป็น
+  breaking change ที่ไม่มีอะไรใน scope ของ ticket นี้เรียกร้อง
+- **Length bound ของ explanation = 4000 runes**: ใกล้เคียง `maxOutlineRunes` (โครงสร้างระดับ
+  "ย่อหน้าหลายส่วน" เหมือนกัน) มากกว่า `maxRecallAnswerRunes` (2000, คำตอบสั้นข้อเดียว) แต่ยังห่างจาก
+  `maxBodyMdRunes` (50000, เนื้อหาบทเรียนเต็ม) มาก — เนื้อหาจริงตามสเปค (3 ส่วน หลายประโยค) น่าจะอยู่
+  ราว 500–1500 ตัวอักษร ตัวเลข 4000 จึงเผื่อเกิน ~3 เท่าโดยยังจับค่าที่หลุดขอบเขตจริง ๆ ได้ (เช่น
+  paste เอกสารทั้งฉบับผิดช่อง)
+- **Empty string == absent (ไม่ error)**: `recallCheckFileDTO.Explanation` เป็น `string` ธรรมดา
+  (ไม่ใช่ `*string`) ตาม convention เดิมของไฟล์นี้ (`Q`, `ExpectedAnswer` ก็เป็น `string` เดี่ยว) — ผล
+  คือ JSON ที่ไม่มี key `explanation` เลย กับ JSON ที่มี `"explanation": ""` **decode ออกมาเหมือนกัน
+  ทุกประการ** (ทั้งคู่ได้ `""`) ดังนั้นการแยกสองเคสนี้เป็นไปไม่ได้อยู่แล้วในระดับ decode เว้นแต่เปลี่ยน
+  type เป็น pointer ซึ่งเกินความจำเป็น — `validateRecallExplanation` จึง treat `""` (หลัง trim) เป็น
+  "ไม่มี explanation" เสมอ ไม่ error เด็ดขาด เพราะ 114 lesson เดิมทุกใบไม่มี key นี้และต้อง import
+  ผ่านเหมือนเดิม
+- **DB representation: `NULL` ไม่ใช่ `''`**: ใช้ convention เดียวกับคอลัมน์ `options` ที่มีอยู่แล้วใน
+  ตารางเดียวกัน (ค่า optional → SQL NULL)
+- **Explanation render ที่ไหน**: อยู่ใน stage 3 (reveal) เท่านั้น — ก้อนเดียวกับที่ `expected_answer`
+  โผล่ (กฎเดียวกันทุกประการ: ต้องไม่ถึง DOM ก่อน stage 3) วางไว้หลัง breakdown ตัวเลือก (mcq) /
+  แถบคำตอบ ก่อนปุ่ม Pass/Not yet (short_answer) ใช้ label "Why" (text-xs uppercase text-faint)
+  + ข้อความ (font-thai text-sm leading-[1.8] text-body, `whitespace-pre-wrap` เผื่อผู้เขียนคั่น 3
+  ส่วนด้วยบรรทัดว่าง) ในกล่อง `border-subtle bg-page rounded-xl` — **ไม่มีสีใหม่เลย** ใช้ token เดิม
+  ทั้งหมด (`text-faint`, `text-body`, `bg-page`, `border-subtle`) ที่ verify contrast ไว้แล้วใน
+  frontend-design skill
+
+### Mutation table (11 mutation, ทุกตัว revert กลับหลัง confirm แล้ว)
+
+| # | Mutation | Killed by |
+|---|---|---|
+| 1 | explanation หายที่ hop file→domain (`lessonfile.go`'s `toDomain` ส่ง `""` แทน `rc.Explanation`) | `TestLoadLesson_ManyChecksWithExplanation` |
+| 2 | explanation หายที่ hop domain→DB เขียน (`lessonwriter.go`'s `insertRecallCheck` ไม่ set ค่า) | `TestRepositorySaveLesson_RecallChecksReplacedInOrder`, `TestRepositorySaveLesson_RoundTripManyChecksExplanationNotMixedUp` |
+| 3 | explanation หายที่ hop DB→domain อ่าน (`lessonreader.go`'s `toRecallCheck` รับ `""` แทน `explanation.String`) | `TestRepositoryLessonByConcept_HappyPath`, `TestRepositorySaveLesson_RoundTripManyChecksExplanationNotMixedUp` |
+| 4 | explanation หายที่ hop domain→API DTO (`handler.go`'s `toRecallCheckDTOs` ไม่ set `Explanation`) | `TestHandlerGetLesson_Success` |
+| 5 | explanation หายที่ hop API→UI (`RecallCheckCard.tsx` ไม่ render `check.explanation` เลย) | 3 เคสใน `describe("RecallCheckCard — explanation (AWS-1)")` |
+| 6 | explanation render ก่อน stage 3 (ย้ายบล็อกออกไปนอก `stage === "reveal"`) | เคสเดียวกับ #5 ("never puts explanation... before stage 3") |
+| 7 | optionality หลุด (`validateRecallExplanation` reject string ว่าง) | `TestNewRecallCheck` (เคส valid, whitespace-only) + `TestLoadLesson_Valid` (fixture จริงไม่มี explanation) |
+| 8 | `maxRecallChecks` revert กลับ 5 | `TestNewLesson` ("fifteen recall checks"), `TestLoadLesson_ManyChecksWithExplanation`, `TestRepositorySaveLesson_RoundTripManyChecksExplanationNotMixedUp` |
+| 9 | `minRecallChecks` bound หลุด | `TestNewLesson` ("two recall checks"), `TestLoadLesson_Errors` ("two recall checks") |
+| 10 | length bound หลุด | `TestNewRecallCheck` ("explanation exceeding max runes") |
+| 11 | explanation ผูกผิด check (index mixup ที่ file→domain, ใช้ `d.RecallChecks[0].Explanation` แทน `rc.Explanation` ทุกตัว) | `TestLoadLesson_ManyChecksWithExplanation` (fixture 8 ข้อ, เกิน 5 เดิม) |
+
+**Survivor**: ไม่มี — ทุก mutation ตายตามที่คาด
+
+**หมายเหตุ scope ของ #11**: mutate จริงทำที่ hop file→domain เท่านั้น (ที่เดียวที่ explanation กับ
+question ถูก zip มาจาก array คนละตัว/index) เพราะ hop อื่น (DB write/read, API DTO) ส่งต่อ
+`RecallCheck` เป็น value เดียวที่ explanation เป็นฟิลด์ติดอยู่กับ struct เสมอ ไม่มีทางแยก array ให้
+mix up ได้ในเชิงโครงสร้าง — `TestRepositorySaveLesson_RoundTripManyChecksExplanationNotMixedUp`
+(DB round-trip 8 ข้อ) และ `TestNewLessonSortKeepsExplanationWithItsOwnCheck` (domain sort) ยังคง
+เป็น regression net แต่ไม่ได้ผ่านการ mutate จริงเพราะไม่มี mutation ที่สมจริงจะ decouple ได้ที่ hop
+นั้น
+
+### Import-parity evidence
+
+Stack แยก `docker compose -p aws1check` (ไม่แตะ `self-learning_mysql_data`) เทียบกับ baseline
+`docker compose -p aws1baseline` ที่ build จาก `develop` (`git worktree`) — รัน `import-curriculum`
++ `import-lessons` จริงทั้งคู่:
+
+- จำนวนไฟล์ import: **118 ไฟล์** ทั้งสองฝั่ง (DDIA 61 + AI-systems 53 + DDD ch.1 4 lesson)
+- `lessons` table: **118 แถวเท่ากันทั้งสองฝั่ง**
+- `recall_checks` table: **586 แถวเท่ากันทั้งสองฝั่ง**, `explanation IS NOT NULL` = **0** (ยังไม่มี
+  content file ใดใช้ field นี้จริง — ตามสโคปที่ตั้งใจ)
+- MD5 hash ของ `(id, title_en, body_md, refs)` ทุกแถว lessons และของ
+  `(lesson_id, position, type, question, expected_answer, options)` ทุกแถว recall_checks
+  **เท่ากันตัวต่อตัว** ระหว่าง develop กับ branch นี้ — ยืนยัน byte-identical import จริง ไม่ใช่แค่
+  นับจำนวนแถว
+
+### Playwright evidence (headless Chromium, stack `aws1check` เดิม)
+
+ใช้ lesson `domain-driven-design/ubiquitous-language` (5 recall_checks จริงในฐานข้อมูล) — UPDATE
+`explanation` ตรงให้ check #2 (mcq, ข้อความจริง 3 ส่วนยาว 752 ตัวอักษร) และ #5 (mcq, 300 ตัวอักษร)
+ผ่าน SQL โดยตรง (ไม่มี content file ไหนใช้ field นี้จริงตามสโคป):
+
+- Stage 1 (recall) และ stage 2 (commit) ของ serialized `innerHTML`: **ไม่มี**ข้อความ explanation
+  ปนอยู่เลย — `explanation_in_stage1 = false`, `explanation_in_stage2 = false`
+- Stage 3 (reveal): explanation โผล่จริง พร้อม label "Why" — `explanation_in_stage3 = true`,
+  `why_label_present = true`
+- Check ที่ไม่มี explanation (position 1) render เหมือนเดิมทุกประการที่ stage 3: **ไม่มี** label
+  "Why" โผล่ (`no_explanation_card_has_why_label = false`)
+- Overflow ที่ viewport 375px: วัด 3 ระดับ ไม่มีจุดไหนล้น — explanation `<p>` เอง
+  `scrollWidth = clientWidth = 251`, การ์ดทั้งใบ `scrollWidth = clientWidth = 325`, ระดับ document
+  `scrollWidth = clientWidth = 375` (ตรงกับเงื่อนไขที่ ticket ระบุเป๊ะ)
+- Contrast วัดจริงจาก computed style: label ("Why", `text-faint` บน `bg-page`) = **4.52:1** (ผ่าน AA
+  4.5:1 พอดี ตรงกับตัวเลขที่ frontend-design skill เคย verify ไว้), body text (`text-body` บน
+  `bg-page`) = **13.94:1** — **ไม่มีสีใหม่เลยในทั้งสองกรณี** ใช้ token เดิมของระบบ
+- `console` error และ `pageerror` = **0 ทั้งคู่** ตลอดการทดสอบ
+
+### Test count
+
+- Go: `go vet ./...` clean, `gofmt -l .` clean, `go test -count=1 ./...` **296 → 299** (นับจาก
+  `go test -v` ผ่าน `grep -c "^--- PASS"`, เทียบกับ develop baseline ที่วัดจริงผ่าน git worktree)
+- Frontend: `npx tsc --noEmit` clean, `npx eslint .` clean, `npm run build` clean,
+  `npx vitest run` **169 → 175**
+
+### สิ่งที่ตั้งใจไม่ทำในรอบนี้
+
+- ไม่เขียน explanation ให้ MCQ 356 ข้อเดิม (Q-3's เนื้อหาส่วนที่เหลือ ยังพักตามแผน)
+- ไม่สร้าง guessability measurement script ใหม่ (ไม่มี script เดิม commit ไว้ให้ parameterize — บันทึก
+  ไว้ตรง ๆ ใน `mcq-quality.md` แทนที่จะเดา/สร้างของใหม่แบบไม่ได้ขอ)
+- ไม่แตะ multiple-response (AWS-2) และไม่แยก concept ใน `aws.json`
+
+### Status: implemented, PR pending
+
+### Review focus
+
+<details>
+<summary>คำถามสำหรับรีวิว diff รอบนี้ (เฉลยพับไว้ด้านล่าง)</summary>
+
+1. ทำไม `recallCheckFileDTO.Explanation` ถึงเป็น `string` ธรรมดาแทนที่จะเป็น `*string` ทั้งที่ต้อง
+   แยก "ไม่มี key นี้เลย" กับ "มี key แต่ค่าว่าง"?
+2. ทำไม mutation #11 (index mixup) ถึง mutate จริงแค่ที่ hop file→domain เท่านั้น ไม่ mutate ที่ hop
+   DB write/read ด้วย?
+3. ทำไม migration ใหม่ต้องใช้ `explanation TEXT NULL` แทนที่จะเป็น `NOT NULL DEFAULT ''`?
+
+<details>
+<summary>เฉลย</summary>
+
+1. เพราะ `Q` และ `ExpectedAnswer` (ฟิลด์ข้างเคียงในไฟล์เดียวกัน) ก็เป็น `string` เดี่ยวอยู่แล้วตาม
+   convention เดิมของไฟล์นี้ และที่สำคัญกว่านั้นคือ **แยกสองเคสนั้นไม่ได้อยู่ดี**: `encoding/json`
+   decode ทั้ง "ไม่มี key" และ `"explanation": ""` ให้ `string` ธรรมดาออกมาเป็น `""` เหมือนกันทุก
+   ประการ (ต่างจาก `*string` ที่จะได้ `nil` กับ `&""` แยกกัน) การเปลี่ยนเป็น pointer จึงไม่ได้ให้
+   ความสามารถแยกแยะอะไรเพิ่มถ้า validator ท้ายทางจะ treat สองเคสนี้เหมือนกันอยู่ดี (ซึ่งเป็น
+   การตัดสินใจที่ตั้งใจ — ดูหัวข้อ "Empty string == absent" ด้านบน)
+2. เพราะ explanation เป็นฟิลด์ที่ติดอยู่กับ `RecallCheck` struct เสมอตั้งแต่ domain ถูกสร้างขึ้น
+   (`NewRecallCheck` รับมันมาพร้อม question/answer ในการเรียกเดียว) การ "หลุด index" จะเกิดได้จริง
+   เฉพาะจุดเดียวคือตอน zip ข้อมูลจากสอง array คนละตัว (array ของ recall_check ในไฟล์ JSON คนละ
+   index กับ array ของ explanation ที่ตั้งใจ) ซึ่งเกิดที่ `lessonfile.go`'s loop เท่านั้น — DB
+   write/read ส่งต่อ `RecallCheck` เป็น value เดียวทั้งก้อน ไม่มี array คู่ขนานให้ mix up ได้เชิง
+   โครงสร้าง mutation ที่ hop นั้นจึงทำไม่ได้แบบสมจริง (ต้องปลอมสถานการณ์ที่โค้ดจริงไม่มีทางเกิด)
+3. เพราะ 356 recall_checks ที่มีอยู่แล้วในฐานข้อมูลจริง (ก่อน migration นี้) ไม่มีค่า explanation
+   เลย — `NOT NULL DEFAULT ''` จะทำให้แถวเก่าทุกแถวมี `explanation = ''` ทันทีหลัง migration ซึ่ง
+   งานฝั่ง Go (`insertRecallCheck`) ต้องคอย normalize `''` ↔ NULL เองทุกครั้งที่เขียนทับ (เพราะ
+   convention ที่เลือกคือ optional value → NULL) `NULL` ตั้งแต่ต้นตัดปัญหานี้ทิ้งไปเลย และตรงกับ
+   convention ของคอลัมน์ `options` ในตารางเดียวกันที่ทำแบบเดียวกันอยู่แล้ว
 
 </details>
 </details>

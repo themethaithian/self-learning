@@ -32,8 +32,8 @@ ON DUPLICATE KEY UPDATE
 	deleteRecallChecksSQL = `DELETE FROM recall_checks WHERE lesson_id = ?`
 
 	insertRecallCheckSQL = `
-INSERT INTO recall_checks (lesson_id, position, type, question, expected_answer, options)
-VALUES (?, ?, ?, ?, ?, ?)`
+INSERT INTO recall_checks (lesson_id, position, type, question, expected_answer, options, explanation)
+VALUES (?, ?, ?, ?, ?, ?, ?)`
 )
 
 type referenceRowDTO struct {
@@ -137,8 +137,15 @@ func insertRecallCheck(ctx context.Context, tx *sql.Tx, lessonID int64, rc domai
 		options = string(b)
 	}
 
+	// NULL, not "", for an absent explanation — the same "optional value ->
+	// SQL NULL" convention the options column above already uses.
+	var explanation any
+	if rc.Explanation() != "" {
+		explanation = rc.Explanation()
+	}
+
 	_, err := tx.ExecContext(ctx, insertRecallCheckSQL,
-		lessonID, rc.Position().Int(), rc.Kind().String(), rc.Question(), rc.ExpectedAnswer(), options)
+		lessonID, rc.Position().Int(), rc.Kind().String(), rc.Question(), rc.ExpectedAnswer(), options, explanation)
 	if err != nil {
 		return fmt.Errorf("insert: %w", err)
 	}

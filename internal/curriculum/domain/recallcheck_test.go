@@ -2,19 +2,22 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
 func TestNewRecallCheck(t *testing.T) {
 	tests := []struct {
-		name           string
-		position       Position
-		kind           RecallKind
-		question       string
-		expectedAnswer string
-		options        []string
-		wantErr        error
-		wantOptionsLen int
+		name            string
+		position        Position
+		kind            RecallKind
+		question        string
+		expectedAnswer  string
+		options         []string
+		explanation     string
+		wantErr         error
+		wantOptionsLen  int
+		wantExplanation string
 	}{
 		{
 			name: "valid short_answer", position: mustPosition(t, 1), kind: mustRecallKind(t, "short_answer"),
@@ -23,6 +26,29 @@ func TestNewRecallCheck(t *testing.T) {
 		{
 			name: "valid mcq", position: mustPosition(t, 1), kind: mustRecallKind(t, "mcq"),
 			question: "ข้อใดถูกต้อง?", expectedAnswer: "b", options: []string{"a", "b", "c"}, wantOptionsLen: 3,
+		},
+		{
+			name: "valid mcq with explanation", position: mustPosition(t, 1), kind: mustRecallKind(t, "mcq"),
+			question: "ข้อใดถูกต้อง?", expectedAnswer: "b", options: []string{"a", "b", "c"}, wantOptionsLen: 3,
+			explanation: "b ถูกเพราะตรง constraint ใน stem", wantExplanation: "b ถูกเพราะตรง constraint ใน stem",
+		},
+		{
+			name: "explanation trimmed", position: mustPosition(t, 1), kind: mustRecallKind(t, "short_answer"),
+			question: "q", expectedAnswer: "a", explanation: "  padded  ", wantExplanation: "padded",
+		},
+		{
+			name: "whitespace-only explanation normalises to absent, not an error", position: mustPosition(t, 1), kind: mustRecallKind(t, "short_answer"),
+			question: "q", expectedAnswer: "a", explanation: "   ", wantExplanation: "",
+		},
+		{
+			name: "explanation exceeding max runes", position: mustPosition(t, 1), kind: mustRecallKind(t, "short_answer"),
+			question: "q", expectedAnswer: "a", explanation: strings.Repeat("อ", maxRecallExplanationRunes+1),
+			wantErr: ErrInvalidRecallExplanation,
+		},
+		{
+			name: "explanation exactly at max runes is valid", position: mustPosition(t, 1), kind: mustRecallKind(t, "short_answer"),
+			question: "q", expectedAnswer: "a", explanation: strings.Repeat("อ", maxRecallExplanationRunes),
+			wantExplanation: strings.Repeat("อ", maxRecallExplanationRunes),
 		},
 		{
 			name: "zero-value position", position: Position{}, kind: mustRecallKind(t, "short_answer"),
@@ -67,7 +93,7 @@ func TestNewRecallCheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewRecallCheck(tt.position, tt.kind, tt.question, tt.expectedAnswer, tt.options)
+			got, err := NewRecallCheck(tt.position, tt.kind, tt.question, tt.expectedAnswer, tt.options, tt.explanation)
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("NewRecallCheck() error = %v, want wrapping %v", err, tt.wantErr)
@@ -85,6 +111,9 @@ func TestNewRecallCheck(t *testing.T) {
 			}
 			if len(got.Options()) != tt.wantOptionsLen {
 				t.Errorf("len(Options()) = %d, want %d", len(got.Options()), tt.wantOptionsLen)
+			}
+			if got.Explanation() != tt.wantExplanation {
+				t.Errorf("Explanation() = %q, want %q", got.Explanation(), tt.wantExplanation)
 			}
 			if got.IsZero() {
 				t.Errorf("IsZero() = true, want false for a validly constructed RecallCheck")

@@ -163,6 +163,7 @@ type recallCheckDTO struct {
 	Question       string   `json:"question"`
 	ExpectedAnswer string   `json:"expected_answer"`
 	Options        []string `json:"options,omitempty"`
+	Explanation    string   `json:"explanation,omitempty"`
 }
 
 // lessonDTO carries each recall check's expected_answer and options: grading
@@ -225,6 +226,7 @@ func toRecallCheckDTOs(checks []domain.RecallCheck) []recallCheckDTO {
 			Question:       c.Question(),
 			ExpectedAnswer: c.ExpectedAnswer(),
 			Options:        c.Options(),
+			Explanation:    c.Explanation(),
 		})
 	}
 	return out

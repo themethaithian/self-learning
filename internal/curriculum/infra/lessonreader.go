@@ -21,7 +21,7 @@ JOIN topics t ON t.id = ch.topic_id
 WHERE t.slug = ? AND co.slug = ?`
 
 	selectRecallChecksByLessonSQL = `
-SELECT position, type, question, expected_answer, options
+SELECT position, type, question, expected_answer, options, explanation
 FROM recall_checks
 WHERE lesson_id = ?
 ORDER BY position`
@@ -109,12 +109,13 @@ func (r *Repository) recallChecksByLesson(ctx context.Context, lessonID int64) (
 			question       string
 			expectedAnswer string
 			options        sql.NullString
+			explanation    sql.NullString
 		)
-		if err := rows.Scan(&position, &kind, &question, &expectedAnswer, &options); err != nil {
+		if err := rows.Scan(&position, &kind, &question, &expectedAnswer, &options, &explanation); err != nil {
 			return nil, fmt.Errorf("scan recall check: %w", err)
 		}
 
-		check, err := toRecallCheck(position, kind, question, expectedAnswer, options)
+		check, err := toRecallCheck(position, kind, question, expectedAnswer, options, explanation.String)
 		if err != nil {
 			return nil, fmt.Errorf("recall check %d: %w", position, err)
 		}
@@ -126,7 +127,7 @@ func (r *Repository) recallChecksByLesson(ctx context.Context, lessonID int64) (
 	return checks, nil
 }
 
-func toRecallCheck(position int, kind, question, expectedAnswer string, options sql.NullString) (domain.RecallCheck, error) {
+func toRecallCheck(position int, kind, question, expectedAnswer string, options sql.NullString, explanation string) (domain.RecallCheck, error) {
 	var optionValues []string
 	if options.Valid {
 		if err := json.Unmarshal([]byte(options.String), &optionValues); err != nil {
@@ -142,5 +143,5 @@ func toRecallCheck(position int, kind, question, expectedAnswer string, options 
 	if err != nil {
 		return domain.RecallCheck{}, err
 	}
-	return domain.NewRecallCheck(pos, recallKind, question, expectedAnswer, optionValues)
+	return domain.NewRecallCheck(pos, recallKind, question, expectedAnswer, optionValues, explanation)
 }

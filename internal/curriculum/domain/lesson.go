@@ -7,10 +7,19 @@ import (
 )
 
 const (
-	minReferences   = 2
-	maxReferences   = 4
+	minReferences = 2
+	maxReferences = 4
+
+	// minRecallChecks stays at 3 — AWS-1 raised only the ceiling (the
+	// blocker was 5 x 50 concepts = 250 against a 550-question target).
+	// The 114 existing DDIA/AI-systems lessons rely on this floor, some at
+	// exactly 3 checks, and nothing in this ticket's scope calls for
+	// demanding more recall checks from tracks that were never short of them.
 	minRecallChecks = 3
-	maxRecallChecks = 5
+	// maxRecallChecks 15 gives headroom above the AWS plan's ~11 checks per
+	// concept (docs/tickets/aws-cert.md) without opening the door to an
+	// unbounded per-lesson quiz.
+	maxRecallChecks = 15
 )
 
 // Lesson is the curriculum's teaching content for one Concept: a self-study

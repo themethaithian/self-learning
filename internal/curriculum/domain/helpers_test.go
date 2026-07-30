@@ -76,7 +76,12 @@ func mustRecallKind(t *testing.T, raw string) RecallKind {
 
 func mustRecallCheck(t *testing.T, position int, kind string, question, expectedAnswer string, options []string) RecallCheck {
 	t.Helper()
-	rc, err := NewRecallCheck(mustPosition(t, position), mustRecallKind(t, kind), question, expectedAnswer, options)
+	return mustRecallCheckExplained(t, position, kind, question, expectedAnswer, options, "")
+}
+
+func mustRecallCheckExplained(t *testing.T, position int, kind string, question, expectedAnswer string, options []string, explanation string) RecallCheck {
+	t.Helper()
+	rc, err := NewRecallCheck(mustPosition(t, position), mustRecallKind(t, kind), question, expectedAnswer, options, explanation)
 	if err != nil {
 		t.Fatalf("NewRecallCheck(%d) failed: %v", position, err)
 	}

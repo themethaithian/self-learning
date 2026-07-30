@@ -309,6 +309,16 @@ func TestHandlerGetLesson_Success(t *testing.T) {
 	if len(got.RecallChecks[0].Options) != 0 {
 		t.Errorf("recall_checks[0].options = %v, want omitted for short_answer", got.RecallChecks[0].Options)
 	}
+
+	// newTestLesson gives checks 1 and 3 distinct explanations and check 2
+	// (the mcq) none — asserting all three by index catches both a dropped
+	// explanation and one attached to the wrong check.
+	wantExplanations := []string{"explanation 1", "", "explanation 3"}
+	for i, want := range wantExplanations {
+		if got.RecallChecks[i].Explanation != want {
+			t.Errorf("recall_checks[%d].explanation = %q, want %q", i, got.RecallChecks[i].Explanation, want)
+		}
+	}
 }
 
 func TestHandlerGetLesson_NotFound(t *testing.T) {

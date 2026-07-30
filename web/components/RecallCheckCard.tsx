@@ -248,6 +248,13 @@ export const RecallCheckCard = forwardRef<HTMLDivElement, RecallCheckCardProps>(
             </ul>
           )}
 
+          {check.explanation && (
+            <div className="rounded-xl border border-subtle bg-page px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-faint">Why</p>
+              <p className="mt-1 whitespace-pre-wrap font-thai text-sm leading-[1.8] text-body">{check.explanation}</p>
+            </div>
+          )}
+
           {check.type === "short_answer" && (
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <span className="text-xs font-medium uppercase tracking-wide text-faint">How did you do?</span>

@@ -20,7 +20,7 @@ func newTestReference(t *testing.T, title string) domain.Reference {
 	return r
 }
 
-func newTestRecallCheck(t *testing.T, pos int, kind string, options []string) domain.RecallCheck {
+func newTestRecallCheck(t *testing.T, pos int, kind string, options []string, explanation string) domain.RecallCheck {
 	t.Helper()
 	p, err := domain.NewPosition(pos)
 	if err != nil {
@@ -30,7 +30,7 @@ func newTestRecallCheck(t *testing.T, pos int, kind string, options []string) do
 	if err != nil {
 		t.Fatalf("NewRecallKind(%q): %v", kind, err)
 	}
-	rc, err := domain.NewRecallCheck(p, k, fmt.Sprintf("question %d", pos), fmt.Sprintf("answer %d", pos), options)
+	rc, err := domain.NewRecallCheck(p, k, fmt.Sprintf("question %d", pos), fmt.Sprintf("answer %d", pos), options, explanation)
 	if err != nil {
 		t.Fatalf("NewRecallCheck(%d): %v", pos, err)
 	}
@@ -39,7 +39,10 @@ func newTestRecallCheck(t *testing.T, pos int, kind string, options []string) do
 
 // newTestLesson builds a lesson with 3 recall checks — short_answer, mcq,
 // short_answer, in that order — so tests can assert the options column is
-// NULL for the short_answer rows and a JSON array for the mcq row.
+// NULL for the short_answer rows and a JSON array for the mcq row. Check 2
+// (the mcq) deliberately has no explanation, alongside checks 1 and 3 which
+// do, so a round trip through SaveLesson/LessonByConcept exercises both the
+// present and the absent case in one lesson.
 func newTestLesson(t *testing.T, slug string, version int) domain.Lesson {
 	t.Helper()
 	s, err := domain.NewSlug(slug)
@@ -53,10 +56,41 @@ func newTestLesson(t *testing.T, slug string, version int) domain.Lesson {
 	l, err := domain.NewLesson(s, version, "Title "+slug, est, "body "+slug,
 		[]domain.Reference{newTestReference(t, "ref-a"), newTestReference(t, "ref-b")},
 		[]domain.RecallCheck{
-			newTestRecallCheck(t, 1, "short_answer", nil),
-			newTestRecallCheck(t, 2, "mcq", []string{"answer 2", "opt-b"}),
-			newTestRecallCheck(t, 3, "short_answer", nil),
+			newTestRecallCheck(t, 1, "short_answer", nil, "explanation 1"),
+			newTestRecallCheck(t, 2, "mcq", []string{"answer 2", "opt-b"}, ""),
+			newTestRecallCheck(t, 3, "short_answer", nil, "explanation 3"),
 		},
+	)
+	if err != nil {
+		t.Fatalf("NewLesson(%q): %v", slug, err)
+	}
+	return l
+}
+
+// newManyCheckLesson builds a lesson with n recall checks (n > 5, only
+// possible after AWS-1 raised maxRecallChecks), each carrying a distinct,
+// position-derived explanation — "explanation 1".."explanation n" — so a
+// round trip can assert check i's explanation is exactly explanation i, not
+// a neighbour's, catching an index/ordering mix-up that a fixture capped at
+// 5 checks could never expose.
+func newManyCheckLesson(t *testing.T, slug string, version, n int) domain.Lesson {
+	t.Helper()
+	s, err := domain.NewSlug(slug)
+	if err != nil {
+		t.Fatalf("NewSlug(%q): %v", slug, err)
+	}
+	est, err := domain.NewEstMinutes(7)
+	if err != nil {
+		t.Fatalf("NewEstMinutes: %v", err)
+	}
+	checks := make([]domain.RecallCheck, n)
+	for i := range checks {
+		pos := i + 1
+		checks[i] = newTestRecallCheck(t, pos, "short_answer", nil, fmt.Sprintf("explanation %d", pos))
+	}
+	l, err := domain.NewLesson(s, version, "Title "+slug, est, "body "+slug,
+		[]domain.Reference{newTestReference(t, "ref-a"), newTestReference(t, "ref-b")},
+		checks,
 	)
 	if err != nil {
 		t.Fatalf("NewLesson(%q): %v", slug, err)
@@ -242,13 +276,14 @@ func TestRepositorySaveLesson_RecallChecksReplacedInOrder(t *testing.T) {
 	}
 
 	wantInserts := []struct {
-		position int64
-		kind     string
-		options  any
+		position    int64
+		kind        string
+		options     any
+		explanation any
 	}{
-		{1, "short_answer", nil},
-		{2, "mcq", `["answer 2","opt-b"]`},
-		{3, "short_answer", nil},
+		{1, "short_answer", nil, "explanation 1"},
+		{2, "mcq", `["answer 2","opt-b"]`, nil},
+		{3, "short_answer", nil, "explanation 3"},
 	}
 	for i, want := range wantInserts {
 		call := calls[2+i]
@@ -256,9 +291,51 @@ func TestRepositorySaveLesson_RecallChecksReplacedInOrder(t *testing.T) {
 			t.Fatalf("call %d query = %q, want the recall_check insert", 2+i, call.query)
 		}
 		got := argValues(call.args)
-		wantArgs := []any{lessonID, want.position, want.kind, fmt.Sprintf("question %d", want.position), fmt.Sprintf("answer %d", want.position), want.options}
+		wantArgs := []any{
+			lessonID, want.position, want.kind, fmt.Sprintf("question %d", want.position), fmt.Sprintf("answer %d", want.position),
+			want.options, want.explanation,
+		}
 		if !reflect.DeepEqual(got, wantArgs) {
 			t.Errorf("insert recall_check %d args = %v, want %v", want.position, got, wantArgs)
+		}
+	}
+}
+
+// TestRepositorySaveLesson_RoundTripManyChecksExplanationNotMixedUp proves
+// explanation stays attached to its own check across a full DELETE+INSERT
+// write and a fresh ORDER-BY-position SELECT, at a check count (8) the
+// pre-AWS-1 ceiling of 5 made impossible to fixture. A bug that shifted
+// explanations by one position, or dropped them for any single check, would
+// fail this even though TestRepositorySaveLesson_RecallChecksReplacedInOrder
+// (only 3 checks) could pass.
+func TestRepositorySaveLesson_RoundTripManyChecksExplanationNotMixedUp(t *testing.T) {
+	const n = 8
+	result := seededConceptResult("domain-driven-design", "many-checks", 42)
+	db := openStubDB(t, result)
+	repo := NewRepository(db)
+	ctx := context.Background()
+
+	lesson := newManyCheckLesson(t, "many-checks", 1, n)
+	if _, err := repo.SaveLesson(ctx, "domain-driven-design", lesson); err != nil {
+		t.Fatalf("SaveLesson() unexpected error: %v", err)
+	}
+
+	got, err := repo.LessonByConcept(ctx, "domain-driven-design", "many-checks")
+	if err != nil {
+		t.Fatalf("LessonByConcept() unexpected error: %v", err)
+	}
+	checks := got.RecallChecks()
+	if len(checks) != n {
+		t.Fatalf("len(RecallChecks()) = %d, want %d", len(checks), n)
+	}
+	for i, c := range checks {
+		wantPos := i + 1
+		if c.Position().Int() != wantPos {
+			t.Errorf("RecallChecks()[%d].Position() = %d, want %d", i, c.Position().Int(), wantPos)
+		}
+		wantExplanation := fmt.Sprintf("explanation %d", wantPos)
+		if c.Explanation() != wantExplanation {
+			t.Errorf("RecallChecks()[%d].Explanation() = %q, want %q", i, c.Explanation(), wantExplanation)
 		}
 	}
 }

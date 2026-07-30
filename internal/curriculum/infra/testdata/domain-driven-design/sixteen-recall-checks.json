@@ -1,0 +1,29 @@
+{
+  "topic": "domain-driven-design",
+  "concept_id": "sixteen-recall-checks",
+  "title_en": "Sixteen Recall Checks",
+  "est_minutes": 7,
+  "body_md": "body",
+  "recall_checks": [
+    { "q": "q1", "expected_answer": "a1", "type": "short_answer" },
+    { "q": "q2", "expected_answer": "a2", "type": "short_answer" },
+    { "q": "q3", "expected_answer": "a3", "type": "short_answer" },
+    { "q": "q4", "expected_answer": "a4", "type": "short_answer" },
+    { "q": "q5", "expected_answer": "a5", "type": "short_answer" },
+    { "q": "q6", "expected_answer": "a6", "type": "short_answer" },
+    { "q": "q7", "expected_answer": "a7", "type": "short_answer" },
+    { "q": "q8", "expected_answer": "a8", "type": "short_answer" },
+    { "q": "q9", "expected_answer": "a9", "type": "short_answer" },
+    { "q": "q10", "expected_answer": "a10", "type": "short_answer" },
+    { "q": "q11", "expected_answer": "a11", "type": "short_answer" },
+    { "q": "q12", "expected_answer": "a12", "type": "short_answer" },
+    { "q": "q13", "expected_answer": "a13", "type": "short_answer" },
+    { "q": "q14", "expected_answer": "a14", "type": "short_answer" },
+    { "q": "q15", "expected_answer": "a15", "type": "short_answer" },
+    { "q": "q16", "expected_answer": "a16", "type": "short_answer" }
+  ],
+  "references": [
+    { "title": "t1", "source": "s1", "why": "w1" },
+    { "title": "t2", "source": "s2", "why": "w2" }
+  ]
+}

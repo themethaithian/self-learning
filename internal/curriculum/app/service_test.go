@@ -91,7 +91,7 @@ func mustLesson(t *testing.T, slug string) domain.Lesson {
 		if err != nil {
 			t.Fatalf("NewPosition: %v", err)
 		}
-		checks[i], err = domain.NewRecallCheck(pos, kind, "q", "a", nil)
+		checks[i], err = domain.NewRecallCheck(pos, kind, "q", "a", nil, "")
 		if err != nil {
 			t.Fatalf("NewRecallCheck: %v", err)
 		}
