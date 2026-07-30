@@ -24,6 +24,9 @@ building it.
   - content generation → `lesson-writer`, then ALWAYS `lesson-verifier`
   - code implementation → `go-implementer`
   - reviewing diffs → `code-reviewer`
+  - exception (agreed in AWS-EN1): `/aws-exam-note` exam-note ingestion is
+    secretarial filing, not lesson/code work — the main session does it
+    directly per `.claude/skills/aws-exam-note/SKILL.md`
 - The orchestrator NEVER implements anything itself. When a worker subagent
   has failed twice on the same ticket, escalate instead: ask the user for
   permission (stating what failed and why), then spawn a ONE-OFF subagent
