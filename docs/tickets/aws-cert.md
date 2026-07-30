@@ -507,14 +507,23 @@ Reproduce ทั้ง before และ after บน stack แยก `docker com
   (`RestartCount = 0`, health check ผ่านต่อเนื่องหลัง restart), log สะอาดไม่มี error 1060,
   `schema_migrations` มี version 8 กลับมาเหมือนเดิม (migration รันซ้ำแล้ว no-op ผ่านการ guard),
   คอลัมน์ `explanation` ยังอยู่ครบ ไม่มีการ error หรือ column ซ้ำ
-- **Static guard**: `TestAllMigrationsAlterTableAddColumnIsGuarded` (ใหม่ ใน
-  `internal/platform/mysql/migrate_embedded_test.go`) เช็คว่าไฟล์ migration ใดก็ตามที่มี
-  `ADD COLUMN` ต้องมี marker ของ guard pattern ครบ (`information_schema.COLUMNS`, `PREPARE `,
-  `EXECUTE `, `DEALLOCATE PREPARE`) — **ไม่ใช่การ extend `TestAllMigrationsCreateTableIsIdempotent`
-  ตรง ๆ** เพราะ `ADD COLUMN` ไม่มี token เดียวแบบ `IF NOT EXISTS` ให้เช็คต่อท้ายเหมือน `CREATE TABLE`
-  จึงเขียนเป็นเทสต์คู่ขนานแยกต่างหากที่เช็ค marker set ของ pattern นี้โดยเฉพาะ เทสต์นี้พิสูจน์แค่
-  **syntax** ของ guard ว่ามีอยู่ (ข้อจำกัดแบบเดียวกับเทสต์ CREATE TABLE เดิม) ส่วน**พฤติกรรม**จริงของ
-  MySQL พิสูจน์ด้วย live re-run ข้างบนแทน ไม่ใช่ `go test`
+- **Static guard**: `TestAllMigrationsNonIdempotentAlterIsGuarded` ใน
+  `internal/platform/mysql/migrate_embedded_test.go` — **แก้ 2 รอบแล้ว** รอบแรก
+  (`TestAllMigrationsAlterTableAddColumnIsGuarded`) ทำ whole-file `strings.Contains` 4 จุด และ
+  claim ผิดว่า "เป็น static-text limit แบบเดียวกับเทสต์ CREATE TABLE" — **claim นั้นเท็จ**:
+  `TestAllMigrationsCreateTableIsIdempotent` เดิมเดินทีละ occurrence ของ `CREATE TABLE` จริง
+  (positional, ทุกจุด) ส่วน whole-file Contains ไม่ใช่แบบเดียวกันเลย และ reviewer เขียนไฟล์ probe 5
+  แบบที่ผ่านเทสต์เดิมหมด: (A) ALTER guarded ถูกต้อง + bare ALTER ต่อท้ายในไฟล์เดียวกัน, (B) SQL
+  lowercase ไม่มี guard, (C) bare ALTER + comment ที่ quote คำ marker ของ guard ไว้ข้าง ๆ, (D) bare
+  `CREATE INDEX`, (E) bare `ALTER TABLE ... DROP COLUMN` — **รอบ 3 เขียนใหม่เป็น per-statement**:
+  parse ไฟล์ผ่าน `splitStatements` ตัวเดียวกับที่ `applyOne` ใช้จริง (production path) หลังผ่าน
+  `stripLineComments` ใหม่ (ตัด `-- ...` ทิ้งก่อน split กัน probe C), แล้วเช็คทุก statement ว่าไม่มี
+  ตัวไหนขึ้นต้นด้วย `ALTER TABLE` ที่มี `ADD COLUMN`/`DROP COLUMN`, หรือขึ้นต้นด้วย `CREATE INDEX`
+  แบบ bare — **verify ซ้ำทั้ง 5 probe shape ของ reviewer + 2 shape ที่คิดเพิ่มเอง (multi-line ALTER
+  แยกบรรทัด, bare ALTER + inline trailing comment บนบรรทัดเดียวกัน) ตายครบทั้ง 7** เทสต์นี้พิสูจน์แค่
+  ว่า production parser (`splitStatements`) เห็น statement นั้นเป็น bare non-idempotent DDL จริง
+  (**ไม่ใช่**เทสต์แบบเดียวกับ CREATE TABLE เป๊ะ ๆ — ยอมรับตรง ๆ ว่าเป็นคนละเครื่องมือ ไม่ claim parity
+  อีกต่อไป) ส่วน**พฤติกรรม**จริงของ MySQL พิสูจน์ด้วย live re-run ข้างบนแทน ไม่ใช่ `go test`
 - **เหตุผลที่ต้องแก้ `applyOne` ด้วย ไม่ใช่แค่ SQL**: `SET @var`/`PREPARE`/`EXECUTE` เป็น
   session-scoped state ของ MySQL connection เดียว — `database/sql` ไม่การันตีว่า
   `db.ExecContext` สองครั้งติดกันจะได้ connection เดิมจาก pool เสมอ (ทดสอบ stress จริงด้วย 9
@@ -560,11 +569,13 @@ Stack แยก `docker compose -p aws1check` (ไม่แตะ `self-learning
 ### Test count
 
 - Go: `go vet ./...` clean, `gofmt -l .` clean, `go test -count=1 ./...` **296 (develop) → 299
-  (round 1) → 301 (round 2)** (นับจาก `go test -v` ผ่าน `grep -c "^--- PASS"`; round 2 เพิ่ม
-  `TestAllMigrationsAlterTableAddColumnIsGuarded` + `TestHandlerGetLesson_OmitsExplanationKeyWhenAbsent`)
+  (round 1) → 301 (round 2) → 301 (round 3)** (นับจาก `go test -v` ผ่าน `grep -c "^--- PASS"`;
+  round 2 เพิ่ม 2 เทสต์ใหม่; round 3 **แทนที่** `TestAllMigrationsAlterTableAddColumnIsGuarded` ด้วย
+  `TestAllMigrationsNonIdempotentAlterIsGuarded` แบบ 1 ต่อ 1 — จำนวนสุทธิเท่าเดิมเพราะเป็นการเขียน
+  เทสต์เดิมใหม่ ไม่ใช่เพิ่มเทสต์คู่ขนาน)
 - Frontend: `npx tsc --noEmit` clean, `npx eslint .` clean, `npm run build` clean,
-  `npx vitest run` **169 (develop) → 175 (round 1) → 176 (round 2)** (เพิ่ม explanation=""
-  test case)
+  `npx vitest run` **169 (develop) → 175 (round 1) → 176 (round 2) → 176 (round 3, ไม่แตะ
+  frontend)**
 
 ### สิ่งที่ตั้งใจไม่ทำในรอบนี้
 
@@ -635,10 +646,94 @@ REQUEST_CHANGES รอบแรกพบ 7 ปัญหาหลัก (R1–R7)
    เหมือนเทสต์ `CREATE TABLE`/`IF NOT EXISTS` เดิม) — **ไม่**พิสูจน์ว่า guard **ทำงานถูกจริง** บน
    MySQL จริง (เช่น syntax ผิดเล็กน้อยที่ยังมี marker ครบแต่รันไม่ผ่านจริงจะไม่ถูกจับ) พฤติกรรมจริง
    พิสูจน์ด้วย live crash-recovery replay บน `docker compose -p aws1fix` แทน ไม่ใช่ `go test`
+   **[แก้ไขใน round 3: คำตอบข้อนี้เองก็ผิด — "เหมือนเทสต์ CREATE TABLE เดิม" ไม่จริง เป็น whole-file
+   Contains ที่ผ่านง่ายกว่ามาก reviewer เขียน probe 5 แบบผ่านหมด ดูหัวข้อ "Round 3" ด้านล่าง]**
 3. เพราะ**ข้อสรุป**ของ decision (คงพื้นไว้ที่ 3) ยังถูกต้องอยู่ — สิ่งที่ผิดคือ**หลักฐาน**ที่ยกมาอ้าง
    (อ้างว่ามีใบที่มีพอดี 3 ข้อ ซึ่งนับจริงแล้วไม่มี ต่ำสุดคือ 4) ไม่ใช่ตัวการตัดสินใจเอง — ไม่มีอะไรใน
    scope ของ ticket นี้เรียกร้องให้เปลี่ยน floor จาก 3 เป็นค่าอื่น (blocker เดิมคือเพดานบนเท่านั้น)
    ดังนั้นแก้แค่ comment ให้ตรงข้อเท็จจริง ไม่ต้องเปลี่ยนค่า constant
+
+</details>
+</details>
+
+## Round 3 (code review) — regression guard ตัวเองอ่อนกว่าที่ comment อ้าง
+
+**NO-SHIP หนึ่งเดียว**: `TestAllMigrationsAlterTableAddColumnIsGuarded` (เขียนใน round 2) ทำ
+whole-file `strings.Contains` 4 จุด และ**ตัวเทสต์เองที่มี comment claim ว่า "เป็น static-text limit
+แบบเดียวกับเทสต์ CREATE TABLE"** — claim นั้นเท็จ (`TestAllMigrationsCreateTableIsIdempotent` เดินทีละ
+occurrence จริง ไม่ใช่ whole-file membership) reviewer เขียนไฟล์ probe 5 แบบผ่านเทสต์เดิมหมด:
+
+| Probe | รูปแบบ | ผ่านเทสต์เดิม (round 2) เพราะอะไร | ผลหลังแก้ (round 3) |
+|---|---|---|---|
+| A | ALTER guarded ถูกต้อง + bare `ALTER TABLE lessons ADD COLUMN b INT NULL;` ต่อท้ายในไฟล์เดียวกัน | whole-file Contains เจอ marker ครบจากส่วน guarded แล้วไม่มองต่อว่ามี statement เปล่าเพิ่มมา | **FAIL** ✅ |
+| B | `alter table lessons add column b int null;` (lowercase, ไม่มี guard เลย) | `Contains(content, "ADD COLUMN")` (ตัวพิมพ์ใหญ่) เป็น false เทสต์เลย early-return | **FAIL** ✅ |
+| C | bare ALTER + `--` comment ที่ quote คำ `information_schema.COLUMNS`/`PREPARE`/`EXECUTE`/`DEALLOCATE PREPARE` ไว้ข้าง ๆ | whole-file Contains เจอคำพวกนี้ใน comment เฉย ๆ ไม่สนว่าเป็น comment หรือโค้ดจริง | **FAIL** ✅ |
+| D | bare `CREATE INDEX idx_probe ON lessons (version);` | เทสต์เดิมเช็คแค่ `ADD COLUMN` ไม่รู้จัก `CREATE INDEX` เลย | **FAIL** ✅ |
+| E | bare `ALTER TABLE lessons DROP COLUMN version;` | เทสต์เดิมเช็คแค่ `ADD COLUMN` ไม่รู้จัก `DROP COLUMN` เลย | **FAIL** ✅ |
+| F (คิดเพิ่มเอง) | `ALTER TABLE`/`ADD`/`COLUMN` แยกคนละบรรทัด มี whitespace คั่น | ไม่เคย test กับเทสต์เดิม แต่ทดสอบแล้วก็จะรอดเหมือนกันเพราะ Contains ยังเจอ substring "ADD COLUMN" ปกติ (probe นี้พิสูจน์ฝั่ง**เทสต์ใหม่**ว่า normalize whitespace ถูกต้อง ไม่ได้พิสูจน์ว่าเทสต์เก่าพัง) | **FAIL** ✅ |
+| G (คิดเพิ่มเอง) | bare ALTER + inline trailing `-- comment` บนบรรทัดเดียวกัน | เช่นเดียวกับ F | **FAIL** ✅ |
+
+ทั้ง 7 probe (5 ของ reviewer + 2 ที่คิดเพิ่ม) ทดสอบจริงโดยสร้างไฟล์ `.sql` ชั่วคราวใต้ `migrations/`
+รัน `go test`, ลบไฟล์ทิ้งทันที — `git status` สะอาดหลังทำเสร็จทุกรอบ
+
+**แก้จริง**: เขียน `TestAllMigrationsAlterTableAddColumnIsGuarded` ใหม่ทั้งหมดเป็น
+`TestAllMigrationsNonIdempotentAlterIsGuarded` — parse ไฟล์ผ่าน `splitStatements` **ตัวเดียวกับที่
+`applyOne` ใช้รันจริง** (ไม่ใช่ parser แยกต่างหากที่พิสูจน์กันคนละหน่วย) หลังผ่าน `stripLineComments`
+ใหม่ (ตัด `-- ...` ทิ้งก่อน split กัน probe C) แล้วเช็ค**ทุก statement เดี่ยว ๆ** ว่าไม่มีตัวไหนขึ้นต้น
+`ALTER TABLE` ที่มี `ADD COLUMN`/`DROP COLUMN`, หรือขึ้นต้น `CREATE INDEX` แบบ bare — ครอบคลุมทั้ง 3
+รูปแบบ DDL ที่ไม่มี `IF NOT EXISTS`/`IF EXISTS` form ใน MySQL 8 ตามกฎของ `migrate.go`'s doc comment
+เอง ("every migration file must therefore be written to converge on re-run") ไม่ใช่แค่ `ADD COLUMN`
+
+**ยืนยัน 8 migration ที่มีอยู่จริงทั้งหมดยังผ่านเทสต์ใหม่** (`go test -run
+TestAllMigrationsNonIdempotentAlterIsGuarded` เขียว) — 003/004's `ALTER TABLE topics MODIFY COLUMN
+...` ไม่ตรงเงื่อนไขไหนเลย (ไม่ใช่ ADD/DROP COLUMN หรือ CREATE INDEX) จึงผ่านถูกต้อง, 008's guarded
+ADD COLUMN อยู่ใน string literal ของ statement `SET @add_explanation_ddl = IF(...)` ซึ่งขึ้นต้นด้วย
+`SET` ไม่ใช่ `ALTER TABLE` จึงไม่ถูกจับผิด
+
+**S8**: เพิ่ม 1 บรรทัดใน `applyOne`'s doc comment — `go-sql-driver/mysql` (เช็คจริงที่ v1.10.0)'s
+`ResetSession` ทำแค่ liveness check ไม่ส่ง `COM_RESET_CONNECTION` ดังนั้น user variable ของ MySQL
+(`@has_explanation_col`/`@add_explanation_ddl`) รอดอยู่บน connection ที่ pool คืนกลับไปได้แม้เรียก
+`conn.Close()` แล้ว — ไม่มีปัญหาวันนี้เพราะ 008 `SET` ค่าเองก่อนอ่านเสมอ แต่ migration guarded ตัวถัดไป
+ในอนาคตที่ก๊อปปี้ pattern นี้แล้ว**อ่าน**ตัวแปรโดยไม่ `SET` เองก่อน มีความเสี่ยงรับค่าเก่าที่ค้างจาก
+migration อื่นแบบเงียบ ๆ — เขียนกฎนี้ไว้เป็น doc comment ให้คนเขียน migration ถัดไปเห็น
+
+### Test count (round 3)
+
+- Go: **301 → 301** (แทนที่เทสต์เดิม 1 ตัวด้วยเทสต์ใหม่ 1 ตัว ไม่มีการเพิ่มจำนวนสุทธิ)
+- Frontend: **176 → 176** (ไม่แตะ frontend ในรอบนี้)
+
+### Status: implemented, code review round 3 fixes applied, PR pending
+
+### Review focus (round 3)
+
+<details>
+<summary>คำถามสำหรับรีวิว diff รอบนี้ (เฉลยพับไว้ด้านล่าง)</summary>
+
+1. ทำไม probe C (bare ALTER + comment ที่ quote คำ marker) ถึงหลอกเทสต์ round 2 ได้ แต่หลอกเทสต์
+   round 3 ไม่ได้?
+2. ทำไม `stripLineComments` ต้องทำงาน**ก่อน** `splitStatements` ไม่ใช่หลัง?
+3. ทำไมเทสต์ใหม่ต้องเช็ค `DROP COLUMN` กับ `CREATE INDEX` ด้วย ทั้งที่ ticket นี้ไม่มี migration ไหน
+   ใช้สองอย่างนี้เลย?
+
+<details>
+<summary>เฉลย</summary>
+
+1. เพราะเทสต์ round 2 เช็คแค่ "คำเหล่านี้ปรากฏอยู่ที่ไหนสักแห่งในไฟล์ทั้งไฟล์หรือเปล่า"
+   (`strings.Contains(content, ...)`) ไม่สนว่าคำนั้นอยู่ใน comment, string literal, หรือ statement
+   จริง — comment ที่พิมพ์คำ marker ตรง ๆ จึงทำให้เช็คผ่านได้ง่าย ๆ โดยไม่มี guard จริงเลย เทสต์ round
+   3 ไม่เช็คคำที่ปรากฏในไฟล์อีกต่อไป แต่ parse ไฟล์เป็น statement ก่อน (ผ่าน `stripLineComments` +
+   `splitStatements`) แล้วเช็คแต่ละ statement เป็นหน่วย — comment ถูกตัดทิ้งไปตั้งแต่ก่อน parse จึงไม่มี
+   ทางเข้าไปปนกับเนื้อหา statement จริงได้อีก
+2. เพราะ `splitStatements` แบ่งไฟล์ด้วย `;` และ comment ในไฟล์นี้ (สไตล์ `-- ...`) ไม่ได้ถูก parse
+   เป็น token พิเศษโดย `splitStatements` เอง (มันไม่รู้จัก syntax comment เลย เห็นแค่ตัวอักษร) — ถ้า
+   split ก่อนแล้วค่อยตัด comment ทีหลัง, comment ที่บังเอิญมี `;` อยู่ข้างในจะทำให้ statement นับผิดไป
+   แล้ว (ตัด comment ในสิ่งที่คิดว่าเป็น "statement" หนึ่งอันซึ่งจริง ๆ ถูกตัดครึ่งไปแล้วจาก `;` ใน
+   comment) การตัด comment ก่อนจึงรับประกันว่า `splitStatements` เห็นแต่ SQL จริงล้วน ๆ ไม่มี
+   comment ปนมาทำให้แบ่ง statement ผิดที่
+3. เพราะกฎที่ `migrate.go`'s doc comment เขียนไว้เองคือ "**every** migration file must ... converge
+   on re-run" ไม่ได้จำกัดแค่ `ADD COLUMN` — `DROP COLUMN` และ `CREATE INDEX` มีข้อจำกัดเดียวกันเป๊ะ ๆ
+   ใน MySQL 8 (ไม่มี `IF EXISTS`/`IF NOT EXISTS` form) เขียนเทสต์ให้ครอบคลุมกฎที่ตั้งไว้เองทั้งหมด
+   ตั้งแต่ตอนนี้ถูกกว่าการรอให้มี migration จริงมาเจอปัญหาเดียวกันซ้ำแล้วค่อยแก้เทสต์เพิ่มทีหลัง
 
 </details>
 </details>

@@ -178,6 +178,15 @@ func appliedVersions(ctx context.Context, db *sql.DB) (map[int]bool, error) {
 // no documented guarantee that two separate DB.ExecContext calls land on the
 // same pooled connection. A migration that relied on that anyway would swap
 // one crash-loop risk (R1) for a rarer, unproven one.
+//
+// Every guarded migration must SET its own variables before reading them,
+// never assume a fresh or zero value: go-sql-driver/mysql's ResetSession
+// only does a liveness check, not COM_RESET_CONNECTION, so a user variable
+// can survive on the pooled connection after Close() returns it — harmless
+// here since 008 always sets before it reads, but a future guarded
+// migration that reads a variable without setting it first could silently
+// inherit a stale value left behind by an earlier migration that happened
+// to reuse the same physical connection.
 func applyOne(ctx context.Context, db *sql.DB, m migrationFile) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {

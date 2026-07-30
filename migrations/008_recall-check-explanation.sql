@@ -8,7 +8,7 @@
 -- the same table.
 --
 -- The ADD COLUMN itself is guarded, unlike every CREATE TABLE IF NOT EXISTS
--- elsewhere in this directory (see TestAllMigrationsAlterTableAddColumnIsGuarded):
+-- elsewhere in this directory (see TestAllMigrationsNonIdempotentAlterIsGuarded):
 -- MySQL 8 has no `ADD COLUMN IF NOT EXISTS`, and ALTER TABLE is
 -- non-transactional DDL that implicitly commits before Migrate's own INSERT
 -- into schema_migrations runs (see migrate.go's doc comment) — if the
